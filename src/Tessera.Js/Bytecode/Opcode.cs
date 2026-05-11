@@ -17,6 +17,8 @@ public enum Opcode : byte
     Nop,
     LoadConst,      // [u16 idx] → push constant pool entry
     LoadFunction,   // [u16 idx] → push JsFunction from constant pool
+    LoadThis,       // → push the current frame's `this` binding
+    NewObject,      // → push a fresh empty JsObject
     LoadTrue,       // → push true
     LoadFalse,      // → push false
     LoadNull,       // → push null

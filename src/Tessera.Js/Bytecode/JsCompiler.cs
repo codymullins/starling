@@ -1,4 +1,5 @@
 using Tessera.Js.Ast;
+using Tessera.Js.Runtime;
 
 namespace Tessera.Js.Bytecode;
 
@@ -278,8 +279,7 @@ public sealed class JsCompiler
                 EmitIdLoad(id.Name);
                 return;
             case ThisExpression:
-                _b.Emit(Opcode.LoadGlobal); // approximation until real this binding
-                _b.EmitU16Raw(_b.AddConstant("this"));
+                _b.Emit(Opcode.LoadThis);
                 return;
             case BinaryExpression bin:
                 EmitExpression(bin.Left);
@@ -313,6 +313,12 @@ public sealed class JsCompiler
                 return;
             case CallExpression call:
                 EmitCall(call);
+                return;
+            case NewExpression ne:
+                EmitNew(ne);
+                return;
+            case ObjectExpression oe:
+                EmitObjectLiteral(oe);
                 return;
             case SequenceExpression seq:
                 for (var i = 0; i < seq.Expressions.Count - 1; i++)
@@ -405,10 +411,12 @@ public sealed class JsCompiler
         }
         if (a.Target is MemberExpression me)
         {
+            // StoreProperty / StoreComputed already re-push the assigned
+            // value, so the expression's net result is one value on the
+            // stack — no extra Dup needed (it would leak a value).
             EmitExpression(me.Object);
             if (me.Computed) EmitExpression(me.Property);
             EmitExpression(a.Value);
-            _b.Emit(Opcode.Dup);
             if (me.Computed) _b.Emit(Opcode.StoreComputed);
             else _b.EmitU16(Opcode.StoreProperty, _b.AddConstant(((Identifier)me.Property).Name));
             return;
@@ -443,6 +451,52 @@ public sealed class JsCompiler
         if (call.Arguments.Count > 255)
             throw new NotSupportedException("more than 255 call args not supported");
         _b.Emit(Opcode.Call, (byte)call.Arguments.Count);
+    }
+
+    private void EmitObjectLiteral(ObjectExpression oe)
+    {
+        _b.Emit(Opcode.NewObject); // [obj]
+        foreach (var prop in oe.Properties)
+        {
+            // Pattern per property: keep obj on stack, store, discard the
+            // value-clone that StoreProperty/Computed re-pushes.
+            _b.Emit(Opcode.Dup); // [obj, obj]
+            if (prop.Computed)
+            {
+                EmitExpression(prop.Key);       // [obj, obj, key]
+                EmitExpression(prop.Value);     // [obj, obj, key, value]
+                _b.Emit(Opcode.StoreComputed);  // [obj, value]
+            }
+            else
+            {
+                var nameIdx = prop.Key switch
+                {
+                    Identifier id => _b.AddConstant(id.Name),
+                    StringLiteral sl => _b.AddConstant(sl.Value),
+                    NumericLiteral nl =>
+                        _b.AddConstant(JsValue.ToStringValue(JsValue.Number(nl.Value))),
+                    _ => throw new NotSupportedException(
+                        $"object key kind '{prop.Key.GetType().Name}'"),
+                };
+                EmitExpression(prop.Value);                 // [obj, obj, value]
+                _b.EmitU16(Opcode.StoreProperty, nameIdx);  // [obj, value]
+            }
+            _b.Emit(Opcode.Pop); // [obj]
+        }
+    }
+
+    private void EmitNew(NewExpression ne)
+    {
+        EmitExpression(ne.Callee);
+        foreach (var arg in ne.Arguments)
+        {
+            if (arg is SpreadElement)
+                throw new NotSupportedException("spread in new args is M3-04c work");
+            EmitExpression(arg);
+        }
+        if (ne.Arguments.Count > 255)
+            throw new NotSupportedException("more than 255 new args not supported");
+        _b.Emit(Opcode.New, (byte)ne.Arguments.Count);
     }
 
     private static Opcode BinaryOpToOpcode(string op) => op switch

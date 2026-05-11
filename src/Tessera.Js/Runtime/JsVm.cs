@@ -32,16 +32,17 @@ public sealed class JsVm
 
     /// <summary>Run a chunk to completion. Returns the topmost value at Halt,
     /// or Undefined if the stack was empty.</summary>
-    public JsValue Run(Chunk chunk) => Run(chunk, args: []);
+    public JsValue Run(Chunk chunk) => Run(chunk, args: [], thisValue: JsValue.Undefined);
 
     /// <summary>
-    /// Internal entry that copies <paramref name="args"/> into the first N
-    /// local slots before dispatching. Top-level scripts call with an
-    /// empty array; <c>Opcode.Call</c> for a user-defined
+    /// Internal entry. Copies <paramref name="args"/> into the first N
+    /// local slots and stashes <paramref name="thisValue"/> for the
+    /// frame's <c>LoadThis</c> instruction. Top-level scripts pass
+    /// empty args and Undefined this; <c>Opcode.Call</c> for a user
     /// <see cref="JsFunction"/> recurses through this entry, so the .NET
     /// call stack mirrors the JS call stack.
     /// </summary>
-    private JsValue Run(Chunk chunk, JsValue[] args)
+    private JsValue Run(Chunk chunk, JsValue[] args, JsValue thisValue)
     {
         var stack = new JsValue[MaxStack];
         var sp = 0;
@@ -51,6 +52,7 @@ public sealed class JsVm
         var code = chunk.Code;
         var constants = chunk.Constants;
         var ip = 0;
+        var thisV = thisValue;
 
         void Push(JsValue v)
         {
@@ -255,7 +257,11 @@ public sealed class JsVm
                     else if (callee.IsObject && callee.AsObject is JsFunction jsFn)
                     {
                         // Reentrant call — mirrors JS call stack on .NET's.
-                        var ret = Run(jsFn.Body, callArgs);
+                        // §10.2.1 strict-mode default: `this` is Undefined
+                        // for plain calls. Member-method invocation will
+                        // need separate bytecode (LoadProperty+Call doesn't
+                        // bind the object); that's queued for M3-04e.
+                        var ret = Run(jsFn.Body, callArgs, JsValue.Undefined);
                         Push(ret);
                     }
                     else
@@ -272,6 +278,46 @@ public sealed class JsVm
                     var idx = ReadU16();
                     var fn = (JsFunction)constants[idx]!;
                     Push(JsValue.Object(fn));
+                    break;
+                }
+
+                case Opcode.LoadThis:
+                    Push(thisV);
+                    break;
+
+                case Opcode.NewObject:
+                    Push(JsValue.Object(new JsObject()));
+                    break;
+
+                case Opcode.New:
+                {
+                    var argc = ReadU8();
+                    var newArgs = new JsValue[argc];
+                    for (var i = argc - 1; i >= 0; i--) newArgs[i] = Pop();
+                    var ctor = Pop();
+                    if (ctor.IsObject && ctor.AsObject is JsFunction jsFn)
+                    {
+                        // §13.3.5.1 [[Construct]]: allocate a fresh ordinary
+                        // object, run the body with `this` bound to it. If
+                        // the body returns an object, use that; otherwise
+                        // use the freshly-allocated `this`.
+                        var instance = new JsObject();
+                        var thisVal = JsValue.Object(instance);
+                        var result = Run(jsFn.Body, newArgs, thisVal);
+                        Push(result.IsObject ? result : thisVal);
+                    }
+                    else if (ctor.IsObject && ctor.AsObject is JsNativeFunction)
+                    {
+                        // Native constructors land in M3-05 when intrinsics
+                        // arrive (e.g. `new Array(...)`). For now this is
+                        // an error.
+                        throw new JsThrow(JsValue.String(
+                            "new on native function not yet supported (wp:M3-05)"));
+                    }
+                    else
+                    {
+                        throw new JsThrow(JsValue.String($"not a constructor: {ctor}"));
+                    }
                     break;
                 }
 
