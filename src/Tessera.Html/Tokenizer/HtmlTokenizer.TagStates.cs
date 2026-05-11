@@ -214,12 +214,10 @@ public sealed partial class HtmlTokenizer
             Reconsume(c, TokenizerState.TagName);
             return;
         }
-        // §13.2.5.7: invalid-first-character-of-tag-name → BogusComment.
-        // BogusComment is M1-01e; for now drop into Data so tests can assert
-        // we don't crash. M1-01e replaces with comment emission.
         _errors.Report(
             HtmlParseError.InvalidFirstCharacterOfTagName, _line, _column);
-        Reconsume(c, TokenizerState.Data);
+        _commentData.Clear();
+        Reconsume(c, TokenizerState.BogusComment);
     }
 
     // -----------------------------------------------------------------------

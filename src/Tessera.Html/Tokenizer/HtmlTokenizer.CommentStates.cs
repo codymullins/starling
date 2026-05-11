@@ -82,6 +82,15 @@ public sealed partial class HtmlTokenizer
             case TokenizerState.CdataSectionBracket:
             case TokenizerState.CdataSectionEnd:
                 _errors.Report(HtmlParseError.EofInCdata, _line, _column);
+                if (_state == TokenizerState.CdataSectionBracket)
+                {
+                    _emitted.Enqueue(new CharacterToken(']'));
+                }
+                else if (_state == TokenizerState.CdataSectionEnd)
+                {
+                    _emitted.Enqueue(new CharacterToken(']'));
+                    _emitted.Enqueue(new CharacterToken(']'));
+                }
                 _emitted.Enqueue(EndOfFileToken.Instance);
                 return;
         }

@@ -36,11 +36,26 @@ public sealed partial class HtmlTokenizer
 
     private void StepCharRefEof()
     {
-        // §13.2.5.72-.80: EOF in any char-ref state flushes the temp buffer
-        // and reconsumes in the return state, where Data state then emits
-        // its own EOF. We just emit/append the buffered chars (the '&'
-        // prefix plus any digits) and EOF.
-        FlushBufferedAsCharacters();
+        switch (_state)
+        {
+            case TokenizerState.NumericCharacterReference:
+            case TokenizerState.HexadecimalCharacterReferenceStart:
+            case TokenizerState.DecimalCharacterReferenceStart:
+                _errors.Report(HtmlParseError.AbsenceOfDigitsInNumericCharacterReference,
+                    _line, _column);
+                FlushBufferedAsCharacters();
+                break;
+            case TokenizerState.HexadecimalCharacterReference:
+            case TokenizerState.DecimalCharacterReference:
+                _errors.Report(HtmlParseError.MissingSemicolonAfterCharacterReference,
+                    _line, _column);
+                FinishNumericRef(reconsume: -1);
+                break;
+            default:
+                FlushBufferedAsCharacters();
+                break;
+        }
+
         _emitted.Enqueue(EndOfFileToken.Instance);
     }
 

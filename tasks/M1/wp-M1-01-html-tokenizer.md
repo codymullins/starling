@@ -1,7 +1,7 @@
 ---
 id: "wp:M1-01-html-tokenizer"
 milestone: "M1"
-status: "in_progress"
+status: "complete"
 claimed_by: ""
 claimed_at: ""
 branch: ""
@@ -61,3 +61,4 @@ M1-01h passes.
 
 ## Handoff log
 - 2026-05-11T15:20Z — package created; decomposed into 8 sub-tasks (a–h).
+- 2026-05-11T16:40Z — all tokenizer sub-tasks complete. html5lib tokenizer suite is 7032/7032 and `HtmlParser.Parse` now uses the tokenizer-backed parser.

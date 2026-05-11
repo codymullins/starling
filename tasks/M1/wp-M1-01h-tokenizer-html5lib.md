@@ -2,10 +2,11 @@
 id: "wp:M1-01h-tokenizer-html5lib"
 parent: "wp:M1-01-html-tokenizer"
 milestone: "M1"
-status: "available"
-claimed_by: ""
-claimed_at: ""
-branch: ""
+status: "complete"
+claimed_by: "agent-copilot-gpt-5.5"
+claimed_at: "2026-05-11T16:27:14Z"
+branch: "wp-M1-01h-tokenizer-html5lib"
+completed_at: "2026-05-11T16:40:11Z"
 depends_on:
   - "wp:M1-01b-tokenizer-tag-states"
   - "wp:M1-01c-tokenizer-rcdata-rawtext"
@@ -35,3 +36,5 @@ data-driven test. Drive every red case to green. Flip the public
 
 ## Handoff log
 - 2026-05-11T15:20Z — created.
+- 2026-05-11T16:27Z — claimed on main by agent-copilot-gpt-5.5 after M1-01g landed.
+- 2026-05-11T16:40Z — vendored html5lib tokenizer fixtures, expanded the named entity table from WHATWG `entities.json`, added a generator, fixed the final tokenizer conformance gaps, and flipped `HtmlParser.Parse` to the tokenizer-backed parser. Validation: html5lib tokenizer suite 7032/7032, HTML tests 7132/7132, full solution 7167/7167.

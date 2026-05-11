@@ -15,4 +15,10 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Tessera.Html\Tessera.Html.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\testdata\spec\html5lib-tests\tokenizer\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>testdata\spec\html5lib-tests\tokenizer\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </Content>
+  </ItemGroup>
 </Project>
