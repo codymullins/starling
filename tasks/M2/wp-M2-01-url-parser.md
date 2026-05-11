@@ -1,10 +1,10 @@
 ---
 id: "wp:M2-01-url-parser"
 milestone: "M2"
-status: "available"
-claimed_by: ""
-claimed_at: ""
-branch: ""
+status: "claimed"
+claimed_by: "agent-claude-cody"
+claimed_at: "2026-05-11T16:25:00Z"
+branch: "wp-M2-01-url-parser"
 depends_on:
   - "wp:M0-02-common"
 blocks:
