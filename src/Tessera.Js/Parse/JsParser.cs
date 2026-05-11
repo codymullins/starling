@@ -15,7 +15,7 @@ namespace Tessera.Js.Parse;
 /// operators (assignment, exponentiation, conditional) recurse on the
 /// right side; left-associative ones loop.
 /// </remarks>
-public sealed class JsParser
+public sealed partial class JsParser
 {
     private readonly JsLexer _lex;
     private JsToken _current;
