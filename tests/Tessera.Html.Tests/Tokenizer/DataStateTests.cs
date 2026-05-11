@@ -44,8 +44,10 @@ public class DataStateTests
     }
 
     [Fact]
-    public void Null_emits_replacement_character_and_reports_parse_error()
+    public void Null_in_data_state_emits_literal_zero_and_reports_parse_error()
     {
+        // §13.2.5.1: Data state emits NULL verbatim as a character token.
+        // The replacement-character mapping is per name-buffer state, not Data.
         var sink = new RecordingSink();
         var t = new HtmlTokenizer(sink);
         t.Feed("a\0b");
@@ -53,7 +55,7 @@ public class DataStateTests
 
         Drain(t).Should().Equal(
             new CharacterToken('a'),
-            new CharacterToken(0xFFFD),
+            new CharacterToken(0),
             new CharacterToken('b'),
             EndOfFileToken.Instance);
 

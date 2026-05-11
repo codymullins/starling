@@ -1,30 +1,35 @@
+using System.Text;
 using Tessera.Html.InputStream;
 
 namespace Tessera.Html.Tokenizer;
 
 /// <summary>
-/// WHATWG HTML tokenizer scaffold. M1-01a delivers the public surface and
-/// the <see cref="TokenizerState.Data"/> state plus EOF handling. The
-/// remaining states are filled in by subsequent agents (wp:M1-01b…g).
+/// WHATWG HTML tokenizer. Partial class — each sub-task (wp:M1-01a…g) adds
+/// its state cluster as its own partial file so concurrent agents avoid
+/// merge conflicts on shared structure.
 /// </summary>
 /// <remarks>
-/// API shape rationale:
+/// <para>
+/// API shape:
 /// <list type="bullet">
-///   <item>
-///     Push-driven: <see cref="Feed(System.ReadOnlySpan{char})"/> +
-///     <see cref="EndOfInput"/>. The engine feeds bytes as they arrive on
-///     the network; the tokenizer is restartable across chunk boundaries.
-///   </item>
-///   <item>
-///     Pull-mode token reader: <see cref="ReadToken"/> returns the next
-///     fully-formed token (or <c>null</c> if more input is needed). This
-///     keeps the tokenizer test-friendly without dragging in a Channel.
-///   </item>
+///   <item>Push-driven: <see cref="Feed(System.ReadOnlySpan{char})"/> +
+///         <see cref="EndOfInput"/>. The engine feeds bytes as they arrive
+///         on the network; the tokenizer is restartable across chunks.</item>
+///   <item>Pull-mode token reader: <see cref="ReadToken"/> returns the next
+///         token, or <c>null</c> if blocked on more input.</item>
 /// </list>
-/// A handful of helper "TODO M1-01x" markers route unimplemented states to
-/// loud failures. Replace each marker by porting the matching spec section.
+/// </para>
+/// <para>
+/// State implementation status:
+/// <list type="bullet">
+///   <item>M1-01a: <c>Data</c>, EOF handling, scaffolding.</item>
+///   <item>M1-01b: tag + attribute states (this partial extends Dispatch).</item>
+///   <item>M1-01c…g: remaining clusters (RCDATA/RAWTEXT, ScriptData,
+///         Comment/CDATA, Doctype, Character references).</item>
+/// </list>
+/// </para>
 /// </remarks>
-public sealed class HtmlTokenizer
+public sealed partial class HtmlTokenizer
 {
     private readonly PreprocessedStream _stream = new();
     private readonly Queue<HtmlToken> _emitted = new();
@@ -34,10 +39,23 @@ public sealed class HtmlTokenizer
     private bool _eofReached;
     private bool _eofProcessed;
 
-    // Position tracking (1-based to match the spec's "first character is at
-    // line 1, column 1"). Only used for parse error reporting.
+    // Reconsume: when a state says "reconsume in state X", we set _state = X
+    // and push the just-consumed code point back via _reconsume so the next
+    // Step() picks it up instead of advancing the input. -2 = no reconsume.
+    private const int NoReconsume = -2;
+    private int _reconsume = NoReconsume;
+
+    // Position tracking (1-based) for parse-error reporting.
     private int _line = 1;
     private int _column = 0;
+
+    // --- Tag/attribute builder (populated by M1-01b states) -----------------
+    private bool _tagIsEnd;
+    private bool _tagSelfClosing;
+    private readonly StringBuilder _tagName = new();
+    private readonly List<HtmlAttribute> _tagAttrs = [];
+    private readonly StringBuilder _attrName = new();
+    private readonly StringBuilder _attrValue = new();
 
     public HtmlTokenizer(IParseErrorSink? errorSink = null)
     {
@@ -47,11 +65,10 @@ public sealed class HtmlTokenizer
     /// <summary>The current state. Exposed for tests; not for general use.</summary>
     internal TokenizerState State => _state;
 
-    /// <summary>Push more input. Idempotent on empty spans.</summary>
+    /// <summary>Push more input.</summary>
     public void Feed(ReadOnlySpan<char> chars) => _stream.Feed(chars);
 
-    /// <summary>Signal end-of-input. Subsequent <see cref="ReadToken"/>
-    /// calls will eventually emit an <see cref="EndOfFileToken"/>.</summary>
+    /// <summary>Signal end-of-input.</summary>
     public void EndOfInput()
     {
         _stream.EndOfInput();
@@ -60,131 +77,151 @@ public sealed class HtmlTokenizer
 
     /// <summary>
     /// Returns the next token, or <c>null</c> if the tokenizer needs more
-    /// input. Once an <see cref="EndOfFileToken"/> has been returned, all
-    /// subsequent calls also return that singleton.
+    /// input. After an <see cref="EndOfFileToken"/> is returned, subsequent
+    /// calls return <c>null</c> (EOF is terminal).
     /// </summary>
     public HtmlToken? ReadToken()
     {
         while (_emitted.Count == 0)
         {
-            if (!Step())
-            {
-                // Step returned false → blocked on more input or EOF already
-                // emitted. The queue check above handles "already emitted".
-                return null;
-            }
+            if (!Step()) return null;
         }
         return _emitted.Dequeue();
     }
 
     /// <summary>
     /// One state-machine step. Returns true if it consumed a code point or
-    /// produced a token; false if the tokenizer is blocked on more input or
-    /// has already emitted its final EOF token.
+    /// produced a token; false if blocked on more input or EOF processed.
     /// </summary>
     private bool Step()
     {
         if (_eofProcessed) return false;
 
-        // Need a code point to make progress. If the stream is dry and we
-        // haven't yet been told it's the end, ask the caller for more.
-        if (_stream.Remaining == 0)
+        int c;
+        if (_reconsume != NoReconsume)
+        {
+            c = _reconsume;
+            _reconsume = NoReconsume;
+        }
+        else if (_stream.Remaining == 0)
         {
             if (!_eofReached) return false;
             return StepEof();
         }
+        else
+        {
+            c = _stream.Read();
+            TrackPosition(c);
+        }
 
-        var c = _stream.Read();
-        TrackPosition(c);
+        Dispatch(_state, c);
+        return true;
+    }
 
-        switch (_state)
+    /// <summary>
+    /// Route the code point to the current state's handler. Each cluster of
+    /// states lives in a partial file; this switch is the rendezvous.
+    /// </summary>
+    private void Dispatch(TokenizerState state, int c)
+    {
+        switch (state)
         {
             case TokenizerState.Data:
                 StepData(c);
-                return true;
+                return;
 
-            // Until subsequent agents wire the rest in, every other state is
-            // unreachable from M1-01a's only entry (Data). Adding states in
-            // wp:M1-01b…g means routing transitions from Data toward them.
+            // M1-01b: tag + attribute states.
+            case TokenizerState.TagOpen:
+            case TokenizerState.EndTagOpen:
+            case TokenizerState.TagName:
+            case TokenizerState.BeforeAttributeName:
+            case TokenizerState.AttributeName:
+            case TokenizerState.AfterAttributeName:
+            case TokenizerState.BeforeAttributeValue:
+            case TokenizerState.AttributeValueDoubleQuoted:
+            case TokenizerState.AttributeValueSingleQuoted:
+            case TokenizerState.AttributeValueUnquoted:
+            case TokenizerState.AfterAttributeValueQuoted:
+            case TokenizerState.SelfClosingStartTag:
+                DispatchTagState(state, c);
+                return;
+
             default:
                 throw new NotImplementedException(
-                    $"Tokenizer state '{_state}' is not implemented yet. " +
-                    $"See tasks/M1/wp-M1-01{StateOwner(_state)}-*.md.");
+                    $"Tokenizer state '{state}' not implemented yet. " +
+                    $"See tasks/M1/wp-M1-01{StateOwner(state)}-*.md.");
         }
     }
 
     private bool StepEof()
     {
-        // §13.2.5.1 Data state: "EOF → Emit an end-of-file token."
-        // For now, every state we implement collapses to: on EOF, emit EOF.
-        // States with mid-construction tokens (comment, doctype) will fire
-        // their parse errors here once they're added.
         switch (_state)
         {
             case TokenizerState.Data:
                 _emitted.Enqueue(EndOfFileToken.Instance);
                 _eofProcessed = true;
                 return true;
+
+            // M1-01b EOF handling (delegated to TagStates partial).
+            case TokenizerState.TagOpen:
+            case TokenizerState.EndTagOpen:
+            case TokenizerState.TagName:
+            case TokenizerState.BeforeAttributeName:
+            case TokenizerState.AttributeName:
+            case TokenizerState.AfterAttributeName:
+            case TokenizerState.BeforeAttributeValue:
+            case TokenizerState.AttributeValueDoubleQuoted:
+            case TokenizerState.AttributeValueSingleQuoted:
+            case TokenizerState.AttributeValueUnquoted:
+            case TokenizerState.AfterAttributeValueQuoted:
+            case TokenizerState.SelfClosingStartTag:
+                StepTagEof();
+                _eofProcessed = true;
+                return true;
+
             default:
                 throw new NotImplementedException(
-                    $"EOF in state '{_state}' is not implemented yet.");
+                    $"EOF in state '{_state}' not implemented yet.");
         }
     }
 
     // -----------------------------------------------------------------------
     // 13.2.5.1 Data state
     // https://html.spec.whatwg.org/multipage/parsing.html#data-state
-    //
-    // Consume the next input character:
-    //   U+0026 AMPERSAND (&)       → set return state Data; switch to
-    //                                Character reference state.
-    //   U+003C LESS-THAN SIGN (<)  → switch to Tag open state.
-    //   U+0000 NULL                → parse error (unexpected-null-character).
-    //                                Emit current input character as a
-    //                                character token.
-    //   EOF                        → emit end-of-file token.
-    //   Anything else              → emit the current input character as a
-    //                                character token.
-    //
-    // In M1-01a only:
-    //   • '<' and '&' are still routed to "TODO M1-01b/g" via parse-error
-    //     placeholders so we can ship a working Data state without the rest.
     // -----------------------------------------------------------------------
     private void StepData(int c)
     {
         switch (c)
         {
             case '&':
-                // TODO(wp:M1-01g): set _returnState = Data; transition to
-                // TokenizerState.CharacterReference. Until then, emit '&' as
-                // a literal and continue — this is incorrect per spec but
-                // safe for the M1-01a tests, which avoid entities.
+                // TODO(wp:M1-01g): set return state Data, switch to
+                // CharacterReference. Until then, emit '&' as a literal so
+                // a Data+Tag-only tokenizer is observably useful.
                 _emitted.Enqueue(new CharacterToken('&'));
                 break;
 
             case '<':
-                // TODO(wp:M1-01b): transition to TokenizerState.TagOpen. The
-                // placeholder below emits '<' as a literal so a Data-only
-                // tokenizer is observably useful (no NotImplementedException
-                // from a Data step). M1-01b replaces this with the real
-                // transition; M1-01a tests do not cover '<' beyond asserting
-                // it doesn't crash.
-                _emitted.Enqueue(new CharacterToken('<'));
+                _state = TokenizerState.TagOpen;
                 break;
 
-            case 0xFFFD:
-                // The preprocessor mapped a NUL → U+FFFD. The spec wants the
-                // parse error in the Data state, not in the preprocessor —
-                // so report it here on observation.
+            case 0:
+                // §13.2.5.1: "unexpected-null-character parse error. Emit the
+                // current input character as a character token."
                 _errors.Report(
                     HtmlParseError.UnexpectedNullCharacter, _line, _column);
-                _emitted.Enqueue(new CharacterToken(0xFFFD));
+                _emitted.Enqueue(new CharacterToken(0));
                 break;
 
             default:
                 _emitted.Enqueue(new CharacterToken(c));
                 break;
         }
+    }
+
+    private void Reconsume(int c, TokenizerState next)
+    {
+        _state = next;
+        _reconsume = c;
     }
 
     private void TrackPosition(int c)
@@ -200,24 +237,9 @@ public sealed class HtmlTokenizer
         }
     }
 
-    /// <summary>
-    /// Returns the lowercase sub-task letter (a–g) that owns the given state,
-    /// to point future implementers at the right tasks/M1/wp-M1-01… file.
-    /// </summary>
+    /// <summary>Maps a state to the sub-task letter that owns it.</summary>
     private static string StateOwner(TokenizerState s) => s switch
     {
-        TokenizerState.TagOpen
-            or TokenizerState.EndTagOpen
-            or TokenizerState.TagName
-            or TokenizerState.BeforeAttributeName
-            or TokenizerState.AttributeName
-            or TokenizerState.AfterAttributeName
-            or TokenizerState.BeforeAttributeValue
-            or TokenizerState.AttributeValueDoubleQuoted
-            or TokenizerState.AttributeValueSingleQuoted
-            or TokenizerState.AttributeValueUnquoted
-            or TokenizerState.AfterAttributeValueQuoted
-            or TokenizerState.SelfClosingStartTag => "b",
         TokenizerState.Rcdata
             or TokenizerState.Rawtext
             or TokenizerState.Plaintext

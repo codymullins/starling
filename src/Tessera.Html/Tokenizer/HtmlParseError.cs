@@ -28,8 +28,43 @@ public enum HtmlParseError
     /// <summary>EOF inside a script-data escape.</summary>
     EofInScriptHtmlCommentLikeText,
 
-    /// <summary>Unexpected null character (after preprocessor it's U+FFFD).</summary>
+    /// <summary>NULL character observed. Each state decides what to do with the code point.</summary>
     UnexpectedNullCharacter,
+
+    // M1-01b — tag + attribute states ------------------------------------
+
+    /// <summary>EOF before the tag name in <c>&lt;</c> or <c>&lt;/</c>.</summary>
+    EofBeforeTagName,
+
+    /// <summary>e.g. <c>&lt;?</c> outside any other tag state.</summary>
+    UnexpectedQuestionMarkInsteadOfTagName,
+
+    /// <summary>e.g. <c>&lt;@</c> — <c>&lt;</c> followed by something other than alpha / <c>!</c> / <c>/</c> / <c>?</c>.</summary>
+    InvalidFirstCharacterOfTagName,
+
+    /// <summary><c>&lt;/&gt;</c>.</summary>
+    MissingEndTagName,
+
+    /// <summary>Same attribute name appears twice on one tag.</summary>
+    DuplicateAttribute,
+
+    /// <summary><c>=</c> before any attribute name on a tag.</summary>
+    UnexpectedEqualsSignBeforeAttributeName,
+
+    /// <summary><c>"</c>, <c>'</c>, or <c>&lt;</c> inside an attribute name.</summary>
+    UnexpectedCharacterInAttributeName,
+
+    /// <summary><c>&gt;</c> immediately after <c>=</c> with no value.</summary>
+    MissingAttributeValue,
+
+    /// <summary><c>"</c>, <c>'</c>, <c>&lt;</c>, <c>=</c>, or backtick in an unquoted value.</summary>
+    UnexpectedCharacterInUnquotedAttributeValue,
+
+    /// <summary>Two attributes adjacent without whitespace between, e.g. <c>a="x"b="y"</c>.</summary>
+    MissingWhitespaceBetweenAttributes,
+
+    /// <summary>Stray <c>/</c> in a tag, e.g. <c>&lt;a /b&gt;</c>.</summary>
+    UnexpectedSolidusInTag,
 }
 
 /// <summary>

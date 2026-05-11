@@ -61,13 +61,16 @@ public class InputStreamTests
     }
 
     [Fact]
-    public void Null_maps_to_replacement_character()
+    public void Null_passes_through_unchanged()
     {
+        // Per WHATWG HTML §13.2.4 the preprocessor normalizes newlines but
+        // leaves U+0000 alone; the tokenizer states (Data, TagName, …) decide
+        // what to do with NULL.
         var s = new PreprocessedStream();
         s.Feed("a\0b");
         s.EndOfInput();
 
-        Drain(s).Should().Equal('a', 0xFFFD, 'b');
+        Drain(s).Should().Equal('a', 0, 'b');
     }
 
     [Fact]

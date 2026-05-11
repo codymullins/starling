@@ -3,12 +3,19 @@ namespace Tessera.Html.InputStream;
 /// <summary>
 /// Implements the input-stream preprocessor from
 /// <see href="https://html.spec.whatwg.org/multipage/parsing.html#preprocessing-the-input-stream">
-/// WHATWG HTML §13.2.4</see>:
+/// WHATWG HTML §13.2.4</see>, which delegates to
+/// <see href="https://infra.spec.whatwg.org/#normalize-newlines">INFRA "normalize newlines"</see>:
 /// <list type="bullet">
 ///   <item>Replace <c>U+000D U+000A</c> with a single <c>U+000A</c>.</item>
 ///   <item>Replace standalone <c>U+000D</c> with <c>U+000A</c>.</item>
-///   <item>Replace <c>U+0000</c> with the replacement character <c>U+FFFD</c>.</item>
 /// </list>
+/// <para>
+/// NULL (<c>U+0000</c>) is <strong>not</strong> remapped here. Each tokenizer
+/// state decides what to do with NULL per §13.2.5 — Data emits it verbatim
+/// with a parse error; name-buffer states (tag name, attribute name, …) map
+/// it to U+FFFD with a parse error. Doing the mapping at the preprocessor
+/// would conflate a literal U+FFFD in source with a normalized NULL.
+/// </para>
 /// BOM stripping is the caller's responsibility (it happens in the byte-level
 /// encoding sniffer per §13.2.3, which lives in <c>ByteSniffer</c> and lands
 /// in M2 alongside networking).
@@ -58,10 +65,8 @@ public sealed class PreprocessedStream
                 case '\r':
                     _pendingCr = true;
                     break;
-                case '\0':
-                    _buffer.Add(0xFFFD);
-                    break;
                 default:
+                    // NULL is passed through; tokenizer states handle it.
                     _buffer.Add(ch);
                     break;
             }
