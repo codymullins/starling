@@ -1,10 +1,11 @@
 ---
 id: "wp:M3-01-js-lexer"
 milestone: "M3"
-status: "claimed"
+status: "complete"
 claimed_by: "agent-claude-cody"
 claimed_at: "2026-05-11T16:55:00Z"
 branch: "wp-M3-01-js-lexer"
+completed_at: "2026-05-11T17:05:00Z"
 depends_on:
   - "wp:M0-02-common"
 blocks:
@@ -31,3 +32,11 @@ Unblocked at start of M0; safe for a parallel agent to take.
 - 2026-05-11T16:55Z — claimed by agent-claude-cody. Branch
   `wp-M3-01-js-lexer`. Claim committed atomically before any
   implementation work — see AGENTS.md workflow.
+- 2026-05-11T17:05Z — landed pull-based ES2024 lexer in
+  `src/Tessera.Js/Lex/` (~1040 lines). Covers identifiers/keywords/
+  numerics (decimal+hex+binary+octal+BigInt)/strings/punctuators/
+  comments/position-tracking. Deferred to follow-up: template
+  literals (need parser context), RegExp literals (parser
+  disambiguation), full Unicode IdentifierStart/Part.
+  36 unit tests, 188/188 full repo. Marking complete; M3-02 (parser)
+  can now claim.
