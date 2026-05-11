@@ -1,10 +1,10 @@
 ---
 id: "wp:M3-01-js-lexer"
 milestone: "M3"
-status: "available"
-claimed_by: ""
-claimed_at: ""
-branch: ""
+status: "claimed"
+claimed_by: "agent-claude-cody"
+claimed_at: "2026-05-11T16:55:00Z"
+branch: "wp-M3-01-js-lexer"
 depends_on:
   - "wp:M0-02-common"
 blocks:
@@ -28,3 +28,6 @@ Unblocked at start of M0; safe for a parallel agent to take.
 
 ## Handoff log
 - 2026-05-11T15:20Z — created.
+- 2026-05-11T16:55Z — claimed by agent-claude-cody. Branch
+  `wp-M3-01-js-lexer`. Claim committed atomically before any
+  implementation work — see AGENTS.md workflow.
