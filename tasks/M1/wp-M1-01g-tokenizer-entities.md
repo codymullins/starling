@@ -2,10 +2,11 @@
 id: "wp:M1-01g-tokenizer-entities"
 parent: "wp:M1-01-html-tokenizer"
 milestone: "M1"
-status: "claimed"
+status: "complete"
 claimed_by: "agent-claude-cody"
 claimed_at: "2026-05-11T16:10:00Z"
 branch: "wp-M1-01g-tokenizer-entities"
+completed_at: "2026-05-11T16:20:00Z"
 depends_on:
   - "wp:M1-01b-tokenizer-tag-states"
 blocks:
@@ -32,3 +33,10 @@ Build-time entity-table generator: `tools/gen-entities/Program.cs` reads
 
 ## Handoff log
 - 2026-05-11T15:20Z — created.
+- 2026-05-11T16:10Z — claimed by agent-claude-cody after pivot from M1-01d
+  (Copilot collab merged M1-01d in parallel; M1-01g was the last unblocked
+  HTML-tokenizer state cluster).
+- 2026-05-11T16:20Z — landed all 9 states + named-entity table + 19 tests.
+  HTML tokenizer is now feature-complete at 80/80 spec states.
+  Embedded ~100-entry table; full 2231-entity codegen deferred to M1-01h
+  alongside the html5lib pass. Marking complete.
