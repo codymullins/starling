@@ -2,10 +2,11 @@
 id: "wp:M3-02b-js-parser-statements"
 parent: "wp:M3-02-js-parser"
 milestone: "M3"
-status: "claimed"
+status: "complete"
 claimed_by: "agent-claude-cody"
 claimed_at: "2026-05-11T18:00:00Z"
 branch: "wp-M3-02b-js-parser-statements"
+completed_at: "2026-05-11T18:15:00Z"
 depends_on:
   - "wp:M3-02a-js-parser-expressions"
 blocks:
