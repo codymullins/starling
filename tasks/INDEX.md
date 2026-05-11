@@ -27,7 +27,7 @@ order: milestone, then numeric id, then sub-letter.
 | [wp:M1-01a-tokenizer-scaffold](M1/wp-M1-01a-tokenizer-scaffold.md) | 🟢 complete | agent-claude-cody | Tessera.Html |
 | [wp:M1-01b-tokenizer-tag-states](M1/wp-M1-01b-tokenizer-tag-states.md) | 🟢 complete | agent-claude-cody | Tessera.Html |
 | [wp:M1-01c-tokenizer-rcdata-rawtext](M1/wp-M1-01c-tokenizer-rcdata-rawtext.md) | 🟢 complete | agent-claude-cody | Tessera.Html |
-| [wp:M1-01d-tokenizer-script](M1/wp-M1-01d-tokenizer-script.md) | 🔵 available | — | Tessera.Html |
+| [wp:M1-01d-tokenizer-script](M1/wp-M1-01d-tokenizer-script.md) | 🟡 claimed | agent-copilot-gpt-5.5 | Tessera.Html |
 | [wp:M1-01e-tokenizer-comment-cdata](M1/wp-M1-01e-tokenizer-comment-cdata.md) | 🔵 available | — | Tessera.Html |
 | [wp:M1-01f-tokenizer-doctype](M1/wp-M1-01f-tokenizer-doctype.md) | 🔵 available | — | Tessera.Html |
 | [wp:M1-01g-tokenizer-entities](M1/wp-M1-01g-tokenizer-entities.md) | 🔵 available | — | Tessera.Html |
@@ -57,7 +57,6 @@ order: milestone, then numeric id, then sub-letter.
 
 For a new agent: claim any of these and start.
 
-- [wp:M1-01d-tokenizer-script](M1/wp-M1-01d-tokenizer-script.md) — ScriptData cluster (15 sub-states incl. the double-escape gymnastics); unblocked by M1-01c. The `StepEndTagNameCommon` shared body in `HtmlTokenizer.RawStates.cs` is reusable.
 - [wp:M1-01e-tokenizer-comment-cdata](M1/wp-M1-01e-tokenizer-comment-cdata.md) — Comment/CDATA cluster; unblocked by M1-01a.
 - [wp:M1-01f-tokenizer-doctype](M1/wp-M1-01f-tokenizer-doctype.md) — Doctype cluster; unblocked by M1-01a.
 - [wp:M1-01g-tokenizer-entities](M1/wp-M1-01g-tokenizer-entities.md) — Character-reference resolution + entity-table generator; unblocked by M1-01b.
@@ -68,6 +67,7 @@ For a new agent: claim any of these and start.
 
 - **wp:M1-03-dom-core** — agent-copilot-gpt-5.5, branch `wp-M1-03-dom-core`.
 - **wp:M1-05-css-tokenizer-parser** — agent-copilot-gpt-5.5, branch `wp-M1-05-css-tokenizer-parser`, worktree `../tessera-wp-M1-05-css-tokenizer-parser`.
+- **wp:M1-01d-tokenizer-script** — agent-copilot-gpt-5.5, branch `wp-M1-01d-tokenizer-script`, worktree `../tessera-wp-M1-01d-tokenizer-script`.
 
 ## Recently completed
 
