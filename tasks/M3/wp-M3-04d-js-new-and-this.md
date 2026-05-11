@@ -2,10 +2,11 @@
 id: "wp:M3-04d-js-new-and-this"
 parent: "wp:M3-04-js-vm"
 milestone: "M3"
-status: "claimed"
+status: "complete"
 claimed_by: "agent-claude-cody"
 claimed_at: "2026-05-11T19:25:00Z"
 branch: "wp-M3-04d-js-new-and-this"
+completed_at: "2026-05-11T19:45:00Z"
 depends_on:
   - "wp:M3-04b-js-functions"
 blocks:
