@@ -403,6 +403,46 @@ public sealed partial class JsParser
         return new VariableDeclaration(kind, decls, start, end);
     }
 
+    /// <summary>
+    /// Function as an expression: <c>function [name](params) { body }</c>.
+    /// Name is optional; when present it's M3-04c work to bind the name
+    /// inside the body. For now we accept and ignore the inside-name
+    /// binding — outside callers don't see it.
+    /// </summary>
+    private FunctionExpression ParseFunctionExpression()
+    {
+        var start = _current.Start;
+        Advance(); // 'function'
+        var generator = Match(JsTokenKind.Star);
+        Identifier? name = null;
+        if (Check(JsTokenKind.Identifier))
+        {
+            var tok = Advance();
+            name = new Identifier(tok.Lexeme, tok.Start, tok.End);
+        }
+        Expect(JsTokenKind.LParen, "( expected after function expression");
+        var parameters = new List<Expression>();
+        while (!Check(JsTokenKind.RParen))
+        {
+            if (Check(JsTokenKind.Ellipsis))
+            {
+                var sstart = _current.Start;
+                Advance();
+                var inner = Expect(JsTokenKind.Identifier, "rest parameter name expected");
+                parameters.Add(new SpreadElement(
+                    new Identifier(inner.Lexeme, inner.Start, inner.End),
+                    sstart, inner.End));
+                break;
+            }
+            var pt = Expect(JsTokenKind.Identifier, "parameter name expected");
+            parameters.Add(new Identifier(pt.Lexeme, pt.Start, pt.End));
+            if (!Match(JsTokenKind.Comma)) break;
+        }
+        Expect(JsTokenKind.RParen, "expected ')'");
+        var body = ParseBlock();
+        return new FunctionExpression(name, parameters, body, generator, start, body.End);
+    }
+
     private FunctionDeclaration ParseFunctionDeclaration()
     {
         var start = _current.Start;

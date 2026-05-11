@@ -244,30 +244,36 @@ public sealed class JsVm
                 }
 
                 // ----- Calls -----
+                // §10.2.1: plain Call binds this=Undefined (strict default);
+                // CallMethod takes a receiver and binds this=receiver, used
+                // by the compiler for obj.method() / obj[key]() syntax.
                 case Opcode.Call:
                 {
                     var argc = ReadU8();
                     var callArgs = new JsValue[argc];
                     for (var i = argc - 1; i >= 0; i--) callArgs[i] = Pop();
                     var callee = Pop();
-                    if (callee.IsObject && callee.AsObject is JsNativeFunction native)
-                    {
-                        Push(native.Body(callArgs));
-                    }
-                    else if (callee.IsObject && callee.AsObject is JsFunction jsFn)
-                    {
-                        // Reentrant call — mirrors JS call stack on .NET's.
-                        // §10.2.1 strict-mode default: `this` is Undefined
-                        // for plain calls. Member-method invocation will
-                        // need separate bytecode (LoadProperty+Call doesn't
-                        // bind the object); that's queued for M3-04e.
-                        var ret = Run(jsFn.Body, callArgs, JsValue.Undefined);
-                        Push(ret);
-                    }
+                    if (callee.IsObject && callee.AsObject is JsNativeFunction nat)
+                        Push(nat.Body(callArgs));
+                    else if (callee.IsObject && callee.AsObject is JsFunction fn)
+                        Push(Run(fn.Body, callArgs, JsValue.Undefined));
                     else
-                    {
                         throw new JsThrow(JsValue.String($"not a function: {callee}"));
-                    }
+                    break;
+                }
+                case Opcode.CallMethod:
+                {
+                    var argc = ReadU8();
+                    var callArgs = new JsValue[argc];
+                    for (var i = argc - 1; i >= 0; i--) callArgs[i] = Pop();
+                    var callee = Pop();
+                    var receiver = Pop();
+                    if (callee.IsObject && callee.AsObject is JsNativeFunction nat)
+                        Push(nat.Body(callArgs));
+                    else if (callee.IsObject && callee.AsObject is JsFunction fn)
+                        Push(Run(fn.Body, callArgs, receiver));
+                    else
+                        throw new JsThrow(JsValue.String($"not a function: {callee}"));
                     break;
                 }
 

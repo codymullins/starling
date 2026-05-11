@@ -63,7 +63,8 @@ public enum Opcode : byte
     StoreComputed,
 
     // ----- Calls -----
-    Call,           // [u8 argc] callee + args on stack
+    Call,           // [u8 argc] callee + args on stack; this=Undefined
+    CallMethod,     // [u8 argc] receiver + callee + args on stack; this=receiver
     New,            // [u8 argc]
     Return,         // pop and return
     ReturnUndefined,

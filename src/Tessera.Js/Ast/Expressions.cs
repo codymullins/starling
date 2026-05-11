@@ -115,3 +115,16 @@ public sealed record NewExpression(
 public sealed record SpreadElement(
     Expression Argument, JsPosition Start, JsPosition End)
     : Expression(Start, End);
+
+/// <summary>
+/// <c>function () { … }</c> as an expression. Name is optional (named
+/// function expressions bind their own name inside the body — but that
+/// binding is M3-04c closure work; for now the name is informational).
+/// </summary>
+public sealed record FunctionExpression(
+    Identifier? Name,
+    IReadOnlyList<Expression> Params,
+    BlockStatement Body,
+    bool Generator,
+    JsPosition Start, JsPosition End)
+    : Expression(Start, End);

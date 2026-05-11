@@ -320,6 +320,9 @@ public sealed class JsCompiler
             case ObjectExpression oe:
                 EmitObjectLiteral(oe);
                 return;
+            case FunctionExpression fe:
+                EmitFunctionExpression(fe);
+                return;
             case SequenceExpression seq:
                 for (var i = 0; i < seq.Expressions.Count - 1; i++)
                 {
@@ -441,16 +444,69 @@ public sealed class JsCompiler
 
     private void EmitCall(CallExpression call)
     {
+        if (call.Arguments.Count > 255)
+            throw new NotSupportedException("more than 255 call args not supported");
+
+        // Method call form: obj.method() or obj[key]() must bind
+        // this=obj inside the callee. Emit obj once, Dup it, load the
+        // property, then args, then CallMethod which consumes
+        // [receiver, callee, args...]. For plain calls, emit the callee
+        // alone and route through Call (this=Undefined).
+        if (!call.Optional && call.Callee is MemberExpression me)
+        {
+            EmitExpression(me.Object);          // [obj]
+            _b.Emit(Opcode.Dup);                // [obj, obj]
+            if (me.Computed)
+            {
+                EmitExpression(me.Property);    // [obj, obj, key]
+                _b.Emit(Opcode.LoadComputed);   // [obj, fn]
+            }
+            else
+            {
+                var nameIdx = _b.AddConstant(((Identifier)me.Property).Name);
+                _b.EmitU16(Opcode.LoadProperty, nameIdx);  // [obj, fn]
+            }
+            foreach (var arg in call.Arguments)
+            {
+                if (arg is SpreadElement)
+                    throw new NotSupportedException("spread in call args is M3-04c work");
+                EmitExpression(arg);
+            }
+            _b.Emit(Opcode.CallMethod, (byte)call.Arguments.Count);
+            return;
+        }
+
         EmitExpression(call.Callee);
         foreach (var arg in call.Arguments)
         {
             if (arg is SpreadElement)
-                throw new NotSupportedException("spread in call args is M3-04 work");
+                throw new NotSupportedException("spread in call args is M3-04c work");
             EmitExpression(arg);
         }
-        if (call.Arguments.Count > 255)
-            throw new NotSupportedException("more than 255 call args not supported");
         _b.Emit(Opcode.Call, (byte)call.Arguments.Count);
+    }
+
+    private void EmitFunctionExpression(FunctionExpression fe)
+    {
+        // Compile the body into a fresh sub-chunk and emit a LoadFunction
+        // pointing at it. Closures (capture of enclosing-scope locals) are
+        // wp:M3-04c; for now the function body can only see its own
+        // params + globals.
+        var sub = new JsCompiler();
+        foreach (var p in fe.Params)
+        {
+            if (p is Identifier id)
+            {
+                var slot = sub._b.ReserveLocal();
+                sub._scopes[^1][id.Name] = slot;
+            }
+        }
+        foreach (var s in fe.Body.Body) sub.EmitStatement(s);
+        sub._b.Emit(Opcode.ReturnUndefined);
+        var chunk = sub._b.Build(fe.Name?.Name ?? "<anonymous>");
+        var fn = new Runtime.JsFunction(fe.Name?.Name ?? "<anonymous>",
+            chunk, CountSimpleParams(fe.Params));
+        _b.EmitU16(Opcode.LoadFunction, _b.AddConstant(fn));
     }
 
     private void EmitObjectLiteral(ObjectExpression oe)

@@ -465,6 +465,8 @@ public sealed partial class JsParser
                 return ParseArrayLiteral();
             case JsTokenKind.LBrace:
                 return ParseObjectLiteral();
+            case JsTokenKind.Function:
+                return ParseFunctionExpression();
         }
         throw new JsParseException(
             $"unexpected token {t.Kind} '{t.Lexeme}'", t.Start);
