@@ -32,17 +32,19 @@ public sealed class JsVm
 
     /// <summary>Run a chunk to completion. Returns the topmost value at Halt,
     /// or Undefined if the stack was empty.</summary>
-    public JsValue Run(Chunk chunk) => Run(chunk, args: [], thisValue: JsValue.Undefined);
+    public JsValue Run(Chunk chunk) =>
+        Run(chunk, args: [], thisValue: JsValue.Undefined, upvalues: Array.Empty<JsValue>());
 
     /// <summary>
     /// Internal entry. Copies <paramref name="args"/> into the first N
     /// local slots and stashes <paramref name="thisValue"/> for the
-    /// frame's <c>LoadThis</c> instruction. Top-level scripts pass
-    /// empty args and Undefined this; <c>Opcode.Call</c> for a user
-    /// <see cref="JsFunction"/> recurses through this entry, so the .NET
-    /// call stack mirrors the JS call stack.
+    /// frame's <c>LoadThis</c> instruction. <paramref name="upvalues"/>
+    /// is the closure's snapshot table — empty for top-level scripts
+    /// and for plain (non-capturing) functions. <c>Opcode.Call</c> for
+    /// a user <see cref="JsFunction"/> recurses through this entry, so
+    /// the .NET call stack mirrors the JS call stack.
     /// </summary>
-    private JsValue Run(Chunk chunk, JsValue[] args, JsValue thisValue)
+    private JsValue Run(Chunk chunk, JsValue[] args, JsValue thisValue, IReadOnlyList<JsValue> upvalues)
     {
         var stack = new JsValue[MaxStack];
         var sp = 0;
@@ -256,7 +258,7 @@ public sealed class JsVm
                     if (callee.IsObject && callee.AsObject is JsNativeFunction nat)
                         Push(nat.Body(callArgs));
                     else if (callee.IsObject && callee.AsObject is JsFunction fn)
-                        Push(Run(fn.Body, callArgs, JsValue.Undefined));
+                        Push(Run(fn.Body, callArgs, JsValue.Undefined, fn.Upvalues));
                     else
                         throw new JsThrow(JsValue.String($"not a function: {callee}"));
                     break;
@@ -271,19 +273,45 @@ public sealed class JsVm
                     if (callee.IsObject && callee.AsObject is JsNativeFunction nat)
                         Push(nat.Body(callArgs));
                     else if (callee.IsObject && callee.AsObject is JsFunction fn)
-                        Push(Run(fn.Body, callArgs, receiver));
+                        Push(Run(fn.Body, callArgs, receiver, fn.Upvalues));
                     else
                         throw new JsThrow(JsValue.String($"not a function: {callee}"));
                     break;
                 }
 
-                // LoadFunction — pull a pre-compiled JsFunction out of the
-                // constant pool and wrap as an object value.
+                // LoadFunction — pull a pre-compiled JsFunction template
+                // out of the constant pool (empty upvalues) and wrap as
+                // an object value. Used only for non-capturing functions;
+                // capturing ones come through MakeClosure.
                 case Opcode.LoadFunction:
                 {
                     var idx = ReadU16();
                     var fn = (JsFunction)constants[idx]!;
                     Push(JsValue.Object(fn));
+                    break;
+                }
+
+                // MakeClosure — pop N captured values and wrap a fresh
+                // JsFunction over the template, with those values bound
+                // as snapshot upvalues. §10.2.1 (closure-of-environment),
+                // adapted to our snapshot-only semantics for M3-04c.
+                case Opcode.MakeClosure:
+                {
+                    var idx = ReadU16();
+                    var nUpvalues = ReadU8();
+                    var template = (JsFunction)constants[idx]!;
+                    var captured = new JsValue[nUpvalues];
+                    for (var i = nUpvalues - 1; i >= 0; i--) captured[i] = Pop();
+                    var closure = new JsFunction(
+                        template.Name, template.Body, template.ArityDeclared, captured);
+                    Push(JsValue.Object(closure));
+                    break;
+                }
+
+                case Opcode.LoadUpvalue:
+                {
+                    var idx = ReadU8();
+                    Push(upvalues[idx]);
                     break;
                 }
 
@@ -309,7 +337,7 @@ public sealed class JsVm
                         // use the freshly-allocated `this`.
                         var instance = new JsObject();
                         var thisVal = JsValue.Object(instance);
-                        var result = Run(jsFn.Body, newArgs, thisVal);
+                        var result = Run(jsFn.Body, newArgs, thisVal, jsFn.Upvalues);
                         Push(result.IsObject ? result : thisVal);
                     }
                     else if (ctor.IsObject && ctor.AsObject is JsNativeFunction)

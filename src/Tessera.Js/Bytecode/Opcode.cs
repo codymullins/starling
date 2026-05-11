@@ -16,7 +16,9 @@ public enum Opcode : byte
     // ----- Constants + literals -----
     Nop,
     LoadConst,      // [u16 idx] → push constant pool entry
-    LoadFunction,   // [u16 idx] → push JsFunction from constant pool
+    LoadFunction,   // [u16 idx] → push JsFunction template (no upvalues) from pool
+    MakeClosure,    // [u16 fnIdx][u8 nUpvalues] pop N values, build closure
+    LoadUpvalue,    // [u8 idx] → push current frame's upvalue at idx
     LoadThis,       // → push the current frame's `this` binding
     NewObject,      // → push a fresh empty JsObject
     LoadTrue,       // → push true

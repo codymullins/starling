@@ -50,11 +50,25 @@ public static class Disassembler
                 case Opcode.StoreLocal:
                 case Opcode.DeclareLocal:
                 case Opcode.Call:
+                case Opcode.CallMethod:
                 case Opcode.New:
+                case Opcode.LoadUpvalue:
                 {
                     var slot = code[i];
                     i++;
                     sb.Append(op).Append(' ').Append(slot);
+                    break;
+                }
+                // u16 + u8 — MakeClosure [fnIdx][nUpvalues]
+                case Opcode.MakeClosure:
+                {
+                    var idx = BinaryPrimitives.ReadUInt16LittleEndian(code.AsSpan(i, 2));
+                    i += 2;
+                    var n = code[i];
+                    i++;
+                    sb.Append(op).Append(' ').Append(idx).Append(' ').Append(n);
+                    sb.Append("  ; template=").Append(FormatConstant(chunk.Constants[idx]))
+                      .Append(" upvalues=").Append(n);
                     break;
                 }
                 // i16 jump-offset opcodes

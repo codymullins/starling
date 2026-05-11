@@ -133,6 +133,17 @@ public sealed class ChunkBuilder
         _code.Add((byte)((value >> 8) & 0xFF));
     }
 
+    /// <summary>Emit a raw unsigned-8-bit byte. Used for opcodes with
+    /// composite operand layouts (e.g. <see cref="Opcode.MakeClosure"/>
+    /// = <c>[u16 idx][u8 count]</c>) where the typed
+    /// <see cref="Emit(Opcode, byte)"/> doesn't apply.</summary>
+    public void EmitU8Raw(int value)
+    {
+        if (value is < 0 or > 0xFF)
+            throw new ArgumentOutOfRangeException(nameof(value));
+        _code.Add((byte)value);
+    }
+
     public Chunk Build(string? name = null)
         => new(_code.ToArray(), _constants.ToArray(), LocalCount, name);
 }

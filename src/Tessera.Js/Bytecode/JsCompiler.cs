@@ -39,6 +39,38 @@ public sealed class JsCompiler
     private readonly ChunkBuilder _b = new();
     private readonly List<Dictionary<string, int>> _scopes = [new()];
 
+    /// <summary>Enclosing compiler — null for the script-top compiler. Used
+    /// by lazy upvalue resolution to walk lexically-enclosing scopes when
+    /// a free identifier inside a nested function isn't local here.</summary>
+    private readonly JsCompiler? _parent;
+
+    /// <summary>
+    /// Description of a captured name as recorded in this function's
+    /// upvalue table. <see cref="IsLocalCapture"/> distinguishes the two
+    /// cases: when true, <see cref="Index"/> is a parent local slot;
+    /// when false, it's an index into the parent's upvalue table (i.e.
+    /// the capture chains through an intermediate function).
+    /// </summary>
+    private readonly record struct UpvalueRef(bool IsLocalCapture, int Index);
+
+    /// <summary>Upvalue descriptors for the function this compiler is
+    /// producing. Index in this list is the operand passed to
+    /// <see cref="Opcode.LoadUpvalue"/> inside the body, and is the order
+    /// in which the parent must push captured values before
+    /// <see cref="Opcode.MakeClosure"/>.</summary>
+    private readonly List<UpvalueRef> _upvalues = [];
+
+    /// <summary>Name → index in <see cref="_upvalues"/>, so repeated reads
+    /// of the same captured name reuse one upvalue slot.</summary>
+    private readonly Dictionary<string, int> _upvalueByName = new(StringComparer.Ordinal);
+
+    public JsCompiler() : this(parent: null) { }
+
+    private JsCompiler(JsCompiler? parent)
+    {
+        _parent = parent;
+    }
+
     public static Chunk Compile(Program program, string? name = "<script>")
     {
         var c = new JsCompiler();
@@ -92,20 +124,60 @@ public sealed class JsCompiler
         foreach (var s in body)
         {
             if (s is not FunctionDeclaration fd) continue;
-            // Compile the body into a sub-chunk via a fresh JsCompiler.
-            var sub = new JsCompiler();
+            // Compile the body in a fresh sub-compiler parented to this
+            // one so the body can resolve free identifiers as upvalues
+            // captured from this scope.
+            var sub = new JsCompiler(parent: this);
             sub.EmitFunctionBody(fd);
             var chunk = sub._b.Build(fd.Name.Name);
-            var fn = new Runtime.JsFunction(fd.Name.Name, chunk, CountSimpleParams(fd.Params));
-            var idx = _b.AddConstant(fn);
-            // Bind by name on the global object so recursive calls inside the
-            // function body — which see only their own locals + globals —
-            // can resolve the name. Closures (lexical capture) will land in
-            // wp:M3-04c and replace this with proper upvalues.
+
+            // Emit either LoadFunction (no captures) or push upvalues +
+            // MakeClosure. Either way, leave the function value on the
+            // stack, then store under the function's name as a global so
+            // recursive references inside the body resolve to the same
+            // closure instance.
+            EmitFunctionConstructor(fd.Name.Name, chunk,
+                CountSimpleParams(fd.Params), sub._upvalues);
             var nameIdx = _b.AddConstant(fd.Name.Name);
-            _b.EmitU16(Opcode.LoadFunction, idx);
             _b.EmitU16(Opcode.StoreGlobal, nameIdx);
+            // StoreGlobal does not re-push the value, so the stack is
+            // balanced after the hoist.
         }
+    }
+
+    /// <summary>Materialize a function as either a plain template
+    /// reference (no upvalues — emits <see cref="Opcode.LoadFunction"/>)
+    /// or as a closure-construction sequence: push each upvalue's
+    /// snapshot, then emit <see cref="Opcode.MakeClosure"/>. Leaves the
+    /// resulting function value on the top of the stack.</summary>
+    private void EmitFunctionConstructor(
+        string name, Chunk body, int arity, IReadOnlyList<UpvalueRef> upvalues)
+    {
+        var fn = new Runtime.JsFunction(name, body, arity);
+        var fnIdx = _b.AddConstant(fn);
+
+        if (upvalues.Count == 0)
+        {
+            _b.EmitU16(Opcode.LoadFunction, fnIdx);
+            return;
+        }
+
+        if (upvalues.Count > 255)
+            throw new NotSupportedException("more than 255 captured variables not supported");
+
+        // Push each captured value in upvalue-table order. For a local
+        // capture, the value lives in this compiler's locals; for a
+        // chained capture, it lives in this compiler's own upvalue table
+        // (which the running closure will read via LoadUpvalue).
+        foreach (var u in upvalues)
+        {
+            if (u.IsLocalCapture)
+                _b.Emit(Opcode.LoadLocal, (byte)u.Index);
+            else
+                _b.Emit(Opcode.LoadUpvalue, (byte)u.Index);
+        }
+        _b.EmitU16(Opcode.MakeClosure, fnIdx);
+        _b.EmitU8Raw((byte)upvalues.Count);
     }
 
     private static int CountSimpleParams(IReadOnlyList<Expression> ps)
@@ -339,9 +411,16 @@ public sealed class JsCompiler
     private void EmitIdLoad(string name)
     {
         if (TryResolveLocal(name, out var slot))
+        {
             _b.Emit(Opcode.LoadLocal, (byte)slot);
-        else
-            _b.EmitU16(Opcode.LoadGlobal, _b.AddConstant(name));
+            return;
+        }
+        if (TryResolveUpvalue(name, out var upIdx))
+        {
+            _b.Emit(Opcode.LoadUpvalue, (byte)upIdx);
+            return;
+        }
+        _b.EmitU16(Opcode.LoadGlobal, _b.AddConstant(name));
     }
 
     private bool TryResolveLocal(string name, out int slot)
@@ -350,6 +429,47 @@ public sealed class JsCompiler
             if (_scopes[i].TryGetValue(name, out slot)) return true;
         slot = -1;
         return false;
+    }
+
+    /// <summary>
+    /// Lazy upvalue resolution per §10.2.1.2. Walks the enclosing
+    /// compiler chain: if a parent has <paramref name="name"/> as a
+    /// local, record the capture as <c>IsLocalCapture=true</c> with the
+    /// parent's slot index; if the parent has it transitively (i.e. it
+    /// also captured the name), record <c>IsLocalCapture=false</c>
+    /// pointing at the parent's upvalue index. Returns the index in
+    /// this compiler's <see cref="_upvalues"/> table.
+    /// </summary>
+    private bool TryResolveUpvalue(string name, out int upIdx)
+    {
+        upIdx = -1;
+        if (_parent is null) return false;
+
+        // Already captured by this function — reuse the same slot so
+        // multiple reads of the same name share one upvalue.
+        if (_upvalueByName.TryGetValue(name, out upIdx)) return true;
+
+        if (_parent.TryResolveLocal(name, out var parentSlot))
+        {
+            upIdx = AddUpvalue(name, new UpvalueRef(IsLocalCapture: true, Index: parentSlot));
+            return true;
+        }
+        if (_parent.TryResolveUpvalue(name, out var parentUp))
+        {
+            upIdx = AddUpvalue(name, new UpvalueRef(IsLocalCapture: false, Index: parentUp));
+            return true;
+        }
+        return false;
+    }
+
+    private int AddUpvalue(string name, UpvalueRef u)
+    {
+        if (_upvalues.Count >= 255)
+            throw new NotSupportedException("more than 255 upvalues per function not supported");
+        var idx = _upvalues.Count;
+        _upvalues.Add(u);
+        _upvalueByName[name] = idx;
+        return idx;
     }
 
     private void EmitLogical(LogicalExpression log)
@@ -488,11 +608,10 @@ public sealed class JsCompiler
 
     private void EmitFunctionExpression(FunctionExpression fe)
     {
-        // Compile the body into a fresh sub-chunk and emit a LoadFunction
-        // pointing at it. Closures (capture of enclosing-scope locals) are
-        // wp:M3-04c; for now the function body can only see its own
-        // params + globals.
-        var sub = new JsCompiler();
+        // Compile the body in a sub-compiler parented to this one so
+        // free identifiers can be lazily resolved as upvalues captured
+        // from this scope.
+        var sub = new JsCompiler(parent: this);
         foreach (var p in fe.Params)
         {
             if (p is Identifier id)
@@ -503,10 +622,9 @@ public sealed class JsCompiler
         }
         foreach (var s in fe.Body.Body) sub.EmitStatement(s);
         sub._b.Emit(Opcode.ReturnUndefined);
-        var chunk = sub._b.Build(fe.Name?.Name ?? "<anonymous>");
-        var fn = new Runtime.JsFunction(fe.Name?.Name ?? "<anonymous>",
-            chunk, CountSimpleParams(fe.Params));
-        _b.EmitU16(Opcode.LoadFunction, _b.AddConstant(fn));
+        var name = fe.Name?.Name ?? "<anonymous>";
+        var chunk = sub._b.Build(name);
+        EmitFunctionConstructor(name, chunk, CountSimpleParams(fe.Params), sub._upvalues);
     }
 
     private void EmitObjectLiteral(ObjectExpression oe)
