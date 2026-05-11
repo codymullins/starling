@@ -187,6 +187,28 @@ public sealed partial class HtmlTokenizer
                 DispatchRawState(state, c);
                 return;
 
+            // M1-01d: ScriptData cluster.
+            case TokenizerState.ScriptData:
+            case TokenizerState.ScriptDataLessThanSign:
+            case TokenizerState.ScriptDataEndTagOpen:
+            case TokenizerState.ScriptDataEndTagName:
+            case TokenizerState.ScriptDataEscapeStart:
+            case TokenizerState.ScriptDataEscapeStartDash:
+            case TokenizerState.ScriptDataEscaped:
+            case TokenizerState.ScriptDataEscapedDash:
+            case TokenizerState.ScriptDataEscapedDashDash:
+            case TokenizerState.ScriptDataEscapedLessThanSign:
+            case TokenizerState.ScriptDataEscapedEndTagOpen:
+            case TokenizerState.ScriptDataEscapedEndTagName:
+            case TokenizerState.ScriptDataDoubleEscapeStart:
+            case TokenizerState.ScriptDataDoubleEscaped:
+            case TokenizerState.ScriptDataDoubleEscapedDash:
+            case TokenizerState.ScriptDataDoubleEscapedDashDash:
+            case TokenizerState.ScriptDataDoubleEscapedLessThanSign:
+            case TokenizerState.ScriptDataDoubleEscapeEnd:
+                DispatchScriptState(state, c);
+                return;
+
             // M1-01e: comment + CDATA + bogus-comment + markup-declaration-open.
             case TokenizerState.MarkupDeclarationOpen:
             case TokenizerState.CommentStart:
@@ -270,6 +292,29 @@ public sealed partial class HtmlTokenizer
             case TokenizerState.RawtextEndTagName:
             case TokenizerState.Plaintext:
                 StepRawEof();
+                _eofProcessed = true;
+                return true;
+
+            // M1-01d EOF handling (delegated to ScriptStates partial).
+            case TokenizerState.ScriptData:
+            case TokenizerState.ScriptDataLessThanSign:
+            case TokenizerState.ScriptDataEndTagOpen:
+            case TokenizerState.ScriptDataEndTagName:
+            case TokenizerState.ScriptDataEscapeStart:
+            case TokenizerState.ScriptDataEscapeStartDash:
+            case TokenizerState.ScriptDataEscaped:
+            case TokenizerState.ScriptDataEscapedDash:
+            case TokenizerState.ScriptDataEscapedDashDash:
+            case TokenizerState.ScriptDataEscapedLessThanSign:
+            case TokenizerState.ScriptDataEscapedEndTagOpen:
+            case TokenizerState.ScriptDataEscapedEndTagName:
+            case TokenizerState.ScriptDataDoubleEscapeStart:
+            case TokenizerState.ScriptDataDoubleEscaped:
+            case TokenizerState.ScriptDataDoubleEscapedDash:
+            case TokenizerState.ScriptDataDoubleEscapedDashDash:
+            case TokenizerState.ScriptDataDoubleEscapedLessThanSign:
+            case TokenizerState.ScriptDataDoubleEscapeEnd:
+                StepScriptEof();
                 _eofProcessed = true;
                 return true;
 
