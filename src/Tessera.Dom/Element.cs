@@ -1,53 +1,74 @@
 namespace Tessera.Dom;
 
 /// <summary>
-/// Generic element. The HTMLElement subclass tree (HtmlAnchorElement, etc.)
-/// per 05_DOM.md §Node hierarchy lights up in M1.
+/// Generic element. HTML-specific subclasses are deferred; this core element
+/// provides attributes and tree behavior for parser/layout consumers.
 /// </summary>
 public class Element : Node
 {
-    public Element(string tagName)
+    public const string HtmlNamespace = "http://www.w3.org/1999/xhtml";
+
+    public Element(string tagName, string? @namespace = null)
     {
-        TagName = tagName;
+        ArgumentException.ThrowIfNullOrWhiteSpace(tagName);
+        LocalName = tagName.ToLowerInvariant();
+        Namespace = @namespace ?? HtmlNamespace;
+        TagName = LocalName;
+        Attributes = new NamedNodeMap(this);
+        ClassList = new DomTokenList(
+            () => GetAttribute("class") ?? string.Empty,
+            value => SetAttribute("class", value));
     }
 
     public override NodeKind Kind => NodeKind.Element;
 
-    /// <summary>Lower-cased tag name. Normalized at construction.</summary>
+    public override string NodeName => TagName;
+
+    public string LocalName { get; }
+
+    public string? Prefix { get; init; }
+
+    public string Namespace { get; }
+
+    /// <summary>Lower-cased tag name; existing M0 parser/tests depend on this shape.</summary>
     public string TagName { get; }
 
-    private readonly List<Attr> _attributes = [];
+    public NamedNodeMap Attributes { get; }
 
-    public IReadOnlyList<Attr> Attributes => _attributes;
+    public string Id
+    {
+        get => GetAttribute("id") ?? string.Empty;
+        set => SetAttribute("id", value);
+    }
+
+    public DomTokenList ClassList { get; }
 
     public string? GetAttribute(string name)
     {
-        foreach (var a in _attributes)
-            if (a.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
-                return a.Value;
-        return null;
+        ArgumentNullException.ThrowIfNull(name);
+        return Attributes.GetNamedItem(name)?.Value;
     }
 
     public void SetAttribute(string name, string value)
     {
-        for (var i = 0; i < _attributes.Count; i++)
-        {
-            if (_attributes[i].Name.Equals(name, StringComparison.OrdinalIgnoreCase))
-            {
-                _attributes[i] = new Attr(name, value);
-                OnTreeMutated();
-                return;
-            }
-        }
-        _attributes.Add(new Attr(name, value));
-        OnTreeMutated();
+        ArgumentNullException.ThrowIfNull(name);
+        ArgumentNullException.ThrowIfNull(value);
+        Attributes.SetNamedItem(new Attr(name.ToLowerInvariant(), value));
+    }
+
+    public bool HasAttribute(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        return Attributes.GetNamedItem(name) is not null;
+    }
+
+    public void RemoveAttribute(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        Attributes.RemoveNamedItem(name);
     }
 
     public override string ToString() => $"<{TagName}>";
-}
 
-/// <summary>
-/// Attribute is no longer a Node since DOM4 (2013) — modeled as a small struct
-/// owned by the element. See 05_DOM.md §Node hierarchy.
-/// </summary>
-public readonly record struct Attr(string Name, string Value);
+    internal void OnAttributeMutated() => OnTreeMutated();
+}

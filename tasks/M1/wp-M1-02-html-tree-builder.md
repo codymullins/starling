@@ -1,7 +1,7 @@
 ---
 id: "wp:M1-02-html-tree-builder"
 milestone: "M1"
-status: "blocked"
+status: "available"
 claimed_by: ""
 claimed_at: ""
 branch: ""
@@ -28,3 +28,4 @@ the adoption agency algorithm, foreign content handling.
 
 ## Handoff log
 - 2026-05-11T15:20Z — created (blocked on M1-01h + M1-03).
+- 2026-05-11T19:58Z — unblocked by wp:M1-03-dom-core completion; available to claim.

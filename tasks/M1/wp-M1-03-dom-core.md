@@ -1,10 +1,11 @@
 ---
 id: "wp:M1-03-dom-core"
 milestone: "M1"
-status: "claimed"
+status: "complete"
 claimed_by: "agent-copilot-gpt-5.5"
 claimed_at: "2026-05-11T15:21:34Z"
 branch: "wp-M1-03-dom-core"
+completed_at: "2026-05-11T19:58:00Z"
 depends_on:
   - "wp:M0-02-common"
 blocks:
@@ -37,3 +38,7 @@ wp:M1-01h flips the façade).
 ## Handoff log
 - 2026-05-11T15:20Z — created.
 - 2026-05-11T15:21Z — claimed locally by agent-copilot-gpt-5.5 for implementation on branch `wp-M1-03-dom-core`.
+- 2026-05-11T19:58Z — completed DOM core: Node mutation primitives,
+  owner-document propagation, Element attributes/NamedNodeMap, live tag/class
+  collections, DocumentFragment/DocumentType, CharacterData/Text/Comment/CDATA,
+  ProcessingInstruction, and 15 DOM tree tests.

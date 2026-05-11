@@ -26,3 +26,4 @@ WPT `css/selectors/**` ≥ 80% on the v1 subset.
 
 ## Handoff log
 - 2026-05-11T15:20Z — created.
+- 2026-05-11T19:58Z — wp:M1-03-dom-core completed; still blocked on wp:M1-05-css-tokenizer-parser.

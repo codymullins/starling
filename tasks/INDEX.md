@@ -32,11 +32,11 @@ order: milestone, then numeric id, then sub-letter.
 | [wp:M1-01f-tokenizer-doctype](M1/wp-M1-01f-tokenizer-doctype.md) | 🟢 complete | agent-claude-cody | Tessera.Html |
 | [wp:M1-01g-tokenizer-entities](M1/wp-M1-01g-tokenizer-entities.md) | 🟢 complete | agent-claude-cody | Tessera.Html |
 | [wp:M1-01h-tokenizer-html5lib](M1/wp-M1-01h-tokenizer-html5lib.md) | 🟢 complete | agent-copilot-gpt-5.5 | Tessera.Html |
-| [wp:M1-02-html-tree-builder](M1/wp-M1-02-html-tree-builder.md) | ⚫ blocked on M1-01h + M1-03 | — | Tessera.Html |
-| [wp:M1-03-dom-core](M1/wp-M1-03-dom-core.md) | 🟡 claimed | agent-copilot-gpt-5.5 | Tessera.Dom |
-| [wp:M1-04-dom-events](M1/wp-M1-04-dom-events.md) | ⚫ blocked on M1-03 | — | Tessera.Dom |
-| [wp:M1-05-css-tokenizer-parser](M1/wp-M1-05-css-tokenizer-parser.md) | 🔵 available | — | Tessera.Css |
-| [wp:M1-06-css-selectors](M1/wp-M1-06-css-selectors.md) | ⚫ blocked on M1-05 + M1-03 | — | Tessera.Css |
+| [wp:M1-02-html-tree-builder](M1/wp-M1-02-html-tree-builder.md) | 🔵 available | — | Tessera.Html |
+| [wp:M1-03-dom-core](M1/wp-M1-03-dom-core.md) | 🟢 complete | agent-copilot-gpt-5.5 | Tessera.Dom |
+| [wp:M1-04-dom-events](M1/wp-M1-04-dom-events.md) | 🔵 available | — | Tessera.Dom |
+| [wp:M1-05-css-tokenizer-parser](M1/wp-M1-05-css-tokenizer-parser.md) | 🟡 claimed | agent-copilot-gpt-5.5 | Tessera.Css |
+| [wp:M1-06-css-selectors](M1/wp-M1-06-css-selectors.md) | ⚫ blocked on M1-05 | — | Tessera.Css |
 | [wp:M1-07-css-cascade](M1/wp-M1-07-css-cascade.md) | ⚫ blocked on M1-06 | — | Tessera.Css |
 | [wp:M1-08-layout-block-inline](M1/wp-M1-08-layout-block-inline.md) | ⚫ blocked on M1-07 | — | Tessera.Layout |
 | [wp:M1-09-paint-display-list](M1/wp-M1-09-paint-display-list.md) | ⚫ blocked on M1-08 | — | Tessera.Paint |
@@ -60,10 +60,11 @@ order: milestone, then numeric id, then sub-letter.
 For a new agent: claim any of these and start.
 
 - [wp:M2-05-http1](M2/wp-M2-05-http1.md) — HTTP/1.1 request/response over the TCP/TLS transports; unblocks cookies and end-to-end networking.
+- [wp:M1-02-html-tree-builder](M1/wp-M1-02-html-tree-builder.md) — WHATWG tree construction over the completed tokenizer + DOM core.
+- [wp:M1-04-dom-events](M1/wp-M1-04-dom-events.md) — EventTarget/Event dispatch now that DOM core exists.
 
 ## In-progress
 
-- **wp:M1-03-dom-core** — agent-copilot-gpt-5.5, branch `wp-M1-03-dom-core`.
 - **wp:M1-05-css-tokenizer-parser** — agent-copilot-gpt-5.5, branch `wp-M1-05-css-tokenizer-parser`, worktree `../tessera-wp-M1-05-css-tokenizer-parser`.
 
 ## Recently completed
@@ -76,6 +77,7 @@ For a new agent: claim any of these and start.
 - **wp:M1-01e + wp:M1-01f** — agent-claude-cody, 2026-05-11. Comment/CDATA (15 states) + Doctype (17 states) bundled because they share the `MarkupDeclarationOpen` entry. 23 tests. `tessera tokenize` now emits proper `Doctype` and `Comment` tokens.
 - **wp:M1-01g-tokenizer-entities** — agent-claude-cody, 2026-05-11. Character-reference state cluster and initial named entity table.
 - **wp:M1-01h-tokenizer-html5lib** — agent-copilot-gpt-5.5, 2026-05-11. html5lib tokenizer suite wired at 7032/7032, full entity table generated from WHATWG data, `HtmlParser.Parse` flipped to tokenizer-backed parser.
+- **wp:M1-03-dom-core** — agent-copilot-gpt-5.5, 2026-05-11. Node mutation primitives, owner-document propagation, Element attributes/NamedNodeMap, live collections, DocumentFragment/DocumentType, CharacterData/Text/Comment/CDATA, ProcessingInstruction, and 15 DOM tests.
 - **wp:M2-04-tls** — agent-copilot-gpt-5.5, 2026-05-11. Pure-managed BouncyCastle TLS 1.3 transport, SNI + ALPN, embedded CCADB roots, fail-closed certificate validation, and live handshakes to Cloudflare/Akamai.
 
-Full repo: **7430/7430** tests green. WHATWG HTML tokenizer state coverage: **80 of 80** states implemented and html5lib tokenizer fixtures are at **100%**. JS engine: lexer + parser + bytecode compiler + VM end-to-end including user functions, recursion, constructors with `this` binding, method dispatch, and snapshot closures.
+Full repo: **7440/7440** tests green. WHATWG HTML tokenizer state coverage: **80 of 80** states implemented and html5lib tokenizer fixtures are at **100%**. JS engine: lexer + parser + bytecode compiler + VM end-to-end including user functions, recursion, constructors with `this` binding, method dispatch, and snapshot closures.

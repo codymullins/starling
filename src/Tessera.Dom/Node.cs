@@ -16,90 +16,177 @@ public abstract class Node
 
     public virtual Document? OwnerDocument { get; internal set; }
 
-    /// <summary>
-    /// Append <paramref name="child"/> as the last child. Reparents from any
-    /// existing tree position. Returns the inserted node for chaining.
-    /// </summary>
-    public Node AppendChild(Node child)
+    public virtual string NodeName => Kind.ToString();
+
+    public virtual string? NodeValue
+    {
+        get => null;
+        set { }
+    }
+
+    public Node AppendChild(Node child) => InsertBefore(child, null);
+
+    public Node InsertBefore(Node child, Node? referenceChild)
     {
         ArgumentNullException.ThrowIfNull(child);
+        if (referenceChild is not null && referenceChild.ParentNode != this)
+            throw new InvalidOperationException("The reference child is not a child of this node.");
+        if (child == referenceChild)
+            return child;
         if (child == this)
             throw new InvalidOperationException("A node cannot be its own child.");
+        for (var ancestor = this.ParentNode; ancestor is not null; ancestor = ancestor.ParentNode)
+        {
+            if (ancestor == child)
+                throw new InvalidOperationException("A node cannot be inserted into one of its descendants.");
+        }
+
+        if (child is DocumentFragment fragment)
+        {
+            var next = fragment.FirstChild;
+            while (next is not null)
+            {
+                var current = next;
+                next = current.NextSibling;
+                InsertBefore(current, referenceChild);
+            }
+            return fragment;
+        }
 
         child.RemoveFromParent();
         child.ParentNode = this;
-        child.OwnerDocument = OwnerDocument ?? (this as Document);
+        child.SetOwnerDocumentRecursive(OwnerDocument ?? (this as Document));
 
-        if (LastChild is null)
+        if (referenceChild is null)
         {
-            FirstChild = child;
-            LastChild = child;
+            if (LastChild is null)
+            {
+                FirstChild = child;
+                LastChild = child;
+            }
+            else
+            {
+                LastChild.NextSibling = child;
+                child.PreviousSibling = LastChild;
+                LastChild = child;
+            }
         }
         else
         {
-            LastChild.NextSibling = child;
-            child.PreviousSibling = LastChild;
-            LastChild = child;
+            var previous = referenceChild.PreviousSibling;
+            child.NextSibling = referenceChild;
+            child.PreviousSibling = previous;
+            referenceChild.PreviousSibling = child;
+            if (previous is null)
+                FirstChild = child;
+            else
+                previous.NextSibling = child;
         }
+
         OnTreeMutated();
+        return child;
+    }
+
+    public Node ReplaceChild(Node newChild, Node oldChild)
+    {
+        ArgumentNullException.ThrowIfNull(newChild);
+        ArgumentNullException.ThrowIfNull(oldChild);
+        if (oldChild.ParentNode != this)
+            throw new InvalidOperationException("The old child is not a child of this node.");
+
+        InsertBefore(newChild, oldChild);
+        RemoveChild(oldChild);
+        return oldChild;
+    }
+
+    public Node RemoveChild(Node child)
+    {
+        ArgumentNullException.ThrowIfNull(child);
+        if (child.ParentNode != this)
+            throw new InvalidOperationException("The node is not a child of this node.");
+
+        child.RemoveFromParent();
         return child;
     }
 
     /// <summary>Detach this node from its parent. No-op if already orphaned.</summary>
     public void RemoveFromParent()
     {
-        var p = ParentNode;
-        if (p is null) return;
+        var parent = ParentNode;
+        if (parent is null) return;
 
         if (PreviousSibling is not null) PreviousSibling.NextSibling = NextSibling;
-        else p.FirstChild = NextSibling;
+        else parent.FirstChild = NextSibling;
 
         if (NextSibling is not null) NextSibling.PreviousSibling = PreviousSibling;
-        else p.LastChild = PreviousSibling;
+        else parent.LastChild = PreviousSibling;
 
         ParentNode = null;
         PreviousSibling = null;
         NextSibling = null;
-        p.OnTreeMutated();
+        parent.OnTreeMutated();
     }
 
-    /// <summary>Children of this node, in document order. Walks the linked list.</summary>
     public IEnumerable<Node> ChildNodes
     {
         get
         {
-            for (var c = FirstChild; c is not null; c = c.NextSibling)
-                yield return c;
+            for (var child = FirstChild; child is not null; child = child.NextSibling)
+                yield return child;
         }
     }
 
-    /// <summary>Recursive descendants in document order (pre-order traversal).</summary>
     public IEnumerable<Node> Descendants()
     {
-        for (var c = FirstChild; c is not null; c = c.NextSibling)
+        for (var child = FirstChild; child is not null; child = child.NextSibling)
         {
-            yield return c;
-            foreach (var d in c.Descendants())
-                yield return d;
+            yield return child;
+            foreach (var descendant in child.Descendants())
+                yield return descendant;
         }
     }
 
-    /// <summary>Concatenation of all descendant Text nodes' data. Equivalent to <c>Node.textContent</c>.</summary>
-    public string TextContent
+    public IEnumerable<Element> DescendantElements() => Descendants().OfType<Element>();
+
+    public virtual string TextContent
     {
         get
         {
             var sb = new System.Text.StringBuilder();
-            foreach (var n in Descendants())
-                if (n is Text t) sb.Append(t.Data);
+            foreach (var node in Descendants())
+            {
+                if (node is Text text) sb.Append(text.Data);
+                else if (node is CData cdata) sb.Append(cdata.Data);
+            }
             return sb.ToString();
+        }
+        set
+        {
+            while (FirstChild is not null)
+                RemoveChild(FirstChild);
+
+            if (!string.IsNullOrEmpty(value))
+            {
+                var document = OwnerDocument ?? this as Document;
+                AppendChild(document is null
+                    ? new Text(value)
+                    : document.CreateTextNode(value));
+            }
         }
     }
 
-    /// <summary>Hook for live-collection invalidation. Walks up to the owner document.</summary>
     protected virtual void OnTreeMutated()
     {
-        if (OwnerDocument is { } d) d.BumpMutationVersion();
+        if (OwnerDocument is { } document) document.BumpMutationVersion();
         else ParentNode?.OnTreeMutated();
+    }
+
+    internal void SetOwnerDocumentRecursive(Document? document)
+    {
+        if (this is not Document)
+            OwnerDocument = document;
+
+        for (var child = FirstChild; child is not null; child = child.NextSibling)
+            child.SetOwnerDocumentRecursive(document);
     }
 }

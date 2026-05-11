@@ -1,56 +1,117 @@
 namespace Tessera.Dom;
 
 /// <summary>
-/// Root of a DOM tree. The full <see cref="Document"/> per 05_DOM.md grows
-/// methods like <c>CreateElement</c>, <c>QuerySelector</c>, mutation observers,
-/// and so on; M0 needs only enough to be a container and bump a mutation version.
+/// Root of a DOM tree. This M1 core covers node creation, tree lookup helpers,
+/// document convenience accessors, and live-collection invalidation.
 /// </summary>
 public sealed class Document : Node
 {
     public override NodeKind Kind => NodeKind.Document;
 
+    public override string NodeName => "#document";
+
     public override Document? OwnerDocument
     {
         get => this;
-        internal set { /* documents own themselves; setter is a no-op for the tree machinery. */ }
+        internal set { /* documents own themselves; setter is a no-op for tree machinery. */ }
     }
 
-    /// <summary>
-    /// Incremented on every tree mutation. Live collections snapshot this and
-    /// re-materialize when stale — see 05_DOM.md §Design choices.
-    /// </summary>
     public int MutationVersion { get; private set; }
 
     internal void BumpMutationVersion() => MutationVersion++;
 
-    public Element CreateElement(string tagName)
+    public DocumentType? DocType
     {
-        var el = new Element(tagName.ToLowerInvariant()) { OwnerDocument = this };
-        return el;
+        get
+        {
+            for (var child = FirstChild; child is not null; child = child.NextSibling)
+                if (child is DocumentType type) return type;
+            return null;
+        }
     }
+
+    public QuirksMode Mode { get; internal set; } = QuirksMode.NoQuirks;
+
+    public Element CreateElement(string tagName, string? @namespace = null)
+        => new(tagName, @namespace) { OwnerDocument = this };
+
+    public Text CreateText(string data) => CreateTextNode(data);
 
     public Text CreateTextNode(string data)
         => new(data) { OwnerDocument = this };
 
-    /// <summary>Convenience: the root <c>&lt;html&gt;</c> element, or null if not yet inserted.</summary>
+    public Comment CreateComment(string data)
+        => new(data) { OwnerDocument = this };
+
+    public CData CreateCDataSection(string data)
+        => new(data) { OwnerDocument = this };
+
+    public ProcessingInstruction CreateProcessingInstruction(string target, string data)
+        => new(target, data) { OwnerDocument = this };
+
+    public DocumentFragment CreateDocumentFragment()
+        => new() { OwnerDocument = this };
+
+    public DocumentType CreateDocumentType(string name, string publicId = "", string systemId = "")
+        => new(name, publicId, systemId) { OwnerDocument = this };
+
     public Element? DocumentElement
     {
         get
         {
-            for (var c = FirstChild; c is not null; c = c.NextSibling)
-                if (c is Element e) return e;
+            for (var child = FirstChild; child is not null; child = child.NextSibling)
+                if (child is Element element) return element;
             return null;
         }
     }
 
-    /// <summary>Convenience: the first <c>&lt;body&gt;</c> descendant, or null if absent.</summary>
+    public Element? Head
+    {
+        get
+        {
+            foreach (var node in Descendants())
+                if (node is Element { LocalName: "head" } element) return element;
+            return null;
+        }
+    }
+
     public Element? Body
     {
         get
         {
-            foreach (var n in Descendants())
-                if (n is Element e && e.TagName == "body") return e;
+            foreach (var node in Descendants())
+                if (node is Element { LocalName: "body" } element) return element;
             return null;
         }
     }
+
+    public Element? GetElementById(string id)
+    {
+        ArgumentNullException.ThrowIfNull(id);
+        foreach (var node in Descendants())
+            if (node is Element element && element.Id == id) return element;
+        return null;
+    }
+
+    public IReadOnlyList<Element> GetElementsByTagName(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        return new LiveElementCollection(this, element =>
+            name == "*" || element.LocalName.Equals(name, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public IReadOnlyList<Element> GetElementsByClassName(string names)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+        var classes = names.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return new LiveElementCollection(this, element =>
+            classes.Length > 0 && classes.All(element.ClassList.Contains));
+    }
+}
+
+public enum QuirksMode
+{
+    NoQuirks,
+    LimitedQuirks,
+    Quirks,
 }

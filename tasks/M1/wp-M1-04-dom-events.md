@@ -1,7 +1,7 @@
 ---
 id: "wp:M1-04-dom-events"
 milestone: "M1"
-status: "blocked"
+status: "available"
 claimed_by: ""
 claimed_at: ""
 branch: ""
@@ -25,3 +25,4 @@ WPT `dom/events/**` (core dispatch) ≥ 95%.
 
 ## Handoff log
 - 2026-05-11T15:20Z — created.
+- 2026-05-11T19:58Z — unblocked by wp:M1-03-dom-core completion; available to claim.
