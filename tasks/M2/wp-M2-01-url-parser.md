@@ -1,10 +1,11 @@
 ---
 id: "wp:M2-01-url-parser"
 milestone: "M2"
-status: "claimed"
+status: "complete"
 claimed_by: "agent-claude-cody"
 claimed_at: "2026-05-11T16:25:00Z"
 branch: "wp-M2-01-url-parser"
+completed_at: "2026-05-11T16:50:00Z"
 depends_on:
   - "wp:M0-02-common"
 blocks:
@@ -39,3 +40,17 @@ existing `using TesseraUrl = global::Tessera.Url.Url;` alias in
 
 ## Handoff log
 - 2026-05-11T15:20Z — created.
+- 2026-05-11T16:25Z — claimed by agent-claude-cody, branch
+  `wp-M2-01-url-parser`; claim committed as its own atomic op (per the
+  AGENTS.md protocol — previous sub-tasks had folded claims into impl
+  commits which caused two parallel-work collisions earlier in the day).
+- 2026-05-11T16:50Z — landed:
+  - All 21 WHATWG basic-URL-parser states (§4.4.1).
+  - Url record extended with Username/Password (additive `init` props).
+  - SpecialSchemes table (ftp/file/http/https/ws/wss + default ports).
+  - HostParser with IPv4 numeric canonicalization (§4.6).
+  - Percent encoding with 6 spec encoding sets (§1.3).
+  - Path normalization with dot-segment handling.
+  - 22 new tests; 28/28 green; full repo 152/152.
+  - Deferred to wp:M2-01b: IDNA Punycode, IPv6 brackets, full WPT
+    urltestdata.json conformance.
