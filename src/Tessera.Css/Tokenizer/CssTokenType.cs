@@ -1,0 +1,30 @@
+namespace Tessera.Css.Tokenizer;
+
+public enum CssTokenType : byte
+{
+    Ident,
+    Function,
+    AtKeyword,
+    Hash,
+    String,
+    BadString,
+    Url,
+    BadUrl,
+    Delim,
+    Number,
+    Percentage,
+    Dimension,
+    Whitespace,
+    Cdo,
+    Cdc,
+    Colon,
+    Semicolon,
+    Comma,
+    LeftSquare,
+    RightSquare,
+    LeftParen,
+    RightParen,
+    LeftBrace,
+    RightBrace,
+    Eof,
+}

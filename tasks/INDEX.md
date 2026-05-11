@@ -35,7 +35,7 @@ order: milestone, then numeric id, then sub-letter.
 | [wp:M1-02-html-tree-builder](M1/wp-M1-02-html-tree-builder.md) | ⚫ blocked on M1-01h + M1-03 | — | Tessera.Html |
 | [wp:M1-03-dom-core](M1/wp-M1-03-dom-core.md) | 🟡 claimed | agent-copilot-gpt-5.5 | Tessera.Dom |
 | [wp:M1-04-dom-events](M1/wp-M1-04-dom-events.md) | ⚫ blocked on M1-03 | — | Tessera.Dom |
-| [wp:M1-05-css-tokenizer-parser](M1/wp-M1-05-css-tokenizer-parser.md) | 🔵 available | — | Tessera.Css |
+| [wp:M1-05-css-tokenizer-parser](M1/wp-M1-05-css-tokenizer-parser.md) | 🟡 claimed | agent-copilot-gpt-5.5 | Tessera.Css |
 | [wp:M1-06-css-selectors](M1/wp-M1-06-css-selectors.md) | ⚫ blocked on M1-05 + M1-03 | — | Tessera.Css |
 | [wp:M1-07-css-cascade](M1/wp-M1-07-css-cascade.md) | ⚫ blocked on M1-06 | — | Tessera.Css |
 | [wp:M1-08-layout-block-inline](M1/wp-M1-08-layout-block-inline.md) | ⚫ blocked on M1-07 | — | Tessera.Layout |
@@ -57,7 +57,6 @@ order: milestone, then numeric id, then sub-letter.
 
 For a new agent: claim any of these and start.
 
-- [wp:M1-05-css-tokenizer-parser](M1/wp-M1-05-css-tokenizer-parser.md) — parallel to DOM, no overlap.
 - [wp:M2-01-url-parser](M2/wp-M2-01-url-parser.md) — self-contained, sets up all of M2.
 - [wp:M3-01-js-lexer](M3/wp-M3-01-js-lexer.md) — start the JS pole early; M3 is the longest milestone.
 - [wp:M1-01b-tokenizer-tag-states](M1/wp-M1-01b-tokenizer-tag-states.md) — available once M1-01a lands.
@@ -66,3 +65,4 @@ For a new agent: claim any of these and start.
 
 - **wp:M1-01a-tokenizer-scaffold** — agent-claude-cody, branch `wp-M1-01a-tokenizer-scaffold`. **in_review** as of 2026-05-11T15:36Z; PreprocessedStream + Data state + Tokenizer scaffold + 15 unit tests landed; `dotnet test` 49/49.
 - **wp:M1-03-dom-core** — agent-copilot-gpt-5.5, branch `wp-M1-03-dom-core`.
+- **wp:M1-05-css-tokenizer-parser** — agent-copilot-gpt-5.5, branch `wp-M1-05-css-tokenizer-parser`, worktree `../tessera-wp-M1-05-css-tokenizer-parser`.
