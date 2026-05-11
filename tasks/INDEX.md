@@ -26,8 +26,8 @@ order: milestone, then numeric id, then sub-letter.
 | [wp:M1-01-html-tokenizer](M1/wp-M1-01-html-tokenizer.md) | 🟡 in_progress (decomposed into a–h) | — | Tessera.Html |
 | [wp:M1-01a-tokenizer-scaffold](M1/wp-M1-01a-tokenizer-scaffold.md) | 🟢 complete | agent-claude-cody | Tessera.Html |
 | [wp:M1-01b-tokenizer-tag-states](M1/wp-M1-01b-tokenizer-tag-states.md) | 🟢 complete | agent-claude-cody | Tessera.Html |
-| [wp:M1-01c-tokenizer-rcdata-rawtext](M1/wp-M1-01c-tokenizer-rcdata-rawtext.md) | 🔵 available | — | Tessera.Html |
-| [wp:M1-01d-tokenizer-script](M1/wp-M1-01d-tokenizer-script.md) | ⚫ blocked on M1-01c | — | Tessera.Html |
+| [wp:M1-01c-tokenizer-rcdata-rawtext](M1/wp-M1-01c-tokenizer-rcdata-rawtext.md) | 🟢 complete | agent-claude-cody | Tessera.Html |
+| [wp:M1-01d-tokenizer-script](M1/wp-M1-01d-tokenizer-script.md) | 🔵 available | — | Tessera.Html |
 | [wp:M1-01e-tokenizer-comment-cdata](M1/wp-M1-01e-tokenizer-comment-cdata.md) | 🔵 available | — | Tessera.Html |
 | [wp:M1-01f-tokenizer-doctype](M1/wp-M1-01f-tokenizer-doctype.md) | 🔵 available | — | Tessera.Html |
 | [wp:M1-01g-tokenizer-entities](M1/wp-M1-01g-tokenizer-entities.md) | 🔵 available | — | Tessera.Html |
@@ -57,10 +57,10 @@ order: milestone, then numeric id, then sub-letter.
 
 For a new agent: claim any of these and start.
 
-- [wp:M1-01c-tokenizer-rcdata-rawtext](M1/wp-M1-01c-tokenizer-rcdata-rawtext.md) — RCDATA/RAWTEXT/PLAINTEXT cluster; unblocked by M1-01a complete.
+- [wp:M1-01d-tokenizer-script](M1/wp-M1-01d-tokenizer-script.md) — ScriptData cluster (15 sub-states incl. the double-escape gymnastics); unblocked by M1-01c. The `StepEndTagNameCommon` shared body in `HtmlTokenizer.RawStates.cs` is reusable.
 - [wp:M1-01e-tokenizer-comment-cdata](M1/wp-M1-01e-tokenizer-comment-cdata.md) — Comment/CDATA cluster; unblocked by M1-01a.
 - [wp:M1-01f-tokenizer-doctype](M1/wp-M1-01f-tokenizer-doctype.md) — Doctype cluster; unblocked by M1-01a.
-- [wp:M1-01g-tokenizer-entities](M1/wp-M1-01g-tokenizer-entities.md) — Character-reference resolution + entity-table generator; unblocked by M1-01b complete.
+- [wp:M1-01g-tokenizer-entities](M1/wp-M1-01g-tokenizer-entities.md) — Character-reference resolution + entity-table generator; unblocked by M1-01b.
 - [wp:M1-05-css-tokenizer-parser](M1/wp-M1-05-css-tokenizer-parser.md) — parallel to DOM, no overlap.
 - [wp:M2-01-url-parser](M2/wp-M2-01-url-parser.md) — self-contained, sets up all of M2.
 - [wp:M3-01-js-lexer](M3/wp-M3-01-js-lexer.md) — start the JS pole early; M3 is the longest milestone.
@@ -72,4 +72,7 @@ For a new agent: claim any of these and start.
 ## Recently completed
 
 - **wp:M1-01a-tokenizer-scaffold** — agent-claude-cody, 2026-05-11. PreprocessedStream + Data state + tokenizer scaffold, 15 tests.
-- **wp:M1-01b-tokenizer-tag-states** — agent-claude-cody, 2026-05-11. Full tag + attribute states (§13.2.5.6–40), 21 tests. Total HTML tokenizer suite now 36 tests, full repo 70/70.
+- **wp:M1-01b-tokenizer-tag-states** — agent-claude-cody, 2026-05-11. Full tag + attribute states (§13.2.5.6–40), 21 tests.
+- **wp:M1-01c-tokenizer-rcdata-rawtext** — agent-claude-cody, 2026-05-11. RCDATA/RAWTEXT/PLAINTEXT (9 states), 11 tests, public `SetState` seam for tree builder.
+
+Full repo: **87/87** tests green. WHATWG HTML tokenizer state coverage: **22 of 80** states implemented (Data + 12 tag/attribute + 9 RCDATA/RAWTEXT/PLAINTEXT). Remaining clusters: ScriptData (15), Comment/CDATA (15), Doctype (17), Character reference (9) — each is its own claimable sub-task.
