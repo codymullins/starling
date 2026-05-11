@@ -1,10 +1,10 @@
 ---
 id: "wp:M2-02-dns"
 milestone: "M2"
-status: "blocked"
-claimed_by: ""
-claimed_at: ""
-branch: ""
+status: "claimed"
+claimed_by: "agent-claude-cody"
+claimed_at: "2026-05-11T17:10:00Z"
+branch: "wp-M2-02-dns"
 depends_on:
   - "wp:M2-01-url-parser"
 blocks:
@@ -26,3 +26,6 @@ Resolves `example.com`, `localhost`. 10 unit tests + 1 integration test.
 
 ## Handoff log
 - 2026-05-11T15:20Z — created.
+- 2026-05-11T17:10Z — unblocked by wp:M2-01a completion (URL parser
+  state machine merged to main). Claimed by agent-claude-cody.
+  Branch `wp-M2-02-dns`. Claim posted as its own commit per AGENTS.md.
