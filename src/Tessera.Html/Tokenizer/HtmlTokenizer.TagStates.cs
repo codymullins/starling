@@ -81,9 +81,11 @@ public sealed partial class HtmlTokenizer
     private void EmitCurrentTag()
     {
         CommitPendingAttribute();
+        var name = _tagName.ToString();
         HtmlToken token = _tagIsEnd
-            ? new EndTagToken(_tagName.ToString(), [.. _tagAttrs], _tagSelfClosing)
-            : new StartTagToken(_tagName.ToString(), [.. _tagAttrs], _tagSelfClosing);
+            ? new EndTagToken(name, [.. _tagAttrs], _tagSelfClosing)
+            : new StartTagToken(name, [.. _tagAttrs], _tagSelfClosing);
+        if (!_tagIsEnd) _lastStartTagName = name;
         _emitted.Enqueue(token);
         _tagName.Clear();
         _tagAttrs.Clear();

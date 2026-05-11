@@ -2,10 +2,10 @@
 id: "wp:M1-01c-tokenizer-rcdata-rawtext"
 parent: "wp:M1-01-html-tokenizer"
 milestone: "M1"
-status: "available"
-claimed_by: ""
-claimed_at: ""
-branch: ""
+status: "claimed"
+claimed_by: "agent-claude-cody"
+claimed_at: "2026-05-11T15:40:00Z"
+branch: "wp-M1-01c-tokenizer-rcdata-rawtext"
 depends_on:
   - "wp:M1-01a-tokenizer-scaffold"
 blocks:

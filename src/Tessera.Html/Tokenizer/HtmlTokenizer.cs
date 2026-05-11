@@ -57,6 +57,14 @@ public sealed partial class HtmlTokenizer
     private readonly StringBuilder _attrName = new();
     private readonly StringBuilder _attrValue = new();
 
+    // Most-recently-emitted start tag name. Used by RCDATA/RAWTEXT/Script
+    // end-tag-name states to recognize an "appropriate" close (§13.2.5.11).
+    private string? _lastStartTagName;
+
+    // Temporary buffer for end-tag-matching attempts in RCDATA/RAWTEXT/Script
+    // and for named-character-reference candidate matching.
+    private readonly StringBuilder _tempBuffer = new();
+
     public HtmlTokenizer(IParseErrorSink? errorSink = null)
     {
         _errors = errorSink ?? IParseErrorSink.Null;
@@ -64,6 +72,15 @@ public sealed partial class HtmlTokenizer
 
     /// <summary>The current state. Exposed for tests; not for general use.</summary>
     internal TokenizerState State => _state;
+
+    /// <summary>
+    /// Tree-builder seam. After the tree builder inserts a <c>&lt;textarea&gt;</c>
+    /// or <c>&lt;title&gt;</c>, it must put the tokenizer into RCDATA; for
+    /// <c>&lt;style&gt;</c>/<c>&lt;xmp&gt;</c>/<c>&lt;iframe&gt;</c>/<c>&lt;noembed&gt;</c>,
+    /// RAWTEXT; for <c>&lt;script&gt;</c>, ScriptData (owned by M1-01d). The tokenizer
+    /// has no schema of its own, so the trigger lives with the consumer.
+    /// </summary>
+    public void SetState(TokenizerState state) => _state = state;
 
     /// <summary>Push more input.</summary>
     public void Feed(ReadOnlySpan<char> chars) => _stream.Feed(chars);
@@ -146,6 +163,19 @@ public sealed partial class HtmlTokenizer
                 DispatchTagState(state, c);
                 return;
 
+            // M1-01c: RCDATA / RAWTEXT / PLAINTEXT clusters.
+            case TokenizerState.Rcdata:
+            case TokenizerState.RcdataLessThanSign:
+            case TokenizerState.RcdataEndTagOpen:
+            case TokenizerState.RcdataEndTagName:
+            case TokenizerState.Rawtext:
+            case TokenizerState.RawtextLessThanSign:
+            case TokenizerState.RawtextEndTagOpen:
+            case TokenizerState.RawtextEndTagName:
+            case TokenizerState.Plaintext:
+                DispatchRawState(state, c);
+                return;
+
             default:
                 throw new NotImplementedException(
                     $"Tokenizer state '{state}' not implemented yet. " +
@@ -176,6 +206,20 @@ public sealed partial class HtmlTokenizer
             case TokenizerState.AfterAttributeValueQuoted:
             case TokenizerState.SelfClosingStartTag:
                 StepTagEof();
+                _eofProcessed = true;
+                return true;
+
+            // M1-01c EOF handling (delegated to RawStates partial).
+            case TokenizerState.Rcdata:
+            case TokenizerState.RcdataLessThanSign:
+            case TokenizerState.RcdataEndTagOpen:
+            case TokenizerState.RcdataEndTagName:
+            case TokenizerState.Rawtext:
+            case TokenizerState.RawtextLessThanSign:
+            case TokenizerState.RawtextEndTagOpen:
+            case TokenizerState.RawtextEndTagName:
+            case TokenizerState.Plaintext:
+                StepRawEof();
                 _eofProcessed = true;
                 return true;
 
