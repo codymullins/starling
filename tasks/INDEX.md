@@ -48,7 +48,8 @@ order: milestone, then numeric id, then sub-letter.
 | [wp:M2-01-url-parser](M2/wp-M2-01-url-parser.md) | 🟢 complete | agent-claude-cody | Tessera.Url |
 | [wp:M2-02-dns](M2/wp-M2-02-dns.md) | 🟢 complete | agent-claude-cody | Tessera.Net |
 | [wp:M2-03-tcp](M2/wp-M2-03-tcp.md) | 🟢 complete | agent-claude-cody | Tessera.Net |
-| [wp:M2-04-tls](M2/wp-M2-04-tls.md) | 🔵 available | — | Tessera.Net |
+| [wp:M2-04-tls](M2/wp-M2-04-tls.md) | 🟢 complete | agent-copilot-gpt-5.5 | Tessera.Net |
+| [wp:M2-05-http1](M2/wp-M2-05-http1.md) | 🔵 available | — | Tessera.Net |
 
 > Remaining M2 packages (TLS, HTTP/1, cookies, end-to-end) and all of M3–M11
 > exist in `browser-plan/14_AGENT_TASKS.md`. File tracking files here as you
@@ -58,7 +59,7 @@ order: milestone, then numeric id, then sub-letter.
 
 For a new agent: claim any of these and start.
 
-- [wp:M2-04-tls](M2/wp-M2-04-tls.md) — pure-managed TLS 1.3 transport over the M2 TCP seam; unblocks HTTP/1.1.
+- [wp:M2-05-http1](M2/wp-M2-05-http1.md) — HTTP/1.1 request/response over the TCP/TLS transports; unblocks cookies and end-to-end networking.
 
 ## In-progress
 
@@ -75,5 +76,6 @@ For a new agent: claim any of these and start.
 - **wp:M1-01e + wp:M1-01f** — agent-claude-cody, 2026-05-11. Comment/CDATA (15 states) + Doctype (17 states) bundled because they share the `MarkupDeclarationOpen` entry. 23 tests. `tessera tokenize` now emits proper `Doctype` and `Comment` tokens.
 - **wp:M1-01g-tokenizer-entities** — agent-claude-cody, 2026-05-11. Character-reference state cluster and initial named entity table.
 - **wp:M1-01h-tokenizer-html5lib** — agent-copilot-gpt-5.5, 2026-05-11. html5lib tokenizer suite wired at 7032/7032, full entity table generated from WHATWG data, `HtmlParser.Parse` flipped to tokenizer-backed parser.
+- **wp:M2-04-tls** — agent-copilot-gpt-5.5, 2026-05-11. Pure-managed BouncyCastle TLS 1.3 transport, SNI + ALPN, embedded CCADB roots, fail-closed certificate validation, and live handshakes to Cloudflare/Akamai.
 
-Full repo: **7167/7167** tests green. WHATWG HTML tokenizer state coverage: **80 of 80** states implemented and html5lib tokenizer fixtures are at **100%**.
+Full repo: **7403/7403** tests green. WHATWG HTML tokenizer state coverage: **80 of 80** states implemented and html5lib tokenizer fixtures are at **100%**.

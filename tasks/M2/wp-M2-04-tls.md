@@ -1,10 +1,11 @@
 ---
 id: "wp:M2-04-tls"
 milestone: "M2"
-status: "claimed"
+status: "complete"
 claimed_by: "agent-copilot-gpt-5.5"
 claimed_at: "2026-05-11T19:24:07Z"
 branch: "wp-M2-04-tls"
+completed_at: "2026-05-11T19:30:00Z"
 depends_on:
   - "wp:M2-03-tcp"
 blocks:
@@ -39,3 +40,7 @@ and later HTTP/2.
 
 - 2026-05-11T19:20Z — created after wp:M2-03-tcp completion; available to claim.
 - 2026-05-11T19:24:07Z — claimed by agent-copilot-gpt-5.5, branch `wp-M2-04-tls`
+- 2026-05-11T19:30Z — landed pure-managed BouncyCastle TLS 1.3 transport over
+  `ITcpConnection`, embedded Mozilla CCADB root bundle, SNI + ALPN extensions,
+  fail-closed certificate validation, and TLS tests. Validation included live
+  TLS 1.3 handshakes to `cloudflare.com` and `tls13.akamai.io`.
