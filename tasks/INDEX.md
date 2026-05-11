@@ -28,14 +28,14 @@ order: milestone, then numeric id, then sub-letter.
 | [wp:M1-01b-tokenizer-tag-states](M1/wp-M1-01b-tokenizer-tag-states.md) | 🟢 complete | agent-claude-cody | Tessera.Html |
 | [wp:M1-01c-tokenizer-rcdata-rawtext](M1/wp-M1-01c-tokenizer-rcdata-rawtext.md) | 🟢 complete | agent-claude-cody | Tessera.Html |
 | [wp:M1-01d-tokenizer-script](M1/wp-M1-01d-tokenizer-script.md) | 🔵 available | — | Tessera.Html |
-| [wp:M1-01e-tokenizer-comment-cdata](M1/wp-M1-01e-tokenizer-comment-cdata.md) | 🔵 available | — | Tessera.Html |
-| [wp:M1-01f-tokenizer-doctype](M1/wp-M1-01f-tokenizer-doctype.md) | 🔵 available | — | Tessera.Html |
+| [wp:M1-01e-tokenizer-comment-cdata](M1/wp-M1-01e-tokenizer-comment-cdata.md) | 🟢 complete | agent-claude-cody | Tessera.Html |
+| [wp:M1-01f-tokenizer-doctype](M1/wp-M1-01f-tokenizer-doctype.md) | 🟢 complete | agent-claude-cody | Tessera.Html |
 | [wp:M1-01g-tokenizer-entities](M1/wp-M1-01g-tokenizer-entities.md) | 🔵 available | — | Tessera.Html |
 | [wp:M1-01h-tokenizer-html5lib](M1/wp-M1-01h-tokenizer-html5lib.md) | ⚫ blocked on M1-01b…g | — | Tessera.Html |
 | [wp:M1-02-html-tree-builder](M1/wp-M1-02-html-tree-builder.md) | ⚫ blocked on M1-01h + M1-03 | — | Tessera.Html |
 | [wp:M1-03-dom-core](M1/wp-M1-03-dom-core.md) | 🟡 claimed | agent-copilot-gpt-5.5 | Tessera.Dom |
 | [wp:M1-04-dom-events](M1/wp-M1-04-dom-events.md) | ⚫ blocked on M1-03 | — | Tessera.Dom |
-| [wp:M1-05-css-tokenizer-parser](M1/wp-M1-05-css-tokenizer-parser.md) | 🟡 claimed | agent-copilot-gpt-5.5 | Tessera.Css |
+| [wp:M1-05-css-tokenizer-parser](M1/wp-M1-05-css-tokenizer-parser.md) | 🔵 available | — | Tessera.Css |
 | [wp:M1-06-css-selectors](M1/wp-M1-06-css-selectors.md) | ⚫ blocked on M1-05 + M1-03 | — | Tessera.Css |
 | [wp:M1-07-css-cascade](M1/wp-M1-07-css-cascade.md) | ⚫ blocked on M1-06 | — | Tessera.Css |
 | [wp:M1-08-layout-block-inline](M1/wp-M1-08-layout-block-inline.md) | ⚫ blocked on M1-07 | — | Tessera.Layout |
@@ -57,22 +57,21 @@ order: milestone, then numeric id, then sub-letter.
 
 For a new agent: claim any of these and start.
 
-- [wp:M1-01d-tokenizer-script](M1/wp-M1-01d-tokenizer-script.md) — ScriptData cluster (15 sub-states incl. the double-escape gymnastics); unblocked by M1-01c. The `StepEndTagNameCommon` shared body in `HtmlTokenizer.RawStates.cs` is reusable.
-- [wp:M1-01e-tokenizer-comment-cdata](M1/wp-M1-01e-tokenizer-comment-cdata.md) — Comment/CDATA cluster; unblocked by M1-01a.
-- [wp:M1-01f-tokenizer-doctype](M1/wp-M1-01f-tokenizer-doctype.md) — Doctype cluster; unblocked by M1-01a.
+- [wp:M1-01d-tokenizer-script](M1/wp-M1-01d-tokenizer-script.md) — ScriptData cluster (15 sub-states incl. the double-escape gymnastics). The `StepEndTagNameCommon` shared body in `HtmlTokenizer.RawStates.cs` is reusable.
 - [wp:M1-01g-tokenizer-entities](M1/wp-M1-01g-tokenizer-entities.md) — Character-reference resolution + entity-table generator; unblocked by M1-01b.
+- [wp:M1-05-css-tokenizer-parser](M1/wp-M1-05-css-tokenizer-parser.md) — parallel to DOM, no overlap.
 - [wp:M2-01-url-parser](M2/wp-M2-01-url-parser.md) — self-contained, sets up all of M2.
 - [wp:M3-01-js-lexer](M3/wp-M3-01-js-lexer.md) — start the JS pole early; M3 is the longest milestone.
 
 ## In-progress
 
 - **wp:M1-03-dom-core** — agent-copilot-gpt-5.5, branch `wp-M1-03-dom-core`.
-- **wp:M1-05-css-tokenizer-parser** — agent-copilot-gpt-5.5, branch `wp-M1-05-css-tokenizer-parser`, worktree `../tessera-wp-M1-05-css-tokenizer-parser`.
 
 ## Recently completed
 
 - **wp:M1-01a-tokenizer-scaffold** — agent-claude-cody, 2026-05-11. PreprocessedStream + Data state + tokenizer scaffold, 15 tests.
 - **wp:M1-01b-tokenizer-tag-states** — agent-claude-cody, 2026-05-11. Full tag + attribute states (§13.2.5.6–40), 21 tests.
 - **wp:M1-01c-tokenizer-rcdata-rawtext** — agent-claude-cody, 2026-05-11. RCDATA/RAWTEXT/PLAINTEXT (9 states), 11 tests, public `SetState` seam for tree builder.
+- **wp:M1-01e + wp:M1-01f** — agent-claude-cody, 2026-05-11. Comment/CDATA (15 states) + Doctype (17 states) bundled because they share the `MarkupDeclarationOpen` entry. 23 tests. `tessera tokenize` now emits proper `Doctype` and `Comment` tokens.
 
-Full repo: **87/87** tests green. WHATWG HTML tokenizer state coverage: **22 of 80** states implemented (Data + 12 tag/attribute + 9 RCDATA/RAWTEXT/PLAINTEXT). Remaining clusters: ScriptData (15), Comment/CDATA (15), Doctype (17), Character reference (9) — each is its own claimable sub-task.
+Full repo: **111/111** tests green. WHATWG HTML tokenizer state coverage: **56 of 80** states implemented. Remaining clusters: ScriptData (15) and Character references (9). After those land, `wp:M1-01h-tokenizer-html5lib` flips the public `HtmlParser` façade to the WHATWG pipeline.

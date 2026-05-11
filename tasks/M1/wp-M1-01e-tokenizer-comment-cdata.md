@@ -2,10 +2,11 @@
 id: "wp:M1-01e-tokenizer-comment-cdata"
 parent: "wp:M1-01-html-tokenizer"
 milestone: "M1"
-status: "claimed"
+status: "complete"
 claimed_by: "agent-claude-cody"
 claimed_at: "2026-05-11T15:55:00Z"
 branch: "wp-M1-01ef-markup-declarations"
+completed_at: "2026-05-11T16:00:00Z"
 depends_on:
   - "wp:M1-01a-tokenizer-scaffold"
 blocks:
