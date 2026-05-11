@@ -2,10 +2,10 @@
 id: "wp:M1-01b-tokenizer-tag-states"
 parent: "wp:M1-01-html-tokenizer"
 milestone: "M1"
-status: "available"
-claimed_by: ""
-claimed_at: ""
-branch: ""
+status: "claimed"
+claimed_by: "agent-claude-cody"
+claimed_at: "2026-05-11T15:32:56Z"
+branch: "wp-M1-01b-tokenizer-tag-states"
 depends_on:
   - "wp:M1-01a-tokenizer-scaffold"
 blocks:
@@ -39,3 +39,4 @@ Pick this up after a:
 
 ## Handoff log
 - 2026-05-11T15:20Z — created.
+- 2026-05-11T15:32:56Z — claimed by agent-claude-cody, branch `wp-M1-01b-tokenizer-tag-states`
