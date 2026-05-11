@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>tessera</AssemblyName>
+    <RootNamespace>Tessera.Headless</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Tessera.Engine\Tessera.Engine.csproj" />
+  </ItemGroup>
+</Project>

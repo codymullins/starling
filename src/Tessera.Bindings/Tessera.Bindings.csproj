@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Tessera.Common\Tessera.Common.csproj" />
+    <ProjectReference Include="..\Tessera.Dom\Tessera.Dom.csproj" />
+    <ProjectReference Include="..\Tessera.Js\Tessera.Js.csproj" />
+  </ItemGroup>
+</Project>

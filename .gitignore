@@ -1,0 +1,46 @@
+## .NET / Visual Studio defaults — distilled from `dotnet new gitignore`.
+
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Dd]ebug/
+[Rr]elease/
+[Bb]uild/
+[Ll]og/
+[Ll]ogs/
+
+# Build results
+*.user
+*.userosscache
+*.suo
+*.userprefs
+*.svclog
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.opendb
+*.VC.db
+*.VC.opendb
+
+# Restore output
+project.lock.json
+*.nuget.props
+*.nuget.targets
+
+# IDE
+.idea/
+.vs/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Tessera-specific
+testdata/wpt/results/
+*.png.actual
+bench/results/
+out.png
+TestResults/

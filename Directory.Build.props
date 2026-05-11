@@ -1,0 +1,42 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsAsErrors />
+    <AnalysisLevel>latest</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!--
+      IDE0005 (remove unused usings) only runs at build time when documentation
+      generation is on; without this, csc emits an "EnableGenerateDocumentationFile"
+      error. We don't ship XML doc files, so suppress CS1591 (missing XML doc).
+    -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <RootNamespace>$(MSBuildProjectName)</RootNamespace>
+    <AssemblyName>$(MSBuildProjectName)</AssemblyName>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!--
+      Strict-on-purpose, but a handful of CA / RCS rules are noisy on
+      engine-internal code (no localization, lots of reflection-instantiated
+      Avalonia types, interface stubs with unused params). Suppress them
+      globally and revisit at v1 hardening (M10).
+    -->
+    <NoWarn>$(NoWarn);CA1303;CA1304;CA1305;CA1812;CA1716;CA1031;CA1822;CA2007;CA1062</NoWarn>
+    <NoWarn>$(NoWarn);RCS1163;RCS1124;RCS1118;RCS1158;RCS1192;RCS1238</NoWarn>
+  </PropertyGroup>
+
+  <!--
+    Analyzers are shared across every project. PrivateAssets="all" prevents
+    them from being treated as transitive package references.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" PrivateAssets="all" />
+    <PackageReference Include="Roslynator.Analyzers" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

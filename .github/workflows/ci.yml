@@ -1,0 +1,63 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: build-and-test (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore (locked)
+        run: dotnet restore --locked-mode
+      - name: Build
+        run: dotnet build --no-restore -c Release
+      - name: Test (unit)
+        run: dotnet test --no-build -c Release --logger "trx;LogFileName=test.trx"
+      - name: Test (golden-image)
+        run: dotnet test --no-build -c Release --filter Category=GoldenImage
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.os }}
+          path: '**/*.trx'
+
+  lint:
+    name: lint (formatting + Rule 0)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: dotnet format
+        run: dotnet format --verify-no-changes
+      - name: Rule 0 — forbid PInvoke
+        # Engine projects are pure managed. The Shell may need platform interop later;
+        # if so, narrow this list rather than relax the rule.
+        run: |
+          set -e
+          ! grep -rn --include='*.cs' 'DllImport\|LibraryImport' \
+              src/Tessera.Common/   \
+              src/Tessera.Url/      \
+              src/Tessera.Net/      \
+              src/Tessera.Html/     \
+              src/Tessera.Dom/      \
+              src/Tessera.Css/      \
+              src/Tessera.Layout/   \
+              src/Tessera.Paint/    \
+              src/Tessera.Js/       \
+              src/Tessera.Bindings/ \
+              src/Tessera.Loop/     \
+              src/Tessera.Engine/

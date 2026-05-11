@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Tessera.Common\Tessera.Common.csproj" />
+    <ProjectReference Include="..\Tessera.Layout\Tessera.Layout.csproj" />
+    <ProjectReference Include="..\Tessera.Dom\Tessera.Dom.csproj" />
+    <ProjectReference Include="..\Tessera.Css\Tessera.Css.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="SixLabors.ImageSharp" />
+    <PackageReference Include="SixLabors.ImageSharp.Drawing" />
+    <PackageReference Include="SixLabors.Fonts" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Bundled fonts (M0 ships none; FontResolver falls back to system fonts).
+         When a font file is added here it will be copied next to the assembly. -->
+    <None Include="Resources\Fonts\**\*.*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

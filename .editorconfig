@@ -1,0 +1,33 @@
+root = true
+
+[*.cs]
+indent_style = space
+indent_size  = 4
+end_of_line  = lf
+charset      = utf-8
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Strong style — fail the build, don't lint forever
+dotnet_diagnostic.IDE0005.severity = error       # remove unused usings
+dotnet_diagnostic.CA1825.severity  = error       # avoid zero-length array allocations
+dotnet_diagnostic.CA1859.severity  = error       # concrete types where possible
+dotnet_diagnostic.CA1869.severity  = error       # cache JsonSerializerOptions
+dotnet_diagnostic.CA2007.severity  = none        # engine has its own sync context; no .ConfigureAwait noise
+dotnet_diagnostic.CS1591.severity  = none        # public docs not required everywhere
+
+# IDE0073 (file header) — silence for now; revisit at v1.
+dotnet_diagnostic.IDE0073.severity = none
+
+csharp_style_namespace_declarations = file_scoped:error
+csharp_style_prefer_primary_constructors = true:suggestion
+csharp_prefer_static_anonymous_function = true:warning
+
+[*.{xml,csproj,props,targets}]
+indent_size = 2
+
+[*.{yml,yaml}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
