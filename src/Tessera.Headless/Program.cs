@@ -1,6 +1,7 @@
 using SixLabors.ImageSharp;
 using Tessera.Common.Diagnostics;
 using Tessera.Engine;
+using Tessera.Html.Tokenizer;
 
 namespace Tessera.Headless;
 
@@ -27,11 +28,107 @@ internal static class Program
         return sub switch
         {
             "render" => Render(rest),
-            "tokenize" or "parse" or "style" or "layout" or "js"
+            "tokenize" => Tokenize(rest),
+            "parse" or "style" or "layout" or "js"
                 => StubSubcommand(sub),
             "-h" or "--help" or "help" => UsageOk(),
             _ => UnknownSubcommand(sub),
         };
+    }
+
+    /// <summary>
+    /// Dumps the WHATWG HTML tokenizer's output for the given file. Useful as
+    /// a debugging tool and as a demo of M1-01a–c work. Subsequent agents
+    /// (M1-01d–g) extend coverage as new states land.
+    /// </summary>
+    private static int Tokenize(string[] args)
+    {
+        if (args.Length == 0)
+        {
+            Console.Error.WriteLine("error: `tokenize` requires a file path.");
+            Console.Error.WriteLine("usage: tessera tokenize <file>");
+            return 1;
+        }
+
+        var path = args[0];
+        string text;
+        try
+        {
+            text = File.ReadAllText(path);
+        }
+        catch (IOException ex)
+        {
+            Console.Error.WriteLine($"error: cannot read '{path}': {ex.Message}");
+            return 1;
+        }
+
+        var sink = new ConsoleParseErrorSink();
+        var t = new HtmlTokenizer(sink);
+        t.Feed(text);
+        t.EndOfInput();
+
+        Console.WriteLine($"tokenizing {path} ({text.Length} bytes)");
+        Console.WriteLine(new string('-', 60));
+
+        var n = 0;
+        while (true)
+        {
+            HtmlToken? tok;
+            try { tok = t.ReadToken(); }
+            catch (NotImplementedException ex)
+            {
+                Console.WriteLine($"… tokenizer reached an unimplemented state: {ex.Message}");
+                Console.WriteLine($"   (this file exercises tokenizer states the open M1-01* sub-tasks own)");
+                break;
+            }
+            if (tok is null) break;
+            Console.WriteLine($"{++n,4}: {FormatToken(tok)}");
+            if (tok is EndOfFileToken) break;
+        }
+
+        if (sink.Count > 0)
+        {
+            Console.WriteLine(new string('-', 60));
+            Console.WriteLine($"{sink.Count} parse error(s) reported.");
+        }
+        return 0;
+    }
+
+    private static string FormatToken(HtmlToken tok) => tok switch
+    {
+        CharacterToken { CodePoint: var cp } => cp switch
+        {
+            '\n' => "Character('\\n')",
+            '\r' => "Character('\\r')",
+            '\t' => "Character('\\t')",
+            < 32 or 0x7F => $"Character(U+{cp:X4})",
+            _ => $"Character('{(char)cp}')",
+        },
+        StartTagToken st => $"StartTag <{st.Name}{FormatAttrs(st.Attributes)}{(st.SelfClosing ? "/" : "")}>",
+        EndTagToken et => $"EndTag </{et.Name}>",
+        CommentToken c => $"Comment(\"{c.Data.Replace("\\", "\\\\").Replace("\"", "\\\"")}\")",
+        DoctypeToken d => $"Doctype(name={d.Name ?? "(null)"})",
+        EndOfFileToken => "EOF",
+        _ => tok.ToString() ?? "(unknown)",
+    };
+
+    private static string FormatAttrs(IReadOnlyList<HtmlAttribute> attrs)
+    {
+        if (attrs.Count == 0) return "";
+        var parts = attrs.Select(a => $" {a.Name}=\"{a.Value}\"");
+        return string.Concat(parts);
+    }
+
+    /// <summary>Parse-error sink that prints to stderr. Useful in the CLI.</summary>
+    private sealed class ConsoleParseErrorSink : IParseErrorSink
+    {
+        public int Count { get; private set; }
+
+        public void Report(HtmlParseError code, int line, int column)
+        {
+            Count++;
+            Console.Error.WriteLine($"  parse error at {line}:{column} — {code}");
+        }
     }
 
     private static int Render(string[] args)
@@ -123,7 +220,7 @@ internal static class Program
             "\n" +
             "usage:\n" +
             "  tessera render <url-or-file> [-o out.png] [--viewport WxH] [--font-size N]\n" +
-            "  tessera tokenize <file>      (M1)\n" +
+            "  tessera tokenize <file>      (M1; partial — Data/tag/RCDATA/RAWTEXT/PLAINTEXT)\n" +
             "  tessera parse    <file>      (M1)\n" +
             "  tessera style    <file>      (M1)\n" +
             "  tessera layout   <file>      (M1)\n" +
