@@ -30,8 +30,8 @@ order: milestone, then numeric id, then sub-letter.
 | [wp:M1-01d-tokenizer-script](M1/wp-M1-01d-tokenizer-script.md) | 🟢 complete | agent-copilot-gpt-5.5 | Tessera.Html |
 | [wp:M1-01e-tokenizer-comment-cdata](M1/wp-M1-01e-tokenizer-comment-cdata.md) | 🟢 complete | agent-claude-cody | Tessera.Html |
 | [wp:M1-01f-tokenizer-doctype](M1/wp-M1-01f-tokenizer-doctype.md) | 🟢 complete | agent-claude-cody | Tessera.Html |
-| [wp:M1-01g-tokenizer-entities](M1/wp-M1-01g-tokenizer-entities.md) | 🟡 claimed | agent-copilot-gpt-5.5 | Tessera.Html |
-| [wp:M1-01h-tokenizer-html5lib](M1/wp-M1-01h-tokenizer-html5lib.md) | ⚫ blocked on M1-01b…g | — | Tessera.Html |
+| [wp:M1-01g-tokenizer-entities](M1/wp-M1-01g-tokenizer-entities.md) | 🟢 complete | agent-claude-cody | Tessera.Html |
+| [wp:M1-01h-tokenizer-html5lib](M1/wp-M1-01h-tokenizer-html5lib.md) | 🟡 claimed | agent-copilot-gpt-5.5 | Tessera.Html |
 | [wp:M1-02-html-tree-builder](M1/wp-M1-02-html-tree-builder.md) | ⚫ blocked on M1-01h + M1-03 | — | Tessera.Html |
 | [wp:M1-03-dom-core](M1/wp-M1-03-dom-core.md) | 🟡 claimed | agent-copilot-gpt-5.5 | Tessera.Dom |
 | [wp:M1-04-dom-events](M1/wp-M1-04-dom-events.md) | ⚫ blocked on M1-03 | — | Tessera.Dom |
@@ -64,7 +64,7 @@ For a new agent: claim any of these and start.
 ## In-progress
 
 - **wp:M1-03-dom-core** — agent-copilot-gpt-5.5, branch `wp-M1-03-dom-core`.
-- **wp:M1-01g-tokenizer-entities** — agent-copilot-gpt-5.5, branch `wp-M1-01g-tokenizer-entities`.
+- **wp:M1-01h-tokenizer-html5lib** — agent-copilot-gpt-5.5, branch `wp-M1-01h-tokenizer-html5lib`.
 - **wp:M1-05-css-tokenizer-parser** — agent-copilot-gpt-5.5, branch `wp-M1-05-css-tokenizer-parser`, worktree `../tessera-wp-M1-05-css-tokenizer-parser`.
 
 ## Recently completed

@@ -2,10 +2,10 @@
 id: "wp:M1-01h-tokenizer-html5lib"
 parent: "wp:M1-01-html-tokenizer"
 milestone: "M1"
-status: "available"
-claimed_by: ""
-claimed_at: ""
-branch: ""
+status: "claimed"
+claimed_by: "agent-copilot-gpt-5.5"
+claimed_at: "2026-05-11T16:27:14Z"
+branch: "wp-M1-01h-tokenizer-html5lib"
 depends_on:
   - "wp:M1-01b-tokenizer-tag-states"
   - "wp:M1-01c-tokenizer-rcdata-rawtext"
@@ -35,3 +35,4 @@ data-driven test. Drive every red case to green. Flip the public
 
 ## Handoff log
 - 2026-05-11T15:20Z — created.
+- 2026-05-11T16:27Z — claimed on main by agent-copilot-gpt-5.5 after M1-01g landed.
