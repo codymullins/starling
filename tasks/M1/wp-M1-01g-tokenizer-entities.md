@@ -2,10 +2,10 @@
 id: "wp:M1-01g-tokenizer-entities"
 parent: "wp:M1-01-html-tokenizer"
 milestone: "M1"
-status: "available"
-claimed_by: ""
-claimed_at: ""
-branch: ""
+status: "claimed"
+claimed_by: "agent-copilot-gpt-5.5"
+claimed_at: "2026-05-11T16:09:34Z"
+branch: "wp-M1-01g-tokenizer-entities"
 depends_on:
   - "wp:M1-01b-tokenizer-tag-states"
 blocks:
@@ -32,3 +32,4 @@ Build-time entity-table generator: `tools/gen-entities/Program.cs` reads
 
 ## Handoff log
 - 2026-05-11T15:20Z — created.
+- 2026-05-11T16:09Z — claimed on main by agent-copilot-gpt-5.5 before creating the implementation worktree.
