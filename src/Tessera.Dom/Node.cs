@@ -1,10 +1,16 @@
+using Tessera.Dom.Events;
+
 namespace Tessera.Dom;
 
 /// <summary>
 /// Base DOM node. v1 keeps children as a simple doubly-linked list inside the
 /// parent (O(1) Append/Remove, O(n) by-index lookup). See 05_DOM.md §Design choices.
 /// </summary>
-public abstract class Node
+/// <remarks>
+/// Inherits <see cref="EventTarget"/> so every node can have listeners attached
+/// per [DOM §4.4](https://dom.spec.whatwg.org/#interface-node).
+/// </remarks>
+public abstract class Node : EventTarget
 {
     public abstract NodeKind Kind { get; }
 

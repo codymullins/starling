@@ -14,5 +14,9 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Tessera.Paint\Tessera.Paint.csproj" />
+    <ProjectReference Include="..\..\src\Tessera.Html\Tessera.Html.csproj" />
+    <ProjectReference Include="..\..\src\Tessera.Layout\Tessera.Layout.csproj" />
+    <ProjectReference Include="..\..\src\Tessera.Css\Tessera.Css.csproj" />
+    <ProjectReference Include="..\..\src\Tessera.Dom\Tessera.Dom.csproj" />
   </ItemGroup>
 </Project>

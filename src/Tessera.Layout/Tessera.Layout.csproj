@@ -3,6 +3,12 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Paint and the test harness reach into layout-internal helpers
+         (BlockLayout.ToPx, etc.) to convert resolved style values to px. -->
+    <InternalsVisibleTo Include="Tessera.Paint" />
+    <InternalsVisibleTo Include="Tessera.Layout.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Tessera.Common\Tessera.Common.csproj" />
     <ProjectReference Include="..\Tessera.Css\Tessera.Css.csproj" />
     <ProjectReference Include="..\Tessera.Dom\Tessera.Dom.csproj" />

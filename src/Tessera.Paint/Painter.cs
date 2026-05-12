@@ -2,16 +2,21 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Drawing.Processing;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
+using Tessera.Css.Cascade;
+using Tessera.Dom;
+using Tessera.Layout.Text;
+using Tessera.Paint.Backend;
+using Tessera.Paint.DisplayList;
+using LayoutEngineImpl = Tessera.Layout.LayoutEngine;
+using LayoutSize = Tessera.Layout.Size;
+using PaintList = Tessera.Paint.DisplayList.DisplayList;
 
 namespace Tessera.Paint;
 
 /// <summary>
-/// M0 paint backend. One responsibility: take a string and a viewport size,
-/// produce an <see cref="Image{TPixel}"/> with the text drawn near the top-left.
-///
-/// The full display-list pipeline per 08_FONTS_PAINT.md (DisplayList builder,
-/// stacking-context order, brushes, clips, transforms) is M1+ work. This class
-/// is the M0 entry point and disappears once Painter consumes a LayoutTree.
+/// Paint façade. Pre-M1 callers used the <see cref="RenderText"/> path; the
+/// full pipeline (parse → style → layout → display list → raster) lives on
+/// <see cref="RenderDocument"/>.
 /// </summary>
 public sealed class Painter
 {
@@ -22,12 +27,32 @@ public sealed class Painter
         _fonts = fonts ?? FontResolver.Default;
     }
 
+    /// <summary>
+    /// Run the full M1 pipeline: build a box tree, lay it out, build a paint
+    /// display list, replay it onto an ImageSharp surface. The caller supplies
+    /// a parsed <see cref="Document"/> and the viewport size in CSS px.
+    /// </summary>
+    public Image<Rgba32> RenderDocument(Document document, LayoutSize viewport)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+
+        var style = new StyleEngine();
+        var layoutEngine = new LayoutEngineImpl(style, DefaultTextMeasurer.Instance);
+        var root = layoutEngine.LayoutDocument(document, viewport);
+
+        PaintList displayList = new DisplayListBuilder().Build(root);
+        var backend = new ImageSharpBackend(_fonts);
+        return backend.Render(displayList, viewport);
+    }
+
+    /// <summary>Legacy M0 path: draw a fixed string onto a viewport-sized canvas.</summary>
     public Image<Rgba32> RenderHelloWorld(string text, Size viewport)
         => RenderText(text, viewport, fontSize: 32f);
 
     /// <summary>
     /// Renders <paramref name="text"/> in a sans-serif font near the top-left of
-    /// a viewport-sized white canvas. Splits on '\n'; no word-wrap (that's M1).
+    /// a viewport-sized white canvas. Splits on '\n'; no word-wrap. Kept for
+    /// the M0 headless smoke path; new callers should prefer <see cref="RenderDocument"/>.
     /// </summary>
     public Image<Rgba32> RenderText(string text, Size viewport, float fontSize)
     {
