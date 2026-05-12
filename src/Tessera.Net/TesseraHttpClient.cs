@@ -1,6 +1,7 @@
 using Tessera.Common;
 using Tessera.Net.Dns;
 using Tessera.Net.Http;
+using Tessera.Net.Http.Cookies;
 using Tessera.Net.Http.H1;
 using Tessera.Net.Tcp;
 using Tessera.Net.Tls;
@@ -112,6 +113,15 @@ public sealed class TesseraHttpClient : IDisposable
                 transportStream = new Tls.TcpConnectionStream(tcp);
             }
 
+            // Inject the cookie jar's view of the world into the request, but
+            // only when the caller hasn't already supplied a Cookie header.
+            if (_options.CookieJar is { } jar && !request.Headers.Contains("Cookie"))
+            {
+                var cookieHeader = jar.BuildCookieHeader(url);
+                if (cookieHeader.Length > 0)
+                    request.Headers.Add("Cookie", cookieHeader);
+            }
+
             await _options.RequestWriter.WriteAsync(request, transportStream, requestCts.Token)
                 .ConfigureAwait(false);
 
@@ -119,6 +129,14 @@ public sealed class TesseraHttpClient : IDisposable
                 .ParseAsync(transportStream, requestCts.Token).ConfigureAwait(false);
             if (parseResult.IsErr)
                 return Result<HttpResponse, NetworkError>.Err(MapParseError(parseResult.Error));
+
+            // Persist any Set-Cookie headers from the response.
+            if (_options.CookieJar is { } jar2)
+            {
+                var setCookies = parseResult.Value.Headers.GetAll("Set-Cookie");
+                if (setCookies.Count > 0)
+                    jar2.StoreFromHeaders(url, setCookies);
+            }
 
             return Result<HttpResponse, NetworkError>.Ok(parseResult.Value);
         }
@@ -167,6 +185,7 @@ public sealed class TesseraHttpClientOptions
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(30);
     public IReadOnlyList<string> AlpnProtocols { get; init; } = ["http/1.1"];
     public DnsResolver? DnsResolver { get; init; }
+    public CookieJar? CookieJar { get; init; }
     public H1RequestWriter RequestWriter { get; init; } = new();
     public H1ResponseParser ResponseParser { get; init; } = new();
 }

@@ -9,5 +9,6 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Resources\Roots\ccadb.pem" />
+    <EmbeddedResource Include="Resources\Psl\effective_tld_names.dat" />
   </ItemGroup>
 </Project>
