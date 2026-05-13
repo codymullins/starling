@@ -37,7 +37,9 @@ Subcommands beyond `render` and `tokenize` are still incremental and may return 
 ```
 tessera/
 ├── browser-plan/          # The entire design spec. Read 00_INDEX.md first.
-├── src/                   # 12 engine modules + Headless CLI + MAUI Gui (out of sln; see src/Tessera.Gui/README.md)
+├── src/                   # 12 engine modules + Headless CLI + MAUI Gui (Mac Catalyst)
+├── Tessera.AppHost/       # Aspire AppHost orchestrating Gui + Headless
+├── Tessera.ServiceDefaults/ # Shared OTel + health-check bootstrap for future services
 ├── tests/                 # One xUnit project per src/ module + an E2E project
 ├── bench/                 # BenchmarkDotNet harness
 ├── testdata/              # Fixtures (HTML, golden PNGs, WPT subset eventually)

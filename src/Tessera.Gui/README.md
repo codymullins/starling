@@ -4,16 +4,11 @@ A small .NET MAUI desktop demo that wraps the Tessera engine in an address-bar
 + viewport shell. Mac Catalyst only at v1; Windows / Android / iOS are
 deferred until the engine itself matures further.
 
-The GUI is intentionally **kept out of `Tessera.sln`** — `dotnet build` and
-`dotnet test` against the solution work without the MAUI workload installed.
-Build the GUI explicitly:
+The project is part of `Tessera.sln`, which means `dotnet build` /
+`dotnet test` at the repo root will need the MAUI Mac Catalyst workload
+installed (`dotnet workload install maui-maccatalyst`).
 
-```bash
-dotnet build src/Tessera.Gui/Tessera.Gui.csproj -f net10.0-maccatalyst
-```
-
-If multiple Xcode versions are installed, pin `DEVELOPER_DIR` to the one
-that matches the MAUI workload:
+## Run directly
 
 ```bash
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
@@ -25,6 +20,25 @@ For a compile-only smoke test without packaging:
 ```bash
 dotnet build src/Tessera.Gui/Tessera.Gui.csproj -f net10.0-maccatalyst -t:CoreCompile
 ```
+
+## Run via Aspire
+
+Tessera has an Aspire AppHost (`Tessera.AppHost/`) that orchestrates the
+GUI plus the headless CLI under a single dashboard. Logs, stdout, and
+process state from each resource land in the Aspire dashboard at
+`http://localhost:18888` (port may vary):
+
+```bash
+dotnet run --project Tessera.AppHost
+```
+
+`Tessera.ServiceDefaults/` ships the standard Aspire bootstrap
+(OpenTelemetry traces + metrics, resilience, health checks). Today no
+project consumes it — the MAUI app and the CLI both predate any
+HostBuilder-shaped startup — so the dashboard sees process-level logs but
+no in-process spans. When an ASP.NET-shaped service lands (e.g. a
+snapshot HTTP server for offline rendering tests), wiring it via
+`builder.AddServiceDefaults()` is a one-line change.
 
 ## What's in the window
 

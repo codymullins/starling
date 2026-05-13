@@ -65,7 +65,9 @@ tessera/
 │   ├── INDEX.md               ← current status of all packages
 │   ├── lib/claim.sh           ← atomic claim/release helper
 │   └── M<n>/wp-*.md           ← one file per work package
-├── src/                       ← engine + Headless CLI + MAUI Gui (out of sln)
+├── src/                       ← engine + Headless CLI + MAUI Gui (Mac Catalyst)
+├── Tessera.AppHost/           ← Aspire AppHost (orchestrates Gui + Headless)
+├── Tessera.ServiceDefaults/   ← Aspire OTel + health-check shared bootstrap
 ├── tests/                     ← one xUnit project per src/ module + E2E
 ├── bench/Tessera.Bench/       ← BenchmarkDotNet
 └── testdata/                  ← fixtures + golden PNGs + WPT subsets
@@ -89,10 +91,12 @@ only — CI runs without the flag.
 Engine modules under `src/Tessera.{Common,Url,Net,Html,Dom,Css,Layout,Paint,Js,Bindings,Loop,Engine}/`
 are **pure managed**. No `[DllImport]`, no `[LibraryImport]`, no native
 dependencies beyond what the .NET BCL ships. CI greps for this; lint job
-fails if you regress it. The GUI shell (`src/Tessera.Gui`, .NET MAUI) is
-exempt — it links against the platform's UIKit/Cocoa under Mac Catalyst,
-which is fine because the GUI is intentionally kept out of `Tessera.sln`
-and the engine never imports from it.
+fails if you regress it. The GUI shell (`src/Tessera.Gui`, .NET MAUI) and
+the Aspire AppHost/ServiceDefaults projects are exempt — they link
+against UIKit/Cocoa (Catalyst) and ASP.NET host plumbing respectively,
+which is fine because the engine never imports from any of them. The
+engine projects must continue to build and test cleanly without those
+heavier platforms loaded.
 
 ## Decision hierarchy when something's ambiguous
 
