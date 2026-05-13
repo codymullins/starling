@@ -1,0 +1,64 @@
+{
+  "root_url": "https://nginx.org/",
+  "host": "nginx.org",
+  "captured_at": "2026-05-13T14:45:21Z",
+  "vendor_tool": "tools/snapshot-vendor/vendor-snapshot.sh",
+  "resources": [
+    {
+      "url": "https://nginx.org/",
+      "path": "/index.html",
+      "content_type": "text/html; charset=utf-8",
+      "timestamp": "Wed, 13 May 2026 14:45:21 GMT",
+      "sha256": "49be88865cad2d646f70e520beb542d2977ad1531e258040065c0d53b8cd89e4",
+      "bytes": 6448
+    },
+    {
+      "url": "https://nginx.org/css/style_en.css",
+      "path": "/css/style_en.css",
+      "content_type": "text/css",
+      "timestamp": "Wed, 13 May 2026 14:45:21 GMT",
+      "sha256": "6b1b52fa246bf25a9f24df31ff175a96c4d0eeb804614944553c0cdfe7323d0f",
+      "bytes": 7928
+    },
+    {
+      "url": "https://nginx.org/img/gateway_fabric_icon.png",
+      "path": "/img/gateway_fabric_icon.png",
+      "content_type": "image/png",
+      "timestamp": "Wed, 13 May 2026 14:45:21 GMT",
+      "sha256": "85660cfcc5d5d7f26affde4d46896d99d715af1457d520fd9879f572be196c3d",
+      "bytes": 5291
+    },
+    {
+      "url": "https://nginx.org/img/ingress_icon.png",
+      "path": "/img/ingress_icon.png",
+      "content_type": "image/png",
+      "timestamp": "Wed, 13 May 2026 14:45:21 GMT",
+      "sha256": "d0d5be4424f6c88316021c5dd428b30bd2d905a85728a2cd3081c938f376274c",
+      "bytes": 17695
+    },
+    {
+      "url": "https://nginx.org/img/nginx_logo_dark.svg",
+      "path": "/img/nginx_logo_dark.svg",
+      "content_type": "image/svg+xml",
+      "timestamp": "Wed, 13 May 2026 14:45:22 GMT",
+      "sha256": "e70d6b3a9463854c2cae793a2db84ebda97e604800dec4c3d6765ae864cf5407",
+      "bytes": 10634
+    },
+    {
+      "url": "https://nginx.org/img/nginx_logo.svg",
+      "path": "/img/nginx_logo.svg",
+      "content_type": "image/svg+xml",
+      "timestamp": "Wed, 13 May 2026 14:45:22 GMT",
+      "sha256": "9bd543826050ee506dd234f03fbbe972444bb20d9d4854ba7b0e1cf71ef28f07",
+      "bytes": 10689
+    },
+    {
+      "url": "https://nginx.org/img/njs_icon.png",
+      "path": "/img/njs_icon.png",
+      "content_type": "image/png",
+      "timestamp": "Wed, 13 May 2026 14:45:22 GMT",
+      "sha256": "212584a36232767391c14be972c22fd140687fe0bbdc26e6da9ba5ccd51579f9",
+      "bytes": 3228
+    }
+  ]
+}
