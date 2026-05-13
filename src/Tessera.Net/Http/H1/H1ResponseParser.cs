@@ -226,5 +226,60 @@ public sealed class H1ResponseParser
         return false;
     }
 
+    /// <summary>
+    /// Decide whether <paramref name="response"/> indicated the server is
+    /// willing to keep the underlying transport open for another request on
+    /// the same origin. Used by the connection pool to gate
+    /// <c>ReleaseAsync</c> on a clean response.
+    /// </summary>
+    /// <remarks>
+    /// RFC 9112 §9.3: HTTP/1.1 connections are keep-alive by default unless
+    /// a <c>Connection: close</c> option is present. HTTP/1.0 connections are
+    /// close-by-default unless the legacy <c>Connection: keep-alive</c>
+    /// signal is present (RFC 7230 §A.1.2). A response framed by
+    /// connection-close (no Content-Length / Transfer-Encoding on a non-empty
+    /// body) cannot be pooled even if the headers say keep-alive — the
+    /// caller is responsible for checking framing.
+    /// </remarks>
+    public static bool IndicatesKeepAlive(HttpResponse response)
+    {
+        ArgumentNullException.ThrowIfNull(response);
+
+        var connection = response.Headers.GetFirst("Connection");
+        var isHttp11 = string.Equals(response.HttpVersion, "HTTP/1.1", StringComparison.Ordinal);
+        var isHttp10 = string.Equals(response.HttpVersion, "HTTP/1.0", StringComparison.Ordinal);
+
+        if (connection is not null)
+        {
+            if (ContainsToken(connection, "close")) return false;
+            if (ContainsToken(connection, "keep-alive")) return true;
+        }
+
+        // No explicit signal: HTTP/1.1 default keep-alive; HTTP/1.0 default close.
+        if (isHttp11) return true;
+        if (isHttp10) return false;
+        // Anything unrecognised (e.g. a malformed version we still parsed) —
+        // be conservative and close.
+        return false;
+    }
+
+    /// <summary>
+    /// True when the response has a well-defined body length (Content-Length
+    /// or chunked Transfer-Encoding, or a status that mandates an empty body).
+    /// Connection-close framing (no length, non-empty body) is not poolable
+    /// because the parser had to read to EOF to know where the body ended.
+    /// </summary>
+    public static bool HasDefiniteBodyFraming(HttpResponse response)
+    {
+        ArgumentNullException.ThrowIfNull(response);
+
+        if (response.StatusCode is 204 or 304) return true;
+
+        var te = response.Headers.GetFirst("Transfer-Encoding");
+        if (te is not null && ContainsToken(te, "chunked")) return true;
+
+        return response.Headers.GetFirst("Content-Length") is not null;
+    }
+
     private readonly record struct Headline(string HttpVersion, int StatusCode, string ReasonPhrase);
 }

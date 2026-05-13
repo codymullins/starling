@@ -12,8 +12,9 @@ namespace Tessera.Net;
 /// <summary>
 /// Top-level HTTP client. Resolves a URL to a TCP endpoint, opens a transport
 /// (TLS for https, plain for http), writes one HTTP/1.1 request, parses the
-/// response, and returns it. Connection pooling, HTTP/2, redirects, and
-/// cookies are all explicitly out of scope at this milestone.
+/// response, and returns it. Sequential requests to the same origin reuse a
+/// pooled TCP+TLS transport when both sides advertise keep-alive
+/// (wp:M2-07c — HTTP/1.1 connection pool).
 /// </summary>
 /// <remarks>
 /// For a single GET against <c>https://example.com</c> the data flow is:
@@ -24,13 +25,18 @@ namespace Tessera.Net;
 ///   <item><see cref="H1RequestWriter"/> → wire bytes onto the stream</item>
 ///   <item><see cref="H1ResponseParser"/> → fully buffered <see cref="HttpResponse"/></item>
 /// </list>
-/// Each transport is opened fresh and closed when the call returns.
+/// A <see cref="ConnectionPool"/> sits in front of the dialer: every send
+/// asks the pool first, and clean responses with a definite body length and
+/// keep-alive headers return the transport to the pool. HTTP/2 multiplexing
+/// is M6 work; pooling here only covers HTTP/1.1.
 /// </remarks>
 public sealed class TesseraHttpClient : IDisposable
 {
     private readonly TesseraHttpClientOptions _options;
     private readonly DnsResolver _dns;
     private readonly TcpDialer _dialer;
+    private readonly ConnectionPool _pool;
+    private bool _disposed;
 
     public TesseraHttpClient() : this(new TesseraHttpClientOptions()) { }
 
@@ -39,7 +45,12 @@ public sealed class TesseraHttpClient : IDisposable
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _dns = options.DnsResolver ?? new DnsResolver(new UdpDnsTransport());
         _dialer = new TcpDialer(_dns) { ConnectTimeout = options.ConnectTimeout };
+        _pool = options.ConnectionPool ?? new ConnectionPool();
     }
+
+    /// <summary>Idle connection pool. Exposed mainly for tests asserting on
+    /// reuse / capacity behaviour.</summary>
+    public ConnectionPool ConnectionPool => _pool;
 
     public Task<Result<HttpResponse, NetworkError>> GetAsync(string url, CancellationToken ct = default)
     {
@@ -70,14 +81,62 @@ public sealed class TesseraHttpClient : IDisposable
         if (port is < 1 or > 65535)
             return Result<HttpResponse, NetworkError>.Err(NetworkError.BadUrl);
 
+        var origin = OriginKey.Create(url.IsHttps ? "https" : "http", url.Host, port);
+
         using var requestCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         requestCts.CancelAfter(_options.RequestTimeout);
 
+        try
+        {
+            // 1. Try the pool first. A pooled transport may turn out to have
+            //    been closed by the peer between the prior response and this
+            //    request; if our send raises an IO error — or reads back zero
+            //    bytes when we were expecting a status line — we fall through
+            //    to a fresh dial.
+            var pooled = _pool.TryAcquire(origin);
+            if (pooled is not null)
+            {
+                var pooledOutcome = await TrySendOnTransportAsync(
+                    pooled, request, url, fromPool: true, requestCts.Token).ConfigureAwait(false);
+                if (pooledOutcome.UsedTransport)
+                    return pooledOutcome.Result;
+                // Otherwise the connection was unusable (closed/IO) — dispose
+                // and retry with a fresh dial.
+                await SafeDisposeAsync(pooled).ConfigureAwait(false);
+            }
+
+            // 2. Dial + (optionally) TLS-handshake a new transport.
+            var dialed = await DialAsync(url, origin, requestCts.Token).ConfigureAwait(false);
+            if (dialed.IsErr)
+                return Result<HttpResponse, NetworkError>.Err(dialed.Error);
+
+            var fresh = dialed.Value;
+            var freshOutcome = await TrySendOnTransportAsync(
+                fresh, request, url, fromPool: false, requestCts.Token).ConfigureAwait(false);
+            if (!freshOutcome.UsedTransport)
+            {
+                // A brand-new transport that refused to talk: surface a
+                // transport error and discard. We don't loop again to avoid
+                // hammering.
+                await SafeDisposeAsync(fresh).ConfigureAwait(false);
+                return Result<HttpResponse, NetworkError>.Err(NetworkError.TransportFailure);
+            }
+            return freshOutcome.Result;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return Result<HttpResponse, NetworkError>.Err(NetworkError.RequestTimeout);
+        }
+    }
+
+    private async Task<Result<IHttpTransport, NetworkError>> DialAsync(
+        TesseraUrl url, OriginKey origin, CancellationToken ct)
+    {
         var dial = await _dialer.DialAsync(
-            new TcpEndpoint(url.Host, port), requestCts.Token).ConfigureAwait(false);
+            new TcpEndpoint(origin.Host, origin.Port), ct).ConfigureAwait(false);
         if (dial.IsErr)
         {
-            return Result<HttpResponse, NetworkError>.Err(dial.Error switch
+            return Result<IHttpTransport, NetworkError>.Err(dial.Error switch
             {
                 TcpError.DnsFailed => NetworkError.DnsFailure,
                 TcpError.Timeout => NetworkError.ConnectTimeout,
@@ -86,82 +145,137 @@ public sealed class TesseraHttpClient : IDisposable
         }
 
         var tcp = dial.Value;
-        Stream transportStream;
-        BcTlsTransport? tls = null;
+        if (url.IsHttps)
+        {
+            var tlsResult = await BcTlsTransport.ConnectAsync(
+                tcp,
+                new TlsClientOptions(origin.Host, _options.AlpnProtocols),
+                ct).ConfigureAwait(false);
+            if (tlsResult.IsErr)
+            {
+                await tcp.DisposeAsync().ConfigureAwait(false);
+                return Result<IHttpTransport, NetworkError>.Err(tlsResult.Error switch
+                {
+                    TlsError.CertificateRejected => NetworkError.TlsCertificateRejected,
+                    _ => NetworkError.TlsHandshakeFailed,
+                });
+            }
+            return Result<IHttpTransport, NetworkError>.Ok(
+                PooledHttpTransport.ForTls(origin, tcp, tlsResult.Value));
+        }
 
+        return Result<IHttpTransport, NetworkError>.Ok(
+            PooledHttpTransport.ForPlainHttp(origin, tcp));
+    }
+
+    /// <summary>
+    /// Write the request, parse the response, and decide whether to return
+    /// the transport to the pool or close it. The returned
+    /// <see cref="TransportSendOutcome.UsedTransport"/> flag is false when the
+    /// caller should retry on a different transport (e.g. the pooled socket
+    /// was closed between requests); the transport is still owned by the
+    /// caller in that case and must be disposed.
+    /// </summary>
+    private async Task<TransportSendOutcome> TrySendOnTransportAsync(
+        IHttpTransport transport,
+        HttpRequest request,
+        TesseraUrl url,
+        bool fromPool,
+        CancellationToken ct)
+    {
         try
         {
-            if (url.IsHttps)
-            {
-                var tlsResult = await BcTlsTransport.ConnectAsync(
-                    tcp,
-                    new TlsClientOptions(url.Host, _options.AlpnProtocols),
-                    requestCts.Token).ConfigureAwait(false);
-                if (tlsResult.IsErr)
-                {
-                    return Result<HttpResponse, NetworkError>.Err(tlsResult.Error switch
-                    {
-                        TlsError.CertificateRejected => NetworkError.TlsCertificateRejected,
-                        _ => NetworkError.TlsHandshakeFailed,
-                    });
-                }
-                tls = tlsResult.Value;
-                transportStream = tls.Stream;
-            }
-            else
-            {
-                transportStream = new Tls.TcpConnectionStream(tcp);
-            }
-
             // Inject the cookie jar's view of the world into the request, but
             // only when the caller hasn't already supplied a Cookie header.
             if (_options.CookieJar is { } jar && !request.Headers.Contains("Cookie"))
             {
                 var cookieHeader = jar.BuildCookieHeader(url);
                 if (cookieHeader.Length > 0)
-                    request.Headers.Add("Cookie", cookieHeader);
+                    request.Headers.Set("Cookie", cookieHeader);
             }
 
-            await _options.RequestWriter.WriteAsync(request, transportStream, requestCts.Token)
+            await _options.RequestWriter
+                .WriteAsync(request, transport.Stream, ct)
                 .ConfigureAwait(false);
 
             var parseResult = await _options.ResponseParser
-                .ParseAsync(transportStream, requestCts.Token).ConfigureAwait(false);
+                .ParseAsync(transport.Stream, ct).ConfigureAwait(false);
             if (parseResult.IsErr)
-                return Result<HttpResponse, NetworkError>.Err(MapParseError(parseResult.Error));
+            {
+                // A pooled connection that the peer closed since the prior
+                // response will write OK (TCP buffers locally) but read 0
+                // bytes — the parser surfaces that as UnexpectedEof. Retry
+                // on a fresh dial in that case; for everything else (or on
+                // a fresh transport) surface the protocol failure.
+                if (fromPool && parseResult.Error == HttpError.UnexpectedEof)
+                    return TransportSendOutcome.Unused();
+
+                await SafeDisposeAsync(transport).ConfigureAwait(false);
+                return TransportSendOutcome.Used(
+                    Result<HttpResponse, NetworkError>.Err(MapParseError(parseResult.Error)));
+            }
+
+            var response = parseResult.Value;
 
             // Persist any Set-Cookie headers from the response.
             if (_options.CookieJar is { } jar2)
             {
-                var setCookies = parseResult.Value.Headers.GetAll("Set-Cookie");
+                var setCookies = response.Headers.GetAll("Set-Cookie");
                 if (setCookies.Count > 0)
                     jar2.StoreFromHeaders(url, setCookies);
             }
 
-            return Result<HttpResponse, NetworkError>.Ok(parseResult.Value);
+            // Decide pool fate. We can only safely reuse the transport if:
+            //   - both sides agreed to keep-alive (RFC 9112 §9.3), AND
+            //   - the body had a definite framing so we know we drained
+            //     exactly to the end (no over-read into the next response).
+            if (H1ResponseParser.IndicatesKeepAlive(response)
+                && H1ResponseParser.HasDefiniteBodyFraming(response)
+                && transport.IsOpen
+                && !_disposed)
+            {
+                await _pool.ReleaseAsync(transport).ConfigureAwait(false);
+            }
+            else
+            {
+                await SafeDisposeAsync(transport).ConfigureAwait(false);
+            }
+
+            return TransportSendOutcome.Used(Result<HttpResponse, NetworkError>.Ok(response));
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
-            return Result<HttpResponse, NetworkError>.Err(NetworkError.RequestTimeout);
+            await SafeDisposeAsync(transport).ConfigureAwait(false);
+            // Cancellation includes our internal request-timeout CTS; let the
+            // caller distinguish via its own token.
+            throw;
         }
         catch (IOException)
         {
-            return Result<HttpResponse, NetworkError>.Err(NetworkError.TransportFailure);
+            // If this was a pooled connection on its first byte, treat the
+            // failure as "socket died while idle" and let the caller retry.
+            // We can't reliably tell whether anything was actually written;
+            // for idempotent GETs (the only verb the engine uses today) a
+            // re-dial is safe. For non-GETs the caller surfaces this as a
+            // transport failure when the retry has nothing to fall back to.
+            return TransportSendOutcome.Unused();
         }
-        finally
-        {
-            tls?.Dispose();
-            // Disposing the TLS transport already disposes the wrapped TCP
-            // stream (which in turn disposes the connection). For plain HTTP
-            // we created the wrapper ourselves and must dispose it.
-            if (tls is null)
-                await tcp.DisposeAsync().ConfigureAwait(false);
-        }
+    }
+
+    private static async ValueTask SafeDisposeAsync(IHttpTransport transport)
+    {
+        try { await transport.DisposeAsync().ConfigureAwait(false); }
+        catch { /* a half-broken socket may throw on shutdown; we don't care */ }
     }
 
     public void Dispose()
     {
-        // Nothing pooled yet — pooling is M3+ work per 03_NETWORKING.md.
+        if (_disposed) return;
+        _disposed = true;
+        // Synchronously dispose the pool. The pool's DisposeAsync only awaits
+        // socket teardowns which are non-blocking; .GetAwaiter().GetResult()
+        // is fine on the disposal path.
+        _pool.DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 
     private static NetworkError MapParseError(HttpError error) => error switch
@@ -177,6 +291,12 @@ public sealed class TesseraHttpClient : IDisposable
         HttpError.DecodeFailed => NetworkError.ProtocolError,
         _ => NetworkError.ProtocolError,
     };
+
+    private readonly record struct TransportSendOutcome(bool UsedTransport, Result<HttpResponse, NetworkError> Result)
+    {
+        public static TransportSendOutcome Used(Result<HttpResponse, NetworkError> r) => new(true, r);
+        public static TransportSendOutcome Unused() => new(false, default);
+    }
 }
 
 public sealed class TesseraHttpClientOptions
@@ -188,6 +308,13 @@ public sealed class TesseraHttpClientOptions
     public CookieJar? CookieJar { get; init; }
     public H1RequestWriter RequestWriter { get; init; } = new();
     public H1ResponseParser ResponseParser { get; init; } = new();
+
+    /// <summary>
+    /// Optional injected connection pool. When null, the client owns a
+    /// freshly-constructed pool with default sizing (6 idle per origin,
+    /// 60s idle timeout).
+    /// </summary>
+    public ConnectionPool? ConnectionPool { get; init; }
 }
 
 public enum NetworkError
