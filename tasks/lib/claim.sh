@@ -117,20 +117,18 @@ cmd_claim() {
 
     local now
     now="$(now_utc)"
-    local branch="wp-${wp_id#wp:}"
 
     set_field "$file" status "claimed"
     set_field "$file" claimed_by "$agent"
     set_field "$file" claimed_at "$now"
-    set_field "$file" branch "$branch"
-    append_handoff "$file" "$now — claimed by $agent, branch \`$branch\`"
+    set_field "$file" branch "main"
+    append_handoff "$file" "$now — claimed by $agent, working on main"
 
     git add "$file"
     git commit -m "wp:${wp_id#wp:} — claim ($agent)" >/dev/null
 
     echo "claimed wp:${wp_id#wp:}"
-    echo "  branch: $branch"
-    echo "  next:   git switch -c $branch"
+    echo "  next:  read tasks/M*/wp-${wp_id#wp:}.md and start coding on main"
 }
 
 cmd_release() {

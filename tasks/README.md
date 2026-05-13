@@ -96,16 +96,15 @@ error — pull, see the conflict, pick a different task.
 
 You can do it by hand too — the helper just runs a `sed`-and-commit dance.
 
-### 4. Work on a dedicated branch
+### 4. Work on main
 
-```bash
-git switch -c wp-M1-01a
-```
+All work goes on `main` — there is no per-package branch. The `branch:`
+field in the task file is preserved for historical context (older packages
+recorded the branch they were developed on) but new claims default to
+`main`.
 
-The branch name **must match** the `branch:` field in the task file. CI uses
-this to associate runs with work packages.
-
-Commit frequently. Each commit message should reference the package:
+Commit frequently. Each commit message **must** reference the package id so
+history is greppable:
 
 ```
 wp:M1-01a — add Data state transitions
@@ -120,23 +119,28 @@ If you have to stop before the acceptance criteria are met:
 2. Either:
    - **Keep the claim** (status stays `claimed`) if you'll resume yourself.
    - **Release the claim** (`./tasks/lib/claim.sh release wp:M1-01a-tokenizer-scaffold`)
-     so another agent can pick it up. The branch is preserved; the next agent
-     reads the handoff log and continues on it.
-3. Commit and push.
+     so another agent can pick it up. The handoff log carries the context.
+3. Commit.
 
-Stale claims (a `claimed_at` older than 72 h with no commits on the branch) are
-considered abandoned — any agent may release and re-claim them.
+Stale claims (a `claimed_at` older than 72 h with no commits referencing the
+package id) are considered abandoned — any agent may release and re-claim
+them.
 
 ### 6. Finish
 
 When acceptance criteria pass:
 
 1. `dotnet build` + `dotnet test` green locally.
-2. Open a PR. Title must start with the package id.
-3. Set the task file `status: in_review`.
-4. After merge, set `status: complete` and add a `completed_at:` field.
-5. Re-scan `INDEX.md` — your completion may have unblocked downstream packages;
-   if so, note them in your PR body so the next agent knows to pick up.
+2. Commit your final changes on main with `wp:<id> —` in the subject.
+3. Set the task file `status: complete` and add `completed_at:` (the
+   `claim.sh complete` helper does this).
+4. Re-scan `INDEX.md` — your completion may have unblocked downstream
+   packages; if so, note them in the handoff log so the next agent knows
+   to pick them up.
+
+> The `in_review` state in `SCHEMA.md` is preserved for projects that wire
+> up a remote with PR review later. Today this repo doesn't use it —
+> packages move `claimed` → `complete` directly.
 
 ---
 

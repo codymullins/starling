@@ -13,12 +13,12 @@ milestone: M1                          # required, one of M0..M11
 status: available                      # required, one of:
                                        #   available  — anyone may claim
                                        #   claimed    — someone is working on it
-                                       #   in_review  — PR open, awaiting merge
+                                       #   in_review  — optional; only used when a remote with PR review is configured
                                        #   complete   — merged
                                        #   blocked    — dependency or external block; see notes
 claimed_by: ""                         # required, agent identifier or "" when unclaimed
 claimed_at: ""                         # required, ISO-8601 UTC ("2026-05-11T15:30:00Z") or ""
-branch: ""                             # required, dedicated git branch or "" when unclaimed
+branch: ""                             # required; defaults to "main" — work happens on main and the field is informational. Historical packages may record a per-package branch name (e.g., wp-M1-01a) from when that convention was active.
 completed_at: ""                       # optional, set when status flips to complete
 depends_on:                            # required, list of wp ids (may be empty)
   - wp:M0-01-scaffold
@@ -95,13 +95,17 @@ Only specific transitions are allowed:
 | From | To | Trigger |
 |---|---|---|
 | `available` | `claimed` | agent runs claim |
-| `claimed` | `in_review` | PR opened |
+| `claimed` | `complete` | acceptance criteria pass + commit on main |
+| `claimed` | `in_review` | (optional) PR opened — only used when a remote with review is configured |
 | `claimed` | `available` | agent releases or claim ages out |
 | `claimed` | `blocked` | external block discovered |
 | `in_review` | `complete` | PR merged |
 | `in_review` | `claimed` | PR closed without merge |
 | `blocked` | `available` | block resolved |
 | `available` | `blocked` | human marks blocked |
+
+In this repo today the default flow is `available → claimed → complete`;
+the `in_review` state is preserved for future use.
 
 `complete` is terminal — if work is bad, file a follow-up package, don't
 re-open.
