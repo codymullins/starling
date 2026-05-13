@@ -57,7 +57,29 @@ public static class UaStyleSheet
           text-align: center;
         }
         input[type="hidden"] { display: none; }
-        textarea { padding: 2px; }
+
+        /* <textarea> is multi-line; we don't have multi-line content layout
+           for inline-block yet, so it ends up looking like a wide single-line
+           field. Monospace matches platform default and helps users tell
+           textareas from inputs visually. */
+        textarea {
+          padding: 2px;
+          font-family: monospace;
+        }
+
+        /* <select>: without JS we can't actually open a dropdown. Approximate
+           the closed state by showing only the first option as its label. */
+        select { padding: 1px 4px; }
+        option { display: none; }
+        select > option:first-child { display: inline; }
+
+        /* Muted disabled state. We don't track focus/active/checked yet, but
+           the :disabled selector matches the HTML attribute today. */
+        input:disabled, button:disabled, select:disabled, textarea:disabled {
+          color: #777;
+          background-color: #efefef;
+          border-color: #c0c0c0;
+        }
         """;
 
     public static StyleSheet Parse() => CssParser.ParseStyleSheet(Source, StyleOrigin.UserAgent);

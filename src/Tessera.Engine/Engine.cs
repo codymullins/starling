@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
 using SixLabors.ImageSharp;
@@ -43,7 +44,7 @@ public sealed class TesseraEngine
         Func<TesseraHttpClient>? httpFactory = null)
     {
         _diag = diagnostics ?? NoopDiagnostics.Instance;
-        _painter = painter ?? new Painter();
+        _painter = painter ?? new Painter(diag: _diag);
         _httpFactory = httpFactory ?? (() => new TesseraHttpClient());
     }
 
@@ -66,11 +67,17 @@ public sealed class TesseraEngine
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(outputPath);
 
+        _diag.Counter("engine.page_load", 1);
         using var _ = _diag.Span("engine", $"render {url} -> {outputPath}");
+        Activity.Current?.SetTag("http.url", url);
+        Activity.Current?.SetTag("viewport.w", options.Viewport.Width);
+        Activity.Current?.SetTag("viewport.h", options.Viewport.Height);
+        Activity.Current?.SetTag("font_size", options.FontSize);
+        Activity.Current?.SetTag("output.path", outputPath);
 
         var parsed = UrlParser.Parse(url);
         if (parsed.IsErr)
-            return Result<RenderOutcome, RenderError>.Err(new RenderError($"URL parse failed: {parsed.Error}"));
+            return Fail($"URL parse failed: {parsed.Error}");
 
         var u = parsed.Value;
         string html;
@@ -80,59 +87,189 @@ public sealed class TesseraEngine
             {
                 var path = u.ToFileSystemPath();
                 if (!File.Exists(path))
-                    return Result<RenderOutcome, RenderError>.Err(new RenderError($"File not found: {path}"));
+                    return Fail($"File not found: {path}");
+                using (_diag.Span("engine", "read_file"))
+                {
+                    html = File.ReadAllText(path);
+                    Activity.Current?.SetTag("file.path", path);
+                    Activity.Current?.SetTag("html.bytes", html.Length);
+                }
+            }
+            else if (u.IsHttp || u.IsHttps)
+            {
+                Result<string, RenderError> fetched;
+                using (_diag.Span("engine", "fetch_html"))
+                {
+                    fetched = await FetchHtmlAsync(u, ct).ConfigureAwait(false);
+                }
+                if (fetched.IsErr)
+                    return Fail(fetched.Error.Message);
+                html = fetched.Value;
+            }
+            else
+            {
+                return Fail($"Unsupported scheme '{u.Scheme}' for M0.");
+            }
+        }
+        catch (IOException ex)
+        {
+            return Fail(ex.Message);
+        }
+
+        Document doc;
+        using (_diag.Span("engine", "parse_html"))
+        {
+            doc = Html.HtmlParser.Parse(html);
+            Activity.Current?.SetTag("html.bytes", html.Length);
+        }
+        var displayText = ExtractDisplayText(doc);
+
+        using var images = new ImageFetcher(_diag, _httpFactory);
+        using var stylesheets = new StylesheetFetcher(_diag, _httpFactory);
+        using (_diag.Span("engine", "fetch_resources"))
+        {
+            await Task.WhenAll(
+                images.FetchAllAsync(doc, baseUrl: u, ct),
+                stylesheets.FetchAllAsync(doc, baseUrl: u, ct)
+            ).ConfigureAwait(false);
+        }
+
+        Image<SixLabors.ImageSharp.PixelFormats.Rgba32> image;
+        using (_diag.Span("engine", "render_document"))
+        {
+            image = _painter.RenderDocument(
+                doc,
+                new LayoutSize(options.Viewport.Width, options.Viewport.Height),
+                options.FontSize,
+                images,
+                stylesheets.Resolve);
+            Activity.Current?.SetTag("image.w", image.Width);
+            Activity.Current?.SetTag("image.h", image.Height);
+        }
+
+        try
+        {
+            try
+            {
+                using (_diag.Span("engine", "save_png"))
+                {
+                    EnsureOutputDirectory(outputPath);
+                    image.SaveAsPng(outputPath);
+                }
+            }
+            catch (IOException ex)
+            {
+                return Fail($"Save failed: {ex.Message}");
+            }
+
+            _diag.Log(DiagLevel.Info, "engine",
+                $"Wrote {outputPath} ({image.Width}x{image.Height}, text length={displayText.Length}).");
+
+            return Result<RenderOutcome, RenderError>.Ok(
+                new RenderOutcome(outputPath, image.Width, image.Height, displayText));
+        }
+        finally
+        {
+            image.Dispose();
+        }
+
+        Result<RenderOutcome, RenderError> Fail(string message)
+        {
+            _diag.Counter("engine.page_load.failed", 1);
+            _diag.Log(DiagLevel.Error, "engine", message);
+            return Result<RenderOutcome, RenderError>.Err(new RenderError(message));
+        }
+    }
+
+    /// <summary>
+    /// Load <paramref name="url"/>, parse it, style it, and lay it out — but do
+    /// not rasterize. Returns the box tree wrapped in a <see cref="LaidOutPage"/>
+    /// the caller owns; disposing the page releases fetched image bitmaps and
+    /// parsed stylesheets. Interactive shells use this to walk the structure
+    /// and emit native views rather than displaying a flat bitmap.
+    /// </summary>
+    public async Task<Result<LaidOutPage, RenderError>> LayoutPageAsync(
+        string url, RenderOptions options, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(url);
+        ArgumentNullException.ThrowIfNull(options);
+
+        _diag.Counter("engine.page_layout", 1);
+        using var _ = _diag.Span("engine", $"layout {url}");
+        Activity.Current?.SetTag("http.url", url);
+        Activity.Current?.SetTag("viewport.w", options.Viewport.Width);
+        Activity.Current?.SetTag("viewport.h", options.Viewport.Height);
+
+        var parsed = UrlParser.Parse(url);
+        if (parsed.IsErr)
+            return Result<LaidOutPage, RenderError>.Err(new RenderError($"URL parse failed: {parsed.Error}"));
+
+        var u = parsed.Value;
+        string html;
+        try
+        {
+            if (u.IsFile)
+            {
+                var path = u.ToFileSystemPath();
+                if (!File.Exists(path))
+                    return Result<LaidOutPage, RenderError>.Err(new RenderError($"File not found: {path}"));
                 html = File.ReadAllText(path);
             }
             else if (u.IsHttp || u.IsHttps)
             {
                 var fetched = await FetchHtmlAsync(u, ct).ConfigureAwait(false);
                 if (fetched.IsErr)
-                    return Result<RenderOutcome, RenderError>.Err(fetched.Error);
+                    return Result<LaidOutPage, RenderError>.Err(fetched.Error);
                 html = fetched.Value;
             }
             else
             {
-                return Result<RenderOutcome, RenderError>.Err(new RenderError(
-                    $"Unsupported scheme '{u.Scheme}' for M0."));
+                return Result<LaidOutPage, RenderError>.Err(new RenderError($"Unsupported scheme '{u.Scheme}'."));
             }
         }
         catch (IOException ex)
         {
-            return Result<RenderOutcome, RenderError>.Err(new RenderError(ex.Message));
+            return Result<LaidOutPage, RenderError>.Err(new RenderError(ex.Message));
         }
 
         var doc = Html.HtmlParser.Parse(html);
-        var displayText = ExtractDisplayText(doc);
 
-        using var images = new ImageFetcher(_diag, _httpFactory);
-        using var stylesheets = new StylesheetFetcher(_diag, _httpFactory);
-        await Task.WhenAll(
-            images.FetchAllAsync(doc, baseUrl: u, ct),
-            stylesheets.FetchAllAsync(doc, baseUrl: u, ct)
-        ).ConfigureAwait(false);
-
-        using var image = _painter.RenderDocument(
-            doc,
-            new LayoutSize(options.Viewport.Width, options.Viewport.Height),
-            options.FontSize,
-            images,
-            stylesheets.Resolve);
-
+        // Page resources outlive this method — the caller's LaidOutPage owns
+        // and disposes them. On any path that doesn't return Ok we dispose
+        // here so callers don't have to.
+        var images = new ImageFetcher(_diag, _httpFactory);
+        var stylesheets = new StylesheetFetcher(_diag, _httpFactory);
         try
         {
-            EnsureOutputDirectory(outputPath);
-            image.SaveAsPng(outputPath);
+            await Task.WhenAll(
+                images.FetchAllAsync(doc, baseUrl: u, ct),
+                stylesheets.FetchAllAsync(doc, baseUrl: u, ct)
+            ).ConfigureAwait(false);
+
+            var viewport = new LayoutSize(options.Viewport.Width, options.Viewport.Height);
+            var (root, style) = _painter.LayoutDocumentWithStyle(
+                doc, viewport, options.FontSize, images, stylesheets.Resolve);
+
+            var title = ExtractTitle(doc);
+            return Result<LaidOutPage, RenderError>.Ok(
+                new LaidOutPage(root, doc, style, viewport, url, title, images, stylesheets));
         }
-        catch (IOException ex)
+        catch
         {
-            return Result<RenderOutcome, RenderError>.Err(new RenderError($"Save failed: {ex.Message}"));
+            images.Dispose();
+            stylesheets.Dispose();
+            throw;
         }
+    }
 
-        _diag.Log(DiagLevel.Info, "engine",
-            $"Wrote {outputPath} ({image.Width}x{image.Height}, text length={displayText.Length}).");
-
-        return Result<RenderOutcome, RenderError>.Ok(
-            new RenderOutcome(outputPath, image.Width, image.Height, displayText));
+    private static string? ExtractTitle(Document doc)
+    {
+        foreach (var el in doc.GetElementsByTagName("title"))
+        {
+            var text = el.TextContent.Trim();
+            if (text.Length > 0) return text;
+        }
+        return null;
     }
 
     private static void EnsureOutputDirectory(string outputPath)

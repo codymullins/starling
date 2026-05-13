@@ -39,6 +39,36 @@ public sealed class BrowserSession : IDisposable
         return result;
     }
 
+    /// <summary>
+    /// Same flow as <see cref="NavigateAsync"/> but returns a laid-out page
+    /// the caller can walk for interactive rendering, instead of saving a PNG.
+    /// </summary>
+    public async Task<Result<LaidOutPage, RenderError>> NavigateInteractiveAsync(
+        string url,
+        RenderOptions options,
+        CancellationToken ct = default)
+    {
+        var result = await _engine.LayoutPageAsync(url, options, ct).ConfigureAwait(false);
+        if (result.IsOk)
+            History.Navigate(url);
+        return result;
+    }
+
+    public Task<Result<LaidOutPage, RenderError>> BackInteractiveAsync(
+        RenderOptions options,
+        CancellationToken ct = default)
+        => _engine.LayoutPageAsync(History.Back(), options, ct);
+
+    public Task<Result<LaidOutPage, RenderError>> ForwardInteractiveAsync(
+        RenderOptions options,
+        CancellationToken ct = default)
+        => _engine.LayoutPageAsync(History.Forward(), options, ct);
+
+    public Task<Result<LaidOutPage, RenderError>> ReloadInteractiveAsync(
+        RenderOptions options,
+        CancellationToken ct = default)
+        => _engine.LayoutPageAsync(History.Reload(), options, ct);
+
     public Task<Result<RenderOutcome, RenderError>> BackAsync(
         RenderOptions options,
         string outputPath,

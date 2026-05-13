@@ -29,8 +29,14 @@ public sealed class DisplayListBuilder
         var frameX = originX + box.Frame.X;
         var frameY = originY + box.Frame.Y;
 
-        // Backgrounds for block-ish boxes (skip TextBoxes — backgrounds are on their parents).
-        if (box.Kind is BoxKind.BlockContainer or BoxKind.AnonymousBlock && box.Style is { } style)
+        // Backgrounds and borders for box-bearing boxes. BlockContainer and
+        // AnonymousBlock always qualify; InlineBox qualifies only when it is
+        // an atomic inline (display:inline-block) — flattened spans have a
+        // zero frame and would otherwise emit a phantom rect at the origin.
+        var hasFrame = box.Frame.Width > 0 && box.Frame.Height > 0;
+        var paintsBox = box.Kind is BoxKind.BlockContainer or BoxKind.AnonymousBlock
+            || (box.Kind == BoxKind.Inline && hasFrame);
+        if (paintsBox && box.Style is { } style)
         {
             var bg = style.GetColor(PropertyId.BackgroundColor);
             if (bg is { A: > 0 })

@@ -2,6 +2,7 @@ using FluentAssertions;
 using Tessera.Css.Cascade;
 using Tessera.Css.Parser;
 using Tessera.Css.Properties;
+using Tessera.Css.Selectors;
 using Tessera.Css.Values;
 using Tessera.Dom;
 using Xunit;
@@ -95,5 +96,27 @@ public sealed class StyleEngineTests
 
         style.Get(PropertyId.Display).Should().Be(new CssKeyword("block"));
         style.GetLength(PropertyId.MarginTop).Should().Be(new CssLength(1, CssLengthUnit.Em));
+    }
+
+    [Fact]
+    public void Hover_match_context_recascades_styles_for_link_state()
+    {
+        var doc = new Document();
+        var a = doc.CreateElement("a");
+        a.SetAttribute("href", "#");
+        doc.AppendChild(a);
+
+        var engine = new StyleEngine(includeUserAgentStyleSheet: false);
+        engine.AddStyleSheet(CssParser.ParseStyleSheet("""
+            a { color: blue; }
+            a:hover { color: red; }
+            """));
+
+        var resting = engine.Compute(a);
+        var hovered = engine.Compute(a, new SelectorMatchContext { HoveredElement = a });
+
+        resting.GetColor(PropertyId.Color).Should().Be(new CssColor(0, 0, 255));
+        hovered.GetColor(PropertyId.Color).Should().Be(new CssColor(255, 0, 0),
+            "the :hover rule should win when the element is the hovered element");
     }
 }

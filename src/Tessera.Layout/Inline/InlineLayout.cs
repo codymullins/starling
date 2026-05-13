@@ -14,10 +14,12 @@ namespace Tessera.Layout.Inline;
 internal sealed class InlineLayout
 {
     private readonly ITextMeasurer _measurer;
+    private readonly Size? _viewport;
 
-    public InlineLayout(ITextMeasurer measurer)
+    public InlineLayout(ITextMeasurer measurer, Size? viewport = null)
     {
         _measurer = measurer;
+        _viewport = viewport;
     }
 
     public double Layout(Box.Box container, double availableWidth)
@@ -27,8 +29,10 @@ internal sealed class InlineLayout
         var baseline = _measurer.Baseline(fontSize);
 
         // Collect a flat sequence of inline-formatting items by walking the
-        // container's inline subtree (text runs flatten through InlineBox
-        // wrappers; <img> shows up as an ImageRun).
+        // container's inline subtree. Regular `<span>` wrappers flatten so
+        // their text contributes directly; `inline-block` boxes (form
+        // controls, explicit display:inline-block) stay atomic and lay out
+        // as a single unit with their own frame + box model.
         var runs = new List<InlineRun>();
         Flatten(container, runs);
 
@@ -39,6 +43,7 @@ internal sealed class InlineLayout
         double currentLineHeight = lineHeight;
         var fragments = new List<(TextBox Owner, int Index)>();
         var placedImages = new List<ImageBox>();
+        var placedAtomics = new List<InlineBox>();
 
         foreach (var run in runs)
         {
@@ -52,10 +57,14 @@ internal sealed class InlineLayout
                     LayoutImage(image.Box, availableWidth,
                         placedImages, ref cursorX, ref cursorY, ref currentLineHeight);
                     break;
+                case AtomicRun atomic:
+                    LayoutAtomic(atomic.Box, availableWidth,
+                        placedAtomics, ref cursorX, ref cursorY, ref currentLineHeight);
+                    break;
             }
         }
 
-        AlignLines(container.Style, availableWidth, fragments, placedImages);
+        AlignLines(container.Style, availableWidth, fragments, placedImages, placedAtomics);
         return cursorY + currentLineHeight;
     }
 
@@ -105,6 +114,144 @@ internal sealed class InlineLayout
         }
     }
 
+    /// <summary>
+    /// Place an inline-block box atomically on the current line. Resolves its
+    /// own box model, lays its (text) children out within its content box,
+    /// and sets its <see cref="Box.Box.Frame"/> in the enclosing anonymous
+    /// block's content-coordinate space. The painter walks the box like any
+    /// other block: background + border first, then children translated by
+    /// our padding+border edge.
+    /// </summary>
+    private void LayoutAtomic(
+        InlineBox box,
+        double availableWidth,
+        List<InlineBox> placedAtomics,
+        ref double cursorX,
+        ref double cursorY,
+        ref double currentLineHeight)
+    {
+        ResolveAtomicBoxModel(box, availableWidth);
+
+        var fontSize = ResolveFontSize(box.Style);
+        var lineHeight = ResolveLineHeight(box.Style, fontSize);
+        var contentWidth = LayoutAtomicContent(box, fontSize);
+
+        // CSS width: prefer an explicit value if the cascade gave us one.
+        // Percentages resolve against the enclosing block's content width.
+        var explicitWidth = ResolveLength(box.Style, PropertyId.Width, availableWidth);
+        if (explicitWidth is { } w) contentWidth = w;
+
+        var contentHeight = lineHeight;
+        var explicitHeight = ResolveLength(box.Style, PropertyId.Height, lineHeight);
+        if (explicitHeight is { } h) contentHeight = h;
+
+        var outerWidth = contentWidth + box.Padding.Horizontal + box.Border.Horizontal;
+        var outerHeight = contentHeight + box.Padding.Vertical + box.Border.Vertical;
+
+        // Wrap to a new line if this atomic doesn't fit and the line already
+        // has content. Atomic items never split.
+        if (cursorX > 0 && cursorX + outerWidth + box.Margin.Horizontal > availableWidth)
+        {
+            cursorY += currentLineHeight;
+            cursorX = 0;
+            currentLineHeight = outerHeight + box.Margin.Vertical;
+        }
+        else
+        {
+            currentLineHeight = Math.Max(currentLineHeight, outerHeight + box.Margin.Vertical);
+        }
+
+        box.Frame = new Rect(
+            cursorX + box.Margin.Left,
+            cursorY + box.Margin.Top,
+            outerWidth,
+            outerHeight);
+        placedAtomics.Add(box);
+        cursorX += outerWidth + box.Margin.Horizontal;
+    }
+
+    /// <summary>
+    /// Measure and place the inline-block's direct text children, returning
+    /// the natural content width. The synthesized TextBox for an
+    /// <c>&lt;input&gt;</c>'s value/placeholder lives here, as does a
+    /// <c>&lt;button&gt;</c>'s label text.
+    /// </summary>
+    private double LayoutAtomicContent(InlineBox box, double fontSize)
+    {
+        var baseline = _measurer.Baseline(fontSize);
+        double width = 0;
+        double height = 0;
+
+        foreach (var child in box.Children)
+        {
+            if (child is TextBox tb)
+            {
+                tb.Fragments.Clear();
+                var text = NormalizeWhitespace(tb.Text);
+                if (text.Length == 0) continue;
+                var fragWidth = _measurer.MeasureWidth(text, fontSize);
+                tb.Fragments.Add(new TextFragment(text, width, 0, fragWidth, fontSize, baseline));
+                width += fragWidth;
+                height = Math.Max(height, fontSize);
+            }
+        }
+
+        // <input size=N>: HTML attribute that hints at an N-character width.
+        // Spec uses the average character width of the font; 0.5em is a
+        // tolerable approximation that matches what most browsers settle on
+        // for proportional fonts.
+        var sizeAttr = box.Element?.GetAttribute("size");
+        if (!string.IsNullOrEmpty(sizeAttr) &&
+            int.TryParse(sizeAttr, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out var cols) && cols > 0)
+        {
+            var minWidth = cols * fontSize * 0.5;
+            if (minWidth > width) width = minWidth;
+        }
+
+        return width;
+    }
+
+    private void ResolveAtomicBoxModel(InlineBox box, double containerWidth)
+    {
+        box.Margin = new Edges(
+            ResolveLength(box.Style, PropertyId.MarginTop, containerWidth) ?? 0,
+            ResolveLength(box.Style, PropertyId.MarginRight, containerWidth) ?? 0,
+            ResolveLength(box.Style, PropertyId.MarginBottom, containerWidth) ?? 0,
+            ResolveLength(box.Style, PropertyId.MarginLeft, containerWidth) ?? 0);
+
+        box.Padding = new Edges(
+            ResolveLength(box.Style, PropertyId.PaddingTop, containerWidth) ?? 0,
+            ResolveLength(box.Style, PropertyId.PaddingRight, containerWidth) ?? 0,
+            ResolveLength(box.Style, PropertyId.PaddingBottom, containerWidth) ?? 0,
+            ResolveLength(box.Style, PropertyId.PaddingLeft, containerWidth) ?? 0);
+
+        box.Border = new Edges(
+            ResolveBorderWidth(box.Style, PropertyId.BorderTopWidth, PropertyId.BorderTopStyle),
+            ResolveBorderWidth(box.Style, PropertyId.BorderRightWidth, PropertyId.BorderRightStyle),
+            ResolveBorderWidth(box.Style, PropertyId.BorderBottomWidth, PropertyId.BorderBottomStyle),
+            ResolveBorderWidth(box.Style, PropertyId.BorderLeftWidth, PropertyId.BorderLeftStyle));
+    }
+
+    private double? ResolveLength(ComputedStyle? style, PropertyId property, double percentageBasis)
+    {
+        if (style is null) return null;
+        return style.Get(property) switch
+        {
+            CssLength len => Block.BlockLayout.ToPx(len, _viewport),
+            CssPercentage pct => percentageBasis * pct.Value / 100d,
+            CssNumber n => n.Value,
+            _ => null,
+        };
+    }
+
+    private double ResolveBorderWidth(ComputedStyle? style, PropertyId widthId, PropertyId styleId)
+    {
+        if (style is null) return 0;
+        if (style.Get(styleId) is CssKeyword k && k.Name == "none") return 0;
+        return style.Get(widthId) is CssLength len ? Block.BlockLayout.ToPx(len, _viewport) : 0;
+    }
+
     private static void LayoutImage(
         ImageBox image,
         double availableWidth,
@@ -148,22 +295,24 @@ internal sealed class InlineLayout
         ComputedStyle? style,
         double availableWidth,
         List<(TextBox Owner, int Index)> fragments,
-        List<ImageBox> placedImages)
+        List<ImageBox> placedImages,
+        List<InlineBox> placedAtomics)
     {
         var align = style?.Get(PropertyId.TextAlign) is CssKeyword keyword
             ? keyword.Name.ToLowerInvariant()
             : "start";
-        if (align is not ("center" or "right" or "end") || (fragments.Count == 0 && placedImages.Count == 0))
+        if (align is not ("center" or "right" or "end") ||
+            (fragments.Count == 0 && placedImages.Count == 0 && placedAtomics.Count == 0))
             return;
 
-        // Group both text fragments and image boxes by their Y so per-line
-        // alignment shifts apply uniformly to everything sitting on the line.
-        var lines = new Dictionary<double, (List<(TextBox Owner, int Index)> Texts, List<ImageBox> Images, double RightEdge)>();
+        // Group fragments, images, and atomic inline-blocks by their Y so
+        // per-line alignment shifts apply uniformly to everything on the line.
+        var lines = new Dictionary<double, (List<(TextBox Owner, int Index)> Texts, List<ImageBox> Images, List<InlineBox> Atomics, double RightEdge)>();
         foreach (var item in fragments)
         {
             var frag = item.Owner.Fragments[item.Index];
             var key = frag.Y;
-            if (!lines.TryGetValue(key, out var line)) line = ([], [], 0);
+            if (!lines.TryGetValue(key, out var line)) line = ([], [], [], 0);
             line.Texts.Add(item);
             line.RightEdge = Math.Max(line.RightEdge, frag.X + frag.Width);
             lines[key] = line;
@@ -171,9 +320,17 @@ internal sealed class InlineLayout
         foreach (var image in placedImages)
         {
             var key = image.Frame.Y;
-            if (!lines.TryGetValue(key, out var line)) line = ([], [], 0);
+            if (!lines.TryGetValue(key, out var line)) line = ([], [], [], 0);
             line.Images.Add(image);
             line.RightEdge = Math.Max(line.RightEdge, image.Frame.X + image.Frame.Width);
+            lines[key] = line;
+        }
+        foreach (var atomic in placedAtomics)
+        {
+            var key = atomic.Frame.Y;
+            if (!lines.TryGetValue(key, out var line)) line = ([], [], [], 0);
+            line.Atomics.Add(atomic);
+            line.RightEdge = Math.Max(line.RightEdge, atomic.Frame.X + atomic.Frame.Width);
             lines[key] = line;
         }
 
@@ -193,12 +350,17 @@ internal sealed class InlineLayout
             {
                 image.Frame = image.Frame with { X = image.Frame.X + offset };
             }
+            foreach (var atomic in line.Atomics)
+            {
+                atomic.Frame = atomic.Frame with { X = atomic.Frame.X + offset };
+            }
         }
     }
 
     private abstract record InlineRun;
     private sealed record TextRun(string Text, ComputedStyle? Style, TextBox Owner) : InlineRun;
     private sealed record ImageRun(ImageBox Box) : InlineRun;
+    private sealed record AtomicRun(InlineBox Box) : InlineRun;
 
     private static void Flatten(Box.Box box, List<InlineRun> runs)
     {
@@ -213,6 +375,9 @@ internal sealed class InlineLayout
                 case ImageBox img:
                     runs.Add(new ImageRun(img));
                     break;
+                case InlineBox ib when IsAtomicInline(ib):
+                    runs.Add(new AtomicRun(ib));
+                    break;
                 case InlineBox ib:
                     Flatten(ib, runs);
                     break;
@@ -222,6 +387,21 @@ internal sealed class InlineLayout
                     break;
             }
         }
+    }
+
+    /// <summary>
+    /// An "atomic inline" is a box that participates in the inline formatting
+    /// context as a single unit — it occupies one indivisible slot in a line
+    /// and carries its own box model. Per [CSS 2.1 §9.2.4] this includes
+    /// <c>display:inline-block</c>, <c>inline-table</c>, replaced inlines,
+    /// and (legacy) <c>inline-flex</c>/<c>inline-grid</c>. We only handle
+    /// <c>inline-block</c> in v1; replaced inlines go through <see cref="ImageRun"/>.
+    /// </summary>
+    private static bool IsAtomicInline(InlineBox box)
+    {
+        if (box.Style is null) return false;
+        return box.Style.Get(PropertyId.Display) is CssKeyword k
+            && k.Name.Equals("inline-block", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizeWhitespace(string text)
@@ -261,12 +441,12 @@ internal sealed class InlineLayout
         if (start < text.Length) yield return text[start..];
     }
 
-    private static double ResolveFontSize(ComputedStyle? style)
+    private double ResolveFontSize(ComputedStyle? style)
     {
         if (style is null) return 16;
         return style.Get(PropertyId.FontSize) switch
         {
-            CssLength len => Block.BlockLayout.ToPx(len),
+            CssLength len => Block.BlockLayout.ToPx(len, _viewport),
             CssNumber n => n.Value,
             _ => 16,
         };
@@ -278,7 +458,7 @@ internal sealed class InlineLayout
         return style.Get(PropertyId.LineHeight) switch
         {
             CssNumber n => n.Value * fontSize,
-            CssLength len => Block.BlockLayout.ToPx(len),
+            CssLength len => Block.BlockLayout.ToPx(len, _viewport),
             CssPercentage pct => fontSize * pct.Value / 100d,
             CssKeyword k when k.Name == "normal" => _measurer.NormalLineHeight(fontSize),
             _ => _measurer.NormalLineHeight(fontSize),

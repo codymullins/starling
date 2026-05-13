@@ -30,11 +30,22 @@ public sealed class StyleEngine
     }
 
     public ComputedStyle Compute(Element element)
+        => Compute(element, context: null);
+
+    /// <summary>
+    /// Compute styles for <paramref name="element"/>, optionally honouring an
+    /// interactive <see cref="SelectorMatchContext"/> so <c>:hover</c>,
+    /// <c>:focus</c>, and <c>:active</c> selectors fire. Interactive shells
+    /// pass a context with <see cref="SelectorMatchContext.HoveredElement"/>
+    /// (etc.) set, then ask the engine for an updated style to push to the
+    /// affected view.
+    /// </summary>
+    public ComputedStyle Compute(Element element, SelectorMatchContext? context)
     {
         ArgumentNullException.ThrowIfNull(element);
         var parent = element.ParentNode as Element;
-        var parentStyle = parent is null ? null : Compute(parent);
-        return Compute(element, parentStyle);
+        var parentStyle = parent is null ? null : Compute(parent, context);
+        return Compute(element, parentStyle, context);
     }
 
     public void Invalidate(Element root)
@@ -42,7 +53,7 @@ public sealed class StyleEngine
         ArgumentNullException.ThrowIfNull(root);
     }
 
-    private ComputedStyle Compute(Element element, ComputedStyle? parentStyle)
+    private ComputedStyle Compute(Element element, ComputedStyle? parentStyle, SelectorMatchContext? context = null)
     {
         var winners = new Dictionary<PropertyId, CascadedValue>();
         var customProperties = parentStyle?.CustomProperties.ToDictionary(
@@ -53,7 +64,7 @@ public sealed class StyleEngine
         var order = 0;
 
         foreach (var sheet in _sheets)
-            GatherFromRules(sheet.Rules, sheet.Origin, element, winners, customWinners, ref order);
+            GatherFromRules(sheet.Rules, sheet.Origin, element, winners, customWinners, context, ref order);
 
         var inlineStyle = element.GetAttribute("style");
         if (!string.IsNullOrWhiteSpace(inlineStyle))
@@ -96,6 +107,7 @@ public sealed class StyleEngine
         Element element,
         Dictionary<PropertyId, CascadedValue> winners,
         Dictionary<string, CustomPropertyValue> customWinners,
+        SelectorMatchContext? context,
         ref int order)
     {
         foreach (var rule in rules)
@@ -106,7 +118,7 @@ public sealed class StyleEngine
                     var selectorList = SelectorParser.ParseSelectorList(styleRule.Prelude);
                     foreach (var selector in selectorList.Selectors)
                     {
-                        if (!SelectorMatcher.Matches(selector, element))
+                        if (!SelectorMatcher.Matches(selector, element, context))
                             continue;
                         AddDeclarations(
                             styleRule.Declarations,
@@ -119,7 +131,7 @@ public sealed class StyleEngine
                     }
                     break;
                 case AtRule { Name: "media" or "supports", Rules.Count: > 0 } atRule:
-                    GatherFromRules(atRule.Rules, origin, element, winners, customWinners, ref order);
+                    GatherFromRules(atRule.Rules, origin, element, winners, customWinners, context, ref order);
                     break;
             }
         }

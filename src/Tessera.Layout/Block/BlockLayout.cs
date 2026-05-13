@@ -27,7 +27,7 @@ internal sealed class BlockLayout
     {
         _measurer = measurer;
         _viewport = viewport;
-        _inline = new InlineLayout(measurer);
+        _inline = new InlineLayout(measurer, viewport);
     }
 
     public void Layout(Box.Box root)
@@ -35,7 +35,7 @@ internal sealed class BlockLayout
         ResolveBoxModel(root, _viewport.Width);
         var contentWidth = _viewport.Width - root.Margin.Horizontal - root.Border.Horizontal - root.Padding.Horizontal;
         var consumedHeight = LayoutChildren(root, contentWidth);
-        var explicitHeight = ResolveLength(root.Style, PropertyId.Height, _viewport.Height, allowAuto: true);
+        var explicitHeight = ResolveLength(root.Style, PropertyId.Height, _viewport.Height, _viewport, allowAuto: true);
         var contentHeight = explicitHeight ?? consumedHeight;
         root.Frame = new Rect(
             root.Margin.Left,
@@ -86,7 +86,7 @@ internal sealed class BlockLayout
         var width = ContentWidth(child, containerWidth);
         var childContentHeight = LayoutChildren(child, width);
 
-        var explicitHeight = ResolveLength(child.Style, PropertyId.Height, _viewport.Height, allowAuto: true);
+        var explicitHeight = ResolveLength(child.Style, PropertyId.Height, _viewport.Height, _viewport, allowAuto: true);
         var resolvedHeight = explicitHeight ?? childContentHeight;
         var fullHeight = resolvedHeight + child.Padding.Vertical + child.Border.Vertical;
 
@@ -103,47 +103,50 @@ internal sealed class BlockLayout
     private void ResolveBoxModel(Box.Box box, double containerWidth)
     {
         box.Margin = new Edges(
-            ResolveLength(box.Style, PropertyId.MarginTop, _viewport.Height) ?? 0,
-            ResolveLength(box.Style, PropertyId.MarginRight, containerWidth) ?? 0,
-            ResolveLength(box.Style, PropertyId.MarginBottom, _viewport.Height) ?? 0,
-            ResolveLength(box.Style, PropertyId.MarginLeft, containerWidth) ?? 0);
+            ResolveLength(box.Style, PropertyId.MarginTop, _viewport.Height, _viewport) ?? 0,
+            ResolveLength(box.Style, PropertyId.MarginRight, containerWidth, _viewport) ?? 0,
+            ResolveLength(box.Style, PropertyId.MarginBottom, _viewport.Height, _viewport) ?? 0,
+            ResolveLength(box.Style, PropertyId.MarginLeft, containerWidth, _viewport) ?? 0);
 
         box.Padding = new Edges(
-            ResolveLength(box.Style, PropertyId.PaddingTop, _viewport.Height) ?? 0,
-            ResolveLength(box.Style, PropertyId.PaddingRight, containerWidth) ?? 0,
-            ResolveLength(box.Style, PropertyId.PaddingBottom, _viewport.Height) ?? 0,
-            ResolveLength(box.Style, PropertyId.PaddingLeft, containerWidth) ?? 0);
+            ResolveLength(box.Style, PropertyId.PaddingTop, _viewport.Height, _viewport) ?? 0,
+            ResolveLength(box.Style, PropertyId.PaddingRight, containerWidth, _viewport) ?? 0,
+            ResolveLength(box.Style, PropertyId.PaddingBottom, _viewport.Height, _viewport) ?? 0,
+            ResolveLength(box.Style, PropertyId.PaddingLeft, containerWidth, _viewport) ?? 0);
 
         box.Border = new Edges(
-            ResolveBorderWidth(box.Style, PropertyId.BorderTopWidth, PropertyId.BorderTopStyle),
-            ResolveBorderWidth(box.Style, PropertyId.BorderRightWidth, PropertyId.BorderRightStyle),
-            ResolveBorderWidth(box.Style, PropertyId.BorderBottomWidth, PropertyId.BorderBottomStyle),
-            ResolveBorderWidth(box.Style, PropertyId.BorderLeftWidth, PropertyId.BorderLeftStyle));
+            ResolveBorderWidth(box.Style, PropertyId.BorderTopWidth, PropertyId.BorderTopStyle, _viewport),
+            ResolveBorderWidth(box.Style, PropertyId.BorderRightWidth, PropertyId.BorderRightStyle, _viewport),
+            ResolveBorderWidth(box.Style, PropertyId.BorderBottomWidth, PropertyId.BorderBottomStyle, _viewport),
+            ResolveBorderWidth(box.Style, PropertyId.BorderLeftWidth, PropertyId.BorderLeftStyle, _viewport));
     }
 
     private double ContentWidth(Box.Box box, double containerWidth)
     {
-        var explicitWidth = ResolveLength(box.Style, PropertyId.Width, containerWidth, allowAuto: true);
+        var explicitWidth = ResolveLength(box.Style, PropertyId.Width, containerWidth, _viewport, allowAuto: true);
         if (explicitWidth is { } w) return w;
         var available = containerWidth - box.Margin.Horizontal - box.Border.Horizontal - box.Padding.Horizontal;
         return Math.Max(0, available);
     }
 
-    private static double ResolveBorderWidth(ComputedStyle? style, PropertyId widthId, PropertyId styleId)
+    private static double ResolveBorderWidth(ComputedStyle? style, PropertyId widthId, PropertyId styleId, Size? viewport = null)
     {
         if (style is null) return 0;
         var styleValue = style.Get(styleId);
         if (styleValue is CssKeyword k && k.Name == "none") return 0;
-        return style.Get(widthId) is CssLength len ? ToPx(len) : 0;
+        return style.Get(widthId) is CssLength len ? ToPx(len, viewport) : 0;
     }
 
     internal static double? ResolveLength(ComputedStyle? style, PropertyId property, double percentageBasis, bool allowAuto = false)
+        => ResolveLength(style, property, percentageBasis, viewport: null, allowAuto);
+
+    internal static double? ResolveLength(ComputedStyle? style, PropertyId property, double percentageBasis, Size? viewport, bool allowAuto = false)
     {
         if (style is null) return null;
         var value = style.Get(property);
         return value switch
         {
-            CssLength len => ToPx(len),
+            CssLength len => ToPx(len, viewport),
             CssPercentage pct => percentageBasis * pct.Value / 100d,
             CssNumber n => n.Value,
             CssKeyword k when k.Name == "auto" => allowAuto ? null : 0,
@@ -152,7 +155,9 @@ internal sealed class BlockLayout
         };
     }
 
-    internal static double ToPx(CssLength length) => length.Unit switch
+    internal static double ToPx(CssLength length) => ToPx(length, viewport: null);
+
+    internal static double ToPx(CssLength length, Size? viewport) => length.Unit switch
     {
         CssLengthUnit.Px => length.Value,
         CssLengthUnit.Pt => length.Value * 4d / 3d,
@@ -163,8 +168,8 @@ internal sealed class BlockLayout
         CssLengthUnit.Q => length.Value * 96d / 101.6d,
         CssLengthUnit.Em => length.Value * 16d,
         CssLengthUnit.Rem => length.Value * 16d,
-        CssLengthUnit.Vh => length.Value,
-        CssLengthUnit.Vw => length.Value,
+        CssLengthUnit.Vh => length.Value * (viewport?.Height ?? 100d) / 100d,
+        CssLengthUnit.Vw => length.Value * (viewport?.Width ?? 100d) / 100d,
         _ => length.Value,
     };
 }

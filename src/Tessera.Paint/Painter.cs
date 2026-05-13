@@ -2,6 +2,7 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Drawing.Processing;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
+using Tessera.Common.Diagnostics;
 using Tessera.Css;
 using Tessera.Css.Cascade;
 using Tessera.Css.Parser;
@@ -24,10 +25,12 @@ namespace Tessera.Paint;
 public sealed class Painter
 {
     private readonly FontResolver _fonts;
+    private readonly IDiagnostics _diag;
 
-    public Painter(FontResolver? fonts = null)
+    public Painter(FontResolver? fonts = null, IDiagnostics? diag = null)
     {
         _fonts = fonts ?? FontResolver.Default;
+        _diag = diag ?? NoopDiagnostics.Instance;
     }
 
     /// <summary>
@@ -51,13 +54,60 @@ public sealed class Painter
     {
         ArgumentNullException.ThrowIfNull(document);
 
-        var style = CreateStyleEngine(document, defaultFontSize, externalStylesheet);
-        var layoutEngine = new LayoutEngineImpl(style, DefaultTextMeasurer.Instance, images);
-        var root = layoutEngine.LayoutDocument(document, viewport);
+        var root = LayoutDocument(document, viewport, defaultFontSize, images, externalStylesheet);
 
-        PaintList displayList = new DisplayListBuilder().Build(root);
-        var backend = new ImageSharpBackend(_fonts);
-        return backend.Render(displayList, viewport);
+        PaintList displayList;
+        using (_diag.Span("paint", "display_list"))
+            displayList = new DisplayListBuilder().Build(root);
+
+        using (_diag.Span("paint", "raster"))
+        {
+            var backend = new ImageSharpBackend(_fonts);
+            return backend.Render(displayList, viewport);
+        }
+    }
+
+    /// <summary>
+    /// Run cascade + layout without rasterizing. Returns the laid-out box tree
+    /// for callers that want to walk it themselves — interactive shells (a real
+    /// browser frame) consume this so taps, selection, and Cmd-F can resolve
+    /// against structure instead of pixels.
+    /// </summary>
+    public Tessera.Layout.Box.BlockBox LayoutDocument(
+        Document document,
+        LayoutSize viewport,
+        float? defaultFontSize = null,
+        IImageResolver? images = null,
+        Func<Element, StyleSheet?>? externalStylesheet = null)
+    {
+        var (root, _) = LayoutDocumentWithStyle(document, viewport, defaultFontSize, images, externalStylesheet);
+        return root;
+    }
+
+    /// <summary>
+    /// Same as <see cref="LayoutDocument"/> but also returns the
+    /// <see cref="StyleEngine"/> used for the cascade, so interactive callers
+    /// can recompute styles for individual elements when state changes
+    /// (<c>:hover</c>, <c>:focus</c>, <c>:active</c>) without re-running layout.
+    /// </summary>
+    public (Tessera.Layout.Box.BlockBox Root, StyleEngine Style) LayoutDocumentWithStyle(
+        Document document,
+        LayoutSize viewport,
+        float? defaultFontSize = null,
+        IImageResolver? images = null,
+        Func<Element, StyleSheet?>? externalStylesheet = null)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+
+        StyleEngine style;
+        using (_diag.Span("paint", "style_cascade"))
+            style = CreateStyleEngine(document, defaultFontSize, externalStylesheet);
+
+        var layoutEngine = new LayoutEngineImpl(style, DefaultTextMeasurer.Instance, images);
+        Tessera.Layout.Box.BlockBox root;
+        using (_diag.Span("paint", "layout"))
+            root = layoutEngine.LayoutDocument(document, viewport);
+        return (root, style);
     }
 
     private static StyleEngine CreateStyleEngine(
