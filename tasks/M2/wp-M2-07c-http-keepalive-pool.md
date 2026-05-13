@@ -2,10 +2,10 @@
 id: "wp:M2-07c-http-keepalive-pool"
 parent: "wp:M2-07-network-end-to-end"
 milestone: "M2"
-status: "available"
-claimed_by: ""
-claimed_at: ""
-branch: ""
+status: "claimed"
+claimed_by: "agent-claude-cody"
+claimed_at: "2026-05-13T14:40:21Z"
+branch: "main"
 depends_on:
   - "wp:M2-05-http1"
 blocks: []
@@ -87,3 +87,4 @@ handshake cost.
 - 2026-05-13T00:00Z — agent-claude-cody, filed during MVP-path planning
   split-out of the catch-all wp:M2-07-network-end-to-end. Available to
   claim.
+- 2026-05-13T14:40:21Z — claimed by agent-claude-cody, working on main
