@@ -51,7 +51,7 @@ order: milestone, then numeric id, then sub-letter.
 | [wp:M2-04-tls](M2/wp-M2-04-tls.md) | 🟢 complete | agent-copilot-gpt-5.5 | Tessera.Net |
 | [wp:M2-05-http1](M2/wp-M2-05-http1.md) | 🟢 complete | agent-copilot-gpt-5.5 | Tessera.Net |
 | [wp:M2-07-network-end-to-end](M2/wp-M2-07-network-end-to-end.md) | 🟢 complete | agent-copilot-gpt-5.5 | Tessera.Engine |
-| [wp:M2-07a-img-fetch-decode-paint](M2/wp-M2-07a-img-fetch-decode-paint.md) | 🔵 available | — | Tessera.Paint |
+| [wp:M2-07a-img-fetch-decode-paint](M2/wp-M2-07a-img-fetch-decode-paint.md) | 🟢 complete | agent-claude-cody | Tessera.Paint |
 | [wp:M2-07b-live-https-fixture](M2/wp-M2-07b-live-https-fixture.md) | 🔵 available | — | Tessera.Engine |
 | [wp:M2-07c-http-keepalive-pool](M2/wp-M2-07c-http-keepalive-pool.md) | 🔵 available | — | Tessera.Net |
 | [wp:M2-07d-encoding-hardening](M2/wp-M2-07d-encoding-hardening.md) | 🔵 available | — | Tessera.Engine |
@@ -66,13 +66,13 @@ order: milestone, then numeric id, then sub-letter.
 For a new agent: claim any of these and start. Listed in MVP-priority order
 (highest impact first; see `~/.claude/plans/check-current-status-and-keen-metcalfe.md`).
 
-- [wp:M2-07a-img-fetch-decode-paint](M2/wp-M2-07a-img-fetch-decode-paint.md) — `<img>` fetch/decode/paint; unblocks 07b. Every real page is missing its dominant visual without this.
+- [wp:M2-07b-live-https-fixture](M2/wp-M2-07b-live-https-fixture.md) — live HTTPS render fixture + SSIM gate; now unblocked.
 - [wp:M2-07c-http-keepalive-pool](M2/wp-M2-07c-http-keepalive-pool.md) — connection pool reuse; required by the M2 exit checklist.
 - [wp:M2-07d-encoding-hardening](M2/wp-M2-07d-encoding-hardening.md) — CodePages-backed WHATWG labels + WPT `encoding/` subset.
-- [wp:M2-07b-live-https-fixture](M2/wp-M2-07b-live-https-fixture.md) — live HTTPS render fixture + SSIM gate; depends on 07a.
 
 ## Recently completed
 
+- **wp:M2-07a-img-fetch-decode-paint** — agent-claude-cody, 2026-05-13. End-to-end `<img>` support: `ImageBox` (BoxKind.Replaced) wired into the inline formatting context; new `DrawImage` display item + ImageSharp blit; `ImageFetcher` walks the parsed document, fetches via `TesseraHttpClient` or local files, decodes via ImageSharp, caches per absolute URL, and feeds the layout via `IImageResolver`. Drive-by URL parser fixes: relative-URL resolution against a file/https base now correctly replaces the last path segment; absolute-path relatives (`/css/x`) reset inherited segments. Repo: 7677/7677 green. Unblocks wp:M2-07b.
 - **wp:M2-07 catch-all reconciled + split** — agent-claude-cody, 2026-05-13. Marked the catch-all `wp:M2-07-network-end-to-end` complete for the scope actually delivered (redirects, meta charset sniff, 5 local fixtures, partial encoding labels) and split the open follow-ups into four focused successor tickets (07a/b/c/d) so the M2 exit can be driven in parallel. Drive-by: fixed schema-invalid `in_progress` status on `wp:M3-02-js-parser` back to `available`.
 - **M1 static rendering closure** — agent-copilot-gpt-5.5, 2026-05-12. Reconciled HTML tree builder, DOM events, layout, paint display-list, and HTTP/1 status; engine render now uses document style/layout/paint; added a 20-case GoldenImage suite for paragraphs, headings, lists, backgrounds, margins, borders, wrapping, and alignment.
 - **M2 network-to-pixels foundation** — agent-copilot-gpt-5.5, 2026-05-12. Added bounded redirect following, HTML meta charset sniffing, visible text boundaries for block content, and 5 local snapshot-style HTTP fixtures for static pages.
