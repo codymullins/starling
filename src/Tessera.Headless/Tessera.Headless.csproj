@@ -7,6 +7,9 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Tessera.Engine\Tessera.Engine.csproj" />
-    <ProjectReference Include="..\..\Tessera.ServiceDefaults\Tessera.ServiceDefaults.csproj" />
+    <!-- Tessera.Telemetry (OpenTelemetry → OTLP) instead of the heavier
+         Aspire ServiceDefaults: the CLI doesn't use HostBuilder or
+         ASP.NET, and OtelBootstrap.Initialize works on a plain Main. -->
+    <ProjectReference Include="..\Tessera.Telemetry\Tessera.Telemetry.csproj" />
   </ItemGroup>
 </Project>

@@ -33,5 +33,6 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Maui.Controls" />
     <ProjectReference Include="..\Tessera.Engine\Tessera.Engine.csproj" />
+    <ProjectReference Include="..\Tessera.Telemetry\Tessera.Telemetry.csproj" />
   </ItemGroup>
 </Project>
