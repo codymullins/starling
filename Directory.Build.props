@@ -23,9 +23,9 @@
 
     <!--
       Strict-on-purpose, but a handful of CA / RCS rules are noisy on
-      engine-internal code (no localization, lots of reflection-instantiated
-      Avalonia types, interface stubs with unused params). Suppress them
-      globally and revisit at v1 hardening (M10).
+      engine-internal code (no localization, lots of framework-instantiated
+      UI types, interface stubs with unused params). Suppress them globally
+      and revisit at v1 hardening (M10).
     -->
     <NoWarn>$(NoWarn);CA1303;CA1304;CA1305;CA1812;CA1716;CA1031;CA1822;CA2007;CA1062</NoWarn>
     <NoWarn>$(NoWarn);RCS1163;RCS1124;RCS1118;RCS1158;RCS1192;RCS1238</NoWarn>

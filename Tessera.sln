@@ -26,8 +26,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Tessera.Engine", "src/Tesse
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Tessera.Headless", "src/Tessera.Headless/Tessera.Headless.csproj", "{1C7B4D7E-67E6-1400-2779-E6CEE5A7A6B0}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Tessera.Shell", "src/Tessera.Shell/Tessera.Shell.csproj", "{71BF609D-58A4-F6E9-DCEF-0DEF29BE4EFD}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Tessera.Common.Tests", "tests/Tessera.Common.Tests/Tessera.Common.Tests.csproj", "{14BEE0D1-DC89-B4CB-73B1-CB310C01087D}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Tessera.Url.Tests", "tests/Tessera.Url.Tests/Tessera.Url.Tests.csproj", "{BFFE636D-133E-9762-1ADF-CFBFBC116A28}"
@@ -114,10 +112,6 @@ Global
 		{1C7B4D7E-67E6-1400-2779-E6CEE5A7A6B0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1C7B4D7E-67E6-1400-2779-E6CEE5A7A6B0}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1C7B4D7E-67E6-1400-2779-E6CEE5A7A6B0}.Release|Any CPU.Build.0 = Release|Any CPU
-		{71BF609D-58A4-F6E9-DCEF-0DEF29BE4EFD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{71BF609D-58A4-F6E9-DCEF-0DEF29BE4EFD}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{71BF609D-58A4-F6E9-DCEF-0DEF29BE4EFD}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{71BF609D-58A4-F6E9-DCEF-0DEF29BE4EFD}.Release|Any CPU.Build.0 = Release|Any CPU
 		{14BEE0D1-DC89-B4CB-73B1-CB310C01087D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{14BEE0D1-DC89-B4CB-73B1-CB310C01087D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{14BEE0D1-DC89-B4CB-73B1-CB310C01087D}.Release|Any CPU.ActiveCfg = Release|Any CPU

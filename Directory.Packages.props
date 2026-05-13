@@ -10,12 +10,10 @@
     <PackageVersion Include="SixLabors.ImageSharp.Drawing" Version="2.1.7" />
     <PackageVersion Include="SixLabors.Fonts"              Version="2.1.3" />
 
-    <!-- UI shell — Avalonia 12 (stable Apr 2026, targets .NET 10) -->
-    <PackageVersion Include="Avalonia"                     Version="12.0.3" />
-    <PackageVersion Include="Avalonia.Desktop"             Version="12.0.3" />
-    <PackageVersion Include="Avalonia.Themes.Fluent"       Version="12.0.3" />
-    <PackageVersion Include="Avalonia.Fonts.Inter"         Version="12.0.3" />
-    <PackageVersion Include="Avalonia.ReactiveUI"          Version="12.0.3" />
+    <!-- UI shell — .NET MAUI 10 (Mac Catalyst only at v1; see src/Tessera.Gui).
+         The GUI project is intentionally kept out of Tessera.sln so core/CLI
+         builds don't require MAUI workloads. -->
+    <PackageVersion Include="Microsoft.Maui.Controls"      Version="10.0.20" />
 
     <!-- Crypto: pure-managed TLS support (consumed from M2 onward) -->
     <PackageVersion Include="BouncyCastle.Cryptography"    Version="2.5.0" />
