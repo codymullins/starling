@@ -61,3 +61,30 @@ jobs:
               src/Tessera.Bindings/ \
               src/Tessera.Loop/     \
               src/Tessera.Engine/
+
+  # Live-network acceptance for the M2 exit demo (wp:M2-07b). Opt-in via
+  # TESSERA_ALLOW_NETWORK=1 so the main matrix is not at the mercy of
+  # third-party hosts. Linux-only: the live golden under
+  # testdata/golden/live/example.com.png is pinned to one rasteriser.
+  network-tests:
+    name: network-tests (live HTTPS smoke)
+    runs-on: ubuntu-24.04
+    env:
+      TESSERA_ALLOW_NETWORK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore (locked)
+        run: dotnet restore --locked-mode
+      - name: Build
+        run: dotnet build --no-restore -c Release
+      - name: Test (live network)
+        run: dotnet test --no-build -c Release --filter Category=NetworkLive --logger "trx;LogFileName=network-test.trx"
+      - name: Upload network test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: network-test-results
+          path: '**/network-test.trx'
