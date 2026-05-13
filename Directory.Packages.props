@@ -20,6 +20,10 @@
     <!-- Crypto: pure-managed TLS support (consumed from M2 onward) -->
     <PackageVersion Include="BouncyCastle.Cryptography"    Version="2.5.0" />
 
+    <!-- Legacy single-byte / CJK encodings (pure-managed; Rule-0 clean).
+         Consumed by Tessera.Engine for WHATWG-table charset support. -->
+    <PackageVersion Include="System.Text.Encoding.CodePages" Version="9.0.0" />
+
     <!-- Tests + bench -->
     <PackageVersion Include="xunit.v3"                     Version="1.0.0" />
     <PackageVersion Include="xunit.runner.visualstudio"    Version="3.0.0" />

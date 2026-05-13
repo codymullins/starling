@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using SixLabors.ImageSharp;
 using Tessera.Common;
 using Tessera.Common.Diagnostics;
+using Tessera.Common.Encoding;
 using Tessera.Dom;
 using Tessera.Net;
 using Tessera.Paint;
@@ -28,6 +29,15 @@ public sealed class TesseraEngine
     private readonly IDiagnostics _diag;
     private readonly Painter _painter;
     private readonly Func<TesseraHttpClient> _httpFactory;
+
+    static TesseraEngine()
+    {
+        // Register the BCL CodePages provider once so WHATWG legacy
+        // single-byte (windows-1250…1258, ISO-8859-2…16, KOI8-*, mac*)
+        // and CJK (Shift_JIS, GBK, gb18030, Big5, EUC-KR, …) labels
+        // resolve. CodePages is a pure-managed NuGet package.
+        System.Text.Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+    }
 
     public TesseraEngine(IDiagnostics? diagnostics = null, Painter? painter = null,
         Func<TesseraHttpClient>? httpFactory = null)
@@ -289,31 +299,28 @@ public sealed class TesseraEngine
 
     private static Encoding? TryResolveEncoding(string name)
     {
-        var normalized = name.Trim().Trim('"', '\'').ToLowerInvariant();
-        if (normalized.Length == 0) return null;
+        // Strip surrounding quotes (we already split charset=... but the
+        // header value may itself be quoted).
+        var trimmed = name.Trim().Trim('"', '\'');
+        if (trimmed.Length == 0) return null;
 
-        // Aliases come from the WHATWG Encoding spec
-        // (https://encoding.spec.whatwg.org/#names-and-labels), restricted to
-        // encodings that the .NET BCL already exposes without requiring
-        // System.Text.Encoding.CodePages. Broader legacy codepage support is a
-        // follow-up; see wp:M2-07 handoff log.
-        return normalized switch
+        // WHATWG Encoding Standard "names and labels" lookup is the single
+        // source of truth (src/Tessera.Common/Encoding/WhatwgEncodingLabels.cs).
+        // The WHATWG canonical "windows-1252" maps the entire ISO-8859-1 /
+        // US-ASCII family, matching real-world browser behaviour: bytes
+        // 0x80..0x9F are mapped to their windows-1252 glyphs (e.g. 0x92 →
+        // U+2019 right single quote) rather than C1 controls.
+        var canonical = WhatwgEncodingLabels.TryGetCanonicalName(trimmed);
+        if (canonical is null) return null;
+
+        // Hot-path the BCL singletons; fall back to GetEncoding(name) for
+        // CodePages-backed encodings (registered in the static ctor).
+        return canonical switch
         {
-            "utf-8" or "utf8" or "unicode-1-1-utf-8" or "unicode11utf8"
-                or "unicode20utf8" or "x-unicode20utf8" or "csutf8"
-                => Encoding.UTF8,
-            "utf-16" or "utf-16le" or "csunicode" or "unicode" or "unicodefeff"
-                => Encoding.Unicode,
-            "utf-16be" or "unicodefffe" => Encoding.BigEndianUnicode,
-            "us-ascii" or "ascii" or "ansi_x3.4-1968" or "ansi_x3.4-1986"
-                or "iso-ir-6" or "iso_646.irv:1991" or "iso646-us"
-                or "csascii" or "cp367" or "ibm367" or "us"
-                => Encoding.ASCII,
-            "iso-8859-1" or "latin1" or "latin-1" or "iso_8859-1"
-                or "iso_8859-1:1987" or "iso-ir-100" or "l1"
-                or "csisolatin1" or "cp819" or "ibm819"
-                => Encoding.Latin1,
-            _ => TryGetEncodingByName(normalized),
+            "UTF-8" => Encoding.UTF8,
+            "UTF-16LE" => Encoding.Unicode,
+            "UTF-16BE" => Encoding.BigEndianUnicode,
+            _ => TryGetEncodingByName(canonical),
         };
     }
 

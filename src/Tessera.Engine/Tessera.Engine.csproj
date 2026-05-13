@@ -7,6 +7,13 @@
     <InternalsVisibleTo Include="Tessera.Engine.Tests" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Pure-managed legacy single-byte / CJK encodings (Rule-0 clean).
+         NU1510: .NET 10 ships an in-box copy of this assembly, but the
+         encoding provider must still be registered explicitly at startup
+         (see TesseraEngine static ctor). Suppress the prune warning. -->
+    <PackageReference Include="System.Text.Encoding.CodePages" NoWarn="NU1510" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Tessera.Common\Tessera.Common.csproj" />
     <ProjectReference Include="..\Tessera.Url\Tessera.Url.csproj" />
     <ProjectReference Include="..\Tessera.Net\Tessera.Net.csproj" />
