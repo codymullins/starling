@@ -15,4 +15,11 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Tessera.Engine\Tessera.Engine.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Curated WPT encoding/ subset; see testdata/wpt/encoding/README.md. -->
+    <Content Include="..\..\testdata\wpt\encoding\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>testdata\wpt\encoding\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </Content>
+  </ItemGroup>
 </Project>

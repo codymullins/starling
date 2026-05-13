@@ -1,0 +1,279 @@
+[
+  {
+    "label": "utf-8",
+    "source": "wpt/encoding/textdecoder-utf16-surrogates.html",
+    "bytes": ["0x48", "0x65", "0x6C", "0x6C", "0x6F", "0x20", "0xE4", "0xB8", "0x96", "0xE7", "0x95", "0x8C"],
+    "expected": "Hello 世界"
+  },
+  {
+    "label": "utf-8",
+    "source": "wpt/encoding/textdecoder-fatal.html",
+    "bytes": ["0xC3", "0xA9"],
+    "expected": "é"
+  },
+
+  {
+    "label": "windows-1252",
+    "source": "wpt/encoding/single-byte-decoder.html (windows-1252 index)",
+    "bytes": ["0x92"],
+    "expected": "’"
+  },
+  {
+    "label": "windows-1252",
+    "source": "wpt/encoding/single-byte-decoder.html (windows-1252 index)",
+    "bytes": ["0x80", "0x82", "0x83", "0x84", "0x85", "0x91", "0x92", "0x93", "0x94", "0x95", "0x96", "0x97"],
+    "expected": "€‚ƒ„…‘’“”•–—"
+  },
+  {
+    "label": "iso-8859-1",
+    "source": "wpt/encoding/single-byte-decoder.html (iso-8859-1 → windows-1252)",
+    "bytes": ["0x92"],
+    "expected": "’"
+  },
+  {
+    "label": "us-ascii",
+    "source": "wpt/encoding/single-byte-decoder.html (us-ascii → windows-1252)",
+    "bytes": ["0x48", "0x69"],
+    "expected": "Hi"
+  },
+
+  {
+    "label": "windows-1250",
+    "source": "wpt/encoding/single-byte-decoder.html (windows-1250 index)",
+    "bytes": ["0xA3", "0xB3", "0xA5", "0xC6", "0xE6"],
+    "expected": "ŁłĄĆć"
+  },
+  {
+    "label": "cp1250",
+    "source": "alias of windows-1250",
+    "bytes": ["0x9F"],
+    "expected": "ź"
+  },
+
+  {
+    "label": "windows-1251",
+    "source": "wpt/encoding/single-byte-decoder.html (windows-1251 index)",
+    "bytes": ["0xC0", "0xC1", "0xC2", "0xC3", "0xC4", "0xC5"],
+    "expected": "АБВГДЕ"
+  },
+  {
+    "label": "windows-1253",
+    "source": "wpt/encoding/single-byte-decoder.html (windows-1253 index)",
+    "bytes": ["0xC1", "0xC2", "0xC3", "0xC4", "0xC5", "0xC6"],
+    "expected": "ΑΒΓΔΕΖ"
+  },
+  {
+    "label": "windows-1254",
+    "source": "wpt/encoding/single-byte-decoder.html (windows-1254 index)",
+    "bytes": ["0xFD", "0xFE", "0xDD", "0xDE"],
+    "expected": "ışİŞ"
+  },
+  {
+    "label": "iso-8859-9",
+    "source": "alias of windows-1254",
+    "bytes": ["0xFD"],
+    "expected": "ı"
+  },
+  {
+    "label": "windows-1255",
+    "source": "wpt/encoding/single-byte-decoder.html (windows-1255 index)",
+    "bytes": ["0xE0", "0xE1", "0xE2", "0xE3", "0xE4", "0xE5"],
+    "expected": "אבגדהו"
+  },
+  {
+    "label": "windows-1256",
+    "source": "wpt/encoding/single-byte-decoder.html (windows-1256 index)",
+    "bytes": ["0xC7", "0xC8", "0xC9", "0xCA"],
+    "expected": "ابةت"
+  },
+  {
+    "label": "windows-1257",
+    "source": "wpt/encoding/single-byte-decoder.html (windows-1257 index)",
+    "bytes": ["0xC0", "0xC1", "0xC2", "0xC3"],
+    "expected": "ĄĮĀĆ"
+  },
+  {
+    "label": "windows-1258",
+    "source": "wpt/encoding/single-byte-decoder.html (windows-1258 index)",
+    "bytes": ["0xC0", "0xC1", "0xC2", "0xC3", "0xC4", "0xC5"],
+    "expected": "ÀÁÂĂÄÅ"
+  },
+
+  {
+    "label": "iso-8859-2",
+    "source": "wpt/encoding/single-byte-decoder.html (iso-8859-2 index)",
+    "bytes": ["0xA1", "0xA3", "0xA5", "0xA6"],
+    "expected": "ĄŁĽŚ"
+  },
+  {
+    "label": "iso-8859-3",
+    "source": "wpt/encoding/single-byte-decoder.html (iso-8859-3 index)",
+    "bytes": ["0xA1", "0xA6", "0xA9", "0xAA"],
+    "expected": "ĦĤİŞ"
+  },
+  {
+    "label": "iso-8859-4",
+    "source": "wpt/encoding/single-byte-decoder.html (iso-8859-4 index)",
+    "bytes": ["0xA1", "0xA2", "0xA3", "0xA5"],
+    "expected": "ĄĸŖĨ"
+  },
+  {
+    "label": "iso-8859-5",
+    "source": "wpt/encoding/single-byte-decoder.html (iso-8859-5 index)",
+    "bytes": ["0xB0", "0xB1", "0xB2", "0xB3"],
+    "expected": "АБВГ"
+  },
+  {
+    "label": "iso-8859-7",
+    "source": "wpt/encoding/single-byte-decoder.html (iso-8859-7 index)",
+    "bytes": ["0xC1", "0xC2", "0xC3", "0xC4"],
+    "expected": "ΑΒΓΔ"
+  },
+  {
+    "label": "iso-8859-13",
+    "source": "wpt/encoding/single-byte-decoder.html (iso-8859-13 index)",
+    "bytes": ["0xC0", "0xC1", "0xC2", "0xC3"],
+    "expected": "ĄĮĀĆ"
+  },
+  {
+    "label": "iso-8859-15",
+    "source": "wpt/encoding/single-byte-decoder.html (iso-8859-15 index)",
+    "bytes": ["0xA4", "0xA6", "0xA8", "0xB4", "0xB8", "0xBC", "0xBD", "0xBE"],
+    "expected": "€ŠšŽžŒœŸ"
+  },
+  {
+    "label": "koi8-r",
+    "source": "wpt/encoding/single-byte-decoder.html (koi8-r index)",
+    "bytes": ["0xC0", "0xC1", "0xC2", "0xC3", "0xC4", "0xC5"],
+    "expected": "юабцде"
+  },
+  {
+    "label": "koi8-u",
+    "source": "wpt/encoding/single-byte-decoder.html (koi8-u index)",
+    "bytes": ["0xA4", "0xA6", "0xA7"],
+    "expected": "єії"
+  },
+
+  {
+    "label": "macintosh",
+    "source": "wpt/encoding/single-byte-decoder.html (macintosh index)",
+    "bytes": ["0x80", "0x81", "0x82", "0x83", "0xA9"],
+    "expected": "ÄÅÇÉ©"
+  },
+  {
+    "label": "x-mac-cyrillic",
+    "source": "wpt/encoding/single-byte-decoder.html (x-mac-cyrillic index)",
+    "bytes": ["0x80", "0x81", "0x82", "0x83"],
+    "expected": "АБВГ"
+  },
+
+  {
+    "label": "windows-874",
+    "source": "wpt/encoding/single-byte-decoder.html (windows-874 index)",
+    "bytes": ["0xA1", "0xA2", "0xA3"],
+    "expected": "กขฃ"
+  },
+  {
+    "label": "ibm866",
+    "source": "wpt/encoding/single-byte-decoder.html (ibm866 index)",
+    "bytes": ["0x80", "0x81", "0x82", "0x83"],
+    "expected": "АБВГ"
+  },
+
+  {
+    "label": "shift_jis",
+    "source": "wpt/encoding/legacy-mb-japanese/shift_jis/sjis-decode-form.html",
+    "bytes": ["0x82", "0xA0"],
+    "expected": "あ"
+  },
+  {
+    "label": "shift_jis",
+    "source": "wpt/encoding/legacy-mb-japanese/shift_jis/sjis-decode-form.html",
+    "bytes": ["0x83", "0x41"],
+    "expected": "ア"
+  },
+  {
+    "label": "sjis",
+    "source": "alias of shift_jis",
+    "bytes": ["0x82", "0xA0"],
+    "expected": "あ"
+  },
+  {
+    "label": "ms_kanji",
+    "source": "alias of shift_jis",
+    "bytes": ["0x82", "0xA0"],
+    "expected": "あ"
+  },
+
+  {
+    "label": "euc-jp",
+    "source": "wpt/encoding/legacy-mb-japanese/euc-jp/euc-jp-decode-form.html",
+    "bytes": ["0xA4", "0xA2"],
+    "expected": "あ"
+  },
+
+  {
+    "label": "iso-2022-jp",
+    "source": "wpt/encoding/legacy-mb-japanese/iso-2022-jp/iso2022jp-decode-form.html",
+    "bytes": ["0x1B", "0x24", "0x42", "0x24", "0x22", "0x1B", "0x28", "0x42"],
+    "expected": "あ"
+  },
+
+  {
+    "label": "gbk",
+    "source": "wpt/encoding/legacy-mb-schinese/gbk/gbk-decode-form.html",
+    "bytes": ["0xC4", "0xE3"],
+    "expected": "你"
+  },
+  {
+    "label": "gb18030",
+    "source": "wpt/encoding/legacy-mb-schinese/gb18030/gb18030-decode-form.html",
+    "bytes": ["0xC4", "0xE3", "0xBA", "0xC3"],
+    "expected": "你好"
+  },
+  {
+    "label": "gb2312",
+    "source": "alias of GBK",
+    "bytes": ["0xC4", "0xE3"],
+    "expected": "你"
+  },
+
+  {
+    "label": "big5",
+    "source": "wpt/encoding/legacy-mb-tchinese/big5/big5-decode-form.html",
+    "bytes": ["0xA4", "0x40"],
+    "expected": "一"
+  },
+  {
+    "label": "big5-hkscs",
+    "source": "alias of Big5",
+    "bytes": ["0xA4", "0x40"],
+    "expected": "一"
+  },
+
+  {
+    "label": "euc-kr",
+    "source": "wpt/encoding/legacy-mb-korean/euc-kr/euc-kr-decode-form.html",
+    "bytes": ["0xBE", "0xC8", "0xB3", "0xE7"],
+    "expected": "안녕"
+  },
+  {
+    "label": "korean",
+    "source": "alias of EUC-KR",
+    "bytes": ["0xBE", "0xC8"],
+    "expected": "안"
+  },
+
+  {
+    "label": "utf-16le",
+    "source": "wpt/encoding/textdecoder-utf16-surrogates.html",
+    "bytes": ["0x48", "0x00", "0x69", "0x00"],
+    "expected": "Hi"
+  },
+  {
+    "label": "utf-16be",
+    "source": "wpt/encoding/textdecoder-utf16-surrogates.html",
+    "bytes": ["0x00", "0x48", "0x00", "0x69"],
+    "expected": "Hi"
+  }
+]

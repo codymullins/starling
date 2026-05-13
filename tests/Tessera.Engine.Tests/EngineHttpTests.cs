@@ -259,6 +259,7 @@ public class EngineHttpTests
     }
 
     [Theory]
+    // UTF / ASCII / Latin-1 core.
     [InlineData("text/html; charset=utf-8", new byte[] { 0x68, 0x69 }, "hi")]
     [InlineData("text/html", new byte[] { 0xEF, 0xBB, 0xBF, 0x68, 0x69 }, "hi")]
     [InlineData("text/html; charset=\"utf-8\"", new byte[] { 0x68 }, "h")]
@@ -269,6 +270,56 @@ public class EngineHttpTests
     [InlineData("text/html; charset=ISO_8859-1", new byte[] { 0xE9 }, "é")]
     [InlineData("text/html; charset=iso-ir-100", new byte[] { 0xE9 }, "é")]
     [InlineData("text/html; charset=unicode-1-1-utf-8", new byte[] { 0x68, 0x69 }, "hi")]
+    // WHATWG "iso-8859-1" / "us-ascii" canonicalise to windows-1252, so
+    // bytes 0x80..0x9F map to their windows-1252 glyphs (browser-compatible).
+    [InlineData("text/html; charset=iso-8859-1", new byte[] { 0x92 }, "’")]
+    [InlineData("text/html; charset=us-ascii", new byte[] { 0x80 }, "€")]
+    [InlineData("text/html; charset=windows-1252", new byte[] { 0x80, 0x92, 0x97 }, "€’—")]
+    [InlineData("text/html; charset=cp1252", new byte[] { 0x9C }, "œ")]
+    // windows-1250..1258 family.
+    [InlineData("text/html; charset=windows-1250", new byte[] { 0xA3 }, "Ł")]
+    [InlineData("text/html; charset=cp1251", new byte[] { 0xC0 }, "А")]
+    [InlineData("text/html; charset=windows-1253", new byte[] { 0xC1 }, "Α")]
+    [InlineData("text/html; charset=windows-1254", new byte[] { 0xFD }, "ı")]
+    [InlineData("text/html; charset=iso-8859-9", new byte[] { 0xFD }, "ı")]
+    [InlineData("text/html; charset=windows-1255", new byte[] { 0xE0 }, "א")]
+    [InlineData("text/html; charset=windows-1256", new byte[] { 0xC7 }, "ا")]
+    [InlineData("text/html; charset=windows-1257", new byte[] { 0xC0 }, "Ą")]
+    [InlineData("text/html; charset=windows-1258", new byte[] { 0xC0 }, "À")]
+    // ISO-8859 family (2..16).
+    [InlineData("text/html; charset=iso-8859-2", new byte[] { 0xA1 }, "Ą")]
+    [InlineData("text/html; charset=latin2", new byte[] { 0xA3 }, "Ł")]
+    [InlineData("text/html; charset=iso-8859-3", new byte[] { 0xA1 }, "Ħ")]
+    [InlineData("text/html; charset=iso-8859-4", new byte[] { 0xA1 }, "Ą")]
+    [InlineData("text/html; charset=iso-8859-5", new byte[] { 0xB0 }, "А")]
+    [InlineData("text/html; charset=iso-8859-7", new byte[] { 0xC1 }, "Α")]
+    [InlineData("text/html; charset=iso-8859-13", new byte[] { 0xC0 }, "Ą")]
+    [InlineData("text/html; charset=iso-8859-15", new byte[] { 0xA4 }, "€")]
+    // ISO-8859-10/-14/-16 are mapped by WHATWG but not shipped by the
+    // .NET BCL CodePages provider; the engine falls back to UTF-8 for
+    // those labels rather than mis-decoding. See WhatwgEncodingLabels.
+    // Cyrillic + Mac.
+    [InlineData("text/html; charset=koi8-r", new byte[] { 0xC1 }, "а")]
+    [InlineData("text/html; charset=koi8-u", new byte[] { 0xA4 }, "є")]
+    [InlineData("text/html; charset=x-mac-cyrillic", new byte[] { 0x80 }, "А")]
+    [InlineData("text/html; charset=macintosh", new byte[] { 0xA9 }, "©")]
+    // Thai / IBM866.
+    [InlineData("text/html; charset=windows-874", new byte[] { 0xA1 }, "ก")]
+    [InlineData("text/html; charset=tis-620", new byte[] { 0xA1 }, "ก")]
+    [InlineData("text/html; charset=ibm866", new byte[] { 0x80 }, "А")]
+    // CJK families.
+    [InlineData("text/html; charset=shift_jis", new byte[] { 0x82, 0xA0 }, "あ")]
+    [InlineData("text/html; charset=ms_kanji", new byte[] { 0x82, 0xA0 }, "あ")]
+    [InlineData("text/html; charset=sjis", new byte[] { 0x82, 0xA0 }, "あ")]
+    [InlineData("text/html; charset=gbk", new byte[] { 0xC4, 0xE3 }, "你")]
+    [InlineData("text/html; charset=gb2312", new byte[] { 0xC4, 0xE3 }, "你")]
+    [InlineData("text/html; charset=gb18030", new byte[] { 0xC4, 0xE3, 0xBA, 0xC3 }, "你好")]
+    [InlineData("text/html; charset=big5", new byte[] { 0xA4, 0x40 }, "一")]
+    [InlineData("text/html; charset=big5-hkscs", new byte[] { 0xA4, 0x40 }, "一")]
+    [InlineData("text/html; charset=euc-kr", new byte[] { 0xBE, 0xC8 }, "안")]
+    [InlineData("text/html; charset=korean", new byte[] { 0xBE, 0xC8 }, "안")]
+    [InlineData("text/html; charset=euc-jp", new byte[] { 0xA4, 0xA2 }, "あ")]
+    [InlineData("text/html; charset=iso-2022-jp", new byte[] { 0x1B, 0x24, 0x42, 0x24, 0x22, 0x1B, 0x28, 0x42 }, "あ")]
     public void ResolveEncoding_handles_common_inputs(string? contentType, byte[] body, string expectedDecoded)
     {
         var enc = TesseraEngine.ResolveEncoding(contentType, body);
