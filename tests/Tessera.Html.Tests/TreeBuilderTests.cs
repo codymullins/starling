@@ -143,4 +143,68 @@ public sealed class TreeBuilderTests
         doc.Body!.TextContent.Should().Contain("hello");
         doc.Body.TextContent.Should().Contain("world");
     }
+
+    [Fact]
+    public void Script_content_is_raw_text_and_following_body_content_resumes()
+    {
+        var doc = HtmlParser.Parse("<script>if (a < b) { c(); }</script><body>after</body>");
+
+        var script = doc.Head!.Descendants().OfType<Element>().First(e => e.LocalName == "script");
+        script.TextContent.Should().Be("if (a < b) { c(); }");
+        doc.Body!.TextContent.Should().Be("after");
+    }
+
+    [Fact]
+    public void Head_content_after_head_is_reprocessed_into_head()
+    {
+        var doc = HtmlParser.Parse("<!doctype html><html><head></head><style>.x{color:red}</style><body>x</body></html>");
+
+        doc.Head!.Descendants().OfType<Element>().Should().Contain(e => e.LocalName == "style");
+        doc.Body!.Descendants().OfType<Element>().Should().NotContain(e => e.LocalName == "style");
+    }
+
+    [Fact]
+    public void Void_elements_do_not_swallow_following_text()
+    {
+        var doc = HtmlParser.Parse("<body>before<img src=x>after<br>tail</body>");
+
+        doc.Body!.TextContent.Should().Be("beforeaftertail");
+        doc.Body.ChildNodes.OfType<Element>().Select(e => e.LocalName)
+            .Should().ContainInOrder("img", "br");
+    }
+
+    [Fact]
+    public void Definition_items_implicitly_close_each_other()
+    {
+        var doc = HtmlParser.Parse("<dl><dt>term<dd>definition<dt>next</dl>");
+        var dl = doc.Body!.Descendants().OfType<Element>().First(e => e.LocalName == "dl");
+
+        dl.ChildNodes.OfType<Element>().Select(e => $"{e.LocalName}:{e.TextContent.Trim()}")
+            .Should().ContainInOrder("dt:term", "dd:definition", "dt:next");
+    }
+
+    [Fact]
+    public void Nested_button_start_tag_closes_previous_button()
+    {
+        var doc = HtmlParser.Parse("<body><button>one<button>two</button></body>");
+        var buttons = doc.Body!.Descendants().OfType<Element>()
+            .Where(e => e.LocalName == "button")
+            .ToList();
+
+        buttons.Should().HaveCount(2);
+        buttons[0].TextContent.Should().Be("one");
+        buttons[1].TextContent.Should().Be("two");
+        buttons[1].ParentNode.Should().BeSameAs(doc.Body);
+    }
+
+    [Fact]
+    public void Simple_table_structure_is_preserved_for_static_pages()
+    {
+        var doc = HtmlParser.Parse("<body><table><tbody><tr><td>A</td><td>B</td></tr></tbody></table></body>");
+        var table = doc.Body!.Descendants().OfType<Element>().First(e => e.LocalName == "table");
+
+        table.Descendants().OfType<Element>().Select(e => e.LocalName)
+            .Should().ContainInOrder("tbody", "tr", "td", "td");
+        table.TextContent.Should().Be("AB");
+    }
 }

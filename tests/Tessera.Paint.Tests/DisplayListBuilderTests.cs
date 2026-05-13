@@ -56,4 +56,14 @@ public sealed class DisplayListBuilderTests
         var dl = BuildList("<body></body>", new Size(400, 300));
         dl.Items.OfType<DrawText>().Should().BeEmpty();
     }
+
+    [Fact]
+    public void Underlined_link_emits_text_and_underline_fill()
+    {
+        var dl = BuildList("<body><a href=\"/next\">go next</a></body>", new Size(400, 300));
+
+        dl.Items.OfType<DrawText>().Should().Contain(d => d.Text.Contains("go", StringComparison.Ordinal));
+        dl.Items.OfType<FillRect>().Should().Contain(r =>
+            r.Color.B == 255 && r.Color.R == 0 && r.Color.G == 0 && r.Bounds.Height >= 1 && r.Bounds.Height <= 2);
+    }
 }

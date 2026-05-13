@@ -1,10 +1,11 @@
 ---
 id: "wp:M1-09-paint-display-list"
 milestone: "M1"
-status: "blocked"
-claimed_by: ""
-claimed_at: ""
-branch: ""
+status: "complete"
+claimed_by: "agent-copilot-gpt-5.5"
+claimed_at: "2026-05-12T19:30:00Z"
+branch: "main"
+completed_at: "2026-05-12T19:30:00Z"
 depends_on:
   - "wp:M1-08-layout-block-inline"
 blocks:
@@ -24,5 +25,14 @@ rounded rectangles.
 ## Acceptance
 M1 golden suite (≥20 cases) renders within tolerance.
 
+## Scope note
+
+Implemented display-list construction and ImageSharp replay for solid
+backgrounds, text, and basic borders. Rounded rectangles are still deferred to
+a later paint-polish package.
+
 ## Handoff log
 - 2026-05-11T15:20Z — created.
+- 2026-05-12T19:30Z — completed the M1 static display-list path and added a
+  20-case GoldenImage suite in `M1StaticRenderingGoldenTests`; engine rendering
+  now uses document layout/paint instead of the legacy text-only path.

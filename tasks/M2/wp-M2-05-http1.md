@@ -1,10 +1,11 @@
 ---
 id: "wp:M2-05-http1"
 milestone: "M2"
-status: "available"
-claimed_by: ""
-claimed_at: ""
-branch: ""
+status: "complete"
+claimed_by: "agent-copilot-gpt-5.5"
+claimed_at: "2026-05-12T19:30:00Z"
+branch: "main"
+completed_at: "2026-05-12T19:30:00Z"
 depends_on:
   - "wp:M2-04-tls"
 blocks:
@@ -36,3 +37,7 @@ Chromium response modulo non-deterministic headers.
 ## Handoff log
 
 - 2026-05-11T19:30Z — created after wp:M2-04-tls completion; available to claim.
+- 2026-05-12T19:30Z — reconciled as complete: `TesseraHttpClient` wires DNS,
+  TCP, optional TLS, H1 request writing, response parsing, gzip/chunked body
+  decoding, and cookie-jar integration; engine HTTP tests now prove fetched
+  HTML uses the full static rendering pipeline.

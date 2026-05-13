@@ -113,6 +113,15 @@ public sealed class DisplayListBuilder
                 fontFamily,
                 bold,
                 italic));
+
+            if (IsUnderlined(style))
+            {
+                var underlineY = y + frag.Y + frag.Baseline + Math.Max(1d, fontSize * 0.08d);
+                var underlineHeight = Math.Max(1d, Math.Round(fontSize / 16d));
+                list.Add(new FillRect(
+                    new Rect(x + frag.X, underlineY, frag.Width, underlineHeight),
+                    color));
+            }
         }
     }
 
@@ -142,5 +151,17 @@ public sealed class DisplayListBuilder
     {
         if (style is null) return false;
         return style.Get(PropertyId.FontStyle) is CssKeyword { Name: "italic" or "oblique" };
+    }
+
+    private static bool IsUnderlined(ComputedStyle? style)
+    {
+        if (style is null) return false;
+        return style.Get(PropertyId.TextDecoration) switch
+        {
+            CssKeyword { Name: "underline" } => true,
+            CssValueList list => list.Values.OfType<CssKeyword>()
+                .Any(k => k.Name.Equals("underline", StringComparison.OrdinalIgnoreCase)),
+            _ => false,
+        };
     }
 }

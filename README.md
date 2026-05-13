@@ -2,7 +2,14 @@
 
 Pure-managed .NET 10 web browser. Built from primitives, no Chromium / Gecko / WebKit reuse.
 
-> **Status:** M0 (walking skeleton). See [`browser-plan/13_MILESTONES.md`](browser-plan/13_MILESTONES.md) for the roadmap.
+> **Status:** M1 static rendering is wired end-to-end for the current supported
+> subset: HTML tokenizer/tree-builder, DOM, CSS cascade, block/inline layout,
+> display-list paint, and PNG output. M2 networking pieces through HTTP/1 are
+> present, with redirects, meta charset sniffing, local HTTP render fixtures,
+> session cookies, navigation history, a deterministic event-loop core, and a
+> tiny JS-to-DOM host bridge; the next large section is live/snapshot web-page
+> rendering plus images. See
+> [`browser-plan/13_MILESTONES.md`](browser-plan/13_MILESTONES.md) for the roadmap.
 
 ## Quickstart
 
@@ -13,7 +20,7 @@ dotnet restore
 dotnet build
 dotnet test
 
-# Render the M0 'hello world' fixture (bare path is auto-normalized to file://)
+# Render the static 'hello world' fixture (bare path is auto-normalized to file://)
 dotnet run --project src/Tessera.Headless -- render testdata/hello.html -o out.png
 ```
 
@@ -22,8 +29,8 @@ The CLI accepts bare filesystem paths as well as well-formed `file://` URLs.
 spec, the segment after `//` is the authority/host, not part of the path).
 
 The CLI's full shape is documented in [`browser-plan/02_PROJECT_SETUP.md`](browser-plan/02_PROJECT_SETUP.md#headless-cli-shape).
-Subcommands beyond `render` are stubbed in M0 and return a "not yet implemented" message — they
-light up incrementally over M1–M4.
+Subcommands beyond `render` and `tokenize` are still incremental and may return a
+"not yet implemented" message as they light up over the remaining milestones.
 
 ## Repository layout
 

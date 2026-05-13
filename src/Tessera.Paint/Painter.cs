@@ -2,7 +2,9 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Drawing.Processing;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
+using Tessera.Css;
 using Tessera.Css.Cascade;
+using Tessera.Css.Parser;
 using Tessera.Dom;
 using Tessera.Layout.Text;
 using Tessera.Paint.Backend;
@@ -32,17 +34,38 @@ public sealed class Painter
     /// display list, replay it onto an ImageSharp surface. The caller supplies
     /// a parsed <see cref="Document"/> and the viewport size in CSS px.
     /// </summary>
-    public Image<Rgba32> RenderDocument(Document document, LayoutSize viewport)
+    public Image<Rgba32> RenderDocument(Document document, LayoutSize viewport, float? defaultFontSize = null)
     {
         ArgumentNullException.ThrowIfNull(document);
 
-        var style = new StyleEngine();
+        var style = CreateStyleEngine(document, defaultFontSize);
         var layoutEngine = new LayoutEngineImpl(style, DefaultTextMeasurer.Instance);
         var root = layoutEngine.LayoutDocument(document, viewport);
 
         PaintList displayList = new DisplayListBuilder().Build(root);
         var backend = new ImageSharpBackend(_fonts);
         return backend.Render(displayList, viewport);
+    }
+
+    private static StyleEngine CreateStyleEngine(Document document, float? defaultFontSize)
+    {
+        var style = new StyleEngine();
+
+        if (defaultFontSize is > 0)
+        {
+            style.AddStyleSheet(CssParser.ParseStyleSheet(
+                FormattableString.Invariant($"body {{ font-size: {defaultFontSize.Value}px; }}"),
+                StyleOrigin.User));
+        }
+
+        foreach (var element in document.GetElementsByTagName("style"))
+        {
+            var source = element.TextContent;
+            if (!string.IsNullOrWhiteSpace(source))
+                style.AddStyleSheet(CssParser.ParseStyleSheet(source, StyleOrigin.Author));
+        }
+
+        return style;
     }
 
     /// <summary>Legacy M0 path: draw a fixed string onto a viewport-sized canvas.</summary>

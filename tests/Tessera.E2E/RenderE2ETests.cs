@@ -7,8 +7,8 @@ using Xunit;
 namespace Tessera.E2E;
 
 /// <summary>
-/// End-to-end M0 acceptance: drive the engine the same way the headless CLI
-/// does, and confirm a PNG comes out the other side. Tagged
+/// End-to-end static-rendering acceptance: drive the engine the same way the
+/// headless CLI does, and confirm a PNG comes out the other side. Tagged
 /// <c>Category=GoldenImage</c> so CI runs it via the dedicated step in
 /// <c>.github/workflows/ci.yml</c>.
 /// </summary>

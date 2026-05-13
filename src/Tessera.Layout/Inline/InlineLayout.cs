@@ -35,6 +35,7 @@ internal sealed class InlineLayout
 
         double cursorX = 0, cursorY = 0;
         double currentLineHeight = lineHeight;
+        var fragments = new List<(TextBox Owner, int Index)>();
 
         foreach (var (text, style, owner) in runs)
         {
@@ -65,18 +66,53 @@ internal sealed class InlineLayout
                         var trimmed = word.TrimStart(' ');
                         if (trimmed.Length == 0) continue;
                         var trimmedWidth = _measurer.MeasureWidth(trimmed, localFontSize);
-                        owner.Fragments.Add(new TextFragment(trimmed, cursorX, cursorY, trimmedWidth, currentLineHeight, baseline));
+                        AddFragment(owner, fragments, new TextFragment(trimmed, cursorX, cursorY, trimmedWidth, currentLineHeight, baseline));
                         cursorX += trimmedWidth;
                         continue;
                     }
                 }
 
-                owner.Fragments.Add(new TextFragment(word, cursorX, cursorY, width, currentLineHeight, _measurer.Baseline(localFontSize)));
+                AddFragment(owner, fragments, new TextFragment(word, cursorX, cursorY, width, currentLineHeight, _measurer.Baseline(localFontSize)));
                 cursorX += width;
             }
         }
 
+        AlignLines(container.Style, availableWidth, fragments);
         return cursorY + currentLineHeight;
+    }
+
+    private static void AddFragment(TextBox owner, List<(TextBox Owner, int Index)> fragments, TextFragment fragment)
+    {
+        owner.Fragments.Add(fragment);
+        fragments.Add((owner, owner.Fragments.Count - 1));
+    }
+
+    private static void AlignLines(ComputedStyle? style, double availableWidth, List<(TextBox Owner, int Index)> fragments)
+    {
+        var align = style?.Get(PropertyId.TextAlign) is CssKeyword keyword
+            ? keyword.Name.ToLowerInvariant()
+            : "start";
+        if (align is not ("center" or "right" or "end") || fragments.Count == 0)
+            return;
+
+        foreach (var line in fragments.GroupBy(item => item.Owner.Fragments[item.Index].Y))
+        {
+            var lineWidth = line.Max(item =>
+            {
+                var fragment = item.Owner.Fragments[item.Index];
+                return fragment.X + fragment.Width;
+            });
+            var offset = align == "center"
+                ? Math.Max(0, (availableWidth - lineWidth) / 2d)
+                : Math.Max(0, availableWidth - lineWidth);
+            if (offset == 0) continue;
+
+            foreach (var item in line)
+            {
+                var fragment = item.Owner.Fragments[item.Index];
+                item.Owner.Fragments[item.Index] = fragment with { X = fragment.X + offset };
+            }
+        }
     }
 
     private static void Flatten(Box.Box box, List<(string Text, ComputedStyle? Style, TextBox Owner)> runs)

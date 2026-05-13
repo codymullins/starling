@@ -8,9 +8,9 @@ namespace Tessera.Headless;
 /// <summary>
 /// Agent-friendly CLI per browser-plan/02_PROJECT_SETUP.md §Headless CLI shape.
 ///
-/// M0 implements <c>render</c> fully; <c>tokenize</c>, <c>parse</c>, <c>style</c>,
-/// <c>layout</c>, and <c>js</c> are stubs that print a "not yet" message and
-/// return exit code 2 (per Unix convention: misuse of a builtin / not-yet).
+/// Static rendering and tokenizer inspection are implemented; <c>parse</c>,
+/// <c>style</c>, <c>layout</c>, and <c>js</c> still print a "not yet" message
+/// and return exit code 2 (per Unix convention: misuse of a builtin / not-yet).
 /// </summary>
 internal static class Program
 {
@@ -196,7 +196,7 @@ internal static class Program
     private static int StubSubcommand(string name)
     {
         Console.Error.WriteLine(
-            $"`tessera {name}` is not yet implemented in M0. See browser-plan/13_MILESTONES.md.");
+            $"`tessera {name}` is not yet implemented. See browser-plan/13_MILESTONES.md.");
         return 2;
     }
 

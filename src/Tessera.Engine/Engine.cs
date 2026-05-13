@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using SixLabors.ImageSharp;
 using Tessera.Common;
 using Tessera.Common.Diagnostics;
@@ -6,22 +7,24 @@ using Tessera.Dom;
 using Tessera.Net;
 using Tessera.Paint;
 using Tessera.Url;
+using LayoutSize = Tessera.Layout.Size;
 using TesseraUrl = global::Tessera.Url.Url;
 
 namespace Tessera.Engine;
 
 /// <summary>
-/// M0/M2 engine façade. One call: load a URL, parse the body's text, paint it
-/// onto a bitmap. The full Browser / Page / Frame composition per
-/// 01_ARCHITECTURE.md §E lands once layout/paint reach M1 fidelity.
+/// Engine façade. One call: load a URL, parse HTML, run the static
+/// style/layout/paint pipeline, and write a bitmap. The full Browser / Page /
+/// Frame composition per 01_ARCHITECTURE.md §E lands with interactive browsing.
 /// </summary>
 /// <remarks>
-/// As of M2-07 the engine knows how to fetch <c>http://</c> and <c>https://</c>
-/// via <see cref="TesseraHttpClient"/>. Rendering itself is still M0-fidelity
-/// (text-on-white) until the in-flight M1 layout/paint pipeline lands.
+/// As of the M1 static-rendering closure the renderer uses the document-level
+/// pipeline in <see cref="Painter.RenderDocument"/> for file and network inputs.
 /// </remarks>
 public sealed class TesseraEngine
 {
+    private const int MaxRedirects = 10;
+
     private readonly IDiagnostics _diag;
     private readonly Painter _painter;
     private readonly Func<TesseraHttpClient> _httpFactory;
@@ -39,11 +42,9 @@ public sealed class TesseraEngine
     /// Returns <c>true</c> on success.
     /// </summary>
     /// <remarks>
-    /// In M0 only <c>file://</c> URLs are resolvable. <c>http(s)://</c> wait on
-    /// M2 (see 03_NETWORKING.md). The renderer pulls <see cref="Node.TextContent"/>
-    /// from <c>&lt;body&gt;</c> (or from <see cref="Document"/> if no body) and
-    /// hands it to <see cref="Painter"/>. No CSS, no layout — just text on a
-    /// white canvas.
+    /// Supports <c>file://</c>, <c>http://</c>, and <c>https://</c> URLs. The
+    /// returned <see cref="RenderOutcome.DisplayText"/> is a diagnostic text
+    /// summary; the PNG is produced from the full parsed document.
     /// </remarks>
     public Result<RenderOutcome, RenderError> Render(string url, RenderOptions options, string outputPath)
         => RenderAsync(url, options, outputPath, CancellationToken.None).GetAwaiter().GetResult();
@@ -93,7 +94,10 @@ public sealed class TesseraEngine
         var doc = Html.HtmlParser.Parse(html);
         var displayText = ExtractDisplayText(doc);
 
-        using var image = _painter.RenderText(displayText, options.Viewport, options.FontSize);
+        using var image = _painter.RenderDocument(
+            doc,
+            new LayoutSize(options.Viewport.Width, options.Viewport.Height),
+            options.FontSize);
 
         try
         {
@@ -122,44 +126,109 @@ public sealed class TesseraEngine
     private async Task<Result<string, RenderError>> FetchHtmlAsync(TesseraUrl url, CancellationToken ct)
     {
         using var http = _httpFactory();
-        var response = await http.GetAsync(url, ct).ConfigureAwait(false);
-        if (response.IsErr)
-            return Result<string, RenderError>.Err(new RenderError(
-                $"Network error fetching {url}: {response.Error}"));
+        var current = url;
 
-        var resp = response.Value;
-        if (resp.StatusCode is < 200 or >= 400)
-            return Result<string, RenderError>.Err(new RenderError(
-                $"HTTP {resp.StatusCode} {resp.ReasonPhrase} from {url}"));
+        for (var redirects = 0; redirects <= MaxRedirects; redirects++)
+        {
+            var response = await http.GetAsync(current, ct).ConfigureAwait(false);
+            if (response.IsErr)
+                return Result<string, RenderError>.Err(new RenderError(
+                    $"Network error fetching {current}: {response.Error}"));
 
-        var contentType = resp.Headers.GetFirst("Content-Type");
-        var encoding = ResolveEncoding(contentType, resp.Body.Span);
-        return Result<string, RenderError>.Ok(encoding.GetString(resp.Body.Span));
+            var resp = response.Value;
+            if (IsRedirect(resp.StatusCode))
+            {
+                if (redirects == MaxRedirects)
+                    return Result<string, RenderError>.Err(new RenderError(
+                        $"Too many redirects fetching {url}"));
+
+                var redirected = ResolveRedirect(current, resp);
+                if (redirected.IsErr)
+                    return Result<string, RenderError>.Err(redirected.Error);
+
+                current = redirected.Value;
+                continue;
+            }
+
+            if (resp.StatusCode is < 200 or >= 400)
+                return Result<string, RenderError>.Err(new RenderError(
+                    $"HTTP {resp.StatusCode} {resp.ReasonPhrase} from {current}"));
+
+            var contentType = resp.Headers.GetFirst("Content-Type");
+            var encoding = ResolveEncoding(contentType, resp.Body.Span);
+            return Result<string, RenderError>.Ok(encoding.GetString(resp.Body.Span));
+        }
+
+        return Result<string, RenderError>.Err(new RenderError(
+            $"Too many redirects fetching {url}"));
+    }
+
+    private static bool IsRedirect(int statusCode)
+        => statusCode is 301 or 302 or 303 or 307 or 308;
+
+    private static Result<TesseraUrl, RenderError> ResolveRedirect(TesseraUrl current, Net.Http.HttpResponse response)
+    {
+        var location = response.Headers.GetFirst("Location");
+        if (string.IsNullOrWhiteSpace(location))
+            return Result<TesseraUrl, RenderError>.Err(new RenderError(
+                $"HTTP {response.StatusCode} redirect from {current} did not include a Location header"));
+
+        var redirectUrl = ExpandRedirectLocation(location, current);
+        var parsed = UrlParser.Parse(redirectUrl, current);
+        if (parsed.IsErr)
+            return Result<TesseraUrl, RenderError>.Err(new RenderError(
+                $"Redirect Location parse failed from {current}: {parsed.Error}"));
+
+        var next = parsed.Value;
+        if (!next.IsHttp && !next.IsHttps)
+            return Result<TesseraUrl, RenderError>.Err(new RenderError(
+                $"Unsupported redirect scheme '{next.Scheme}' from {current}"));
+
+        return Result<TesseraUrl, RenderError>.Ok(next);
+    }
+
+    private static string ExpandRedirectLocation(string location, TesseraUrl current)
+    {
+        var trimmed = location.Trim();
+        if (trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            return trimmed;
+
+        if (trimmed.StartsWith("//", StringComparison.Ordinal))
+            return current.Scheme + ":" + trimmed;
+
+        var authority = current.Host is null
+            ? ""
+            : current.Port is int port
+                ? $"{current.Host}:{port}"
+                : current.Host;
+        var prefix = $"{current.Scheme}://{authority}";
+
+        if (trimmed.StartsWith("/", StringComparison.Ordinal))
+            return prefix + trimmed;
+
+        if (trimmed.StartsWith("?", StringComparison.Ordinal))
+            return prefix + current.Path + trimmed;
+
+        if (trimmed.StartsWith("#", StringComparison.Ordinal))
+        {
+            var query = current.Query is null ? "" : "?" + current.Query;
+            return prefix + current.Path + query + trimmed;
+        }
+
+        var basePath = current.Path;
+        var slash = basePath.LastIndexOf('/');
+        basePath = slash >= 0 ? basePath[..(slash + 1)] : "/";
+        return prefix + basePath + trimmed;
     }
 
     /// <summary>
-    /// Charset sniff: prefer the <c>Content-Type</c>'s <c>charset=</c>
-    /// parameter, then a recognised BOM, else UTF-8. The full WHATWG
-    /// preamble + meta sniff lands with the HTML parser's encoding
-    /// integration — see 03_NETWORKING.md "Encoding sniffing".
+    /// Charset sniff: prefer a recognised BOM, then the HTTP
+    /// <c>Content-Type</c>'s <c>charset=</c> parameter, then common HTML
+    /// <c>&lt;meta charset&gt;</c> / pragma forms in the first bytes, else UTF-8.
     /// </summary>
     internal static Encoding ResolveEncoding(string? contentType, ReadOnlySpan<byte> body)
     {
-        if (contentType is { Length: > 0 })
-        {
-            foreach (var raw in contentType.Split(';'))
-            {
-                var part = raw.Trim();
-                const string prefix = "charset=";
-                if (part.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                {
-                    var name = part[prefix.Length..].Trim().Trim('"');
-                    try { return Encoding.GetEncoding(name); }
-                    catch (ArgumentException) { /* fall through */ }
-                }
-            }
-        }
-
         if (body.Length >= 3 && body[0] == 0xEF && body[1] == 0xBB && body[2] == 0xBF)
             return Encoding.UTF8;
         if (body.Length >= 2 && body[0] == 0xFF && body[1] == 0xFE)
@@ -167,7 +236,87 @@ public sealed class TesseraEngine
         if (body.Length >= 2 && body[0] == 0xFE && body[1] == 0xFF)
             return Encoding.BigEndianUnicode;
 
+        if (contentType is { Length: > 0 })
+        {
+            var charset = ExtractCharset(contentType);
+            if (charset is not null && TryResolveEncoding(charset) is { } httpEncoding)
+                return httpEncoding;
+        }
+
+        var metaCharset = SniffMetaCharset(body);
+        if (metaCharset is not null && TryResolveEncoding(metaCharset) is { } metaEncoding)
+            return metaEncoding;
+
         return Encoding.UTF8;
+    }
+
+    private static string? SniffMetaCharset(ReadOnlySpan<byte> body)
+    {
+        var length = Math.Min(body.Length, 4096);
+        if (length == 0) return null;
+
+        var prefix = Encoding.Latin1.GetString(body[..length]);
+        var direct = Regex.Match(
+            prefix,
+            @"<meta\s+[^>]*charset\s*=\s*[""']?\s*([A-Za-z0-9._:-]+)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        if (direct.Success)
+            return direct.Groups[1].Value;
+
+        var pragma = Regex.Match(
+            prefix,
+            @"<meta\s+[^>]*http-equiv\s*=\s*[""']?\s*content-type[^>]*content\s*=\s*[""'][^""']*charset\s*=\s*([A-Za-z0-9._:-]+)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        return pragma.Success ? pragma.Groups[1].Value : null;
+    }
+
+    private static string? ExtractCharset(string headerValue)
+    {
+        foreach (var raw in headerValue.Split(';'))
+        {
+            var part = raw.Trim();
+            const string prefix = "charset=";
+            if (part.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return part[prefix.Length..].Trim().Trim('"', '\'');
+        }
+
+        return null;
+    }
+
+    private static Encoding? TryResolveEncoding(string name)
+    {
+        var normalized = name.Trim().Trim('"', '\'').ToLowerInvariant();
+        if (normalized.Length == 0) return null;
+
+        // Aliases come from the WHATWG Encoding spec
+        // (https://encoding.spec.whatwg.org/#names-and-labels), restricted to
+        // encodings that the .NET BCL already exposes without requiring
+        // System.Text.Encoding.CodePages. Broader legacy codepage support is a
+        // follow-up; see wp:M2-07 handoff log.
+        return normalized switch
+        {
+            "utf-8" or "utf8" or "unicode-1-1-utf-8" or "unicode11utf8"
+                or "unicode20utf8" or "x-unicode20utf8" or "csutf8"
+                => Encoding.UTF8,
+            "utf-16" or "utf-16le" or "csunicode" or "unicode" or "unicodefeff"
+                => Encoding.Unicode,
+            "utf-16be" or "unicodefffe" => Encoding.BigEndianUnicode,
+            "us-ascii" or "ascii" or "ansi_x3.4-1968" or "ansi_x3.4-1986"
+                or "iso-ir-6" or "iso_646.irv:1991" or "iso646-us"
+                or "csascii" or "cp367" or "ibm367" or "us"
+                => Encoding.ASCII,
+            "iso-8859-1" or "latin1" or "latin-1" or "iso_8859-1"
+                or "iso_8859-1:1987" or "iso-ir-100" or "l1"
+                or "csisolatin1" or "cp819" or "ibm819"
+                => Encoding.Latin1,
+            _ => TryGetEncodingByName(normalized),
+        };
+    }
+
+    private static Encoding? TryGetEncodingByName(string name)
+    {
+        try { return Encoding.GetEncoding(name); }
+        catch (ArgumentException) { return null; }
     }
 
     internal static string ExtractDisplayText(Document doc)
@@ -175,14 +324,48 @@ public sealed class TesseraEngine
         // Prefer the body; fall back to the whole document so single-line input
         // fragments still render.
         var source = (Node?)doc.Body ?? doc;
-        var raw = source.TextContent;
+        var raw = new StringBuilder();
+        AppendDisplayText(source, raw);
+        return NormalizeDisplayText(raw.ToString());
+    }
 
-        // Normalize whitespace per the spec's "white-space: normal" handling —
-        // collapse runs of whitespace into single ASCII spaces, then trim. This
-        // is enough for M0; M1 will own real whitespace handling in the
-        // inline formatting context (see 07_LAYOUT.md).
+    private static void AppendDisplayText(Node node, StringBuilder buffer)
+    {
+        switch (node)
+        {
+            case Text text:
+                buffer.Append(text.Data);
+                return;
+            case CData cdata:
+                buffer.Append(cdata.Data);
+                return;
+            case Element { LocalName: "script" or "style" or "head" }:
+                return;
+        }
+
+        var isBlock = node is Element element && IsTextBoundaryElement(element.LocalName);
+        if (isBlock && buffer.Length > 0) buffer.Append(' ');
+        for (var child = node.FirstChild; child is not null; child = child.NextSibling)
+            AppendDisplayText(child, buffer);
+        if (isBlock && buffer.Length > 0) buffer.Append(' ');
+    }
+
+    private static bool IsTextBoundaryElement(string localName) => localName.ToLowerInvariant() switch
+    {
+        "address" or "article" or "aside" or "blockquote" or "body" or "br"
+            or "dd" or "details" or "dialog" or "div" or "dl" or "dt"
+            or "figcaption" or "figure" or "footer" or "form" or "h1"
+            or "h2" or "h3" or "h4" or "h5" or "h6" or "header"
+            or "hr" or "li" or "main" or "nav" or "ol" or "p"
+            or "pre" or "section" or "summary" or "table" or "tbody"
+            or "td" or "tfoot" or "th" or "thead" or "tr" or "ul" => true,
+        _ => false,
+    };
+
+    private static string NormalizeDisplayText(string raw)
+    {
         if (raw.Length == 0) return string.Empty;
-        var buf = new System.Text.StringBuilder(raw.Length);
+        var buf = new StringBuilder(raw.Length);
         var prevWs = false;
         foreach (var ch in raw)
         {
