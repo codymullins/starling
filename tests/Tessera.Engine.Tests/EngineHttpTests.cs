@@ -4,6 +4,9 @@ using System.Text;
 using FluentAssertions;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+using Tessera.Net;
+using Tessera.Net.Http;
+using TesseraUrlParser = global::Tessera.Url.UrlParser;
 using Xunit;
 
 namespace Tessera.Engine.Tests;
@@ -238,6 +241,107 @@ public class EngineHttpTests
     }
 
     [Fact]
+    public async Task TesseraHttpClient_reuses_a_single_TCP_connection_across_two_sequential_GETs()
+    {
+        // wp:M2-07c — when the server keeps the connection alive after each
+        // response, the client must pool the transport and reuse it for the
+        // next request to the same origin. Asserting on AcceptCount==1 is the
+        // observable signal that the pool actually fired.
+        var body = Encoding.UTF8.GetBytes("ok");
+        using var server = await StubHttpServer.StartAsync(
+            _ => Encoding.ASCII.GetBytes(
+                "HTTP/1.1 200 OK\r\n" +
+                "Content-Type: text/plain\r\n" +
+                $"Content-Length: {body.Length}\r\n" +
+                "Connection: keep-alive\r\n\r\n" +
+                "ok"),
+            keepAlive: true);
+
+        using var client = new TesseraHttpClient();
+        var url = TesseraUrlParser.Parse($"http://localhost:{server.Port}/").Value;
+
+        var first = await client.GetAsync(url, TestContext.Current.CancellationToken);
+        first.IsOk.Should().BeTrue(first.IsErr ? first.Error.ToString() : "");
+        first.Value.StatusCode.Should().Be(200);
+
+        var second = await client.GetAsync(url, TestContext.Current.CancellationToken);
+        second.IsOk.Should().BeTrue(second.IsErr ? second.Error.ToString() : "");
+        second.Value.StatusCode.Should().Be(200);
+
+        server.AcceptCount.Should().Be(1,
+            "the pool must reuse the kept-alive TCP connection across sequential GETs");
+        client.ConnectionPool.IdleCountFor(
+            OriginKey.Create("http", "localhost", server.Port))
+            .Should().Be(1, "after the second response the transport returns to the idle pool");
+    }
+
+    [Fact]
+    public async Task TesseraHttpClient_redials_when_pooled_connection_was_closed_by_peer()
+    {
+        // The server keeps the first connection alive (so we pool it) but
+        // closes it immediately after returning the response. When the next
+        // request arrives the original connection is half-dead — the client
+        // must transparently re-dial and the caller must see a clean 200.
+        var body = Encoding.UTF8.GetBytes("ok");
+        var responses = 0;
+        using var server = await StubHttpServer.StartAsync(
+            _ =>
+            {
+                Interlocked.Increment(ref responses);
+                // First response says keep-alive (so we pool it), but the
+                // server-side loop is single-shot so it'll close after.
+                return Encoding.ASCII.GetBytes(
+                    "HTTP/1.1 200 OK\r\n" +
+                    "Content-Type: text/plain\r\n" +
+                    $"Content-Length: {body.Length}\r\n" +
+                    "Connection: keep-alive\r\n\r\n" +
+                    "ok");
+            },
+            keepAlive: false);
+
+        using var client = new TesseraHttpClient();
+        var url = TesseraUrlParser.Parse($"http://localhost:{server.Port}/").Value;
+
+        var first = await client.GetAsync(url, TestContext.Current.CancellationToken);
+        first.IsOk.Should().BeTrue();
+
+        // Give the server a tick to notice the close on its end (helps make
+        // the pooled-then-stale path deterministic on slow CI).
+        await Task.Delay(20, TestContext.Current.CancellationToken);
+
+        var second = await client.GetAsync(url, TestContext.Current.CancellationToken);
+        second.IsOk.Should().BeTrue(second.IsErr ? second.Error.ToString() : "");
+
+        server.AcceptCount.Should().Be(2,
+            "the pooled socket is half-dead so the second send must re-dial");
+        responses.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task TesseraHttpClient_does_not_reuse_when_server_closes_the_connection()
+    {
+        // Belt-and-braces: an explicit Connection: close response should drop
+        // the socket and force a second dial on the next request.
+        var body = Encoding.UTF8.GetBytes("ok");
+        using var server = await StubHttpServer.StartAsync(
+            _ => Encoding.ASCII.GetBytes(
+                "HTTP/1.1 200 OK\r\n" +
+                "Content-Type: text/plain\r\n" +
+                $"Content-Length: {body.Length}\r\n" +
+                "Connection: close\r\n\r\n" +
+                "ok"));
+
+        using var client = new TesseraHttpClient();
+        var url = TesseraUrlParser.Parse($"http://localhost:{server.Port}/").Value;
+
+        (await client.GetAsync(url, TestContext.Current.CancellationToken)).IsOk.Should().BeTrue();
+        (await client.GetAsync(url, TestContext.Current.CancellationToken)).IsOk.Should().BeTrue();
+
+        server.AcceptCount.Should().Be(2);
+        client.ConnectionPool.IdleCount.Should().Be(0);
+    }
+
+    [Fact]
     public async Task RenderAsync_returns_render_error_on_http_failure_status()
     {
         using var server = await StubHttpServer.StartAsync(_ => Encoding.ASCII.GetBytes(
@@ -322,54 +426,96 @@ public sealed record HttpSnapshotCase(
 }
 
 /// <summary>
-/// One-shot stub HTTP server used by engine integration tests. Serves a
-/// single response, then closes.
+/// Stub HTTP server used by engine integration tests. Serves one response per
+/// request, by default closing after each. Pass <c>keepAlive: true</c> to
+/// loop on the same TCP connection (used to exercise the wp:M2-07c keep-alive
+/// path); the server then keeps reading further requests off the same socket
+/// until the client closes or the response itself contains
+/// <c>Connection: close</c>.
 /// </summary>
 internal sealed class StubHttpServer : IDisposable
 {
     private readonly TcpListener _listener;
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _accept;
+    private int _acceptCount;
 
     public int Port { get; }
 
-    private StubHttpServer(TcpListener listener, Func<string, byte[]> handler)
+    /// <summary>Number of distinct TCP accepts this server has handled.</summary>
+    public int AcceptCount => Volatile.Read(ref _acceptCount);
+
+    private StubHttpServer(TcpListener listener, Func<string, byte[]> handler, bool keepAlive)
     {
         _listener = listener;
         Port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        _accept = Task.Run(() => AcceptLoop(handler));
+        _accept = Task.Run(() => AcceptLoop(handler, keepAlive));
     }
 
     public static Task<StubHttpServer> StartAsync(Func<string, byte[]> handler)
+        => StartAsync(handler, keepAlive: false);
+
+    public static Task<StubHttpServer> StartAsync(Func<string, byte[]> handler, bool keepAlive)
     {
         var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
-        return Task.FromResult(new StubHttpServer(listener, handler));
+        return Task.FromResult(new StubHttpServer(listener, handler, keepAlive));
     }
 
-    private async Task AcceptLoop(Func<string, byte[]> handler)
+    private async Task AcceptLoop(Func<string, byte[]> handler, bool keepAlive)
     {
         try
         {
             while (!_cts.IsCancellationRequested)
             {
-                using var client = await _listener.AcceptTcpClientAsync(_cts.Token);
-                using var stream = client.GetStream();
+                var client = await _listener.AcceptTcpClientAsync(_cts.Token);
+                Interlocked.Increment(ref _acceptCount);
+                _ = Task.Run(() => ServeConnectionAsync(client, handler, keepAlive));
+            }
+        }
+        catch (OperationCanceledException) { /* shutting down */ }
+        catch (ObjectDisposedException) { /* listener closed */ }
+        catch (IOException) { /* peer disconnected */ }
+    }
 
-                var buffer = new byte[8192];
-                var pos = 0;
-                while (pos < buffer.Length)
+    private async Task ServeConnectionAsync(TcpClient client, Func<string, byte[]> handler, bool keepAlive)
+    {
+        try
+        {
+            using (client)
+            using (var stream = client.GetStream())
+            {
+                while (!_cts.IsCancellationRequested)
                 {
-                    var n = await stream.ReadAsync(buffer.AsMemory(pos), _cts.Token);
-                    if (n == 0) break;
-                    pos += n;
-                    if (ContainsCrLfCrLf(buffer.AsSpan(0, pos))) break;
-                }
+                    var buffer = new byte[8192];
+                    var pos = 0;
+                    var gotRequest = false;
+                    while (pos < buffer.Length)
+                    {
+                        var n = await stream.ReadAsync(buffer.AsMemory(pos), _cts.Token);
+                        if (n == 0) break;
+                        pos += n;
+                        if (ContainsCrLfCrLf(buffer.AsSpan(0, pos)))
+                        {
+                            gotRequest = true;
+                            break;
+                        }
+                    }
+                    if (!gotRequest) return;
 
-                var req = Encoding.ASCII.GetString(buffer, 0, pos);
-                var response = handler(req);
-                await stream.WriteAsync(response, _cts.Token);
-                await stream.FlushAsync(_cts.Token);
+                    var req = Encoding.ASCII.GetString(buffer, 0, pos);
+                    var response = handler(req);
+                    await stream.WriteAsync(response, _cts.Token);
+                    await stream.FlushAsync(_cts.Token);
+
+                    if (!keepAlive) return;
+
+                    // If the response itself signals close, stop reading further
+                    // requests on this connection.
+                    var responseText = Encoding.ASCII.GetString(response);
+                    if (responseText.Contains("Connection: close", StringComparison.OrdinalIgnoreCase))
+                        return;
+                }
             }
         }
         catch (OperationCanceledException) { /* shutting down */ }

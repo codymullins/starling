@@ -229,4 +229,63 @@ public class H1ResponseParserTests
         resp.StatusCode.Should().Be(200);
         resp.ReasonPhrase.Should().Be("");
     }
+
+    [Fact]
+    public async Task IndicatesKeepAlive_defaults_to_true_for_HTTP11_without_Connection_header()
+    {
+        var resp = await Parse("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
+        H1ResponseParser.IndicatesKeepAlive(resp).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task IndicatesKeepAlive_false_when_HTTP11_response_has_Connection_close()
+    {
+        var resp = await Parse("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+        H1ResponseParser.IndicatesKeepAlive(resp).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task IndicatesKeepAlive_false_for_HTTP10_without_explicit_keep_alive()
+    {
+        var resp = await Parse("HTTP/1.0 200 OK\r\nContent-Length: 0\r\n\r\n");
+        H1ResponseParser.IndicatesKeepAlive(resp).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task IndicatesKeepAlive_true_for_HTTP10_with_explicit_keep_alive()
+    {
+        var resp = await Parse("HTTP/1.0 200 OK\r\nConnection: keep-alive\r\nContent-Length: 0\r\n\r\n");
+        H1ResponseParser.IndicatesKeepAlive(resp).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task HasDefiniteBodyFraming_true_for_Content_Length()
+    {
+        var resp = await Parse("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello");
+        H1ResponseParser.HasDefiniteBodyFraming(resp).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task HasDefiniteBodyFraming_true_for_chunked()
+    {
+        var resp = await Parse(
+            "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n");
+        H1ResponseParser.HasDefiniteBodyFraming(resp).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task HasDefiniteBodyFraming_true_for_204()
+    {
+        var resp = await Parse("HTTP/1.1 204 No Content\r\n\r\n");
+        H1ResponseParser.HasDefiniteBodyFraming(resp).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task HasDefiniteBodyFraming_false_for_close_delimited_body()
+    {
+        // No Content-Length, no Transfer-Encoding, non-204/304 status.
+        // The parser reads to EOF; the connection cannot be safely pooled.
+        var resp = await Parse("HTTP/1.0 200 OK\r\n\r\nhello");
+        H1ResponseParser.HasDefiniteBodyFraming(resp).Should().BeFalse();
+    }
 }
