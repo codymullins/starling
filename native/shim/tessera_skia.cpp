@@ -56,6 +56,7 @@
 #include "include/gpu/graphite/Context.h"
 #include "include/gpu/graphite/ContextOptions.h"
 #include "include/gpu/graphite/GraphiteTypes.h"
+#include "include/gpu/graphite/Image.h"
 #include "include/gpu/graphite/Recorder.h"
 #include "include/gpu/graphite/Recording.h"
 #include "include/gpu/graphite/Surface.h"
@@ -85,10 +86,17 @@ struct TsSurface {
     sk_sp<SkSurface> surface;
     int32_t width = 0;
     int32_t height = 0;
+    // Borrowed from the owning TsContext — needed to upload raster pixels as
+    // Graphite texture-backed images (drawImageRect on a Graphite canvas only
+    // draws texture-backed SkImages, not raster ones).
+    skgpu::graphite::Recorder* recorder = nullptr;
 };
 
 struct TsCanvas {
     SkCanvas* canvas = nullptr;  // borrowed from the SkSurface, not owned
+    // Borrowed Graphite recorder, threaded through from the surface so
+    // ts_canvas_draw_image can upload pixels as a texture.
+    skgpu::graphite::Recorder* recorder = nullptr;
 };
 
 struct TsTypeface {
@@ -257,6 +265,7 @@ TS_API TsStatus TS_CALL ts_surface_create(TsContext* context, int32_t width, int
     handle->surface = std::move(surface);
     handle->width = width;
     handle->height = height;
+    handle->recorder = context->recorder.get();
     *out_surface = handle.release();
     return TS_OK;
 }
@@ -284,6 +293,7 @@ TS_API TsStatus TS_CALL ts_surface_get_canvas(TsSurface* surface, TsCanvas** out
     // does not own the SkCanvas. .NET treats it as a borrowed view.
     auto handle = std::make_unique<TsCanvas>();
     handle->canvas = canvas;
+    handle->recorder = surface->recorder;
     *out_canvas = handle.release();
     return TS_OK;
 }
@@ -373,11 +383,25 @@ TS_API TsStatus TS_CALL ts_canvas_draw_image(TsCanvas* canvas,
     const size_t rowBytes = static_cast<size_t>(width) * 4;
     SkPixmap pixmap(info, pixels, rowBytes);
 
-    // Copy the pixels into an SkImage so the caller's buffer need not outlive
-    // this call.
-    sk_sp<SkImage> image = SkImages::RasterFromPixmapCopy(pixmap);
-    if (!image) {
+    // Copy the pixels into a raster SkImage so the caller's buffer need not
+    // outlive this call.
+    sk_sp<SkImage> rasterImage = SkImages::RasterFromPixmapCopy(pixmap);
+    if (!rasterImage) {
         return TS_ALLOCATION_FAILED;
+    }
+
+    // A Graphite canvas only draws texture-backed images — drawImageRect with a
+    // raster SkImage is a silent no-op. Upload the raster pixels to a GPU
+    // texture via the Recorder before drawing. (SkImages::TextureFromImage,
+    // include/gpu/graphite/Image.h — the current Graphite upload entry point.)
+    sk_sp<SkImage> image = rasterImage;
+    if (canvas->recorder != nullptr) {
+        sk_sp<SkImage> textureImage =
+            SkImages::TextureFromImage(canvas->recorder, rasterImage.get(), {});
+        if (!textureImage) {
+            return TS_ALLOCATION_FAILED;
+        }
+        image = std::move(textureImage);
     }
 
     SkRect src = SkRect::MakeWH(static_cast<float>(width), static_cast<float>(height));

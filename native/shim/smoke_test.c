@@ -111,6 +111,53 @@ int main(void) {
 
     free(pixels);
     ts_surface_destroy(surface);
+
+    /* --- image round-trip: upload RGBA pixels, draw, flush, read back ------ *
+     * Regression guard for wp:M3-06g2 — ts_canvas_draw_image must blit on a
+     * Graphite canvas (it uploads the raster pixels as a texture-backed
+     * SkImage via the Recorder; a raster SkImage alone is a silent no-op).   */
+    printf("image round-trip: 16x16 green source -> 32x32 dst rect\n");
+
+    TsSurface* img_surface = NULL;
+    REQUIRE_OK(ts_surface_create(ctx, WIDTH, HEIGHT, &img_surface));
+    TsCanvas* img_canvas = NULL;
+    REQUIRE_OK(ts_surface_get_canvas(img_surface, &img_canvas));
+
+    /* Clear white, then draw a 16x16 opaque-green source scaled into a 32x32
+     * destination rect centered on the surface. */
+    TsColor white = { 255, 255, 255, 255 };
+    REQUIRE_OK(ts_canvas_clear(img_canvas, white));
+
+    enum { SRC_W = 16, SRC_H = 16 };
+    uint8_t src_px[SRC_W * SRC_H * 4];
+    for (int i = 0; i < SRC_W * SRC_H; ++i) {
+        src_px[i * 4 + 0] = 0;
+        src_px[i * 4 + 1] = 128;
+        src_px[i * 4 + 2] = 0;
+        src_px[i * 4 + 3] = 255;
+    }
+    TsRect img_dst = { 16.0f, 16.0f, 32.0f, 32.0f };
+    REQUIRE_OK(ts_canvas_draw_image(img_canvas, src_px, SRC_W, SRC_H, img_dst));
+
+    REQUIRE_OK(ts_flush_and_submit(ctx, img_surface));
+
+    uint8_t* img_pixels = (uint8_t*)malloc(buf_len);
+    if (img_pixels == NULL) {
+        fprintf(stderr, "FAIL: malloc\n");
+        return 1;
+    }
+    REQUIRE_OK(ts_read_pixels(ctx, img_surface, img_pixels, buf_len));
+
+    /* Center pixel (32,32) is inside the blitted image region. */
+    const uint8_t* img_center = &img_pixels[(32 * WIDTH + 32) * 4];
+    pixel_is(img_center, 0, 128, 0, 255, "image center");
+
+    /* Corner pixel (2,2) is the untouched white background. */
+    const uint8_t* img_corner = &img_pixels[(2 * WIDTH + 2) * 4];
+    pixel_is(img_corner, 255, 255, 255, 255, "image background corner");
+
+    free(img_pixels);
+    ts_surface_destroy(img_surface);
     ts_context_destroy(ctx);
 
     if (g_failures != 0) {

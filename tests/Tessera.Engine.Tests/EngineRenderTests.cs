@@ -64,14 +64,12 @@ public class EngineRenderTests
                 "<!doctype html><body><p>before<img src=\"swatch.png\">after</p></body>");
 
             var engine = new TesseraEngine();
-            // Pin the ImageSharp backend: this test asserts on blitted image
-            // pixels, and the Skia shim's ts_canvas_draw_image is currently a
-            // no-op on Graphite canvases (native defect, see wp:M3-06g/06i).
-            // ImageSharp draws images correctly; the Skia default covers the
-            // rest of the pipeline.
+            // Runs on the default (Skia) backend: wp:M3-06g2 fixed the shim's
+            // ts_canvas_draw_image to upload pixels as a Graphite texture, so
+            // blitted image pixels now land on a Graphite canvas too.
             var result = engine.Render(
                 "file://" + fixture.Replace('\\', '/'),
-                new RenderOptions(new Size(320, 180), 16f, Tessera.Paint.PaintBackend.ImageSharp),
+                new RenderOptions(new Size(320, 180), 16f),
                 output);
 
             result.IsOk.Should().BeTrue(result.IsErr ? result.Error.Message : "");

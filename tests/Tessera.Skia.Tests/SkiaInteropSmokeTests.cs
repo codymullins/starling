@@ -53,17 +53,13 @@ public sealed class SkiaInteropSmokeTests
     }
 
     /// <summary>
-    /// KNOWN-FAILING (Skip): <c>ts_canvas_draw_image</c> does not blit on a
-    /// Graphite-backed canvas — <c>SkImages::RasterFromPixmapCopy</c> +
-    /// <c>drawImageRect</c> leaves the destination untouched (Graphite needs the
-    /// raster image uploaded as a texture via the recorder). This is a native
-    /// shim defect (wp:M3-06g / wp:M3-06i); fixing it is out of scope for
-    /// wp:M3-06j, which may not edit <c>native/*</c> or <c>src/Tessera.Skia/*</c>.
-    /// The test body is the exact repro — un-skip it once the shim uploads
-    /// images. Until then the image-pixel golden tests pin the ImageSharp
-    /// backend explicitly (see ImagePaintGoldenTests / EngineRenderTests).
+    /// <c>ts_canvas_draw_image</c> blits onto a Graphite-backed canvas: the
+    /// shim uploads the raw RGBA pixels as a texture-backed <c>SkImage</c> via
+    /// the Recorder (<c>SkImages::TextureFromImage</c>) before
+    /// <c>drawImageRect</c> — a raster <c>SkImage</c> alone is a silent no-op
+    /// on Graphite. Fixed in wp:M3-06g2; previously skipped.
     /// </summary>
-    [Fact(Skip = "ts_canvas_draw_image is a no-op on Graphite canvases — native shim defect, see wp:M3-06g/06i.")]
+    [Fact]
     public void DrawImage_BlitsPixels_IntoSurface()
     {
         Assert.SkipUnless(NativeShim.IsAvailable, NativeShim.SkipReason);
