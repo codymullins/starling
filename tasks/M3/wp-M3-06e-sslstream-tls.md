@@ -2,9 +2,10 @@
 id: "wp:M3-06e-sslstream-tls"
 parent: "wp:M3-06-native-interop-pivot"
 milestone: "M3"
-status: "claimed"
+status: "complete"
 claimed_by: "agent-claude-cody-tls"
 claimed_at: "2026-05-14T14:42:54Z"
+completed_at: "2026-05-14T14:52:00Z"
 branch: "main"
 depends_on: []
 blocks:
@@ -81,3 +82,38 @@ mergeable to `main`.
 ## Handoff log
 
 - 2026-05-14T00:00:00Z — created (agent-claude-cody) during the native-interop pivot WP filing.
+- 2026-05-14T14:52:00Z — completed (agent-claude-cody-tls). Landed:
+  - `Tls/SslStreamTlsTransport.cs` (new) — `ITlsTransport` over `SslStream`,
+    `SslClientAuthenticationOptions` with ALPN (`h2`/`http/1.1`), SNI
+    (`TargetHost`), `EnabledSslProtocols = Tls13`. Cert validation routed
+    through a `RemoteCertificateValidationCallback` → `CertificateVerifier`
+    (OS trust store never consulted). Returns `CertificateRejected` vs.
+    `HandshakeFailed` via a callback-set flag.
+  - `Tls/CertificateVerifier.cs` — rewritten on `X509Chain` +
+    `X509ChainPolicy.CustomTrustStore` + `TrustMode = CustomRootTrust`;
+    `CertificateHostNameMatcher` kept (SAN DNS + RFC 6125 wildcard).
+  - `Tls/RootCertificates.cs` — embedded `ccadb.pem` →
+    `X509Certificate2Collection` via `ImportFromPem`.
+  - Deleted `BcTlsTransport.cs`, `TesseraTlsClient.cs`,
+    `TesseraTlsAuthentication.cs`.
+  - Callers: `TesseraHttpClient.cs` dials `SslStreamTlsTransport`;
+    `PooledHttpTransport._tls` typed `ITlsTransport?`.
+  - `Directory.Packages.props` + `Tessera.Net.csproj` — `BouncyCastle.Cryptography`
+    removed (note: `Directory.Packages.props` touched — merge hotspot).
+  - `tests/Tessera.Net.Tests/Tls/TlsClientTests.cs` rewritten against
+    `X509Certificate2` / `SslStreamTlsTransport` (drive-by — required to keep
+    the build green once BC types were deleted). Added a custom-trust-anchor
+    acceptance test and a hostname-mismatch rejection test. Live test now
+    targets `example.com` / `nginx.org`, gated on `TESSERA_ALLOW_NETWORK=1`.
+  - No `packages.lock.json` files exist in the repo — nothing to regenerate.
+  - No `NoSslStream_InNetProject` test exists in the tree — nothing to delete.
+  - **Caveat — live TLS could not be verified locally.** On this macOS dev box,
+    `SslStream` throws `PlatformNotSupportedException` when `SslProtocols.Tls13`
+    is pinned (SecureTransport limitation). With `SslProtocols.None` the same
+    code negotiated TLS 1.2 + ALPN `h2` against `cloudflare.com` successfully,
+    and the cert callback received a full 3-element chain — so the transport
+    wiring is sound. The `Tls13` pin is kept per the WP contract; the Linux CI
+    `network-tests` runner (OpenSSL) is where live TLS 1.3 + `h2` is exercised.
+  - `dotnet test tests/Tessera.Net.Tests` → 157/157 green.
+  - `grep -rn BouncyCastle src/ --include='*.cs'` is empty (only stale
+    `bin/obj` build artifacts in unrelated projects still mention it).
