@@ -2,9 +2,10 @@
 id: "wp:M3-06d-codecs"
 parent: "wp:M3-06-native-interop-pivot"
 milestone: "M3"
-status: "claimed"
+status: "complete"
 claimed_by: "agent-claude-cody-codecs"
 claimed_at: "2026-05-14T14:56:38Z"
+completed_at: "2026-05-14T15:30:00Z"
 branch: "main"
 depends_on:
   - "wp:M3-06c-decoded-image"
@@ -81,3 +82,32 @@ that all return the `Tessera.Common.Image.DecodedImage` defined in `06c`. Wire
 ## Handoff log
 
 - 2026-05-14T00:00:00Z — created (agent-claude-cody) during the native-interop pivot WP filing.
+- 2026-05-14T14:56Z — claimed (agent-claude-cody-codecs).
+- 2026-05-14T15:30Z — complete (agent-claude-cody-codecs).
+  - New project `src/Tessera.Codecs` (net10.0, classlib, refs Tessera.Common
+    only, `AllowUnsafeBlocks`, `InternalsVisibleTo` the test project). Added to
+    `Tessera.sln` — **note the sln touch** (merge-conflict hotspot).
+  - `IImageDecoder` + `ImageDecodeException` + `ImageFormatSniffer` (magic-byte
+    classifier) + `NativeImageDecoder` (public entry, OS dispatch via
+    `OperatingSystem.Is*()` guards).
+  - Backends: `Mac/ImageIODecoder` (ImageIO `CGImageSource` →
+    premultiplied-RGBA `CGBitmapContext` → un-premultiply in place);
+    `Windows/WicDecoder` (WIC via `[GeneratedComInterface]` source generator);
+    `Linux/` (`LinuxImageDecoder` dispatch + `LibPngDecoder` simplified
+    `png_image` API, `LibJpegDecoder` TurboJPEG `libturbojpeg.so.0`,
+    `LibWebpDecoder` `libwebp.so.7`).
+  - `ImageFetcher` rewired: decode is now `NativeImageDecoder.Decode(bytes)`,
+    catching `ImageDecodeException` (was ImageSharp exceptions). Added the
+    `Tessera.Codecs` project ref to `Tessera.Engine.csproj`. ImageSharp stays in
+    Engine/Paint for PNG *encode* only.
+  - New `tests/Tessera.Codecs.Tests` (added to sln): 18 tests — sniffer unit
+    tests + PNG/JPEG/WebP fixture decode + failure paths. New fixtures
+    `testdata/images/{dot.png,swatch.jpg,tile.webp}`.
+  - **Runtime-verified live:** macOS ImageIO backend — all 18 codec tests +
+    79 Engine.Tests green on this macOS host. **Compile-only here:** Windows WIC
+    and Linux libpng/libjpeg/libwebp backends (no CTM flip / no R-B swap needed
+    on macOS was confirmed empirically). CI must cover the Windows/Linux legs;
+    Linux runners need `libpng16-16 libjpeg-turbo8 libwebp7` (apt step is 06l).
+  - Full `dotnet build` + `dotnet test` green from repo root.
+  - Downstream: `wp:M3-06l-ci-policy` is unblocked (interop allowlist must now
+    include `Tessera.Codecs`).

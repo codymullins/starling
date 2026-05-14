@@ -57,10 +57,12 @@ internal sealed partial class ImageIODecoder : IImageDecoder
             int h = checked((int)height);
             nint stride = (nint)w * 4;
 
-            // Allocate the destination buffer up front and point the bitmap
-            // context straight at it: ImageIO writes RGBA8888 with straight
-            // (non-premultiplied) alpha, top-down, no row padding — exactly the
-            // DecodedImage contract. kCGImageAlphaLast | kCGBitmapByteOrderDefault.
+            // CoreGraphics bitmap contexts only support *premultiplied* (or
+            // none/skip) alpha for 8-bit RGBA — straight alpha
+            // (kCGImageAlphaLast) is not a valid context format. So draw into a
+            // premultiplied-RGBA context pointed straight at the destination
+            // buffer, then un-premultiply in place to satisfy the
+            // straight-alpha DecodedImage contract.
             return DecodedImage.CreatePooled(w, h, span =>
             {
                 fixed (byte* dst = span)
@@ -70,20 +72,21 @@ internal sealed partial class ImageIODecoder : IImageDecoder
                         bitsPerComponent: 8,
                         bytesPerRow: stride,
                         space: colorSpace,
-                        bitmapInfo: kCGImageAlphaLast | kCGBitmapByteOrderDefault);
+                        bitmapInfo: kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
                     if (ctx == 0)
                         throw new ImageDecodeException("ImageIO: CGBitmapContextCreate failed.");
                     context = ctx;
 
-                    // CoreGraphics' origin is bottom-left; CGContextDrawImage
-                    // would therefore produce a vertically-flipped result. Flip
-                    // the CTM so row 0 of the buffer is the top of the image.
-                    CGContextTranslateCTM(ctx, 0, height);
-                    CGContextScaleCTM(ctx, 1, -1);
-
+                    // A CGBitmapContext stores row 0 of its backing buffer at
+                    // the *top* of the image, and CGContextDrawImage fills the
+                    // given rect in that same orientation — so drawing the
+                    // image at the origin already lands top-down in memory. No
+                    // CTM flip is needed (a flip would invert it).
                     var rect = new CGRect { X = 0, Y = 0, Width = w, Height = h };
                     CGContextDrawImage(ctx, rect, cgImage);
                     CGContextFlush(ctx);
+
+                    UnpremultiplyInPlace(span);
                 }
             });
         }
@@ -105,10 +108,33 @@ internal sealed partial class ImageIODecoder : IImageDecoder
         }
     }
 
-    // CGImageAlphaInfo.kCGImageAlphaLast == 3 (RGBA, straight alpha).
-    private const uint kCGImageAlphaLast = 3;
-    // CGBitmapInfo.kCGBitmapByteOrderDefault == 0.
-    private const uint kCGBitmapByteOrderDefault = 0;
+    // CGImageAlphaInfo.kCGImageAlphaPremultipliedLast == 1 (premultiplied,
+    // alpha in the last byte).
+    private const uint kCGImageAlphaPremultipliedLast = 1;
+    // CGBitmapInfo.kCGBitmapByteOrder32Big == 4 << 12 — pins the in-memory
+    // channel order to R,G,B,A regardless of host endianness.
+    private const uint kCGBitmapByteOrder32Big = 4u << 12;
+
+    /// <summary>
+    /// Convert the premultiplied-alpha RGBA8888 buffer a CoreGraphics bitmap
+    /// context produced into the straight (non-premultiplied) alpha the
+    /// <see cref="DecodedImage"/> contract requires. With
+    /// <c>kCGBitmapByteOrder32Big</c> the channel order is already R,G,B,A;
+    /// only the premultiplication needs undoing — <c>c = c' * 255 / a</c>,
+    /// clamped. Fully-opaque and fully-transparent pixels need no division.
+    /// </summary>
+    private static void UnpremultiplyInPlace(Span<byte> rgba)
+    {
+        for (int i = 0; i + 3 < rgba.Length; i += 4)
+        {
+            byte a = rgba[i + 3];
+            if (a == 0 || a == 255)
+                continue;
+            rgba[i] = (byte)Math.Min(255, rgba[i] * 255 / a);
+            rgba[i + 1] = (byte)Math.Min(255, rgba[i + 1] * 255 / a);
+            rgba[i + 2] = (byte)Math.Min(255, rgba[i + 2] * 255 / a);
+        }
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct CGRect
@@ -160,12 +186,6 @@ internal sealed partial class ImageIODecoder : IImageDecoder
 
     [LibraryImport(CoreGraphics)]
     private static partial void CGContextRelease(nint context);
-
-    [LibraryImport(CoreGraphics)]
-    private static partial void CGContextTranslateCTM(nint context, double tx, double ty);
-
-    [LibraryImport(CoreGraphics)]
-    private static partial void CGContextScaleCTM(nint context, double sx, double sy);
 
     [LibraryImport(CoreGraphics)]
     private static partial void CGContextDrawImage(nint context, CGRect rect, nint image);
