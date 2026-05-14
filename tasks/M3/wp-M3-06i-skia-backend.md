@@ -2,9 +2,10 @@
 id: "wp:M3-06i-skia-backend"
 parent: "wp:M3-06-native-interop-pivot"
 milestone: "M3"
-status: "claimed"
+status: "complete"
 claimed_by: "agent-claude-cody-skia-backend"
 claimed_at: "2026-05-14T17:30:00Z"
+completed_at: "2026-05-14T17:55:00Z"
 branch: "main"
 depends_on:
   - "wp:M3-06h-skia-interop"
@@ -78,3 +79,30 @@ in `06j`).
 ## Handoff log
 
 - 2026-05-14T00:00:00Z — created (agent-claude-cody) during the native-interop pivot WP filing.
+- 2026-05-14T17:55:00Z — complete (agent-claude-cody-skia-backend).
+  - `RenderedBitmap` (`{Width,Height,byte[] Rgba}`, no-op `IDisposable`, `GetPixel`)
+    landed in `Tessera.Common`. `SkiaGraphiteBackend` walks the **unchanged**
+    `DisplayList`: `FillRect`→`ts_canvas_fill_rect`, `StrokeRect`→
+    `ts_canvas_stroke_rect`, `DrawText`→`ts_shape_text`+`ts_canvas_draw_text`
+    (glyphs translated by the baseline origin), `DrawImage`→`ts_canvas_draw_image`
+    (raw RGBA). One `SkContext` + typeface cached per backend instance; surface
+    per render; `flush_and_submit`+`read_pixels`→`RenderedBitmap`.
+  - **Flag**: `Painter.RenderDocument` gained an optional `PaintBackend?` param
+    and `Painter.SelectBackend()` reads env var **`TESSERA_PAINT_BACKEND`**
+    (`skia`|`imagesharp`). **Default is ImageSharp** — goldens stay byte-exact,
+    `dotnet test` green (no test-count delta; Paint.Tests still 33). ImageSharp
+    is still the PNG encoder: `Engine` wraps `RenderedBitmap.Rgba` back into an
+    `Image<Rgba32>` only for `SaveAsPng`.
+  - `ImageSharpBackend` kept (not deleted) and gained `RenderToBitmap`.
+  - Internals access: `Tessera.Skia`'s Sk* handles are `internal`; since this WP
+    may not edit `src/Tessera.Skia/*`, the `InternalsVisibleTo "Tessera.Paint"`
+    is declared in `Directory.Build.props` scoped to the `Tessera.Skia` assembly.
+  - **osx-arm64 only**: the shim dylib ships for osx-arm64; the Skia path throws
+    from the first native call elsewhere. `Tessera.Gui` (Mac Catalyst) now
+    transitively references `Tessera.Skia` — added a `DropTransitiveSkiaNative`
+    target to its csproj so MAUI's `install_name_tool` doesn't choke on the
+    bundled dylib. Proper GUI+Skia native wiring is **06k**'s job.
+  - Verified: `tessera render testdata/hello.html` on both backends produces a
+    valid 800x600 RGBA PNG. Skia output is plausible (0.37% non-white text vs
+    ImageSharp's 0.33%); 0.51% of pixels differ — expected GPU/AA divergence,
+    goldens re-baselined in 06j.
