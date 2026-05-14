@@ -2,9 +2,9 @@
 id: "wp:M3-06i-skia-backend"
 parent: "wp:M3-06-native-interop-pivot"
 milestone: "M3"
-status: "blocked"
-claimed_by: ""
-claimed_at: ""
+status: "claimed"
+claimed_by: "agent-claude-cody-skia-backend"
+claimed_at: "2026-05-14T17:30:00Z"
 branch: "main"
 depends_on:
   - "wp:M3-06h-skia-interop"
