@@ -2,9 +2,9 @@
 id: "wp:M3-06j-skia-fonts"
 parent: "wp:M3-06-native-interop-pivot"
 milestone: "M3"
-status: "blocked"
-claimed_by: ""
-claimed_at: ""
+status: "claimed"
+claimed_by: "agent-claude-cody-skia-fonts"
+claimed_at: "2026-05-14T17:09:02Z"
 branch: "main"
 depends_on:
   - "wp:M3-06i-skia-backend"
