@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!--
+      Tessera.Skia is one of the two designated interop seams (the other is
+      Tessera.Codecs). LibraryImport source generators are permitted here and
+      nowhere else in the engine — see AGENTS.md and wp:M3-06l-ci-policy.
+      AllowUnsafeBlocks is needed for the fixed-pointer pixel/glyph copies in
+      the native draw + readback paths.
+    -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tessera.Skia.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tessera.Common\Tessera.Common.csproj" />
+  </ItemGroup>
+
+  <!--
+    Native packaging. libtessera_skia.{dylib,dll,so} is built out-of-band by
+    wp:M3-06g and lives under the gitignored repo-root runtimes/<rid>/native/
+    tree (NOT a NuGet package yet — that is a later WP). Copy whatever native
+    libs exist for the current RID into the build output's runtimes/<rid>/native
+    layout so the default .NET native loader finds them next to the assembly.
+    The module initializer (NativeLoader.cs) installs a SetDllImportResolver
+    fallback that also probes the repo-root runtimes dir directly — needed for
+    the Mac Catalyst .app-bundle layout and for test runs where the working
+    directory differs from the output dir.
+  -->
+  <PropertyGroup>
+    <_TesseraRuntimesDir>$(MSBuildThisFileDirectory)..\..\runtimes</_TesseraRuntimesDir>
+  </PropertyGroup>
+
+  <ItemGroup Condition="Exists('$(_TesseraRuntimesDir)\osx-arm64\native\libtessera_skia.dylib')">
+    <None Include="$(_TesseraRuntimesDir)\osx-arm64\native\libtessera_skia.dylib">
+      <Link>runtimes\osx-arm64\native\libtessera_skia.dylib</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(_TesseraRuntimesDir)\win-x64\native\tessera_skia.dll')">
+    <None Include="$(_TesseraRuntimesDir)\win-x64\native\tessera_skia.dll">
+      <Link>runtimes\win-x64\native\tessera_skia.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(_TesseraRuntimesDir)\linux-x64\native\libtessera_skia.so')">
+    <None Include="$(_TesseraRuntimesDir)\linux-x64\native\libtessera_skia.so">
+      <Link>runtimes\linux-x64\native\libtessera_skia.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>
