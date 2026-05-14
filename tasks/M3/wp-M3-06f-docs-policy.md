@@ -2,9 +2,10 @@
 id: "wp:M3-06f-docs-policy"
 parent: "wp:M3-06-native-interop-pivot"
 milestone: "M3"
-status: "claimed"
+status: "complete"
 claimed_by: "agent-claude-cody-docs"
 claimed_at: "2026-05-14T14:43:47Z"
+completed_at: "2026-05-14T14:43:47Z"
 branch: "main"
 depends_on: []
 blocks: []
@@ -75,3 +76,20 @@ written.
 ## Handoff log
 
 - 2026-05-14T00:00:00Z — created (agent-claude-cody) during the native-interop pivot WP filing.
+- 2026-05-14T14:43:47Z — completed (agent-claude-cody-docs). Rewrote the
+  Rule-0 framing across `README.md`, `AGENTS.md`,
+  `browser-plan/{02,03,08,10,12,13}_*.md` to the interop seam policy
+  ("managed-first, native at vetted seams"). `03_NETWORKING.md` "## Rule 0
+  reminder" became "## TLS approach" (SslStream behind `ITlsTransport`, TLS 1.3
+  only, bundled CCADB `CustomTrustStore`); the `HttpClient` ban is kept explicit.
+  `09_JS_ENGINE.md` needed no edit — it has no "Rule 0" reference and its
+  pure-managed claims + acceptance grep stay valid (`Tessera.Js` is not an
+  interop project).
+  Verification: `grep -rn "Rule 0\|Rule-0" README.md AGENTS.md browser-plan/`
+  returns only (a) the `RuleZeroTests` class name in `12_TESTING.md` — that is
+  test code, explicitly owned by `06l-ci-policy`, and the surrounding prose now
+  notes it as a pre-pivot reference shape; and (b) two "Rule-0 lint passes"
+  acceptance lines in `browser-plan/14_AGENT_TASKS.md` — out of this WP's scope
+  (not in the per-doc edit list; that file is the package catalog). Both left
+  intentionally for `06l` / a catalog-maintenance pass.
+  No code, csproj, sln, CI workflow, or `tasks/INDEX.md` changes.
