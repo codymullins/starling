@@ -136,13 +136,24 @@ verify_dep() {
 verify_dep "Dawn"  "${SKIA_DIR}/third_party/externals/dawn"   "${DAWN_COMMIT}"
 verify_dep "ANGLE" "${SKIA_DIR}/third_party/externals/angle2" "${ANGLE_COMMIT}"
 
-# --- resolve Skia-bundled gn + ninja (provisioned by git-sync-deps) ----------
+# --- provision + resolve Skia's gn + ninja -----------------------------------
+# git-sync-deps fetches `gn` (via a hook) but NOT `ninja` — `bin/fetch-ninja`
+# must be invoked explicitly. Both scripts chdir into the Skia root themselves
+# and install into the checkout (bin/gn, third_party/ninja/ninja). Both are
+# idempotent ("Already up to date." on re-run).
+log "fetching Skia-pinned ninja ..."
+( cd "${SKIA_DIR}" && python3 bin/fetch-ninja )
+if [ ! -x "${SKIA_DIR}/bin/gn" ]; then
+  log "fetching Skia-pinned gn ..."
+  ( cd "${SKIA_DIR}" && python3 bin/fetch-gn )
+fi
+
 GN="${SKIA_DIR}/bin/gn"
 NINJA="${SKIA_DIR}/third_party/ninja/ninja"
-[ -x "${GN}" ]    || die "gn not found at ${GN} — git-sync-deps did not provision it"
-[ -x "${NINJA}" ] || die "ninja not found at ${NINJA} — git-sync-deps did not provision it"
-log "using Skia-bundled gn=${GN}"
-log "using Skia-bundled ninja=${NINJA}"
+[ -x "${GN}" ]    || die "gn not found at ${GN} after bin/fetch-gn"
+[ -x "${NINJA}" ] || die "ninja not found at ${NINJA} after bin/fetch-ninja"
+log "using Skia gn=${GN}"
+log "using Skia ninja=${NINJA}"
 
 # --- gn gen ------------------------------------------------------------------
 OUT_DIR="${OUT_BASE}/${RID}"
