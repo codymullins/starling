@@ -2,9 +2,9 @@
 id: "wp:M3-06l-ci-policy"
 parent: "wp:M3-06-native-interop-pivot"
 milestone: "M3"
-status: "blocked"
-claimed_by: ""
-claimed_at: ""
+status: "claimed"
+claimed_by: "agent-claude-cody-ci"
+claimed_at: "2026-05-14T15:09:29Z"
 branch: "main"
 depends_on:
   - "wp:M3-06d-codecs"
@@ -77,3 +77,9 @@ deleted.
 ## Handoff log
 
 - 2026-05-14T00:00:00Z — created (agent-claude-cody) during the native-interop pivot WP filing.
+- 2026-05-14T15:09:29Z — claimed (agent-claude-cody-ci). Doing the non-Skia-dependent
+  portion only: `ci.yml` lint job repurposed to the interop seam policy, Linux codec
+  libs added to the `build` job, `12_TESTING.md` prose updated. The native-Skia-package
+  restore in the `build` job stays a `# TODO(wp:M3-06h)` placeholder until `Tessera.Skia`
+  lands. No real policy test class exists in `tests/` (the `RuleZeroTests` in
+  `12_TESTING.md` is a doc sketch only) — so there is no test code to rewrite.
