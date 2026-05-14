@@ -63,13 +63,41 @@ order: milestone, then numeric id, then sub-letter.
 > `browser-plan/14_AGENT_TASKS.md` and `browser-plan/13_MILESTONES.md` for
 > the M3+ catalog; `tasks/README.md` is the workflow contract.
 
+## M3 — Native interop pivot
+
+Abandons "Rule 0" for a "managed-first, native at vetted seams" policy:
+Skia Graphite + ANGLE rasterizer, OS-native image codecs, and `SslStream`
+TLS. Parent `wp:M3-06-native-interop-pivot` decomposes into 12 children
+across three parallel tracks (see the parent file for the wave/dependency
+structure).
+
+| ID | Status | Owner | Subsystem |
+|---|---|---|---|
+| [wp:M3-06-native-interop-pivot](M3/wp-M3-06-native-interop-pivot.md) | 🔵 available | — | build |
+| [wp:M3-06a-native-scaffold](M3/wp-M3-06a-native-scaffold.md) | 🔵 available | — | build |
+| [wp:M3-06b-native-build](M3/wp-M3-06b-native-build.md) | ⚫ blocked | — | build |
+| [wp:M3-06c-decoded-image](M3/wp-M3-06c-decoded-image.md) | 🔵 available | — | Tessera.Common |
+| [wp:M3-06d-codecs](M3/wp-M3-06d-codecs.md) | ⚫ blocked | — | Tessera.Codecs |
+| [wp:M3-06e-sslstream-tls](M3/wp-M3-06e-sslstream-tls.md) | 🔵 available | — | Tessera.Net |
+| [wp:M3-06f-docs-policy](M3/wp-M3-06f-docs-policy.md) | 🔵 available | — | docs |
+| [wp:M3-06g-skia-shim](M3/wp-M3-06g-skia-shim.md) | ⚫ blocked | — | native |
+| [wp:M3-06h-skia-interop](M3/wp-M3-06h-skia-interop.md) | ⚫ blocked | — | Tessera.Skia |
+| [wp:M3-06i-skia-backend](M3/wp-M3-06i-skia-backend.md) | ⚫ blocked | — | Tessera.Paint |
+| [wp:M3-06j-skia-fonts](M3/wp-M3-06j-skia-fonts.md) | ⚫ blocked | — | Tessera.Paint |
+| [wp:M3-06k-gui-canvas](M3/wp-M3-06k-gui-canvas.md) | ⚫ blocked | — | Tessera.Gui |
+| [wp:M3-06l-ci-policy](M3/wp-M3-06l-ci-policy.md) | ⚫ blocked | — | build |
+
 ## Available right now (no dependencies pending)
 
-No M2 work remains. M3-02 sub-tasks (02c classes/modules, 02d
-destructuring, 02e Test262 ≥ 80%) are unfiled but available to anyone who
-wants to push the JS parser forward. Otherwise the next high-impact work
-is to file an M3-05 (intrinsics) ticket and start there — that's the
-single largest gating piece for any interactive demo.
+No M2 work remains. The **M3-06 native-interop pivot is now filed** —
+parent `wp:M3-06-native-interop-pivot` plus 12 children under `tasks/M3/`.
+Wave 1 packages **06a** (native scaffold), **06c** (DecodedImage seam),
+**06e** (SslStream TLS), and **06f** (docs/policy rewrite) have zero
+dependencies and are available to claim immediately. M3-02 sub-tasks (02c
+classes/modules, 02d destructuring, 02e Test262 ≥ 80%) are unfiled but
+available to anyone who wants to push the JS parser forward. Otherwise the
+next high-impact work is to file an M3-05 (intrinsics) ticket and start
+there — that's the single largest gating piece for any interactive demo.
 
 ## Recently completed
 
