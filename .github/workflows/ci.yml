@@ -18,8 +18,16 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Install native codec libs (Linux)
+        if: runner.os == 'Linux'
+        # Tessera.Codecs' Linux decoder tests dlopen these at runtime; the
+        # ubuntu runner does not ship libwebp by default.
+        run: sudo apt-get update && sudo apt-get install -y libpng16-16 libjpeg-turbo8 libwebp7
       - name: Restore (locked)
         run: dotnet restore --locked-mode
+      # TODO(wp:M3-06h): restore the native Skia package here, before the build,
+      # once Tessera.Skia exists. (native.yml — owned by wp:M3-06b — produces the
+      # artifact; this step consumes it.)
       - name: Build
         run: dotnet build --no-restore -c Release
       - name: Test (unit)
@@ -34,7 +42,7 @@ jobs:
           path: '**/*.trx'
 
   lint:
-    name: lint (formatting + Rule 0)
+    name: lint (formatting + interop policy)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -43,9 +51,14 @@ jobs:
           dotnet-version: '10.0.x'
       - name: dotnet format
         run: dotnet format --verify-no-changes
-      - name: Rule 0 — forbid PInvoke
-        # Engine projects are pure managed. The Shell may need platform interop later;
-        # if so, narrow this list rather than relax the rule.
+      - name: interop seam policy — confine native interop
+        # Interop seam policy: native LibraryImport/DllImport is confined to the
+        # designated interop projects — Tessera.Skia and Tessera.Codecs. Every
+        # other engine project stays P/Invoke-free. The two interop projects are
+        # enforced-clean by *omission* from the grep list below: they are simply
+        # never added. If the Shell needs platform interop later, narrow this
+        # list rather than relax the policy.
+        # NOTE: Tessera.Skia is forward-declared — the project lands in wp:M3-06h.
         run: |
           set -e
           ! grep -rn --include='*.cs' 'DllImport\|LibraryImport' \

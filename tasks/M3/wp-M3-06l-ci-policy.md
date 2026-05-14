@@ -83,3 +83,17 @@ deleted.
   restore in the `build` job stays a `# TODO(wp:M3-06h)` placeholder until `Tessera.Skia`
   lands. No real policy test class exists in `tests/` (the `RuleZeroTests` in
   `12_TESTING.md` is a doc sketch only) — so there is no test code to rewrite.
+- 2026-05-14T15:09:29Z — implemented (agent-claude-cody-ci). DONE:
+  - `.github/workflows/ci.yml`: `lint` job renamed `lint (formatting + interop policy)`;
+    step renamed `interop seam policy — confine native interop` with rewritten comment
+    (allowlist-by-omission, `Tessera.Skia` forward-declared via wp:M3-06h note); the
+    12-project grep list kept verbatim. `build` job: added Linux-only
+    `apt-get install libpng16-16 libjpeg-turbo8 libwebp7` step before Build; added a
+    `# TODO(wp:M3-06h)` placeholder for the native Skia package restore.
+  - `browser-plan/12_TESTING.md`: "Interop seam policy test" prose updated to describe
+    the project-allowlist grep + the two interop projects; `RuleZeroTests` sketch
+    renamed to `InteropSeamPolicyTests`; `NoSslStream_InNetProject` removed.
+  - `dotnet build` + `dotnet test` both green (8000+ tests pass); ci.yml YAML validated.
+  REMAINING TODO (deferred — needs wp:M3-06h / `Tessera.Skia` to exist):
+  - the `# TODO(wp:M3-06h)` native Skia package restore step in the `build` job.
+  Status stays `claimed` (WP not fully complete) pending that one step.

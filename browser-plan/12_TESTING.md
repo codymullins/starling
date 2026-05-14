@@ -213,26 +213,30 @@ Under the interop seam policy ("managed-first, native at vetted seams"), native
 interop is confined to two designated projects — `Tessera.Skia` and
 `Tessera.Codecs`. The policy test greps every engine project *except* those two
 for `DllImport`/`LibraryImport` (the same project allowlist the CI `lint` job
-uses) and fails if any other project regresses. The old `NoSslStream_InNetProject`
-test is **removed** — `SslStream` is now the sanctioned TLS path. The test-code
-rewrite itself lands in the CI/policy work package (`06l`); the sketch below shows
-the pre-pivot shape for reference.
+uses) and fails if any other project regresses. The two interop projects are
+enforced-clean by *omission* from the allowlist — they are simply never added to
+the list of projects scanned. There is no longer a `NoSslStream_InNetProject`
+test: `SslStream` is now the sanctioned TLS path, so `Tessera.Net` using it is
+expected, not a violation.
 
 ```csharp
-public class RuleZeroTests
+public class InteropSeamPolicyTests
 {
+    // The project allowlist — every engine project EXCEPT the two designated
+    // interop seams (Tessera.Skia, Tessera.Codecs), which are omitted on purpose.
+    static readonly string[] EngineProjects =
+    {
+        "Tessera.Common", "Tessera.Url", "Tessera.Net", "Tessera.Html",
+        "Tessera.Dom", "Tessera.Css", "Tessera.Layout", "Tessera.Paint",
+        "Tessera.Js", "Tessera.Bindings", "Tessera.Loop", "Tessera.Engine",
+    };
+
     [Fact] public void NoPInvoke_InAnyEngineProject()
     {
-        var bad = Directory.EnumerateFiles("src", "*.cs", SearchOption.AllDirectories)
-            .Where(p => !p.Contains("Tessera.Shell"))
+        var bad = EngineProjects
+            .SelectMany(proj => Directory.EnumerateFiles(
+                Path.Combine("src", proj), "*.cs", SearchOption.AllDirectories))
             .Where(p => Regex.IsMatch(File.ReadAllText(p), @"\bDllImport\b|\bLibraryImport\b"));
-        bad.Should().BeEmpty();
-    }
-
-    [Fact] public void NoSslStream_InNetProject()
-    {
-        var bad = Directory.EnumerateFiles("src/Tessera.Net", "*.cs", SearchOption.AllDirectories)
-            .Where(p => File.ReadAllText(p).Contains("SslStream"));
         bad.Should().BeEmpty();
     }
 }
