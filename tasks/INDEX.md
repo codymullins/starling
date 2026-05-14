@@ -81,11 +81,11 @@ structure).
 | [wp:M3-06e-sslstream-tls](M3/wp-M3-06e-sslstream-tls.md) | 🟢 complete | agent-claude-cody-tls | Tessera.Net |
 | [wp:M3-06f-docs-policy](M3/wp-M3-06f-docs-policy.md) | 🟢 complete | agent-claude-cody-docs | docs |
 | [wp:M3-06g-skia-shim](M3/wp-M3-06g-skia-shim.md) | 🟢 complete | agent-claude-cody-shim | native |
-| [wp:M3-06g2-shim-drawimage](M3/wp-M3-06g2-shim-drawimage.md) | 🟡 claimed | agent-claude-cody-shim2 | native |
+| [wp:M3-06g2-shim-drawimage](M3/wp-M3-06g2-shim-drawimage.md) | 🟢 complete | agent-claude-cody-shim2 | native |
 | [wp:M3-06h-skia-interop](M3/wp-M3-06h-skia-interop.md) | 🟢 complete | agent-claude-cody-skia-net | Tessera.Skia |
 | [wp:M3-06i-skia-backend](M3/wp-M3-06i-skia-backend.md) | 🟢 complete | agent-claude-cody-skia-backend | Tessera.Paint |
 | [wp:M3-06j-skia-fonts](M3/wp-M3-06j-skia-fonts.md) | 🟢 complete | agent-claude-cody-skia-fonts | Tessera.Paint |
-| [wp:M3-06k-gui-canvas](M3/wp-M3-06k-gui-canvas.md) | 🔵 available | — | Tessera.Gui |
+| [wp:M3-06k-gui-canvas](M3/wp-M3-06k-gui-canvas.md) | 🟡 claimed | agent-claude-cody-gui | Tessera.Gui |
 | [wp:M3-06l-ci-policy](M3/wp-M3-06l-ci-policy.md) | 🟡 claimed | agent-claude-cody-ci | build |
 
 > **M3-06: native Skia build is GREEN.** 06a–06f all `complete`. The osx-arm64
