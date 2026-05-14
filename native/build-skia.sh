@@ -113,8 +113,13 @@ fi
 log "Skia checkout verified == pinned SHA"
 
 # --- sync Skia DEPS (pulls Dawn + ANGLE at DEPS-resolved revisions) ----------
+# GIT_SYNC_DEPS_SKIP_EMSDK=1: emsdk (Emscripten SDK) is only needed for WASM
+# builds of Skia. Tessera builds native (Metal/D3D12/Vulkan via Dawn), so we
+# skip it — its activate-emsdk post-step also resolves paths relative to CWD
+# and fails unless run from inside the Skia checkout. The `cd` is belt-and-
+# suspenders for any other CWD-relative step.
 log "syncing Skia DEPS (Dawn, ANGLE, harfbuzz, icu, ...) ..."
-python3 "${SKIA_DIR}/tools/git-sync-deps"
+( cd "${SKIA_DIR}" && GIT_SYNC_DEPS_SKIP_EMSDK=1 python3 tools/git-sync-deps )
 
 # --- verify Dawn / ANGLE revisions match the manifest ------------------------
 verify_dep() {
