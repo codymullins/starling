@@ -48,40 +48,41 @@ the exact revisions of Skia, Dawn, and ANGLE that the native build
   during the M13x line; `chrome/m140` is a conservative, already-stabilized
   choice for the first Tessera native build.
 - **Commit (`SKIA_COMMIT`):** `5db0949ba318d248ebc3d33c73ad1251bf95c243`
-  <!-- TODO: confirm — branch-tip SHA observed via
-       https://skia.googlesource.com/skia/+/refs/heads/chrome/m140 ;
-       re-verify against the live branch tip before the first CI run, since
-       milestone branches still receive occasional cherry-picks. -->
+  <!-- Confirmed 2026-05-14 against the live `chrome/m140` branch tip
+       (`git ls-remote https://skia.googlesource.com/skia refs/heads/chrome/m140`).
+       Milestone branches still receive occasional cherry-picks — re-verify on
+       a milestone bump. -->
 - **Source of truth:** <https://skia.googlesource.com/skia/+/refs/heads/chrome/m140>
 - **DEPS file consulted:** <https://skia.googlesource.com/skia/+/refs/heads/chrome/m140/DEPS>
 
 ### Dawn
 
 - **Path in Skia checkout:** `third_party/externals/dawn`
-- **Commit (`DAWN_COMMIT`):** `0b095928b31253ffc96884e460e08cc5710c2c2`
-  <!-- TODO: confirm — read from chrome/m140 DEPS at third_party/externals/dawn.
-       Run `git -C third_party/skia/third_party/externals/dawn rev-parse HEAD`
-       after `tools/git-sync-deps` and paste the exact 40-char SHA here. -->
+- **Commit (`DAWN_COMMIT`):** `0b095928b31253ffc9684e460e08cc5710c2c21c`
+  <!-- Confirmed 2026-05-14 from the `chrome/m140` DEPS file
+       (`third_party/externals/dawn` entry in
+       https://skia.googlesource.com/skia/+/5db0949ba318d248ebc3d33c73ad1251bf95c243/DEPS). -->
 - Dawn provides the WebGPU implementation Skia Graphite renders through; Dawn in
   turn selects Metal (macOS), D3D12 (Windows), or Vulkan (Linux) at runtime.
 
 ### ANGLE
 
 - **Path in Skia checkout:** `third_party/externals/angle2`
-- **Commit (`ANGLE_COMMIT`):** `b6b2f3808014eadf33f215adc2e99f208c800ae4`
-  <!-- TODO: confirm — read from chrome/m140 DEPS at third_party/externals/angle2.
-       Run `git -C third_party/skia/third_party/externals/angle2 rev-parse HEAD`
-       after `tools/git-sync-deps` and paste the exact 40-char SHA here. -->
+- **Commit (`ANGLE_COMMIT`):** `b6b2f380814eadf33f215adc2e99f208c800ae47`
+  <!-- Confirmed 2026-05-14 from the `chrome/m140` DEPS file
+       (`third_party/externals/angle2` entry in
+       https://skia.googlesource.com/skia/+/5db0949ba318d248ebc3d33c73ad1251bf95c243/DEPS). -->
 - ANGLE is the **GL/GLES fallback** provider (`skia_use_gl=true`). It is not the
   primary path — Graphite-on-Dawn is — so do not over-invest in it for v1.
 
-> **TODO-confirm note.** The milestone branch name `chrome/m140` is pinned
-> concretely and is correct. The three 40-character SHAs above are transcribed
-> from the public `DEPS` / branch listing and are marked `TODO: confirm`: they
-> must be re-read from an actual checkout (`git rev-parse HEAD` in each tree
-> after `tools/git-sync-deps`) and corrected here before the native build is
-> trusted. The build scripts will refuse to build until `SKIA_COMMIT` matches
-> the real checkout, which is the backstop against a wrong transcription.
+> **Confirmation status.** All three revisions were confirmed 2026-05-14:
+> `SKIA_COMMIT` against the live `chrome/m140` branch tip, and `DAWN_COMMIT` +
+> `ANGLE_COMMIT` against the `DEPS` file at that exact Skia revision
+> (`https://skia.googlesource.com/skia/+/5db0949ba318d248ebc3d33c73ad1251bf95c243/DEPS`).
+> The original transcription of the Dawn and ANGLE SHAs was wrong (Dawn was even
+> a 39-char truncation) and has been corrected. The build scripts still verify
+> the synced tree matches these pins and abort on drift — re-confirm on any
+> milestone bump.
 
 ## Machine-readable pins
 
@@ -91,8 +92,8 @@ one space-free token per line, no quoting.
 ```ini
 SKIA_BRANCH=chrome/m140
 SKIA_COMMIT=5db0949ba318d248ebc3d33c73ad1251bf95c243
-DAWN_COMMIT=0b095928b31253ffc96884e460e08cc5710c2c2
-ANGLE_COMMIT=b6b2f3808014eadf33f215adc2e99f208c800ae4
+DAWN_COMMIT=0b095928b31253ffc9684e460e08cc5710c2c21c
+ANGLE_COMMIT=b6b2f380814eadf33f215adc2e99f208c800ae47
 ```
 
 ## Artifact strategy (out-of-band, never in PR CI, never committed)
