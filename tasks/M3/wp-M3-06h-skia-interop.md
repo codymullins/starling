@@ -2,9 +2,10 @@
 id: "wp:M3-06h-skia-interop"
 parent: "wp:M3-06-native-interop-pivot"
 milestone: "M3"
-status: "claimed"
+status: "complete"
 claimed_by: "agent-claude-cody-skia-net"
 claimed_at: "2026-05-14T16:41:43Z"
+completed_at: "2026-05-14T16:55:00Z"
 branch: "main"
 depends_on:
   - "wp:M3-06g-skia-shim"
@@ -83,3 +84,36 @@ not over-invest in v1.
 ## Handoff log
 
 - 2026-05-14T00:00:00Z — created (agent-claude-cody) during the native-interop pivot WP filing.
+- 2026-05-14T16:55:00Z — completed (agent-claude-cody-skia-net).
+  - Created `src/Tessera.Skia` (`Interop/NativeMethods.cs`, `Interop/NativeLoader.cs`,
+    `Handles/Sk{Context,Surface,Canvas,Typeface,Font,Image}.cs`,
+    `SkiaInteropException.cs`) and `tests/Tessera.Skia.Tests`. Both added to
+    `Tessera.sln` (nested under the `src` / `tests` solution folders like Codecs).
+  - All 20 `ts_` functions bound via source-generated `[LibraryImport]`. Signatures
+    mirror `native/shim/tessera_skia.h` exactly, including the documented ABI change:
+    `ts_read_pixels(TsContext*, TsSurface*, ...)` — surfaced as `SkSurface.ReadPixels(SkContext, w, h)`.
+    `ts_flush_and_submit` likewise takes the context. Opaque handles bound as `nint`;
+    POD structs (`TsColor/TsRect/TsGlyph/TsFontMetrics`) as `[StructLayout(Sequential)]`;
+    `ts_typeface_from_name` uses `StringMarshalling.Utf8`; pointer params (`glyphs`,
+    `pixels`, `utf8_text`) bound as `unsafe` `T*`.
+  - Signature quirk / HEADER DIVERGENCE: the header has **no `TsImage` opaque handle**
+    and no `ts_image_create/destroy` pair — `ts_canvas_draw_image` takes raw RGBA8888
+    pixels directly. So `SkImage` is a managed-only value holder (documented in the
+    file), NOT a `SafeHandle` — there is no native handle to own. The other five
+    wrappers are `SafeHandleZeroOrMinusOneIsInvalid`; `SkCanvas` is non-owning
+    (borrowed from the surface, `ReleaseHandle` is a no-op) per the header comment.
+  - Native packaging: csproj copies `runtimes/<rid>/native/libtessera_skia.*` to the
+    output `runtimes/<rid>/native/` layout (per-RID `Exists`-guarded `None` items —
+    `%(Identity)` is not allowed in item `Condition`s, hence the explicit per-RID
+    blocks). `NativeLoader` module initializer installs a `SetDllImportResolver`
+    fallback that walks up to the gitignored repo-root `runtimes` tree.
+  - **osx-arm64 only** until win/linux dylibs are built (06g). The P/Invoke smoke
+    test (mirrors `smoke_test.c`: context → surface → clear + fill_rect → flush →
+    readback → assert pixels, plus a handle-release loop) is guarded by
+    `OperatingSystem.IsMacOS()` AND dylib-present via `Assert.SkipUnless` (xunit v3
+    native skip — repo has no `SkippableFact` package). On this macOS box the test
+    **actually ran and passed** against the real Dawn/Graphite dylib.
+  - `dotnet build` + `dotnet test` from repo root: both green. Test count +2
+    (`Tessera.Skia.Tests`, both passed, 0 skipped here).
+  - `Tessera.sln` touched (merge-conflict hotspot — note for rebasing agents):
+    2 `Project` blocks, 2 `ProjectConfigurationPlatforms` blocks, 2 `NestedProjects` lines.
