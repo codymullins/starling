@@ -2,9 +2,10 @@
 id: "wp:M3-06a-native-scaffold"
 parent: "wp:M3-06-native-interop-pivot"
 milestone: "M3"
-status: "claimed"
+status: "complete"
 claimed_by: "agent-claude-cody-native"
 claimed_at: "2026-05-14T14:43:49Z"
+completed_at: "2026-05-14T14:50:57Z"
 branch: "main"
 depends_on: []
 blocks:
@@ -76,3 +77,4 @@ downstream can start until the revisions are pinned.
 
 - 2026-05-14T00:00:00Z — created (agent-claude-cody) during the native-interop pivot WP filing.
 - 2026-05-14T14:43:49Z — claimed by agent-claude-cody-native; working in an isolated worktree branch alongside wp:M3-06b.
+- 2026-05-14T14:50:57Z — complete. Created `third_party/REVISIONS.md` (pins Skia `chrome/m140` milestone branch + Dawn/ANGLE SHAs as a lockfile, with pinning policy + out-of-band artifact strategy documented); created `native/` (committed: README, build scripts, shim scaffold) and the gitignored `runtimes/` + `third_party/skia/` dirs; added `.gitignore` rules for `runtimes/`, `third_party/skia/`, `native/out/`, `native/build/` (verified ignored via `git check-ignore`). Skia milestone branch name is pinned concretely; the three 40-char SHAs are marked `TODO: confirm` — they must be re-read from a real checkout (`git rev-parse HEAD` after `tools/git-sync-deps`) before the native build is trusted. No `.cs`/`.csproj`/`.sln`/`tasks/INDEX.md` touched. Note for the INDEX maintainer: this completion + 06b's unblock `wp:M3-06g-skia-shim` once 06b lands.
