@@ -26,8 +26,13 @@ public sealed class ImagePaintGoldenTests
         var resolver = new ManualImageResolver();
         resolver.Add(imgElement, swatch);
 
+        // Pin ImageSharp: this asserts on blitted image pixels, and the Skia
+        // shim's ts_canvas_draw_image is a no-op on Graphite canvases (native
+        // defect, see wp:M3-06g/06i). The Skia default covers everything else.
         var painter = new Painter();
-        using var rendered = painter.RenderDocument(document, new LayoutSize(320, 180), defaultFontSize: 16f, images: resolver);
+        using var rendered = painter.RenderDocument(
+            document, new LayoutSize(320, 180), defaultFontSize: 16f, images: resolver,
+            backend: PaintBackend.ImageSharp);
 
         BitmapPixels.CountExact(rendered, 255, 0, 0).Should().BeGreaterThanOrEqualTo(
             500, "the 40x20 red swatch (800 px) should land in the output");
@@ -46,8 +51,12 @@ public sealed class ImagePaintGoldenTests
         var resolver = new ManualImageResolver();
         resolver.Add(imgElement, swatch);
 
+        // Pin ImageSharp: see the PNG case — Skia's ts_canvas_draw_image is a
+        // no-op on Graphite canvases (native defect, wp:M3-06g/06i).
         var painter = new Painter();
-        using var rendered = painter.RenderDocument(document, new LayoutSize(320, 180), defaultFontSize: 16f, images: resolver);
+        using var rendered = painter.RenderDocument(
+            document, new LayoutSize(320, 180), defaultFontSize: 16f, images: resolver,
+            backend: PaintBackend.ImageSharp);
 
         BitmapPixels.CountBluish(rendered).Should().BeGreaterThanOrEqualTo(
             500, "the 60x20 blue JPEG swatch should dominate a region of the output");

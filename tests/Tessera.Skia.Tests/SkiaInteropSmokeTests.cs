@@ -52,6 +52,49 @@ public sealed class SkiaInteropSmokeTests
         AssertPixel(pixels, x: 32, y: 32, 255, 0, 0, 255, "rect center");
     }
 
+    /// <summary>
+    /// KNOWN-FAILING (Skip): <c>ts_canvas_draw_image</c> does not blit on a
+    /// Graphite-backed canvas — <c>SkImages::RasterFromPixmapCopy</c> +
+    /// <c>drawImageRect</c> leaves the destination untouched (Graphite needs the
+    /// raster image uploaded as a texture via the recorder). This is a native
+    /// shim defect (wp:M3-06g / wp:M3-06i); fixing it is out of scope for
+    /// wp:M3-06j, which may not edit <c>native/*</c> or <c>src/Tessera.Skia/*</c>.
+    /// The test body is the exact repro — un-skip it once the shim uploads
+    /// images. Until then the image-pixel golden tests pin the ImageSharp
+    /// backend explicitly (see ImagePaintGoldenTests / EngineRenderTests).
+    /// </summary>
+    [Fact(Skip = "ts_canvas_draw_image is a no-op on Graphite canvases — native shim defect, see wp:M3-06g/06i.")]
+    public void DrawImage_BlitsPixels_IntoSurface()
+    {
+        Assert.SkipUnless(NativeShim.IsAvailable, NativeShim.SkipReason);
+
+        using var context = SkContext.Create(TsBackendHint.Auto);
+        using var surface = SkSurface.Create(context, Width, Height);
+        var canvas = surface.GetCanvas();
+
+        canvas.Clear(new TsColor(255, 255, 255, 255));
+
+        // A 16x16 solid opaque-green source image, drawn scaled into a 32x32
+        // destination rect centered on the surface.
+        var src = new byte[16 * 16 * 4];
+        for (int i = 0; i < 16 * 16; i++)
+        {
+            src[(i * 4) + 0] = 0;
+            src[(i * 4) + 1] = 128;
+            src[(i * 4) + 2] = 0;
+            src[(i * 4) + 3] = 255;
+        }
+        canvas.DrawImage(src, 16, 16, new TsRect(16f, 16f, 32f, 32f));
+
+        surface.Flush(context);
+
+        byte[] pixels = surface.ReadPixels(context, Width, Height);
+
+        // Center is inside the blitted image; corner is the untouched white bg.
+        AssertPixel(pixels, x: 32, y: 32, 0, 128, 0, 255, "image center");
+        AssertPixel(pixels, x: 2, y: 2, 255, 255, 255, 255, "background corner");
+    }
+
     [Fact]
     public void Handles_AreReleased_WithoutLeaks()
     {
