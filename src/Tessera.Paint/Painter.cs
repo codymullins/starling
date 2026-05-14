@@ -8,6 +8,7 @@ using Tessera.Css;
 using Tessera.Css.Cascade;
 using Tessera.Css.Parser;
 using Tessera.Dom;
+using Tessera.Layout.Text;
 using Tessera.Layout.Tree;
 using Tessera.Paint.Backend;
 using Tessera.Paint.DisplayList;
@@ -55,13 +56,17 @@ public sealed class Painter
     {
         ArgumentNullException.ThrowIfNull(document);
 
-        var root = LayoutDocument(document, viewport, defaultFontSize, images, externalStylesheet);
+        // Resolve the backend up front and thread it into layout so the text
+        // measurer matches the rasterizer (Skia shaped metrics ↔ Skia backend,
+        // heuristic metrics ↔ ImageSharp) — a mismatch makes layout disagree
+        // with paint.
+        var selected = backend ?? SelectBackend();
+        var root = LayoutDocument(document, viewport, defaultFontSize, images, externalStylesheet, selected);
 
         PaintList displayList;
         using (_diag.Span("paint", "display_list"))
             displayList = new DisplayListBuilder().Build(root);
 
-        var selected = backend ?? SelectBackend();
         using (_diag.Span("paint", $"raster:{selected}".ToLowerInvariant()))
         {
             // DisplayList / DisplayItem are the backend-neutral seam: both
@@ -81,19 +86,30 @@ public sealed class Painter
 
     /// <summary>
     /// Resolves the active paint backend. Honors the <c>TESSERA_PAINT_BACKEND</c>
-    /// environment variable (<c>skia</c> | <c>imagesharp</c>); defaults to
-    /// <see cref="PaintBackend.SkiaGraphite"/> since layout runs on Skia's
-    /// shaped text metrics — painting with ImageSharp would mismatch layout.
-    /// Set <c>TESSERA_PAINT_BACKEND=imagesharp</c> to force the legacy backend.
+    /// environment variable (<c>skia</c> | <c>imagesharp</c>) as an explicit
+    /// override. With no override it prefers <see cref="PaintBackend.SkiaGraphite"/>,
+    /// but falls back to <see cref="PaintBackend.ImageSharp"/> when the native
+    /// Skia shim is not present for the current RID (fresh checkout / CI runner
+    /// without the out-of-band native build) — so the engine stays usable and
+    /// the test suite stays green without the gitignored native artifact.
     /// </summary>
     public static PaintBackend SelectBackend()
     {
         var flag = Environment.GetEnvironmentVariable("TESSERA_PAINT_BACKEND");
-        return flag?.Trim().ToLowerInvariant() switch
+        switch (flag?.Trim().ToLowerInvariant())
         {
-            "imagesharp" or "image-sharp" or "sixlabors" => PaintBackend.ImageSharp,
-            _ => PaintBackend.SkiaGraphite,
-        };
+            case "imagesharp" or "image-sharp" or "sixlabors":
+                return PaintBackend.ImageSharp;
+            case "skia" or "skia-graphite" or "graphite":
+                // Explicit request — honored even if the probe is unsure; a
+                // genuine load failure then surfaces loudly rather than being
+                // silently swapped out.
+                return PaintBackend.SkiaGraphite;
+            default:
+                return Tessera.Skia.Interop.NativeLoader.IsAvailable
+                    ? PaintBackend.SkiaGraphite
+                    : PaintBackend.ImageSharp;
+        }
     }
 
     /// <summary>
@@ -107,9 +123,10 @@ public sealed class Painter
         LayoutSize viewport,
         float? defaultFontSize = null,
         IImageResolver? images = null,
-        Func<Element, StyleSheet?>? externalStylesheet = null)
+        Func<Element, StyleSheet?>? externalStylesheet = null,
+        PaintBackend? backend = null)
     {
-        var (root, _) = LayoutDocumentWithStyle(document, viewport, defaultFontSize, images, externalStylesheet);
+        var (root, _) = LayoutDocumentWithStyle(document, viewport, defaultFontSize, images, externalStylesheet, backend);
         return root;
     }
 
@@ -124,7 +141,8 @@ public sealed class Painter
         LayoutSize viewport,
         float? defaultFontSize = null,
         IImageResolver? images = null,
-        Func<Element, StyleSheet?>? externalStylesheet = null)
+        Func<Element, StyleSheet?>? externalStylesheet = null,
+        PaintBackend? backend = null)
     {
         ArgumentNullException.ThrowIfNull(document);
 
@@ -132,14 +150,19 @@ public sealed class Painter
         using (_diag.Span("paint", "style_cascade"))
             style = CreateStyleEngine(document, defaultFontSize, externalStylesheet);
 
-        // Layout now uses Skia's real shaped metrics (SkiaTextMeasurer) instead
-        // of DefaultTextMeasurer's ~0.5em heuristic — line breaks, widths, and
-        // baselines all match what the Skia paint backend will draw. The
-        // measurer caches sized SkFont handles, so it is created per layout
-        // call and disposed when done; the typeface stays cached on the
-        // FontResolver. DefaultTextMeasurer is kept (it is LayoutEngine's
-        // default) so paint-free layout unit tests stay paint-free.
-        using var measurer = new SkiaTextMeasurer(_fonts);
+        // The text measurer must match the paint backend. With the Skia backend,
+        // layout uses Skia's real shaped metrics (SkiaTextMeasurer) so line
+        // breaks, widths, and baselines match what Skia draws. When the native
+        // shim is absent and we fall back to ImageSharp, layout uses
+        // DefaultTextMeasurer's heuristic — consistent with that backend, and it
+        // keeps paint-free layout unit tests (which use DefaultTextMeasurer
+        // directly) on the same path. SkiaTextMeasurer caches sized SkFont
+        // handles, so it is created per layout call and disposed when done.
+        var selected = backend ?? SelectBackend();
+        using SkiaTextMeasurer? skiaMeasurer = selected == PaintBackend.SkiaGraphite
+            ? new SkiaTextMeasurer(_fonts)
+            : null;
+        ITextMeasurer measurer = skiaMeasurer ?? (ITextMeasurer)DefaultTextMeasurer.Instance;
         var layoutEngine = new LayoutEngineImpl(style, measurer, images);
         Tessera.Layout.Box.BlockBox root;
         using (_diag.Span("paint", "layout"))

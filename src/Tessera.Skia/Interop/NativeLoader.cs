@@ -19,6 +19,33 @@ internal static class NativeLoader
 {
     private const string LibraryName = "tessera_skia";
 
+    private static readonly Lazy<bool> _available = new(ProbeAvailable);
+
+    /// <summary>
+    /// Whether the native <c>tessera_skia</c> shim is present for the current
+    /// RID. Probed once and cached. The shim is built out-of-band
+    /// (<c>native/build-skia.sh</c> → <c>native.yml</c>) and is not committed,
+    /// so a fresh checkout or a CI runner without the artifact will not have
+    /// it. Callers use this to fall back to a fully-managed path (the ImageSharp
+    /// paint backend + the heuristic text measurer) instead of throwing
+    /// <see cref="DllNotFoundException"/> at the first P/Invoke.
+    /// </summary>
+    internal static bool IsAvailable => _available.Value;
+
+    private static bool ProbeAvailable()
+    {
+        // The resolver below loads from exactly these candidate paths, so
+        // "the file exists at a candidate path" faithfully predicts "the shim
+        // will load" — without the side effect of actually loading it.
+        foreach (string candidate in CandidatePaths())
+        {
+            if (File.Exists(candidate))
+                return true;
+        }
+
+        return false;
+    }
+
     // CA2255: the ModuleInitializer attribute is normally discouraged in
     // libraries — but installing a DllImportResolver before any P/Invoke runs
     // is exactly the "advanced" scenario the rule carves out. There is no other

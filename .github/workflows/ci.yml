@@ -25,9 +25,16 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libpng16-16 libjpeg-turbo8 libwebp7
       - name: Restore (locked)
         run: dotnet restore --locked-mode
-      # TODO(wp:M3-06h): restore the native Skia package here, before the build,
-      # once Tessera.Skia exists. (native.yml — owned by wp:M3-06b — produces the
-      # artifact; this step consumes it.)
+      # The native Skia shim (libtessera_skia.*) is intentionally NOT restored
+      # here. It is built out-of-band by native.yml (osx-arm64 only so far;
+      # win/linux native builds are still pending) and is not committed. Without
+      # it, Painter.SelectBackend() falls back to the managed ImageSharp backend
+      # + heuristic text measurer, so build + the full test suite stay green on
+      # every runner — the Skia-specific conformance tests skip themselves
+      # (Tessera.Skia.Tests, the nginx.org snapshot golden) when the shim is
+      # absent. Wiring a real artifact restore (to actually exercise the Skia
+      # path in PR CI) is a follow-up once native.yml publishes releases for all
+      # three RIDs.
       - name: Build
         run: dotnet build --no-restore -c Release
       - name: Test (unit)
