@@ -73,13 +73,13 @@ structure).
 
 | ID | Status | Owner | Subsystem |
 |---|---|---|---|
-| [wp:M3-06-native-interop-pivot](M3/wp-M3-06-native-interop-pivot.md) | 🔵 available | — | build |
-| [wp:M3-06a-native-scaffold](M3/wp-M3-06a-native-scaffold.md) | 🔵 available | — | build |
-| [wp:M3-06b-native-build](M3/wp-M3-06b-native-build.md) | ⚫ blocked | — | build |
-| [wp:M3-06c-decoded-image](M3/wp-M3-06c-decoded-image.md) | 🔵 available | — | Tessera.Common |
-| [wp:M3-06d-codecs](M3/wp-M3-06d-codecs.md) | ⚫ blocked | — | Tessera.Codecs |
-| [wp:M3-06e-sslstream-tls](M3/wp-M3-06e-sslstream-tls.md) | 🔵 available | — | Tessera.Net |
-| [wp:M3-06f-docs-policy](M3/wp-M3-06f-docs-policy.md) | 🔵 available | — | docs |
+| [wp:M3-06-native-interop-pivot](M3/wp-M3-06-native-interop-pivot.md) | 🟡 claimed | — | build |
+| [wp:M3-06a-native-scaffold](M3/wp-M3-06a-native-scaffold.md) | 🟢 complete | agent-claude-cody-native | build |
+| [wp:M3-06b-native-build](M3/wp-M3-06b-native-build.md) | 🟢 complete | agent-claude-cody-native | build |
+| [wp:M3-06c-decoded-image](M3/wp-M3-06c-decoded-image.md) | 🟢 complete | agent-claude-cody-image | Tessera.Common |
+| [wp:M3-06d-codecs](M3/wp-M3-06d-codecs.md) | 🔵 available | — | Tessera.Codecs |
+| [wp:M3-06e-sslstream-tls](M3/wp-M3-06e-sslstream-tls.md) | 🟢 complete | agent-claude-cody-tls | Tessera.Net |
+| [wp:M3-06f-docs-policy](M3/wp-M3-06f-docs-policy.md) | 🟢 complete | agent-claude-cody-docs | docs |
 | [wp:M3-06g-skia-shim](M3/wp-M3-06g-skia-shim.md) | ⚫ blocked | — | native |
 | [wp:M3-06h-skia-interop](M3/wp-M3-06h-skia-interop.md) | ⚫ blocked | — | Tessera.Skia |
 | [wp:M3-06i-skia-backend](M3/wp-M3-06i-skia-backend.md) | ⚫ blocked | — | Tessera.Paint |
@@ -87,13 +87,20 @@ structure).
 | [wp:M3-06k-gui-canvas](M3/wp-M3-06k-gui-canvas.md) | ⚫ blocked | — | Tessera.Gui |
 | [wp:M3-06l-ci-policy](M3/wp-M3-06l-ci-policy.md) | ⚫ blocked | — | build |
 
+> **M3-06 Wave 1 landed.** 06a/06b (native build scaffold), 06c (DecodedImage
+> seam), 06e (SslStream TLS), 06f (docs/policy) are all `complete` on `main`;
+> build + test green. 06d (codecs) is unblocked and claimable. **06b delivered
+> build *scaffolding* only** — the Skia chain (06g→06k) and 06l are blocked on a
+> real native Skia+Graphite build, which requires running `native/build-skia.*`
+> on a provisioned machine (depot_tools + platform toolchain) to produce
+> `runtimes/<rid>/native/libtessera_skia.*`. That is the critical-path external
+> dependency.
+
 ## Available right now (no dependencies pending)
 
-No M2 work remains. The **M3-06 native-interop pivot is now filed** —
-parent `wp:M3-06-native-interop-pivot` plus 12 children under `tasks/M3/`.
-Wave 1 packages **06a** (native scaffold), **06c** (DecodedImage seam),
-**06e** (SslStream TLS), and **06f** (docs/policy rewrite) have zero
-dependencies and are available to claim immediately. M3-02 sub-tasks (02c
+**`wp:M3-06d-codecs`** (OS-native image codecs) is unblocked — 06c is complete.
+The rest of the M3-06 pivot's remaining packages (06g–06l) are blocked on a real
+native Skia build (see the M3-06 note above). M3-02 sub-tasks (02c
 classes/modules, 02d destructuring, 02e Test262 ≥ 80%) are unfiled but
 available to anyone who wants to push the JS parser forward. Otherwise the
 next high-impact work is to file an M3-05 (intrinsics) ticket and start
