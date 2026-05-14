@@ -2,6 +2,7 @@ using System.Diagnostics;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using Tessera.Common.Diagnostics;
+using Tessera.Common.Image;
 using Tessera.Dom;
 using Tessera.Layout.Tree;
 using Tessera.Net;
@@ -12,20 +13,25 @@ namespace Tessera.Engine;
 
 /// <summary>
 /// Resolves every <c>&lt;img src&gt;</c> in a <see cref="Document"/> to a
-/// decoded <see cref="Image{Rgba32}"/> and exposes the results as an
+/// backend-neutral <see cref="DecodedImage"/> and exposes the results as an
 /// <see cref="IImageResolver"/> for layout to query. Owns the decoded
-/// bitmaps and disposes them when the fetcher itself is disposed.
+/// images and disposes them when the fetcher itself is disposed.
 /// </summary>
 /// <remarks>
+/// ImageSharp still does the actual decode here; the bytes are copied straight
+/// out into a <see cref="DecodedImage"/> so nothing downstream names a concrete
+/// decoder type. A later package swaps the decode call for a native codec.
+/// <para>
 /// Caches per absolute URL so an image referenced N times decodes once. The
 /// fetcher is fail-soft: a network or decode failure leaves the element
 /// without a resolved image, which BoxTreeBuilder degrades to its
 /// <c>alt</c> text.
+/// </para>
 /// </remarks>
 internal sealed class ImageFetcher : IImageResolver, IDisposable
 {
     private readonly Dictionary<Element, ResolvedImage> _byElement = [];
-    private readonly Dictionary<string, Image<Rgba32>> _byUrl = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DecodedImage> _byUrl = new(StringComparer.Ordinal);
     private readonly IDiagnostics _diag;
     private readonly Func<TesseraHttpClient> _httpFactory;
     private TesseraHttpClient? _sharedHttp;
@@ -57,14 +63,14 @@ internal sealed class ImageFetcher : IImageResolver, IDisposable
                 continue;
             }
 
-            var bitmap = await FetchAndDecodeAsync(absolute, ct).ConfigureAwait(false);
-            if (bitmap is null) continue;
+            var decoded = await FetchAndDecodeAsync(absolute, ct).ConfigureAwait(false);
+            if (decoded is null) continue;
 
-            _byElement[img] = new ResolvedImage(bitmap.Width, bitmap.Height, bitmap);
+            _byElement[img] = new ResolvedImage(decoded.Width, decoded.Height, decoded);
         }
     }
 
-    private async Task<Image<Rgba32>?> FetchAndDecodeAsync(TesseraUrl url, CancellationToken ct)
+    private async Task<DecodedImage?> FetchAndDecodeAsync(TesseraUrl url, CancellationToken ct)
     {
         var key = url.ToString();
         if (_byUrl.TryGetValue(key, out var cached)) return cached;
@@ -114,16 +120,23 @@ internal sealed class ImageFetcher : IImageResolver, IDisposable
             }
 
             Activity.Current?.SetTag("bytes", bytes.Length);
-            // ImageSharp auto-detects PNG/JPEG/GIF/BMP/WebP. CloneAs<Rgba32>
-            // normalizes to the painter's pixel format and lets us dispose the
-            // intermediate Image without surprising the caller.
+            // ImageSharp auto-detects PNG/JPEG/GIF/BMP/WebP and decodes. We
+            // immediately copy the pixels into a backend-neutral DecodedImage
+            // (straight RGBA8888, top-down, tightly packed) so nothing
+            // downstream names a concrete decoder type. CloneAs<Rgba32>
+            // normalizes the pixel format; CopyPixelDataTo writes a packed,
+            // top-down RGBA8888 buffer.
             using var loaded = Image.Load(bytes);
-            var bitmap = loaded.CloneAs<Rgba32>();
-            Activity.Current?.SetTag("image.w", bitmap.Width);
-            Activity.Current?.SetTag("image.h", bitmap.Height);
-            _byUrl[key] = bitmap;
+            using var rgba = loaded.CloneAs<Rgba32>();
+            var width = rgba.Width;
+            var height = rgba.Height;
+            var decoded = DecodedImage.CreatePooled(width, height,
+                span => rgba.CopyPixelDataTo(span));
+            Activity.Current?.SetTag("image.w", width);
+            Activity.Current?.SetTag("image.h", height);
+            _byUrl[key] = decoded;
             _diag.Counter("engine.fetch.image", 1);
-            return bitmap;
+            return decoded;
         }
         catch (Exception ex) when (ex is IOException or SixLabors.ImageSharp.UnknownImageFormatException
                                    or SixLabors.ImageSharp.InvalidImageContentException)
@@ -144,8 +157,8 @@ internal sealed class ImageFetcher : IImageResolver, IDisposable
 
     public void Dispose()
     {
-        foreach (var bitmap in _byUrl.Values)
-            bitmap.Dispose();
+        foreach (var decoded in _byUrl.Values)
+            decoded.Dispose();
         _byUrl.Clear();
         _byElement.Clear();
         _sharedHttp?.Dispose();

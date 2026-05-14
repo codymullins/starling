@@ -1,3 +1,4 @@
+using Tessera.Common.Image;
 using Tessera.Dom;
 
 namespace Tessera.Layout.Tree;
@@ -18,10 +19,10 @@ public interface IImageResolver
 }
 
 /// <summary>
-/// A resolved image: intrinsic pixel dimensions plus an opaque
-/// paint-backend handle (currently ImageSharp's <c>Image&lt;Rgba32&gt;</c>).
+/// A resolved image: intrinsic pixel dimensions plus the backend-neutral
+/// decoded pixel buffer (<see cref="DecodedImage"/>).
 /// </summary>
-public readonly record struct ResolvedImage(double Width, double Height, object Source);
+public readonly record struct ResolvedImage(double Width, double Height, DecodedImage Source);
 
 /// <summary>Resolver that never finds an image — every &lt;img&gt; falls back to alt text.</summary>
 public sealed class NullImageResolver : IImageResolver

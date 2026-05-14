@@ -1,3 +1,4 @@
+using Tessera.Common.Image;
 using Tessera.Css.Cascade;
 using Tessera.Dom;
 
@@ -78,8 +79,8 @@ public sealed class TextBox : Box
 
 /// <summary>
 /// A replaced inline element with intrinsic dimensions (currently &lt;img&gt;).
-/// The <see cref="Source"/> is opaque to layout — the paint backend casts it
-/// to its concrete bitmap type. <see cref="Box.Frame"/> is set by the inline
+/// The <see cref="Source"/> is the backend-neutral decoded pixel buffer; the
+/// paint backend blits from it. <see cref="Box.Frame"/> is set by the inline
 /// formatting context (for inline images) or block layout (for block images)
 /// to the box's position within its parent's content-box.
 /// </summary>
@@ -90,7 +91,7 @@ public sealed class ImageBox : Box
         Element? element,
         double intrinsicWidth,
         double intrinsicHeight,
-        object source)
+        DecodedImage source)
         : base(BoxKind.Replaced, style, element)
     {
         IntrinsicWidth = intrinsicWidth;
@@ -100,7 +101,7 @@ public sealed class ImageBox : Box
 
     public double IntrinsicWidth { get; }
     public double IntrinsicHeight { get; }
-    public object Source { get; }
+    public DecodedImage Source { get; }
 }
 
 /// <summary>

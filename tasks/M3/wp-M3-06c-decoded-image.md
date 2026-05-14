@@ -2,9 +2,10 @@
 id: "wp:M3-06c-decoded-image"
 parent: "wp:M3-06-native-interop-pivot"
 milestone: "M3"
-status: "claimed"
+status: "complete"
 claimed_by: "agent-claude-cody-image"
 claimed_at: "2026-05-14T14:42:59Z"
+completed_at: "2026-05-14T14:50:00Z"
 branch: "main"
 depends_on: []
 blocks:
@@ -79,3 +80,17 @@ independently mergeable to `main` without breaking the running engine.
 ## Handoff log
 
 - 2026-05-14T00:00:00Z — created (agent-claude-cody) during the native-interop pivot WP filing.
+- 2026-05-14T14:50:00Z — completed (agent-claude-cody-image). Added
+  `Tessera.Common/Image/DecodedImage.cs` (sealed `IDisposable`, `Width`/`Height`/
+  `ReadOnlyMemory<byte> Pixels`, straight top-down RGBA8888, pooled backing
+  buffer via `ArrayPool`). Threaded `DecodedImage` through `IImageResolver`/
+  `ResolvedImage`, `ImageBox.Source` (Box.cs), `DisplayItem.DrawImage`,
+  `ImageFetcher` (ImageSharp still decodes; pixels copied out via
+  `CopyPixelDataTo`, cache is `Dictionary<string,DecodedImage>` disposed on
+  `Dispose`), `ImageSharpBackend.DrawImage` (`Image.LoadPixelData<Rgba32>` —
+  ImageSharp still rasterizes), and `BoxTreeRenderer.EmitImage` (re-wrap +
+  `SaveAsPng` for MAUI). `DisplayListBuilder` and `BoxTreeBuilder` needed no
+  edits — the type flows through unchanged. Test helper `ManualImageResolver`
+  updated to build a `DecodedImage`. `dotnet build` + `dotnet test` green;
+  7768 tests pass, no count delta; image-paint goldens byte-exact (no pixel
+  change). `06d-codecs` and `06i-skia-backend` now unblocked.

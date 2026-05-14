@@ -20,13 +20,15 @@ namespace Tessera.Gui;
 /// <remarks>
 /// This is the interactive sibling of the ImageSharp rasterizer:
 /// <list type="bullet">
-///   <item>Native <see cref="Label"/>s mean text selection / copy work natively.</item>
 ///   <item>Native pointer + tap gestures mean hover and link navigation work.</item>
 ///   <item>The full document height is realized so a <see cref="ScrollView"/>
 ///         around the result scrolls past the viewport.</item>
 /// </list>
-/// Selection across separate Labels does not flow yet — that needs a single
-/// FormattedString per paragraph, which is the obvious next refinement.
+/// Body text is emitted as plain <see cref="Label"/>s — MAUI Labels are not
+/// user-selectable. Drag-to-select / copy is layered on top by the GUI shell
+/// (<c>MainPage</c>) via a custom highlight overlay driven by
+/// <c>Tessera.Layout.Selection.PageSelection</c>, which hit-tests the same box
+/// tree and flows selection across paragraph boundaries.
 /// </remarks>
 public static class BoxTreeRenderer
 {
@@ -40,7 +42,7 @@ public static class BoxTreeRenderer
     /// simple opacity hint.
     /// </param>
     /// <param name="onLinkActivated">Tap handler for hyperlinks.</param>
-    public static View Build(
+    public static AbsoluteLayout Build(
         BlockBox root,
         StyleEngine? style = null,
         Action<string>? onLinkActivated = null)
@@ -123,7 +125,7 @@ public static class BoxTreeRenderer
     private static void EmitAnonymousBlockAsParagraph(AnonymousBlockBox ab, double x, double y, BuildContext ctx)
     {
         var formatted = new FormattedString();
-        var linkSpans = new List<(Span Span, DomElement Anchor, Color BaseColor)>();
+        var linkSpans = new List<(Span Span, DomElement Anchor, Color BaseColor, TextDecorations BaseDecorations, FontAttributes BaseAttrs)>();
         BuildFormattedString(ab, formatted, ctx, currentAnchor: null, linkSpans);
         if (formatted.Spans.Count == 0) return;
 
@@ -154,10 +156,16 @@ public static class BoxTreeRenderer
             {
                 if (ctx.Style is { } style)
                 {
-                    foreach (var (span, anchor, _) in linkSpans)
+                    foreach (var (span, anchor, _, _, baseAttrs) in linkSpans)
                     {
                         var hovered = style.Compute(anchor, new SelectorMatchContext { HoveredElement = anchor });
                         span.TextColor = ToMauiColor(hovered.GetColor(PropertyId.Color));
+                        span.TextDecorations = IsUnderlined(hovered) ? TextDecorations.Underline : TextDecorations.None;
+                        // Italic toggles cheaply; bold is left out — its wider
+                        // metrics would reflow inside the fixed-width Label rect.
+                        span.FontAttributes = IsItalic(hovered)
+                            ? baseAttrs | FontAttributes.Italic
+                            : baseAttrs & ~FontAttributes.Italic;
                     }
                 }
                 else
@@ -169,8 +177,12 @@ public static class BoxTreeRenderer
             {
                 if (ctx.Style is not null)
                 {
-                    foreach (var (span, _, baseColor) in linkSpans)
+                    foreach (var (span, _, baseColor, baseDecorations, baseAttrs) in linkSpans)
+                    {
                         span.TextColor = baseColor;
+                        span.TextDecorations = baseDecorations;
+                        span.FontAttributes = baseAttrs;
+                    }
                 }
                 else
                 {
@@ -190,7 +202,7 @@ public static class BoxTreeRenderer
         FormattedString formatted,
         BuildContext ctx,
         DomElement? currentAnchor,
-        List<(Span Span, DomElement Anchor, Color BaseColor)> linkSpans)
+        List<(Span Span, DomElement Anchor, Color BaseColor, TextDecorations BaseDecorations, FontAttributes BaseAttrs)> linkSpans)
     {
         foreach (var child in box.Children)
         {
@@ -228,7 +240,7 @@ public static class BoxTreeRenderer
                                 Command = new Command(() => ctx.OnLink(capturedHref)),
                             });
                         }
-                        linkSpans.Add((span, currentAnchor, color));
+                        linkSpans.Add((span, currentAnchor, color, span.TextDecorations, span.FontAttributes));
                     }
                     formatted.Spans.Add(span);
                     break;
@@ -346,25 +358,28 @@ public static class BoxTreeRenderer
 
     private static void EmitImage(ImageBox img, double x, double y, AbsoluteLayout layout)
     {
-        // ImageBox.Source is an ImageSharp Image<Rgba32>. Encode to PNG bytes so
-        // MAUI can adopt it through its stream-source pipeline. Decode happens
+        // ImageBox.Source is a backend-neutral DecodedImage (straight RGBA8888).
+        // MAUI's image pipeline wants encoded bytes, so re-wrap the pixels in an
+        // ImageSharp Image<Rgba32> and encode to in-memory PNG. Encode happens
         // once per render; if this becomes a hot path the encoded bytes should
         // be cached per source image.
-        if (img.Source is Image<Rgba32> srcImg)
+        var decoded = img.Source;
+        if (decoded is null || decoded.Width <= 0 || decoded.Height <= 0) return;
+
+        byte[] bytes;
+        using (var srcImg = SixLabors.ImageSharp.Image.LoadPixelData<Rgba32>(
+                   decoded.Pixels.Span, decoded.Width, decoded.Height))
+        using (var ms = new MemoryStream())
         {
-            byte[] bytes;
-            using (var ms = new MemoryStream())
-            {
-                SixLabors.ImageSharp.ImageExtensions.SaveAsPng(srcImg, ms);
-                bytes = ms.ToArray();
-            }
-            var image = new Microsoft.Maui.Controls.Image
-            {
-                Source = ImageSource.FromStream(() => new MemoryStream(bytes)),
-                Aspect = Aspect.Fill,
-            };
-            AddView(layout, image, new Rect(x, y, img.Frame.Width, img.Frame.Height));
+            SixLabors.ImageSharp.ImageExtensions.SaveAsPng(srcImg, ms);
+            bytes = ms.ToArray();
         }
+        var image = new Microsoft.Maui.Controls.Image
+        {
+            Source = ImageSource.FromStream(() => new MemoryStream(bytes)),
+            Aspect = Aspect.Fill,
+        };
+        AddView(layout, image, new Rect(x, y, img.Frame.Width, img.Frame.Height));
     }
 
     private static void AddView(AbsoluteLayout layout, View view, Rect bounds)

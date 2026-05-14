@@ -1,6 +1,7 @@
 using FluentAssertions;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+using Tessera.Common.Image;
 using Tessera.Dom;
 using Tessera.Html;
 using Tessera.Layout.Tree;
@@ -151,8 +152,14 @@ public sealed class ImagePaintGoldenTests
     {
         private readonly Dictionary<Element, ResolvedImage> _byElement = [];
 
+        // Copies the ImageSharp pixels into a backend-neutral DecodedImage so
+        // the caller's `using var swatch` can dispose its bitmap independently.
         public void Add(Element element, Image<Rgba32> image)
-            => _byElement[element] = new ResolvedImage(image.Width, image.Height, image);
+        {
+            var decoded = DecodedImage.CreatePooled(
+                image.Width, image.Height, span => image.CopyPixelDataTo(span));
+            _byElement[element] = new ResolvedImage(image.Width, image.Height, decoded);
+        }
 
         public bool TryResolve(Element element, out ResolvedImage image)
             => _byElement.TryGetValue(element, out image);

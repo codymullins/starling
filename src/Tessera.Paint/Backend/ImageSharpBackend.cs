@@ -66,19 +66,26 @@ public sealed class ImageSharpBackend
     private static void DrawImage(IImageProcessingContext ctx, DisplayList.DrawImage item)
     {
         if (item.Bounds.Width <= 0 || item.Bounds.Height <= 0) return;
-        if (item.Source is not Image<Rgba32> source) return;
+        var decoded = item.Source;
+        if (decoded is null || decoded.Width <= 0 || decoded.Height <= 0) return;
 
         var targetW = (int)Math.Round(item.Bounds.Width);
         var targetH = (int)Math.Round(item.Bounds.Height);
         if (targetW <= 0 || targetH <= 0) return;
 
+        // ImageSharp stays the rasterizer: wrap the backend-neutral straight
+        // RGBA8888 pixels back into an Image<Rgba32> for the blit. LoadPixelData
+        // copies, so the DecodedImage's buffer stays immutable and reusable
+        // across multiple <img> elements.
+        using var source = Image.LoadPixelData<Rgba32>(
+            decoded.Pixels.Span, decoded.Width, decoded.Height);
+
         // Resample only when the destination differs from the source's native
-        // size. Cloning is cheap relative to drawing and keeps the source
-        // immutable so the engine can reuse it across multiple <img> elements.
+        // size.
         Image<Rgba32>? resampled = null;
         try
         {
-            var drawable = source;
+            Image<Rgba32> drawable = source;
             if (source.Width != targetW || source.Height != targetH)
             {
                 resampled = source.Clone(c => c.Resize(targetW, targetH));
