@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+# native/build-skia.sh — reproducible Skia + Graphite + Dawn build (macOS, Linux)
+#
+# Fetches Skia at the revision pinned in third_party/REVISIONS.md, syncs its
+# DEPS (Dawn + ANGLE), runs `gn gen` with the Graphite GN args, `ninja`-builds,
+# and stages the output + license files into runtimes/<rid>/native/.
+#
+# This script is SCAFFOLDING for WP M3-06b. It encodes the full reproducible
+# recipe but has not itself been run end-to-end here (a Skia build is a
+# multi-hour GN/Ninja job needing depot_tools + a platform toolchain). Run it on
+# a provisioned machine — see native/README.md for prerequisites.
+#
+# Usage:  ./native/build-skia.sh
+# Requires: depot_tools on PATH (gn, ninja), python3, git.
+
+set -euo pipefail
+
+# --- locate repo paths -------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REVISIONS_FILE="${REPO_ROOT}/third_party/REVISIONS.md"
+SKIA_DIR="${REPO_ROOT}/third_party/skia"
+OUT_BASE="${REPO_ROOT}/native/out"
+
+log()  { printf '\033[1;34m[build-skia]\033[0m %s\n' "$*"; }
+die()  { printf '\033[1;31m[build-skia] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
+
+# --- detect RID / GN target --------------------------------------------------
+UNAME_S="$(uname -s)"
+UNAME_M="$(uname -m)"
+case "${UNAME_S}" in
+  Darwin)
+    GN_TARGET_OS="mac"
+    case "${UNAME_M}" in
+      arm64)  RID="osx-arm64";  GN_TARGET_CPU="arm64" ;;
+      x86_64) RID="osx-x64";    GN_TARGET_CPU="x64" ;;
+      *) die "unsupported macOS arch: ${UNAME_M}" ;;
+    esac
+    LIB_EXT="a"
+    ;;
+  Linux)
+    GN_TARGET_OS="linux"
+    case "${UNAME_M}" in
+      x86_64)  RID="linux-x64";   GN_TARGET_CPU="x64" ;;
+      aarch64) RID="linux-arm64"; GN_TARGET_CPU="arm64" ;;
+      *) die "unsupported Linux arch: ${UNAME_M}" ;;
+    esac
+    LIB_EXT="a"
+    ;;
+  *)
+    die "unsupported OS '${UNAME_S}' — use native/build-skia.ps1 on Windows"
+    ;;
+esac
+log "host: ${UNAME_S}/${UNAME_M} -> RID=${RID} (target_os=${GN_TARGET_OS}, target_cpu=${GN_TARGET_CPU})"
+
+# --- toolchain checks --------------------------------------------------------
+command -v git    >/dev/null 2>&1 || die "git not found on PATH"
+command -v python3>/dev/null 2>&1 || die "python3 not found on PATH"
+command -v gn     >/dev/null 2>&1 || die "gn not found on PATH — add depot_tools to PATH"
+command -v ninja  >/dev/null 2>&1 || die "ninja not found on PATH — add depot_tools to PATH"
+
+# --- parse pinned revisions from REVISIONS.md --------------------------------
+[ -f "${REVISIONS_FILE}" ] || die "missing ${REVISIONS_FILE} (run WP M3-06a first)"
+
+read_pin() {
+  # extract `KEY=value` from the machine-readable block in REVISIONS.md
+  local key="$1" val
+  val="$(grep -E "^${key}=" "${REVISIONS_FILE}" | head -n1 | cut -d= -f2- || true)"
+  [ -n "${val}" ] || die "could not read ${key} from ${REVISIONS_FILE}"
+  printf '%s' "${val}"
+}
+
+SKIA_BRANCH="$(read_pin SKIA_BRANCH)"
+SKIA_COMMIT="$(read_pin SKIA_COMMIT)"
+DAWN_COMMIT="$(read_pin DAWN_COMMIT)"
+ANGLE_COMMIT="$(read_pin ANGLE_COMMIT)"
+log "pinned Skia ${SKIA_BRANCH} @ ${SKIA_COMMIT}"
+log "pinned Dawn  @ ${DAWN_COMMIT}"
+log "pinned ANGLE @ ${ANGLE_COMMIT}"
+
+# --- fetch / update Skia checkout to the pinned commit -----------------------
+SKIA_REMOTE="https://skia.googlesource.com/skia.git"
+if [ ! -d "${SKIA_DIR}/.git" ]; then
+  log "cloning Skia into ${SKIA_DIR} ..."
+  git clone "${SKIA_REMOTE}" "${SKIA_DIR}"
+fi
+
+log "checking out Skia ${SKIA_COMMIT} (${SKIA_BRANCH}) ..."
+git -C "${SKIA_DIR}" fetch origin "${SKIA_BRANCH}" --tags
+git -C "${SKIA_DIR}" -c advice.detachedHead=false checkout "${SKIA_COMMIT}"
+
+# --- HARD GUARD: checkout SHA must equal the pinned SHA ----------------------
+ACTUAL_SHA="$(git -C "${SKIA_DIR}" rev-parse HEAD)"
+if [ "${ACTUAL_SHA}" != "${SKIA_COMMIT}" ]; then
+  die "Skia checkout drift: HEAD=${ACTUAL_SHA} but REVISIONS.md pins ${SKIA_COMMIT}.
+       Refusing to build. Fix third_party/REVISIONS.md or the checkout."
+fi
+log "Skia checkout verified == pinned SHA"
+
+# --- sync Skia DEPS (pulls Dawn + ANGLE at DEPS-resolved revisions) ----------
+log "syncing Skia DEPS (Dawn, ANGLE, harfbuzz, icu, ...) ..."
+python3 "${SKIA_DIR}/tools/git-sync-deps"
+
+# --- verify Dawn / ANGLE revisions match the manifest ------------------------
+verify_dep() {
+  local name="$1" path="$2" want="$3" got
+  [ -d "${path}/.git" ] || die "${name} not synced at ${path}"
+  got="$(git -C "${path}" rev-parse HEAD)"
+  if [ "${got}" != "${want}" ]; then
+    die "${name} revision drift: synced ${got} but REVISIONS.md pins ${want}.
+         Skia's DEPS at ${SKIA_COMMIT} no longer resolves the pinned ${name} —
+         re-run WP M3-06a's manifest update."
+  fi
+  log "${name} verified == pinned SHA"
+}
+verify_dep "Dawn"  "${SKIA_DIR}/third_party/externals/dawn"   "${DAWN_COMMIT}"
+verify_dep "ANGLE" "${SKIA_DIR}/third_party/externals/angle2" "${ANGLE_COMMIT}"
+
+# --- gn gen ------------------------------------------------------------------
+OUT_DIR="${OUT_BASE}/${RID}"
+mkdir -p "${OUT_DIR}"
+
+GN_ARGS="\
+skia_enable_graphite=true \
+skia_use_dawn=true \
+skia_use_gl=true \
+skia_use_harfbuzz=true \
+skia_use_icu=true \
+is_official_build=true \
+target_cpu=\"${GN_TARGET_CPU}\" \
+target_os=\"${GN_TARGET_OS}\""
+
+log "gn gen ${OUT_DIR}"
+log "  args: ${GN_ARGS}"
+( cd "${SKIA_DIR}" && gn gen "${OUT_DIR}" --args="${GN_ARGS}" )
+
+# --- ninja build -------------------------------------------------------------
+log "ninja build (this is the long part — 20-40 min) ..."
+( cd "${SKIA_DIR}" && ninja -C "${OUT_DIR}" skia )
+
+# --- stage artifacts into runtimes/<rid>/native/ -----------------------------
+STAGE_DIR="${REPO_ROOT}/runtimes/${RID}/native"
+mkdir -p "${STAGE_DIR}"
+log "staging artifacts into ${STAGE_DIR}"
+
+# Skia + Dawn static libraries.
+find "${OUT_DIR}" -maxdepth 1 -name "*.${LIB_EXT}" -exec cp -f {} "${STAGE_DIR}/" \;
+
+# Public headers the shim compiles against.
+mkdir -p "${STAGE_DIR}/include"
+cp -Rf "${SKIA_DIR}/include" "${STAGE_DIR}/include/skia"
+if [ -d "${SKIA_DIR}/third_party/externals/dawn/include" ]; then
+  cp -Rf "${SKIA_DIR}/third_party/externals/dawn/include" "${STAGE_DIR}/include/dawn"
+fi
+
+# License files — required for redistribution; uploaded by native.yml.
+cp -f "${SKIA_DIR}/LICENSE" "${STAGE_DIR}/LICENSE.skia"
+[ -f "${SKIA_DIR}/third_party/externals/dawn/LICENSE" ] \
+  && cp -f "${SKIA_DIR}/third_party/externals/dawn/LICENSE" "${STAGE_DIR}/LICENSE.dawn"
+[ -f "${SKIA_DIR}/third_party/externals/angle2/LICENSE" ] \
+  && cp -f "${SKIA_DIR}/third_party/externals/angle2/LICENSE" "${STAGE_DIR}/LICENSE.angle"
+
+log "done — Skia + Dawn artifacts staged in ${STAGE_DIR}"
+log "next: WP M3-06g builds native/shim/ (CMake) and static-links libtessera_skia.*"

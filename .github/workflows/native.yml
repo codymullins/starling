@@ -1,0 +1,155 @@
+name: native
+
+# Out-of-band native build for the Skia Graphite + Dawn + ANGLE stack.
+#
+# This is DELIBERATELY NOT part of PR ci.yml — a Skia build is 20-40 min per
+# RID. It runs:
+#   - manually (workflow_dispatch), or
+#   - when the pinned revision manifest changes (third_party/REVISIONS.md), or
+#   - when the build scripts / shim scaffold themselves change.
+#
+# Each job builds Skia + Dawn for one RID via native/build-skia.*, then uploads
+# the staged static libs + license files as an artifact. The Skia checkout is
+# cached keyed by the hash of third_party/REVISIONS.md, so re-runs against an
+# unchanged manifest skip the multi-GB clone + DEPS sync.
+#
+# NOTE: linking the libtessera_skia.* shared library from native/shim/ is WP
+# M3-06g. This workflow produces the raw Skia/Dawn inputs that WP M3-06g
+# statically links against.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'third_party/REVISIONS.md'
+      - 'native/build-skia.sh'
+      - 'native/build-skia.ps1'
+      - 'native/shim/**'
+      - '.github/workflows/native.yml'
+
+# A new push supersedes an in-flight build of the same ref.
+concurrency:
+  group: native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-osx-arm64:
+    name: build (osx-arm64 / macos-15)
+    runs-on: macos-15
+    env:
+      TESSERA_RID: osx-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install depot_tools
+        run: |
+          set -e
+          git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$RUNNER_TEMP/depot_tools"
+          echo "$RUNNER_TEMP/depot_tools" >> "$GITHUB_PATH"
+
+      - name: Cache Skia checkout
+        uses: actions/cache@v4
+        with:
+          path: third_party/skia
+          key: skia-${{ env.TESSERA_RID }}-${{ hashFiles('third_party/REVISIONS.md') }}
+          restore-keys: |
+            skia-${{ env.TESSERA_RID }}-
+
+      - name: Build Skia + Dawn (Graphite)
+        run: ./native/build-skia.sh
+
+      - name: Upload native artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-osx-arm64
+          path: |
+            runtimes/osx-arm64/native/*.a
+            runtimes/osx-arm64/native/*.dylib
+            runtimes/osx-arm64/native/LICENSE.*
+          if-no-files-found: error
+
+  # Strict staging: Windows follows once osx-arm64 is fully green. It is wired
+  # here so the workflow is complete, but per wp:M3-06b it must not be relied on
+  # until osx-arm64 produces working Graphite libs.
+  build-win-x64:
+    name: build (win-x64 / windows-2025)
+    runs-on: windows-2025
+    needs: build-osx-arm64
+    env:
+      TESSERA_RID: win-x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install depot_tools
+        shell: pwsh
+        run: |
+          git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$env:RUNNER_TEMP/depot_tools"
+          "$env:RUNNER_TEMP/depot_tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Cache Skia checkout
+        uses: actions/cache@v4
+        with:
+          path: third_party/skia
+          key: skia-${{ env.TESSERA_RID }}-${{ hashFiles('third_party/REVISIONS.md') }}
+          restore-keys: |
+            skia-${{ env.TESSERA_RID }}-
+
+      - name: Build Skia + Dawn (Graphite)
+        shell: pwsh
+        run: ./native/build-skia.ps1
+
+      - name: Upload native artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-win-x64
+          path: |
+            runtimes/win-x64/native/*.lib
+            runtimes/win-x64/native/*.dll
+            runtimes/win-x64/native/LICENSE.*
+          if-no-files-found: error
+
+  build-linux-x64:
+    name: build (linux-x64 / ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    needs: build-osx-arm64
+    env:
+      TESSERA_RID: linux-x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build prerequisites
+        run: |
+          set -e
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential clang ninja-build \
+            libgl1-mesa-dev libx11-dev libxcomposite-dev libxcursor-dev \
+            libxi-dev libxrandr-dev libvulkan-dev mesa-vulkan-drivers
+
+      - name: Install depot_tools
+        run: |
+          set -e
+          git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$RUNNER_TEMP/depot_tools"
+          echo "$RUNNER_TEMP/depot_tools" >> "$GITHUB_PATH"
+
+      - name: Cache Skia checkout
+        uses: actions/cache@v4
+        with:
+          path: third_party/skia
+          key: skia-${{ env.TESSERA_RID }}-${{ hashFiles('third_party/REVISIONS.md') }}
+          restore-keys: |
+            skia-${{ env.TESSERA_RID }}-
+
+      - name: Build Skia + Dawn (Graphite)
+        run: ./native/build-skia.sh
+
+      - name: Upload native artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-linux-x64
+          path: |
+            runtimes/linux-x64/native/*.a
+            runtimes/linux-x64/native/*.so
+            runtimes/linux-x64/native/LICENSE.*
+          if-no-files-found: error
