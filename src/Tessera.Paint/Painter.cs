@@ -8,7 +8,6 @@ using Tessera.Css;
 using Tessera.Css.Cascade;
 using Tessera.Css.Parser;
 using Tessera.Dom;
-using Tessera.Layout.Text;
 using Tessera.Layout.Tree;
 using Tessera.Paint.Backend;
 using Tessera.Paint.DisplayList;
@@ -66,9 +65,10 @@ public sealed class Painter
         using (_diag.Span("paint", $"raster:{selected}".ToLowerInvariant()))
         {
             // DisplayList / DisplayItem are the backend-neutral seam: both
-            // backends consume the exact same list. ImageSharp is the default
-            // (goldens are baselined against it); Skia Graphite is opt-in via
-            // TESSERA_PAINT_BACKEND=skia until goldens are re-baselined.
+            // backends consume the exact same list. Skia Graphite is now the
+            // default — layout uses Skia's shaped text metrics, so painting
+            // with ImageSharp (SixLabors metrics) would mismatch layout.
+            // ImageSharp stays fully reachable via TESSERA_PAINT_BACKEND=imagesharp.
             if (selected == PaintBackend.SkiaGraphite)
             {
                 using var skia = new SkiaGraphiteBackend();
@@ -82,15 +82,17 @@ public sealed class Painter
     /// <summary>
     /// Resolves the active paint backend. Honors the <c>TESSERA_PAINT_BACKEND</c>
     /// environment variable (<c>skia</c> | <c>imagesharp</c>); defaults to
-    /// <see cref="PaintBackend.ImageSharp"/> so existing goldens stay byte-exact.
+    /// <see cref="PaintBackend.SkiaGraphite"/> since layout runs on Skia's
+    /// shaped text metrics — painting with ImageSharp would mismatch layout.
+    /// Set <c>TESSERA_PAINT_BACKEND=imagesharp</c> to force the legacy backend.
     /// </summary>
     public static PaintBackend SelectBackend()
     {
         var flag = Environment.GetEnvironmentVariable("TESSERA_PAINT_BACKEND");
         return flag?.Trim().ToLowerInvariant() switch
         {
-            "skia" or "skiagraphite" or "graphite" => PaintBackend.SkiaGraphite,
-            _ => PaintBackend.ImageSharp,
+            "imagesharp" or "image-sharp" or "sixlabors" => PaintBackend.ImageSharp,
+            _ => PaintBackend.SkiaGraphite,
         };
     }
 
@@ -130,7 +132,15 @@ public sealed class Painter
         using (_diag.Span("paint", "style_cascade"))
             style = CreateStyleEngine(document, defaultFontSize, externalStylesheet);
 
-        var layoutEngine = new LayoutEngineImpl(style, DefaultTextMeasurer.Instance, images);
+        // Layout now uses Skia's real shaped metrics (SkiaTextMeasurer) instead
+        // of DefaultTextMeasurer's ~0.5em heuristic — line breaks, widths, and
+        // baselines all match what the Skia paint backend will draw. The
+        // measurer caches sized SkFont handles, so it is created per layout
+        // call and disposed when done; the typeface stays cached on the
+        // FontResolver. DefaultTextMeasurer is kept (it is LayoutEngine's
+        // default) so paint-free layout unit tests stay paint-free.
+        using var measurer = new SkiaTextMeasurer(_fonts);
+        var layoutEngine = new LayoutEngineImpl(style, measurer, images);
         Tessera.Layout.Box.BlockBox root;
         using (_diag.Span("paint", "layout"))
             root = layoutEngine.LayoutDocument(document, viewport);
