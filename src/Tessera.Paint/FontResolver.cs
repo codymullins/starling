@@ -1,21 +1,16 @@
-using SixLabors.Fonts;
 using Tessera.Skia.Handles;
 
 namespace Tessera.Paint;
 
 /// <summary>
-/// Font resolver with two coexisting resolution paths:
-/// <list type="bullet">
-///   <item><b>SixLabors</b> (<see cref="GetSansSerifFont"/>) — feeds the legacy
-///   <c>ImageSharpBackend</c>.</item>
-///   <item><b>Skia</b> (<see cref="GetSkiaSansSerifTypeface"/>) — feeds
-///   <c>SkiaGraphiteBackend</c> and <see cref="SkiaTextMeasurer"/>.</item>
+/// Resolves the sans-serif <see cref="SkTypeface"/> for the Skia paint path —
+/// the engine's sole rasterizer. Walks a 3-tier sans-serif chain:
+/// <list type="number">
+///   <item>The bundled <c>OpenSans-Regular.ttf</c> (filesystem bundle, then the
+///   embedded resource — the embedded copy always ships inside the assembly).</item>
+///   <item>An installed sans-serif family via Skia's <c>SkFontMgr</c>/CoreText.</item>
+///   <item>The system font manager's generic <c>sans-serif</c>.</item>
 /// </list>
-/// Both walk the same conceptual 3-tier sans-serif chain:
-///   1. The bundled <c>OpenSans-Regular.ttf</c> (filesystem bundle, then the
-///      embedded resource — the embedded copy always ships inside the assembly).
-///   2. The OS's installed sans-serif family.
-///   3. The first installed family (last-resort).
 /// If none resolve, a clear exception fires.
 ///
 /// The full <c>FontResolver</c> per 08_FONTS_PAINT.md adds @font-face, Unicode
@@ -25,40 +20,9 @@ public sealed class FontResolver : IDisposable
 {
     public static readonly FontResolver Default = new();
 
-    // --- SixLabors path (ImageSharpBackend) ----------------------------------
-    private readonly FontCollection _bundled = new();
-    private readonly FontFamily? _bundledSansFamily;
-
-    // --- Skia path (SkiaGraphiteBackend + SkiaTextMeasurer) ------------------
     private readonly object _skiaLock = new();
     private SkTypeface? _skiaSansTypeface;
     private bool _disposed;
-
-    public FontResolver()
-    {
-        _bundledSansFamily = TryLoadBundled();
-    }
-
-    public Font GetSansSerifFont(float size)
-    {
-        if (_bundledSansFamily is { } b)
-            return b.CreateFont(size, FontStyle.Regular);
-
-        if (TryGetSystemSansSerif(out var sys))
-            return sys.CreateFont(size, FontStyle.Regular);
-
-        // Last-resort: whatever the system has. SystemFonts.Families is
-        // non-empty on macOS, Windows, and most Linux desktops; if it IS empty
-        // (e.g. a minimal CI container), throw a clear, actionable error.
-        var first = SystemFonts.Families.FirstOrDefault();
-        if (first.Name is not null)
-            return first.CreateFont(size, FontStyle.Regular);
-
-        throw new InvalidOperationException(
-            "No fonts available. Either bundle a TTF/OTF under " +
-            "src/Tessera.Paint/Resources/Fonts/ or install system fonts. " +
-            "See browser-plan/08_FONTS_PAINT.md.");
-    }
 
     /// <summary>
     /// Resolves the sans-serif <see cref="SkTypeface"/> for the Skia paint path.
@@ -87,8 +51,7 @@ public sealed class FontResolver : IDisposable
     private static SkTypeface ResolveSkiaSansSerifTypeface()
     {
         // Tier 1: the bundled OpenSans-Regular.ttf. The embedded resource always
-        // ships inside Tessera.Paint.dll, so this is the deterministic default
-        // and matches the SixLabors path's bundled family.
+        // ships inside Tessera.Paint.dll, so this is the deterministic default.
         if (TryLoadBundledTtfBytes(out var ttf))
         {
             try
@@ -184,79 +147,6 @@ public sealed class FontResolver : IDisposable
         }
 
         bytes = [];
-        return false;
-    }
-
-    private FontFamily? TryLoadBundled()
-    {
-        // Filesystem bundle (preferred — works for distribution).
-        var asmDir = Path.GetDirectoryName(typeof(FontResolver).Assembly.Location);
-        if (!string.IsNullOrEmpty(asmDir))
-        {
-            var fontsDir = Path.Combine(asmDir, "Resources", "Fonts");
-            if (Directory.Exists(fontsDir))
-            {
-                foreach (var file in Directory.EnumerateFiles(fontsDir)
-                                              .Where(f => f.EndsWith(".ttf", StringComparison.OrdinalIgnoreCase)
-                                                       || f.EndsWith(".otf", StringComparison.OrdinalIgnoreCase)))
-                {
-                    try
-                    {
-                        var family = _bundled.Add(file);
-                        return family;
-                    }
-                    catch (Exception ex) when (ex is InvalidFontFileException or IOException)
-                    {
-                        // Try the next file rather than crashing the engine.
-                    }
-                }
-            }
-        }
-
-        // Embedded resource bundle (also supported, so unit tests can ship a font).
-        var asm = typeof(FontResolver).Assembly;
-        foreach (var name in asm.GetManifestResourceNames())
-        {
-            if (!name.EndsWith(".ttf", StringComparison.OrdinalIgnoreCase)
-                && !name.EndsWith(".otf", StringComparison.OrdinalIgnoreCase))
-                continue;
-            using var stream = asm.GetManifestResourceStream(name);
-            if (stream is null) continue;
-            try
-            {
-                return _bundled.Add(stream);
-            }
-            catch (InvalidFontFileException)
-            {
-                // skip
-            }
-        }
-
-        return null;
-    }
-
-    private static bool TryGetSystemSansSerif(out FontFamily family)
-    {
-        // Preference order — try a few canonical sans-serif faces in turn.
-        string[] candidates =
-        [
-            "Inter",
-            "Helvetica Neue",
-            "Helvetica",
-            "Arial",
-            "Liberation Sans",
-            "DejaVu Sans",
-            "Segoe UI",
-            "Noto Sans",
-            "Verdana",
-        ];
-
-        foreach (var name in candidates)
-        {
-            if (SystemFonts.TryGet(name, out family))
-                return true;
-        }
-        family = default;
         return false;
     }
 

@@ -1,14 +1,9 @@
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Drawing.Processing;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
 using Tessera.Common.Diagnostics;
 using Tessera.Common.Image;
 using Tessera.Css;
 using Tessera.Css.Cascade;
 using Tessera.Css.Parser;
 using Tessera.Dom;
-using Tessera.Layout.Text;
 using Tessera.Layout.Tree;
 using Tessera.Paint.Backend;
 using Tessera.Paint.DisplayList;
@@ -19,9 +14,10 @@ using PaintList = Tessera.Paint.DisplayList.DisplayList;
 namespace Tessera.Paint;
 
 /// <summary>
-/// Paint façade. Pre-M1 callers used the <see cref="RenderText"/> path; the
-/// full pipeline (parse → style → layout → display list → raster) lives on
-/// <see cref="RenderDocument"/>.
+/// Paint façade for the full pipeline: parse → style → layout → display list →
+/// Skia Graphite raster. Skia is the engine's sole rasterizer; there is no
+/// managed fallback. The native shim (<c>libtessera_skia</c>) is a hard
+/// requirement — see <c>native/build-skia.sh</c>.
 /// </summary>
 public sealed class Painter
 {
@@ -35,8 +31,8 @@ public sealed class Painter
     }
 
     /// <summary>
-    /// Run the full M1 pipeline: build a box tree, lay it out, build a paint
-    /// display list, replay it onto an ImageSharp surface. The caller supplies
+    /// Run the full pipeline: build a box tree, lay it out, build a paint
+    /// display list, and rasterize it with Skia Graphite. The caller supplies
     /// a parsed <see cref="Document"/> and the viewport size in CSS px. Pass an
     /// <paramref name="images"/> resolver to render <c>&lt;img&gt;</c> elements;
     /// without one, every <c>&lt;img&gt;</c> degrades to its <c>alt</c> text.
@@ -51,64 +47,23 @@ public sealed class Painter
         LayoutSize viewport,
         float? defaultFontSize = null,
         IImageResolver? images = null,
-        Func<Element, StyleSheet?>? externalStylesheet = null,
-        PaintBackend? backend = null)
+        Func<Element, StyleSheet?>? externalStylesheet = null)
     {
         ArgumentNullException.ThrowIfNull(document);
 
-        // Resolve the backend up front and thread it into layout so the text
-        // measurer matches the rasterizer (Skia shaped metrics ↔ Skia backend,
-        // heuristic metrics ↔ ImageSharp) — a mismatch makes layout disagree
-        // with paint.
-        var selected = backend ?? SelectBackend();
-        var root = LayoutDocument(document, viewport, defaultFontSize, images, externalStylesheet, selected);
+        var root = LayoutDocument(document, viewport, defaultFontSize, images, externalStylesheet);
 
         PaintList displayList;
         using (_diag.Span("paint", "display_list"))
             displayList = new DisplayListBuilder().Build(root);
 
-        using (_diag.Span("paint", $"raster:{selected}".ToLowerInvariant()))
+        using (_diag.Span("paint", "raster:skiagraphite"))
         {
-            // DisplayList / DisplayItem are the backend-neutral seam: both
-            // backends consume the exact same list. Skia Graphite is now the
-            // default — layout uses Skia's shaped text metrics, so painting
-            // with ImageSharp (SixLabors metrics) would mismatch layout.
-            // ImageSharp stays fully reachable via TESSERA_PAINT_BACKEND=imagesharp.
-            if (selected == PaintBackend.SkiaGraphite)
-            {
-                using var skia = new SkiaGraphiteBackend();
-                return skia.Render(displayList, viewport);
-            }
-
-            return new ImageSharpBackend(_fonts).RenderToBitmap(displayList, viewport);
-        }
-    }
-
-    /// <summary>
-    /// Resolves the active paint backend. Honors the <c>TESSERA_PAINT_BACKEND</c>
-    /// environment variable (<c>skia</c> | <c>imagesharp</c>) as an explicit
-    /// override. With no override it prefers <see cref="PaintBackend.SkiaGraphite"/>,
-    /// but falls back to <see cref="PaintBackend.ImageSharp"/> when the native
-    /// Skia shim is not present for the current RID (fresh checkout / CI runner
-    /// without the out-of-band native build) — so the engine stays usable and
-    /// the test suite stays green without the gitignored native artifact.
-    /// </summary>
-    public static PaintBackend SelectBackend()
-    {
-        var flag = Environment.GetEnvironmentVariable("TESSERA_PAINT_BACKEND");
-        switch (flag?.Trim().ToLowerInvariant())
-        {
-            case "imagesharp" or "image-sharp" or "sixlabors":
-                return PaintBackend.ImageSharp;
-            case "skia" or "skia-graphite" or "graphite":
-                // Explicit request — honored even if the probe is unsure; a
-                // genuine load failure then surfaces loudly rather than being
-                // silently swapped out.
-                return PaintBackend.SkiaGraphite;
-            default:
-                return Tessera.Skia.Interop.NativeLoader.IsAvailable
-                    ? PaintBackend.SkiaGraphite
-                    : PaintBackend.ImageSharp;
+            // DisplayList / DisplayItem is the renderer-neutral seam. Skia
+            // Graphite is the engine's sole rasterizer — layout (above) measures
+            // with Skia's shaped metrics, so paint and layout always agree.
+            using var skia = new SkiaGraphiteBackend();
+            return skia.Render(displayList, viewport);
         }
     }
 
@@ -123,10 +78,9 @@ public sealed class Painter
         LayoutSize viewport,
         float? defaultFontSize = null,
         IImageResolver? images = null,
-        Func<Element, StyleSheet?>? externalStylesheet = null,
-        PaintBackend? backend = null)
+        Func<Element, StyleSheet?>? externalStylesheet = null)
     {
-        var (root, _) = LayoutDocumentWithStyle(document, viewport, defaultFontSize, images, externalStylesheet, backend);
+        var (root, _) = LayoutDocumentWithStyle(document, viewport, defaultFontSize, images, externalStylesheet);
         return root;
     }
 
@@ -141,8 +95,7 @@ public sealed class Painter
         LayoutSize viewport,
         float? defaultFontSize = null,
         IImageResolver? images = null,
-        Func<Element, StyleSheet?>? externalStylesheet = null,
-        PaintBackend? backend = null)
+        Func<Element, StyleSheet?>? externalStylesheet = null)
     {
         ArgumentNullException.ThrowIfNull(document);
 
@@ -150,19 +103,13 @@ public sealed class Painter
         using (_diag.Span("paint", "style_cascade"))
             style = CreateStyleEngine(document, defaultFontSize, externalStylesheet);
 
-        // The text measurer must match the paint backend. With the Skia backend,
-        // layout uses Skia's real shaped metrics (SkiaTextMeasurer) so line
-        // breaks, widths, and baselines match what Skia draws. When the native
-        // shim is absent and we fall back to ImageSharp, layout uses
-        // DefaultTextMeasurer's heuristic — consistent with that backend, and it
-        // keeps paint-free layout unit tests (which use DefaultTextMeasurer
-        // directly) on the same path. SkiaTextMeasurer caches sized SkFont
-        // handles, so it is created per layout call and disposed when done.
-        var selected = backend ?? SelectBackend();
-        using SkiaTextMeasurer? skiaMeasurer = selected == PaintBackend.SkiaGraphite
-            ? new SkiaTextMeasurer(_fonts)
-            : null;
-        ITextMeasurer measurer = skiaMeasurer ?? (ITextMeasurer)DefaultTextMeasurer.Instance;
+        // Layout measures with Skia's real shaped metrics (SkiaTextMeasurer) so
+        // line breaks, widths, and baselines match exactly what the Skia
+        // Graphite backend draws. The measurer caches sized SkFont handles, so
+        // it is created per layout call and disposed when done. (The layout
+        // engine's own DefaultTextMeasurer remains for paint-free layout unit
+        // tests, but the Painter pipeline is always Skia.)
+        using var measurer = new SkiaTextMeasurer(_fonts);
         var layoutEngine = new LayoutEngineImpl(style, measurer, images);
         Tessera.Layout.Box.BlockBox root;
         using (_diag.Span("paint", "layout"))
@@ -215,43 +162,5 @@ public sealed class Painter
 
         for (var child = node.FirstChild; child is not null; child = child.NextSibling)
             AddAuthorStylesheets(child, externalStylesheet, style);
-    }
-
-    /// <summary>Legacy M0 path: draw a fixed string onto a viewport-sized canvas.</summary>
-    public Image<Rgba32> RenderHelloWorld(string text, Size viewport)
-        => RenderText(text, viewport, fontSize: 32f);
-
-    /// <summary>
-    /// Renders <paramref name="text"/> in a sans-serif font near the top-left of
-    /// a viewport-sized white canvas. Splits on '\n'; no word-wrap. Kept for
-    /// the M0 headless smoke path; new callers should prefer <see cref="RenderDocument"/>.
-    /// </summary>
-    public Image<Rgba32> RenderText(string text, Size viewport, float fontSize)
-    {
-        ArgumentNullException.ThrowIfNull(text);
-        if (viewport.Width <= 0 || viewport.Height <= 0)
-            throw new ArgumentException("Viewport must have positive dimensions.", nameof(viewport));
-
-        var font = _fonts.GetSansSerifFont(fontSize);
-
-        var image = new Image<Rgba32>(viewport.Width, viewport.Height, new Rgba32(255, 255, 255, 255));
-        const float Margin = 16f;
-        var lineHeight = font.Size * 1.4f;
-
-        image.Mutate(ctx =>
-        {
-            var lines = text.Replace("\r\n", "\n", StringComparison.Ordinal)
-                            .Replace('\r', '\n')
-                            .Split('\n', StringSplitOptions.None);
-            var y = Margin;
-            foreach (var line in lines)
-            {
-                if (line.Length > 0)
-                    ctx.DrawText(line, font, Color.Black, new PointF(Margin, y));
-                y += lineHeight;
-            }
-        });
-
-        return image;
     }
 }

@@ -142,8 +142,7 @@ public sealed class TesseraEngine
                 new LayoutSize(options.Viewport.Width, options.Viewport.Height),
                 options.FontSize,
                 images,
-                stylesheets.Resolve,
-                options.Backend);
+                stylesheets.Resolve);
             Activity.Current?.SetTag("image.w", bitmap.Width);
             Activity.Current?.SetTag("image.h", bitmap.Height);
         }
@@ -543,18 +542,10 @@ public sealed class TesseraEngine
     }
 }
 
-/// <summary>Options for a single engine render: viewport, default font size, and paint backend.</summary>
+/// <summary>Options for a single engine render: viewport and default font size.</summary>
 /// <param name="Viewport">The render viewport size in CSS px.</param>
 /// <param name="FontSize">The document's default font size in CSS px.</param>
-/// <param name="Backend">
-/// Optional paint-backend override. <c>null</c> defers to
-/// <see cref="Painter.SelectBackend"/> (Skia Graphite by default, or the
-/// <c>TESSERA_PAINT_BACKEND</c> env var). Set explicitly only when a caller
-/// needs a specific backend — e.g. image-pixel tests pin ImageSharp because
-/// the Skia shim's <c>ts_canvas_draw_image</c> is a no-op on Graphite canvases
-/// (native defect, see wp:M3-06g/06i).
-/// </param>
-public sealed record RenderOptions(Size Viewport, float FontSize = 32f, PaintBackend? Backend = null)
+public sealed record RenderOptions(Size Viewport, float FontSize = 32f)
 {
     public static RenderOptions Default { get; } = new(new Size(800, 600));
 }

@@ -1,6 +1,5 @@
 using FluentAssertions;
 using SixLabors.ImageSharp;
-using Tessera.Paint;
 using Xunit;
 
 namespace Tessera.Engine.Tests;
@@ -33,18 +32,6 @@ public class EngineSnapshotRenderTests
     [Fact]
     public async Task Snapshot_nginx_org_renders_match_golden()
     {
-        // The golden is vendored from the Skia Graphite backend (wp:M3-06j).
-        // When the native Skia shim is absent (fresh checkout / CI runner
-        // without the out-of-band native build), the engine falls back to the
-        // ImageSharp backend, whose raster + heuristic metrics will never match
-        // a Skia-vendored golden — so this conformance test is meaningful only
-        // when Skia is the active backend.
-        if (Painter.SelectBackend() != PaintBackend.SkiaGraphite)
-        {
-            Assert.Skip("native Skia shim not available — engine is on the ImageSharp "
-                + "fallback; the nginx.org golden is Skia-vendored.");
-        }
-
         var repoRoot = LocateRepoRoot();
         var snapshotDir = Path.Combine(repoRoot, "testdata", "snapshots", Host);
         Directory.Exists(snapshotDir).Should().BeTrue($"snapshot directory missing: {snapshotDir}");

@@ -11,15 +11,14 @@ namespace Tessera.Paint.Backend;
 /// <summary>
 /// Replays a <see cref="DisplayList"/> onto a Skia Graphite (Dawn) offscreen
 /// surface via the <c>Tessera.Skia</c> interop handles, then reads the pixels
-/// back into a backend-neutral <see cref="RenderedBitmap"/>. The peer of
-/// <see cref="ImageSharpBackend"/> — same role, same inputs — selected behind
-/// the <c>TESSERA_PAINT_BACKEND</c> flag (see <see cref="Painter"/>).
+/// back into a renderer-neutral <see cref="RenderedBitmap"/>. This is the
+/// engine's sole rasterizer (see <see cref="Painter"/>) — there is no managed
+/// fallback.
 /// </summary>
 /// <remarks>
-/// GPU raster is not bit-exact across drivers, so this path is opt-in for now;
-/// ImageSharp stays the default so existing goldens hold. The native shim
-/// (<c>libtessera_skia</c>) currently ships osx-arm64 only — constructing this
-/// backend on a platform without the dylib throws from the first native call.
+/// The native shim (<c>libtessera_skia</c>) is a hard requirement and currently
+/// ships osx-arm64 only — constructing this backend on a platform without the
+/// shim throws a clear <see cref="DllNotFoundException"/> from the first native call.
 /// <para>
 /// The <see cref="SkContext"/> (Dawn instance/adapter/device + Graphite
 /// context) is created once per backend instance and reused across every

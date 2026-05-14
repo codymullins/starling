@@ -5,46 +5,23 @@ using System.Runtime.InteropServices;
 namespace Tessera.Skia.Interop;
 
 /// <summary>
-/// Installs a <see cref="NativeLibrary.SetDllImportResolver"/> fallback for the
-/// <c>tessera_skia</c> shim. The native library is built out-of-band by
-/// wp:M3-06g and lives under the gitignored repo-root
-/// <c>runtimes/&lt;rid&gt;/native/</c> tree — it is not yet a NuGet package, so
-/// the default loader cannot always find it (the Mac Catalyst <c>.app</c>
-/// bundle layout and test runs with a differing working directory both miss
-/// it). The csproj copies the lib into the output's <c>runtimes</c> layout for
-/// the normal case; this resolver is the belt-and-braces fallback that probes
-/// the repo-root tree directly.
+/// Installs a <see cref="NativeLibrary.SetDllImportResolver"/> for the
+/// <c>tessera_skia</c> shim. The native library is built out-of-band
+/// (<c>native/build-skia.sh</c> → <c>native.yml</c>) and lives under the
+/// gitignored repo-root <c>runtimes/&lt;rid&gt;/native/</c> tree — it is not yet
+/// a NuGet package, so the default loader cannot always find it (the Mac
+/// Catalyst <c>.app</c> bundle layout and test runs with a differing working
+/// directory both miss it). This resolver probes the csproj-copied output
+/// layout, then walks up to the repo-root tree.
+///
+/// The shim is a <b>hard requirement</b> — Skia Graphite is the engine's sole
+/// rasterizer, there is no managed fallback. If the shim cannot be located the
+/// resolver throws a clear, actionable <see cref="DllNotFoundException"/> rather
+/// than letting a cryptic default one surface.
 /// </summary>
 internal static class NativeLoader
 {
     private const string LibraryName = "tessera_skia";
-
-    private static readonly Lazy<bool> _available = new(ProbeAvailable);
-
-    /// <summary>
-    /// Whether the native <c>tessera_skia</c> shim is present for the current
-    /// RID. Probed once and cached. The shim is built out-of-band
-    /// (<c>native/build-skia.sh</c> → <c>native.yml</c>) and is not committed,
-    /// so a fresh checkout or a CI runner without the artifact will not have
-    /// it. Callers use this to fall back to a fully-managed path (the ImageSharp
-    /// paint backend + the heuristic text measurer) instead of throwing
-    /// <see cref="DllNotFoundException"/> at the first P/Invoke.
-    /// </summary>
-    internal static bool IsAvailable => _available.Value;
-
-    private static bool ProbeAvailable()
-    {
-        // The resolver below loads from exactly these candidate paths, so
-        // "the file exists at a candidate path" faithfully predicts "the shim
-        // will load" — without the side effect of actually loading it.
-        foreach (string candidate in CandidatePaths())
-        {
-            if (File.Exists(candidate))
-                return true;
-        }
-
-        return false;
-    }
 
     // CA2255: the ModuleInitializer attribute is normally discouraged in
     // libraries — but installing a DllImportResolver before any P/Invoke runs
@@ -63,15 +40,23 @@ internal static class NativeLoader
         if (!string.Equals(libraryName, LibraryName, StringComparison.Ordinal))
             return nint.Zero;
 
+        var probed = new List<string>();
         foreach (string candidate in CandidatePaths())
         {
+            probed.Add(candidate);
             if (File.Exists(candidate) && NativeLibrary.TryLoad(candidate, out nint handle))
                 return handle;
         }
 
-        // Fall through to the default resolution (runtimes/<rid>/native next to
-        // the assembly, OS search paths) — return zero to signal "not handled".
-        return nint.Zero;
+        // The shim is required — Skia Graphite is the sole rasterizer. Fail
+        // loudly and actionably instead of returning zero (which would surface
+        // a cryptic default DllNotFoundException at some later P/Invoke).
+        throw new DllNotFoundException(
+            $"The native Skia shim '{NativeFileName()}' for RID '{CurrentRid()}' was not found. "
+            + "Skia Graphite is the engine's sole rasterizer — there is no managed fallback. "
+            + "Build it with ./native/build-skia.sh (see native/README.md), or restore the "
+            + "native artifact produced by .github/workflows/native.yml. Probed:"
+            + Environment.NewLine + "  " + string.Join(Environment.NewLine + "  ", probed));
     }
 
     /// <summary>
