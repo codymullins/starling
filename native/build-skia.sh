@@ -159,9 +159,13 @@ log "using Skia ninja=${NINJA}"
 OUT_DIR="${OUT_BASE}/${RID}"
 mkdir -p "${OUT_DIR}"
 
+# skia_use_cpp20=true is REQUIRED with skia_use_dawn=true: Dawn's Tint compiler
+# uses C++20 (`concept`/`requires`). Skia's build defaults to C++17 and would
+# fail to compile Dawn without this. (Confirmed against chrome/m140.)
 GN_ARGS="\
 skia_enable_graphite=true \
 skia_use_dawn=true \
+skia_use_cpp20=true \
 skia_use_gl=true \
 skia_use_harfbuzz=true \
 skia_use_icu=true \
