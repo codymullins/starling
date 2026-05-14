@@ -15,6 +15,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Tessera.Common\Tessera.Common.csproj" />
+    <ProjectReference Include="..\Tessera.Codecs\Tessera.Codecs.csproj" />
     <ProjectReference Include="..\Tessera.Url\Tessera.Url.csproj" />
     <ProjectReference Include="..\Tessera.Net\Tessera.Net.csproj" />
     <ProjectReference Include="..\Tessera.Html\Tessera.Html.csproj" />

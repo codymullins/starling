@@ -1,6 +1,5 @@
 using System.Diagnostics;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using Tessera.Codecs;
 using Tessera.Common.Diagnostics;
 using Tessera.Common.Image;
 using Tessera.Dom;
@@ -18,9 +17,10 @@ namespace Tessera.Engine;
 /// images and disposes them when the fetcher itself is disposed.
 /// </summary>
 /// <remarks>
-/// ImageSharp still does the actual decode here; the bytes are copied straight
-/// out into a <see cref="DecodedImage"/> so nothing downstream names a concrete
-/// decoder type. A later package swaps the decode call for a native codec.
+/// The actual decode goes through <see cref="NativeImageDecoder"/> — the
+/// OS-native codec seam (ImageIO / WIC / libpng+libjpeg+libwebp) — which hands
+/// back a backend-neutral <see cref="DecodedImage"/> so nothing downstream
+/// names a concrete decoder type.
 /// <para>
 /// Caches per absolute URL so an image referenced N times decodes once. The
 /// fetcher is fail-soft: a network or decode failure leaves the element
@@ -120,26 +120,18 @@ internal sealed class ImageFetcher : IImageResolver, IDisposable
             }
 
             Activity.Current?.SetTag("bytes", bytes.Length);
-            // ImageSharp auto-detects PNG/JPEG/GIF/BMP/WebP and decodes. We
-            // immediately copy the pixels into a backend-neutral DecodedImage
+            // NativeImageDecoder sniffs PNG/JPEG/WebP/GIF/BMP and decodes via
+            // the OS-native codec, returning a backend-neutral DecodedImage
             // (straight RGBA8888, top-down, tightly packed) so nothing
-            // downstream names a concrete decoder type. CloneAs<Rgba32>
-            // normalizes the pixel format; CopyPixelDataTo writes a packed,
-            // top-down RGBA8888 buffer.
-            using var loaded = Image.Load(bytes);
-            using var rgba = loaded.CloneAs<Rgba32>();
-            var width = rgba.Width;
-            var height = rgba.Height;
-            var decoded = DecodedImage.CreatePooled(width, height,
-                span => rgba.CopyPixelDataTo(span));
-            Activity.Current?.SetTag("image.w", width);
-            Activity.Current?.SetTag("image.h", height);
+            // downstream names a concrete decoder type.
+            var decoded = NativeImageDecoder.Decode(bytes);
+            Activity.Current?.SetTag("image.w", decoded.Width);
+            Activity.Current?.SetTag("image.h", decoded.Height);
             _byUrl[key] = decoded;
             _diag.Counter("engine.fetch.image", 1);
             return decoded;
         }
-        catch (Exception ex) when (ex is IOException or SixLabors.ImageSharp.UnknownImageFormatException
-                                   or SixLabors.ImageSharp.InvalidImageContentException)
+        catch (Exception ex) when (ex is IOException or ImageDecodeException)
         {
             _diag.Log(DiagLevel.Warn, "engine", $"Image decode failed {url}: {ex.Message}");
             _diag.Counter("engine.fetch.image.failed", 1);

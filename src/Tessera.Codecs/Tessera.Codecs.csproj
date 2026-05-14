@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!--
+      Tessera.Codecs is one of the two designated interop seams (the other is
+      Tessera.Skia). LibraryImport / GeneratedComInterface source generators are
+      permitted here and nowhere else in the engine — see AGENTS.md and
+      wp:M3-06l-ci-policy. AllowUnsafeBlocks is needed for the fixed-pointer
+      copies in the native decode paths.
+    -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tessera.Codecs.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Tessera.Common\Tessera.Common.csproj" />
+  </ItemGroup>
+</Project>
