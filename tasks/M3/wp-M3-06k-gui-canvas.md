@@ -2,9 +2,9 @@
 id: "wp:M3-06k-gui-canvas"
 parent: "wp:M3-06-native-interop-pivot"
 milestone: "M3"
-status: "blocked"
-claimed_by: ""
-claimed_at: ""
+status: "claimed"
+claimed_by: "agent-claude-cody-gui"
+claimed_at: "2026-05-14T17:31:38Z"
 branch: "main"
 depends_on:
   - "wp:M3-06j-skia-fonts"
