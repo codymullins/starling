@@ -2,9 +2,9 @@
 id: "wp:M3-06d-codecs"
 parent: "wp:M3-06-native-interop-pivot"
 milestone: "M3"
-status: "blocked"
-claimed_by: ""
-claimed_at: ""
+status: "claimed"
+claimed_by: "agent-claude-cody-codecs"
+claimed_at: "2026-05-14T14:56:38Z"
 branch: "main"
 depends_on:
   - "wp:M3-06c-decoded-image"
