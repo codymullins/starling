@@ -80,23 +80,23 @@ structure).
 | [wp:M3-06d-codecs](M3/wp-M3-06d-codecs.md) | 🟢 complete | agent-claude-cody-codecs | Tessera.Codecs |
 | [wp:M3-06e-sslstream-tls](M3/wp-M3-06e-sslstream-tls.md) | 🟢 complete | agent-claude-cody-tls | Tessera.Net |
 | [wp:M3-06f-docs-policy](M3/wp-M3-06f-docs-policy.md) | 🟢 complete | agent-claude-cody-docs | docs |
-| [wp:M3-06g-skia-shim](M3/wp-M3-06g-skia-shim.md) | ⚫ blocked | — | native |
+| [wp:M3-06g-skia-shim](M3/wp-M3-06g-skia-shim.md) | 🟡 claimed | agent-claude-cody-shim | native |
 | [wp:M3-06h-skia-interop](M3/wp-M3-06h-skia-interop.md) | ⚫ blocked | — | Tessera.Skia |
 | [wp:M3-06i-skia-backend](M3/wp-M3-06i-skia-backend.md) | ⚫ blocked | — | Tessera.Paint |
 | [wp:M3-06j-skia-fonts](M3/wp-M3-06j-skia-fonts.md) | ⚫ blocked | — | Tessera.Paint |
 | [wp:M3-06k-gui-canvas](M3/wp-M3-06k-gui-canvas.md) | ⚫ blocked | — | Tessera.Gui |
 | [wp:M3-06l-ci-policy](M3/wp-M3-06l-ci-policy.md) | 🟡 claimed | agent-claude-cody-ci | build |
 
-> **M3-06 Wave 1 + codecs landed.** 06a/06b (native build scaffold), 06c
-> (DecodedImage seam), 06d (OS-native codecs), 06e (SslStream TLS), 06f
-> (docs/policy) are all `complete` on `main`; build + test green. 06l (CI
-> policy) is in progress for the parts not needing `Tessera.Skia` (lint
-> allowlist, Linux codec libs, policy-test rewrite); the native-Skia-package
-> restore step is deferred to when 06h lands. **The Skia chain (06g→06k) is
-> blocked on a real native Skia+Graphite build** — running `native/build-skia.*`
-> on a provisioned machine (depot_tools + platform toolchain) to produce
-> `runtimes/<rid>/native/libtessera_skia.*`. That is the critical-path external
-> dependency.
+> **M3-06: native Skia build is GREEN.** 06a–06f all `complete`. The osx-arm64
+> Skia + Graphite + Dawn build now succeeds — `build-skia.sh` was hardened
+> through five real fixes (clone guard, skip emsdk, fetch-ninja, `skia_use_cpp20`,
+> bundled `skia_use_system_*=false`); `libskia.a` + Dawn/HarfBuzz/codec static
+> libs + headers are staged in `runtimes/osx-arm64/native/` (gitignored). That
+> unblocked the Skia chain: **06g (C-ABI shim) is now in progress.** Once 06g
+> produces `libtessera_skia.dylib`, 06h→06i→06j→06k follow as a relay. 06l (CI
+> policy) is partially done; its native-Skia-restore step waits on 06h. win-x64
+> / linux-x64 native builds are still pending (run `native.yml` or the script on
+> those platforms).
 
 ## Available right now (no dependencies pending)
 
