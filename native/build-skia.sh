@@ -54,10 +54,12 @@ esac
 log "host: ${UNAME_S}/${UNAME_M} -> RID=${RID} (target_os=${GN_TARGET_OS}, target_cpu=${GN_TARGET_CPU})"
 
 # --- toolchain checks --------------------------------------------------------
+# Note: gn + ninja are NOT required on PATH. Skia self-provisions both during
+# `tools/git-sync-deps` (bin/gn, third_party/ninja/ninja) — we resolve and use
+# those Skia-bundled binaries after the sync step below. depot_tools is only
+# needed for `gclient`/`fetch`, not for the Skia build proper.
 command -v git    >/dev/null 2>&1 || die "git not found on PATH"
 command -v python3>/dev/null 2>&1 || die "python3 not found on PATH"
-command -v gn     >/dev/null 2>&1 || die "gn not found on PATH — add depot_tools to PATH"
-command -v ninja  >/dev/null 2>&1 || die "ninja not found on PATH — add depot_tools to PATH"
 
 # --- parse pinned revisions from REVISIONS.md --------------------------------
 [ -f "${REVISIONS_FILE}" ] || die "missing ${REVISIONS_FILE} (run WP M3-06a first)"
@@ -116,6 +118,14 @@ verify_dep() {
 verify_dep "Dawn"  "${SKIA_DIR}/third_party/externals/dawn"   "${DAWN_COMMIT}"
 verify_dep "ANGLE" "${SKIA_DIR}/third_party/externals/angle2" "${ANGLE_COMMIT}"
 
+# --- resolve Skia-bundled gn + ninja (provisioned by git-sync-deps) ----------
+GN="${SKIA_DIR}/bin/gn"
+NINJA="${SKIA_DIR}/third_party/ninja/ninja"
+[ -x "${GN}" ]    || die "gn not found at ${GN} — git-sync-deps did not provision it"
+[ -x "${NINJA}" ] || die "ninja not found at ${NINJA} — git-sync-deps did not provision it"
+log "using Skia-bundled gn=${GN}"
+log "using Skia-bundled ninja=${NINJA}"
+
 # --- gn gen ------------------------------------------------------------------
 OUT_DIR="${OUT_BASE}/${RID}"
 mkdir -p "${OUT_DIR}"
@@ -132,11 +142,11 @@ target_os=\"${GN_TARGET_OS}\""
 
 log "gn gen ${OUT_DIR}"
 log "  args: ${GN_ARGS}"
-( cd "${SKIA_DIR}" && gn gen "${OUT_DIR}" --args="${GN_ARGS}" )
+( cd "${SKIA_DIR}" && "${GN}" gen "${OUT_DIR}" --args="${GN_ARGS}" )
 
 # --- ninja build -------------------------------------------------------------
 log "ninja build (this is the long part — 20-40 min) ..."
-( cd "${SKIA_DIR}" && ninja -C "${OUT_DIR}" skia )
+( cd "${SKIA_DIR}" && "${NINJA}" -C "${OUT_DIR}" skia )
 
 # --- stage artifacts into runtimes/<rid>/native/ -----------------------------
 STAGE_DIR="${REPO_ROOT}/runtimes/${RID}/native"
