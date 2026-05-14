@@ -82,8 +82,8 @@ structure).
 | [wp:M3-06f-docs-policy](M3/wp-M3-06f-docs-policy.md) | 🟢 complete | agent-claude-cody-docs | docs |
 | [wp:M3-06g-skia-shim](M3/wp-M3-06g-skia-shim.md) | 🟢 complete | agent-claude-cody-shim | native |
 | [wp:M3-06h-skia-interop](M3/wp-M3-06h-skia-interop.md) | 🟢 complete | agent-claude-cody-skia-net | Tessera.Skia |
-| [wp:M3-06i-skia-backend](M3/wp-M3-06i-skia-backend.md) | 🟡 claimed | agent-claude-cody-skia-backend | Tessera.Paint |
-| [wp:M3-06j-skia-fonts](M3/wp-M3-06j-skia-fonts.md) | ⚫ blocked | — | Tessera.Paint |
+| [wp:M3-06i-skia-backend](M3/wp-M3-06i-skia-backend.md) | 🟢 complete | agent-claude-cody-skia-backend | Tessera.Paint |
+| [wp:M3-06j-skia-fonts](M3/wp-M3-06j-skia-fonts.md) | 🟡 claimed | agent-claude-cody-skia-fonts | Tessera.Paint |
 | [wp:M3-06k-gui-canvas](M3/wp-M3-06k-gui-canvas.md) | ⚫ blocked | — | Tessera.Gui |
 | [wp:M3-06l-ci-policy](M3/wp-M3-06l-ci-policy.md) | 🟡 claimed | agent-claude-cody-ci | build |
 
