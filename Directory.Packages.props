@@ -15,6 +15,9 @@
          builds don't require MAUI workloads. -->
     <PackageVersion Include="Microsoft.Maui.Controls"      Version="10.0.20" />
 
+    <!-- Crypto: pure-managed TLS support (consumed from M2 onward) -->
+    <PackageVersion Include="BouncyCastle.Cryptography"    Version="2.5.0" />
+
     <!-- Legacy single-byte / CJK encodings (pure-managed; Rule-0 clean).
          Consumed by Tessera.Engine for WHATWG-table charset support. -->
     <PackageVersion Include="System.Text.Encoding.CodePages" Version="9.0.0" />

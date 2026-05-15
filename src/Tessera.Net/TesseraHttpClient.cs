@@ -21,7 +21,7 @@ namespace Tessera.Net;
 /// <list type="bullet">
 ///   <item><see cref="DnsResolver"/> → A/AAAA records</item>
 ///   <item><see cref="TcpDialer"/> → <see cref="ITcpConnection"/></item>
-///   <item><see cref="SslStreamTlsTransport"/> → ALPN-negotiated TLS stream</item>
+///   <item><see cref="BcTlsTransport"/> → ALPN-negotiated TLS stream</item>
 ///   <item><see cref="H1RequestWriter"/> → wire bytes onto the stream</item>
 ///   <item><see cref="H1ResponseParser"/> → fully buffered <see cref="HttpResponse"/></item>
 /// </list>
@@ -147,7 +147,7 @@ public sealed class TesseraHttpClient : IDisposable
         var tcp = dial.Value;
         if (url.IsHttps)
         {
-            var tlsResult = await SslStreamTlsTransport.ConnectAsync(
+            var tlsResult = await BcTlsTransport.ConnectAsync(
                 tcp,
                 new TlsClientOptions(origin.Host, _options.AlpnProtocols),
                 ct).ConfigureAwait(false);

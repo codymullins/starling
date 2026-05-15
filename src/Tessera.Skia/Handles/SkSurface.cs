@@ -21,9 +21,14 @@ internal sealed class SkSurface : SafeHandleZeroOrMinusOneIsInvalid
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        NativeCallTrace.Enter("ts_surface_create", context.Handle, $"{width}x{height}");
-        var status = NativeMethods.ts_surface_create(context.Handle, width, height, out nint handle);
-        NativeCallTrace.Exit("ts_surface_create", handle);
+        nint handle;
+        TsStatus status;
+        lock (SkiaGate.Sync)
+        {
+            NativeCallTrace.Enter("ts_surface_create", context.Handle, $"{width}x{height}");
+            status = NativeMethods.ts_surface_create(context.Handle, width, height, out handle);
+            NativeCallTrace.Exit("ts_surface_create", handle);
+        }
         SkiaInteropException.ThrowIfNotOk(status, nameof(NativeMethods.ts_surface_create));
 
         var surface = new SkSurface();
@@ -41,9 +46,14 @@ internal sealed class SkSurface : SafeHandleZeroOrMinusOneIsInvalid
     /// <exception cref="SkiaInteropException">The native call failed.</exception>
     public SkCanvas GetCanvas()
     {
-        NativeCallTrace.Enter("ts_surface_get_canvas", handle);
-        var status = NativeMethods.ts_surface_get_canvas(handle, out nint canvas);
-        NativeCallTrace.Exit("ts_surface_get_canvas", canvas);
+        nint canvas;
+        TsStatus status;
+        lock (SkiaGate.Sync)
+        {
+            NativeCallTrace.Enter("ts_surface_get_canvas", handle);
+            status = NativeMethods.ts_surface_get_canvas(handle, out canvas);
+            NativeCallTrace.Exit("ts_surface_get_canvas", canvas);
+        }
         SkiaInteropException.ThrowIfNotOk(status, nameof(NativeMethods.ts_surface_get_canvas));
         return new SkCanvas(canvas);
     }
@@ -57,9 +67,13 @@ internal sealed class SkSurface : SafeHandleZeroOrMinusOneIsInvalid
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        NativeCallTrace.Enter("ts_flush_and_submit", handle, $"ctx=0x{context.Handle:x}");
-        var status = NativeMethods.ts_flush_and_submit(context.Handle, handle);
-        NativeCallTrace.Exit("ts_flush_and_submit", handle);
+        TsStatus status;
+        lock (SkiaGate.Sync)
+        {
+            NativeCallTrace.Enter("ts_flush_and_submit", handle, $"ctx=0x{context.Handle:x}");
+            status = NativeMethods.ts_flush_and_submit(context.Handle, handle);
+            NativeCallTrace.Exit("ts_flush_and_submit", handle);
+        }
         SkiaInteropException.ThrowIfNotOk(status, nameof(NativeMethods.ts_flush_and_submit));
     }
 
@@ -79,13 +93,16 @@ internal sealed class SkSurface : SafeHandleZeroOrMinusOneIsInvalid
 
         var pixels = new byte[checked(width * height * 4)];
         TsStatus status;
-        NativeCallTrace.Enter("ts_read_pixels", handle, $"ctx=0x{context.Handle:x} len={pixels.Length}");
-        fixed (byte* pixelPtr = pixels)
+        lock (SkiaGate.Sync)
         {
-            status = NativeMethods.ts_read_pixels(
-                context.Handle, handle, pixelPtr, (nuint)pixels.Length);
+            NativeCallTrace.Enter("ts_read_pixels", handle, $"ctx=0x{context.Handle:x} len={pixels.Length}");
+            fixed (byte* pixelPtr = pixels)
+            {
+                status = NativeMethods.ts_read_pixels(
+                    context.Handle, handle, pixelPtr, (nuint)pixels.Length);
+            }
+            NativeCallTrace.Exit("ts_read_pixels", handle);
         }
-        NativeCallTrace.Exit("ts_read_pixels", handle);
 
         SkiaInteropException.ThrowIfNotOk(status, nameof(NativeMethods.ts_read_pixels));
         return pixels;
@@ -93,9 +110,12 @@ internal sealed class SkSurface : SafeHandleZeroOrMinusOneIsInvalid
 
     protected override bool ReleaseHandle()
     {
-        NativeCallTrace.Enter("ts_surface_destroy", handle);
-        NativeMethods.ts_surface_destroy(handle);
-        NativeCallTrace.Exit("ts_surface_destroy", handle);
+        lock (SkiaGate.Sync)
+        {
+            NativeCallTrace.Enter("ts_surface_destroy", handle);
+            NativeMethods.ts_surface_destroy(handle);
+            NativeCallTrace.Exit("ts_surface_destroy", handle);
+        }
         return true;
     }
 }

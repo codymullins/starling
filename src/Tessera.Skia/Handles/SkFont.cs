@@ -22,9 +22,14 @@ internal sealed class SkFont : SafeHandleZeroOrMinusOneIsInvalid
     {
         ArgumentNullException.ThrowIfNull(typeface);
 
-        NativeCallTrace.Enter("ts_font_create", typeface.Handle, $"size={sizePx}");
-        var status = NativeMethods.ts_font_create(typeface.Handle, sizePx, out nint handle);
-        NativeCallTrace.Exit("ts_font_create", handle);
+        nint handle;
+        TsStatus status;
+        lock (SkiaGate.Sync)
+        {
+            NativeCallTrace.Enter("ts_font_create", typeface.Handle, $"size={sizePx}");
+            status = NativeMethods.ts_font_create(typeface.Handle, sizePx, out handle);
+            NativeCallTrace.Exit("ts_font_create", handle);
+        }
         SkiaInteropException.ThrowIfNotOk(status, nameof(NativeMethods.ts_font_create));
 
         var font = new SkFont();
@@ -39,9 +44,14 @@ internal sealed class SkFont : SafeHandleZeroOrMinusOneIsInvalid
     /// <exception cref="SkiaInteropException">The native call failed.</exception>
     public TsFontMetrics Metrics()
     {
-        NativeCallTrace.Enter("ts_font_metrics", handle);
-        var status = NativeMethods.ts_font_metrics(handle, out TsFontMetrics metrics);
-        NativeCallTrace.Exit("ts_font_metrics", handle);
+        TsFontMetrics metrics;
+        TsStatus status;
+        lock (SkiaGate.Sync)
+        {
+            NativeCallTrace.Enter("ts_font_metrics", handle);
+            status = NativeMethods.ts_font_metrics(handle, out metrics);
+            NativeCallTrace.Exit("ts_font_metrics", handle);
+        }
         SkiaInteropException.ThrowIfNotOk(status, nameof(NativeMethods.ts_font_metrics));
         return metrics;
     }
@@ -63,20 +73,9 @@ internal sealed class SkFont : SafeHandleZeroOrMinusOneIsInvalid
         nuint count;
         TsStatus status;
 
-        NativeCallTrace.Enter("ts_shape_text", handle, $"utf8={utf8.Length} cap={glyphs.Length}");
-        fixed (byte* textPtr = utf8)
-        fixed (TsGlyph* glyphPtr = glyphs)
+        lock (SkiaGate.Sync)
         {
-            status = NativeMethods.ts_shape_text(
-                handle, textPtr, (nuint)utf8.Length, glyphPtr, (nuint)glyphs.Length, out count);
-        }
-        NativeCallTrace.Exit("ts_shape_text", handle);
-
-        if (status == TsStatus.InvalidArgument && (int)count > glyphs.Length)
-        {
-            // Buffer too small — `count` is the required capacity. Retry.
-            glyphs = new TsGlyph[count];
-            NativeCallTrace.Enter("ts_shape_text", handle, $"utf8={utf8.Length} cap={glyphs.Length} retry");
+            NativeCallTrace.Enter("ts_shape_text", handle, $"utf8={utf8.Length} cap={glyphs.Length}");
             fixed (byte* textPtr = utf8)
             fixed (TsGlyph* glyphPtr = glyphs)
             {
@@ -84,6 +83,23 @@ internal sealed class SkFont : SafeHandleZeroOrMinusOneIsInvalid
                     handle, textPtr, (nuint)utf8.Length, glyphPtr, (nuint)glyphs.Length, out count);
             }
             NativeCallTrace.Exit("ts_shape_text", handle);
+        }
+
+        if (status == TsStatus.InvalidArgument && (int)count > glyphs.Length)
+        {
+            // Buffer too small — `count` is the required capacity. Retry.
+            glyphs = new TsGlyph[count];
+            lock (SkiaGate.Sync)
+            {
+                NativeCallTrace.Enter("ts_shape_text", handle, $"utf8={utf8.Length} cap={glyphs.Length} retry");
+                fixed (byte* textPtr = utf8)
+                fixed (TsGlyph* glyphPtr = glyphs)
+                {
+                    status = NativeMethods.ts_shape_text(
+                        handle, textPtr, (nuint)utf8.Length, glyphPtr, (nuint)glyphs.Length, out count);
+                }
+                NativeCallTrace.Exit("ts_shape_text", handle);
+            }
         }
 
         SkiaInteropException.ThrowIfNotOk(status, nameof(NativeMethods.ts_shape_text));
@@ -98,9 +114,12 @@ internal sealed class SkFont : SafeHandleZeroOrMinusOneIsInvalid
 
     protected override bool ReleaseHandle()
     {
-        NativeCallTrace.Enter("ts_font_destroy", handle);
-        NativeMethods.ts_font_destroy(handle);
-        NativeCallTrace.Exit("ts_font_destroy", handle);
+        lock (SkiaGate.Sync)
+        {
+            NativeCallTrace.Enter("ts_font_destroy", handle);
+            NativeMethods.ts_font_destroy(handle);
+            NativeCallTrace.Exit("ts_font_destroy", handle);
+        }
         return true;
     }
 }

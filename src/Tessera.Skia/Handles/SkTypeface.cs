@@ -21,12 +21,15 @@ internal sealed class SkTypeface : SafeHandleZeroOrMinusOneIsInvalid
     {
         nint handle;
         TsStatus status;
-        NativeCallTrace.Enter("ts_typeface_from_data", 0, $"ttf={ttfBytes.Length}");
-        fixed (byte* ttfPtr = ttfBytes)
+        lock (SkiaGate.Sync)
         {
-            status = NativeMethods.ts_typeface_from_data(ttfPtr, (nuint)ttfBytes.Length, out handle);
+            NativeCallTrace.Enter("ts_typeface_from_data", 0, $"ttf={ttfBytes.Length}");
+            fixed (byte* ttfPtr = ttfBytes)
+            {
+                status = NativeMethods.ts_typeface_from_data(ttfPtr, (nuint)ttfBytes.Length, out handle);
+            }
+            NativeCallTrace.Exit("ts_typeface_from_data", handle);
         }
-        NativeCallTrace.Exit("ts_typeface_from_data", handle);
 
         SkiaInteropException.ThrowIfNotOk(status, nameof(NativeMethods.ts_typeface_from_data));
 
@@ -41,9 +44,14 @@ internal sealed class SkTypeface : SafeHandleZeroOrMinusOneIsInvalid
     {
         ArgumentNullException.ThrowIfNull(familyName);
 
-        NativeCallTrace.Enter("ts_typeface_from_name", 0, familyName);
-        var status = NativeMethods.ts_typeface_from_name(familyName, out nint handle);
-        NativeCallTrace.Exit("ts_typeface_from_name", handle);
+        nint handle;
+        TsStatus status;
+        lock (SkiaGate.Sync)
+        {
+            NativeCallTrace.Enter("ts_typeface_from_name", 0, familyName);
+            status = NativeMethods.ts_typeface_from_name(familyName, out handle);
+            NativeCallTrace.Exit("ts_typeface_from_name", handle);
+        }
         SkiaInteropException.ThrowIfNotOk(status, nameof(NativeMethods.ts_typeface_from_name));
 
         var typeface = new SkTypeface();
@@ -56,9 +64,12 @@ internal sealed class SkTypeface : SafeHandleZeroOrMinusOneIsInvalid
 
     protected override bool ReleaseHandle()
     {
-        NativeCallTrace.Enter("ts_typeface_destroy", handle);
-        NativeMethods.ts_typeface_destroy(handle);
-        NativeCallTrace.Exit("ts_typeface_destroy", handle);
+        lock (SkiaGate.Sync)
+        {
+            NativeCallTrace.Enter("ts_typeface_destroy", handle);
+            NativeMethods.ts_typeface_destroy(handle);
+            NativeCallTrace.Exit("ts_typeface_destroy", handle);
+        }
         return true;
     }
 }

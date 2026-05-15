@@ -3,6 +3,7 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="BouncyCastle.Cryptography" />
     <ProjectReference Include="..\Tessera.Common\Tessera.Common.csproj" />
     <ProjectReference Include="..\Tessera.Url\Tessera.Url.csproj" />
   </ItemGroup>

@@ -6,7 +6,7 @@ namespace Tessera.Net.Http;
 /// <summary>
 /// Concrete <see cref="IHttpTransport"/> wrapping a TCP connection optionally
 /// upgraded to TLS. The instance owns its underlying TCP socket and (if
-/// present) <see cref="ITlsTransport"/>; <see cref="DisposeAsync"/> tears
+/// present) <see cref="BcTlsTransport"/>; <see cref="DisposeAsync"/> tears
 /// everything down so the same wrapper can never be used twice after a close.
 /// </summary>
 /// <remarks>
@@ -18,7 +18,7 @@ namespace Tessera.Net.Http;
 internal sealed class PooledHttpTransport : IHttpTransport
 {
     private readonly ITcpConnection _tcp;
-    private readonly ITlsTransport? _tls;
+    private readonly BcTlsTransport? _tls;
     private readonly TcpConnectionStream? _plainStream;
     private bool _disposed;
 
@@ -30,7 +30,7 @@ internal sealed class PooledHttpTransport : IHttpTransport
     private PooledHttpTransport(
         OriginKey origin,
         ITcpConnection tcp,
-        ITlsTransport? tls,
+        BcTlsTransport? tls,
         TcpConnectionStream? plainStream,
         Stream stream)
     {
@@ -50,7 +50,7 @@ internal sealed class PooledHttpTransport : IHttpTransport
     }
 
     public static PooledHttpTransport ForTls(
-        OriginKey origin, ITcpConnection tcp, ITlsTransport tls)
+        OriginKey origin, ITcpConnection tcp, BcTlsTransport tls)
     {
         ArgumentNullException.ThrowIfNull(tcp);
         ArgumentNullException.ThrowIfNull(tls);
