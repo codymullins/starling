@@ -99,14 +99,19 @@ public sealed class TesseraEngine
             }
             else if (u.IsHttp || u.IsHttps)
             {
-                Result<string, RenderError> fetched;
+                Result<(string Html, TesseraUrl FinalUrl), RenderError> fetched;
                 using (_diag.Span("engine", "fetch_html"))
                 {
                     fetched = await FetchHtmlAsync(u, ct).ConfigureAwait(false);
                 }
                 if (fetched.IsErr)
                     return Fail(fetched.Error.Message);
-                html = fetched.Value;
+                html = fetched.Value.Html;
+                // Resolve subsequent relative URLs (images, stylesheets, fonts)
+                // against the post-redirect host. Typing `https://google.com`
+                // 301s to `https://www.google.com/`, and the page's
+                // `<img src="/images/..."` only resolves on the www host.
+                u = fetched.Value.FinalUrl;
             }
             else
             {
@@ -237,7 +242,10 @@ public sealed class TesseraEngine
                 var fetched = await FetchHtmlAsync(u, ct).ConfigureAwait(false);
                 if (fetched.IsErr)
                     return Result<LaidOutPage, RenderError>.Err(fetched.Error);
-                html = fetched.Value;
+                html = fetched.Value.Html;
+                // Use the post-redirect URL as the base for relative resource
+                // resolution. See FetchHtmlAsync docstring.
+                u = fetched.Value.FinalUrl;
             }
             else
             {
@@ -326,7 +334,15 @@ public sealed class TesseraEngine
             Directory.CreateDirectory(dir);
     }
 
-    private async Task<Result<string, RenderError>> FetchHtmlAsync(TesseraUrl url, CancellationToken ct)
+    /// <summary>
+    /// Fetch an HTML page, following redirects. Returns both the body and the
+    /// final post-redirect URL — callers need the latter as the base for
+    /// resolving relative resource URLs (images, stylesheets, fonts). When the
+    /// user types `https://google.com`, the 301 lands on `https://www.google.com/`
+    /// and the page's `&lt;img src="/images/..."&gt;` must resolve against
+    /// the www host; the original (pre-redirect) URL would 404.
+    /// </summary>
+    private async Task<Result<(string Html, TesseraUrl FinalUrl), RenderError>> FetchHtmlAsync(TesseraUrl url, CancellationToken ct)
     {
         using var http = _httpFactory();
         var current = url;
@@ -337,34 +353,34 @@ public sealed class TesseraEngine
             var response = await http.GetAsync(current, ct).ConfigureAwait(false);
             NativeCallTrace.Mark("http.get.done", response.IsErr ? "err" : "ok");
             if (response.IsErr)
-                return Result<string, RenderError>.Err(new RenderError(
+                return Result<(string, TesseraUrl), RenderError>.Err(new RenderError(
                     $"Network error fetching {current}: {response.Error}"));
 
             var resp = response.Value;
             if (IsRedirect(resp.StatusCode))
             {
                 if (redirects == MaxRedirects)
-                    return Result<string, RenderError>.Err(new RenderError(
+                    return Result<(string, TesseraUrl), RenderError>.Err(new RenderError(
                         $"Too many redirects fetching {url}"));
 
                 var redirected = ResolveRedirect(current, resp);
                 if (redirected.IsErr)
-                    return Result<string, RenderError>.Err(redirected.Error);
+                    return Result<(string, TesseraUrl), RenderError>.Err(redirected.Error);
 
                 current = redirected.Value;
                 continue;
             }
 
             if (resp.StatusCode is < 200 or >= 400)
-                return Result<string, RenderError>.Err(new RenderError(
+                return Result<(string, TesseraUrl), RenderError>.Err(new RenderError(
                     $"HTTP {resp.StatusCode} {resp.ReasonPhrase} from {current}"));
 
             var contentType = resp.Headers.GetFirst("Content-Type");
             var encoding = ResolveEncoding(contentType, resp.Body.Span);
-            return Result<string, RenderError>.Ok(encoding.GetString(resp.Body.Span));
+            return Result<(string, TesseraUrl), RenderError>.Ok((encoding.GetString(resp.Body.Span), current));
         }
 
-        return Result<string, RenderError>.Err(new RenderError(
+        return Result<(string, TesseraUrl), RenderError>.Err(new RenderError(
             $"Too many redirects fetching {url}"));
     }
 
