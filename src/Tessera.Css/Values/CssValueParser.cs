@@ -5,29 +5,6 @@ namespace Tessera.Css.Values;
 
 public static class CssValueParser
 {
-    private static readonly Dictionary<string, CssColor> NamedColors = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["black"] = new CssColor(0, 0, 0),
-        ["white"] = new CssColor(255, 255, 255),
-        ["red"] = new CssColor(255, 0, 0),
-        ["green"] = new CssColor(0, 128, 0),
-        ["blue"] = new CssColor(0, 0, 255),
-        ["gray"] = new CssColor(128, 128, 128),
-        ["grey"] = new CssColor(128, 128, 128),
-        ["silver"] = new CssColor(192, 192, 192),
-        ["maroon"] = new CssColor(128, 0, 0),
-        ["purple"] = new CssColor(128, 0, 128),
-        ["fuchsia"] = new CssColor(255, 0, 255),
-        ["lime"] = new CssColor(0, 255, 0),
-        ["olive"] = new CssColor(128, 128, 0),
-        ["yellow"] = new CssColor(255, 255, 0),
-        ["navy"] = new CssColor(0, 0, 128),
-        ["teal"] = new CssColor(0, 128, 128),
-        ["aqua"] = new CssColor(0, 255, 255),
-        ["orange"] = new CssColor(255, 165, 0),
-        ["transparent"] = CssColor.Transparent,
-    };
-
     public static CssValue Parse(IReadOnlyList<CssComponentValue> values)
     {
         ArgumentNullException.ThrowIfNull(values);
@@ -59,7 +36,7 @@ public static class CssValueParser
             CssTokenType.Number => new CssNumber(token.Number),
             CssTokenType.Percentage => new CssPercentage(token.Number),
             CssTokenType.Dimension => ParseDimension(token.Number, token.Unit),
-            CssTokenType.Hash when TryParseHexColor(token.Value, out var color) => color,
+            CssTokenType.Hash when ColorParser.TryParseHex(token.Value, out var color) => color,
             CssTokenType.String => new CssString(token.Value),
             CssTokenType.Url => new CssUrl(token.Value),
             CssTokenType.Delim => new CssKeyword(token.Delimiter.ToString()),
@@ -67,23 +44,61 @@ public static class CssValueParser
         };
 
     private static CssValue ParseIdent(string value)
-        => NamedColors.TryGetValue(value, out var color)
+        => NamedColors.TryGet(value, out var color)
             ? color
             : new CssKeyword(value.ToLowerInvariant());
 
     private static CssValue ParseDimension(double value, string unit)
-        => Enum.TryParse<CssLengthUnit>(unit, ignoreCase: true, out var lengthUnit)
-            ? new CssLength(value, lengthUnit)
-            : new CssDimension(value, unit);
+    {
+        if (Enum.TryParse<CssLengthUnit>(unit, ignoreCase: true, out var lengthUnit))
+            return new CssLength(value, lengthUnit);
+        return unit.ToLowerInvariant() switch
+        {
+            "deg" => new CssAngle(value, CssAngleUnit.Degrees),
+            "grad" => new CssAngle(value, CssAngleUnit.Gradians),
+            "rad" => new CssAngle(value, CssAngleUnit.Radians),
+            "turn" => new CssAngle(value, CssAngleUnit.Turns),
+            "s" => new CssTime(value, CssTimeUnit.Seconds),
+            "ms" => new CssTime(value, CssTimeUnit.Milliseconds),
+            "hz" => new CssFrequency(value, CssFrequencyUnit.Hertz),
+            "khz" => new CssFrequency(value, CssFrequencyUnit.Kilohertz),
+            "dpi" => new CssResolution(value, CssResolutionUnit.Dpi),
+            "dpcm" => new CssResolution(value, CssResolutionUnit.Dpcm),
+            "dppx" or "x" => new CssResolution(value, CssResolutionUnit.Dppx),
+            _ => new CssDimension(value, unit),
+        };
+    }
 
     private static CssValue ParseFunction(CssFunction function)
     {
         var name = function.Name.ToLowerInvariant();
         if (name == "var")
             return ParseVar(function.Values);
+        if (name == "env")
+            return ParseEnv(function.Values);
+        if (name == "attr")
+            return ParseAttr(function.Values);
+
+        if (IsMathFunction(name))
+            return CalcEvaluator.ParseFunction(name, function.Values);
+        if (IsColorFunction(name))
+        {
+            if (ColorParser.TryParseFunction(name, function.Values, out var color))
+                return color;
+        }
 
         return new CssFunctionValue(name, SplitArguments(function.Values).Select(Parse).ToList());
     }
+
+    private static bool IsMathFunction(string name)
+        => name is "calc" or "min" or "max" or "clamp" or "round" or "mod" or "rem"
+            or "sin" or "cos" or "tan" or "asin" or "acos" or "atan" or "atan2"
+            or "sqrt" or "pow" or "hypot" or "log" or "exp"
+            or "abs" or "sign";
+
+    private static bool IsColorFunction(string name)
+        => name is "rgb" or "rgba" or "hsl" or "hsla" or "hwb"
+            or "lab" or "lch" or "oklab" or "oklch" or "color" or "color-mix";
 
     private static CssVarReference ParseVar(IReadOnlyList<CssComponentValue> values)
     {
@@ -93,6 +108,36 @@ public static class CssValueParser
             : null;
         var fallback = args.Count > 1 ? Parse(args[1]) : null;
         return new CssVarReference(name ?? string.Empty, fallback);
+    }
+
+    private static CssEnvReference ParseEnv(IReadOnlyList<CssComponentValue> values)
+    {
+        var args = SplitArguments(values).ToList();
+        var name = args.Count > 0
+            ? args[0].OfType<CssTokenValue>().FirstOrDefault(v => v.Token.Type == CssTokenType.Ident)?.Token.Value
+            : null;
+        var fallback = args.Count > 1 ? Parse(args[1]) : null;
+        return new CssEnvReference(name ?? string.Empty, fallback);
+    }
+
+    private static CssAttrReference ParseAttr(IReadOnlyList<CssComponentValue> values)
+    {
+        var args = SplitArguments(values).ToList();
+        if (args.Count == 0)
+            return new CssAttrReference(string.Empty, null, null);
+        // First argument: name [type-or-unit]
+        var firstTokens = args[0]
+            .Where(v => v is not CssTokenValue { Token.Type: CssTokenType.Whitespace })
+            .OfType<CssTokenValue>()
+            .Select(v => v.Token)
+            .ToList();
+        var attrName = firstTokens.FirstOrDefault(t => t.Type == CssTokenType.Ident).Value ?? string.Empty;
+        var typeOrUnit = firstTokens
+            .Skip(1)
+            .FirstOrDefault(t => t.Type is CssTokenType.Ident or CssTokenType.Percentage or CssTokenType.Dimension)
+            .Value;
+        var fallback = args.Count > 1 ? Parse(args[1]) : null;
+        return new CssAttrReference(attrName, string.IsNullOrEmpty(typeOrUnit) ? null : typeOrUnit, fallback);
     }
 
     private static IEnumerable<IReadOnlyList<CssComponentValue>> SplitArguments(IReadOnlyList<CssComponentValue> values)
@@ -111,27 +156,5 @@ public static class CssValueParser
         }
 
         yield return current;
-    }
-
-    private static bool TryParseHexColor(string text, out CssColor color)
-    {
-        color = CssColor.Transparent;
-        if (text.Length is not (3 or 4 or 6 or 8) || text.Any(c => !Uri.IsHexDigit(c)))
-            return false;
-
-        var expanded = text.Length switch
-        {
-            3 => string.Concat(text.Select(c => $"{c}{c}")) + "ff",
-            4 => string.Concat(text.Select(c => $"{c}{c}")),
-            6 => text + "ff",
-            _ => text,
-        };
-
-        color = new CssColor(
-            Convert.ToByte(expanded[..2], 16),
-            Convert.ToByte(expanded[2..4], 16),
-            Convert.ToByte(expanded[4..6], 16),
-            Convert.ToByte(expanded[6..8], 16));
-        return true;
     }
 }
