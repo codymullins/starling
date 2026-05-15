@@ -190,6 +190,67 @@ public sealed class InlineBlockBlockChildrenTests
         input.Frame.Height.Should().BeGreaterThan(0);
     }
 
+    [Fact]
+    public void Inline_block_with_block_child_shrinks_to_block_childs_content_max_content()
+    {
+        // The outer inline-block holds a single block child <div> with the
+        // narrow text "short". Without a real max-content pass the block
+        // child would size to the 1000px containing block and its frame
+        // (background, borders) would paint across the row. After
+        // shrink-to-fit the outer inline-block — and importantly its block
+        // child's frame — should be ~text("short")-wide. SIBLING then sits
+        // on the same line.
+        const string html = """
+            <body style="width:1000px">
+              <span style="display:inline-block"><div>short</div></span>
+              <span>SIBLING</span>
+            </body>
+            """;
+        var root = Layout(html, new Size(1200, 600));
+
+        var outer = FindBox(root, "span")!;
+        outer.Frame.Width.Should().BeLessThan(200,
+            "the outer inline-block must shrink to the block child's max-content width");
+        outer.Frame.Width.Should().BeGreaterThan(0);
+
+        // The inner <div>'s own frame should also be narrow — that's the
+        // whole point of the second-pass re-layout at the shrunk width.
+        var innerDiv = FindBox(outer, "div")!;
+        innerDiv.Frame.Width.Should().BeLessThanOrEqualTo(outer.Frame.Width + 0.5,
+            "the inner block child's frame must not exceed the shrunk inline-block width");
+
+        // SIBLING must sit on the same line as the outer inline-block.
+        var siblingFrag = FindTextFragment(root, "SIBLING");
+        siblingFrag.Should().NotBeNull("the SIBLING text run must be placed");
+        var outerLineBottom = outer.Frame.Y + outer.Frame.Height;
+        siblingFrag!.Value.Y.Should().BeLessThan(outerLineBottom,
+            "SIBLING must not wrap to a second line below the inline-block");
+    }
+
+    [Fact]
+    public void Two_inline_blocks_each_with_block_child_fit_on_one_line_when_narrow()
+    {
+        // Two adjacent inline-blocks, each holding a block child with three
+        // characters of text. Both should shrink-to-fit and sit on the same
+        // line, with the second's X strictly greater than the first's.
+        const string html = """
+            <body style="width:1000px">
+              <span style="display:inline-block"><div>aaa</div></span><span style="display:inline-block"><div>bbb</div></span>
+            </body>
+            """;
+        var root = Layout(html, new Size(1200, 600));
+
+        var spans = FindAll(root, "span").ToList();
+        spans.Should().HaveCountGreaterOrEqualTo(2);
+        var first = spans[0];
+        var second = spans[1];
+
+        Math.Abs(first.Frame.Y - second.Frame.Y).Should().BeLessThan(1,
+            "both inline-blocks should share a Y on the same line");
+        second.Frame.X.Should().BeGreaterThan(first.Frame.X,
+            "the second inline-block must sit to the right of the first");
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private static IEnumerable<Box.Box> FindAll(Box.Box root, string localName)

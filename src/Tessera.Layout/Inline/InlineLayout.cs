@@ -171,17 +171,41 @@ internal sealed class InlineLayout
         if (HasBlockLevelChild(box))
         {
             // Inline-block with mixed/block children: run a BFC sub-pass.
-            // For width we use the available width remaining on the current
-            // line, capped to the viewport. A real intrinsic min/max-content
-            // pass is future work; this approximation matches how a browser
-            // would shrink-to-fit when no explicit width is set.
-            var subWidth = Math.Max(0, availableWidth - cursorX);
-            if (_viewport is { } vp && vp.Width > 0)
-                subWidth = Math.Min(subWidth, vp.Width);
-            var explicitInner = ResolveLength(box.Style, PropertyId.Width, availableWidth);
-            if (explicitInner is { } iw) subWidth = iw;
-
+            //
+            // CSS 2.1 §10.3.5 shrink-to-fit:
+            //     used-width = min(max(min-content, available), max-content).
+            //
+            // The hard problem here: block children sized at the available
+            // width inflate their *frame* to that width even when their
+            // content is narrow. A naive single-pass therefore paints the
+            // block child's background across the whole row. We approximate
+            // max-content with a measurement pass at "infinite" width, walk
+            // text/atomic descendants to find the rightmost edge they
+            // actually used (block frames after this pass are at the wide
+            // width — we deliberately ignore them), then re-layout at the
+            // shrunk width so block descendants' frames match too.
+            //
+            // Cost: two BFC passes per inline-block-with-block-child. At
+            // this stage of the project that's fine; real engines compute
+            // intrinsic sizes recursively without an extra placement pass.
             var viewport = _viewport ?? new Size(availableWidth, 0);
+            var explicitInner = ResolveLength(box.Style, PropertyId.Width, availableWidth);
+
+            double subWidth;
+            if (explicitInner is { } iw)
+            {
+                subWidth = iw;
+            }
+            else
+            {
+                const double measureWidth = 1_000_000d;
+                var measureLayout = new Block.BlockLayout(_measurer, viewport);
+                measureLayout.LayoutChildren(box, measureWidth);
+                var maxContent = MeasureUsedWidth(box);
+                var available = Math.Max(0, availableWidth - cursorX);
+                subWidth = Math.Min(maxContent, available);
+            }
+
             var sub = new Block.BlockLayout(_measurer, viewport);
             var consumed = sub.LayoutChildren(box, subWidth);
             contentWidth = subWidth;
@@ -191,20 +215,12 @@ internal sealed class InlineLayout
         {
             // Inline-block whose children are inline-level non-text (nested
             // inline-blocks, <br>, <img>, spans). The text-only path would
-            // silently drop these. Run a recursive inline-formatting sub-pass
-            // and shrink-to-fit to the max-content width so the parent line
-            // doesn't consume the whole row.
+            // silently drop these. Run an IFC sub-pass shrunk-to-fit via the
+            // same two-pass approach used for BFC sub-pass above: measure at
+            // huge width to find max-content, then re-lay at the constrained
+            // width so atomic-inline frames sit at their final X.
             //
-            // CSS 2.1 §10.3.5: shrink-to-fit width =
-            //     min(max(min-content, available), max-content).
-            // We approximate this by running the sub-pass once with the
-            // remaining line width (or the explicit author width), measuring
-            // the rightmost X reached by any placed child, and using that as
-            // the inline-block's content width. A pure measurement pass
-            // followed by a second placement pass would be cleaner; in
-            // practice the single-pass approach gives the right visual result
-            // because line-breaking only triggers at availableWidth, and the
-            // measured rightmost-X reflects the actual content extent.
+            // CSS 2.1 §10.3.5: used-width = min(max(min-content, available), max-content).
             var explicitInner = ResolveLength(box.Style, PropertyId.Width, availableWidth);
             double subWidth;
             if (explicitInner is { } iw)
@@ -213,16 +229,16 @@ internal sealed class InlineLayout
             }
             else
             {
-                subWidth = Math.Max(0, availableWidth - cursorX);
-                if (_viewport is { } vp && vp.Width > 0)
-                    subWidth = Math.Min(subWidth, vp.Width);
+                const double measureWidth = 1_000_000d;
+                this.Layout(box, measureWidth);
+                var maxContent = MeasureUsedWidth(box);
+                var available = Math.Max(0, availableWidth - cursorX);
+                subWidth = Math.Min(maxContent, available);
             }
 
             var consumed = this.Layout(box, subWidth);
             contentHeight = consumed;
-            contentWidth = explicitInner is { } w2
-                ? w2
-                : MeasureUsedWidth(box);
+            contentWidth = subWidth;
         }
         else
         {
