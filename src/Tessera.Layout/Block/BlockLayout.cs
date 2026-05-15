@@ -84,6 +84,13 @@ internal sealed class BlockLayout
         first = false;
 
         var width = ContentWidth(child, containerWidth);
+
+        // CSS 2.1 §10.3.3 — resolve `auto` horizontal margins for non-replaced
+        // block-level elements in normal flow. Only when `width` is not `auto`
+        // do auto margins absorb slack; otherwise they resolve to 0 (already
+        // handled by ResolveBoxModel).
+        ResolveAutoHorizontalMargins(child, containerWidth, width);
+
         var childContentHeight = LayoutChildren(child, width);
 
         var explicitHeight = ResolveLength(child.Style, PropertyId.Height, _viewport.Height, _viewport, allowAuto: true);
@@ -98,6 +105,71 @@ internal sealed class BlockLayout
 
         cursorY += fullHeight + child.Margin.Bottom;
         prevBottomMargin = child.Margin.Bottom;
+    }
+
+    /// <summary>
+    /// CSS 2.1 §10.3.3 — for a block-level non-replaced element in normal flow,
+    /// `auto` values for `margin-left` / `margin-right` absorb the slack between
+    /// the used width and the containing block's content width:
+    /// <list type="bullet">
+    ///   <item>Both auto → center the box (each margin gets half the slack; if
+    ///   negative, both go to 0).</item>
+    ///   <item>One auto → that one absorbs all slack.</item>
+    ///   <item>Neither auto → leave margins as computed (over-constrained;
+    ///   spec says ignore margin-right in LTR but we keep the user's values).</item>
+    /// </list>
+    /// This is only meaningful when `width` is not `auto`; if width filled the
+    /// available space, slack is zero (or negative) and there is nothing to
+    /// distribute.
+    /// </summary>
+    private static void ResolveAutoHorizontalMargins(Box.Box child, double containerWidth, double usedWidth)
+    {
+        // If width is `auto`, auto margins compute to 0 (already done by ResolveBoxModel).
+        if (!HasExplicitWidth(child.Style)) return;
+
+        var leftAuto = IsAutoMargin(child.Style, PropertyId.MarginLeft);
+        var rightAuto = IsAutoMargin(child.Style, PropertyId.MarginRight);
+        if (!leftAuto && !rightAuto) return;
+
+        var outerWidth = usedWidth + child.Padding.Horizontal + child.Border.Horizontal;
+        var slack = containerWidth - outerWidth - child.Margin.Left - child.Margin.Right;
+
+        double newLeft = child.Margin.Left;
+        double newRight = child.Margin.Right;
+        if (leftAuto && rightAuto)
+        {
+            if (slack < 0)
+            {
+                // Negative slack: both autos go to 0 (left edge).
+                newLeft = 0;
+                newRight = 0;
+            }
+            else
+            {
+                newLeft = slack / 2d;
+                newRight = slack - newLeft;
+            }
+        }
+        else if (leftAuto)
+        {
+            newLeft = Math.Max(0, slack);
+        }
+        else // rightAuto
+        {
+            newRight = Math.Max(0, slack);
+        }
+
+        child.Margin = new Edges(child.Margin.Top, newRight, child.Margin.Bottom, newLeft);
+    }
+
+    private static bool IsAutoMargin(ComputedStyle? style, PropertyId property)
+        => style is not null && style.Get(property) is CssKeyword k && k.Name == "auto";
+
+    private static bool HasExplicitWidth(ComputedStyle? style)
+    {
+        if (style is null) return false;
+        var value = style.Get(PropertyId.Width);
+        return value is not CssKeyword k || k.Name != "auto";
     }
 
     private void ResolveBoxModel(Box.Box box, double containerWidth)

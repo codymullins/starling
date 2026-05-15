@@ -110,6 +110,74 @@ public sealed class LayoutEngineTests
         body.Frame.Height.Should().BeGreaterThan(0);
     }
 
+    [Fact]
+    public void Margin_auto_centers_block_with_explicit_width()
+    {
+        // body has 8px UA margin → body content width = 800 - 16 = 784
+        // div is 200px wide → slack = 584, each side margin = 292
+        var root = Layout(
+            "<body><div style=\"width: 200px; margin: 0 auto\">x</div></body>",
+            new Size(800, 600));
+
+        var div = FindBox(root, "div")!;
+        div.Frame.X.Should().BeApproximately(292, 0.5);
+        div.Frame.Width.Should().Be(200);
+    }
+
+    [Fact]
+    public void Margin_left_auto_right_aligns_block()
+    {
+        // body content width = 400 - 16 = 384; div is 100px wide
+        // margin-left: auto, margin-right: 0 → margin-left absorbs all slack = 284
+        var root = Layout(
+            "<body><div style=\"margin-left: auto; margin-right: 0; width: 100px\">x</div></body>",
+            new Size(400, 600));
+
+        var div = FindBox(root, "div")!;
+        div.Frame.X.Should().BeApproximately(284, 0.5);
+        div.Frame.Width.Should().Be(100);
+    }
+
+    [Fact]
+    public void Margin_right_auto_left_aligns_block()
+    {
+        // margin-left: 0, margin-right: auto → div sticks to left edge of body
+        var root = Layout(
+            "<body><div style=\"margin-left: 0; margin-right: auto; width: 100px\">x</div></body>",
+            new Size(400, 600));
+
+        var div = FindBox(root, "div")!;
+        div.Frame.X.Should().BeApproximately(0, 0.5);
+        div.Frame.Width.Should().Be(100);
+    }
+
+    [Fact]
+    public void Margin_auto_with_auto_width_resolves_to_zero()
+    {
+        // When width is auto, auto margins resolve to 0, so the div should
+        // fill the body's content width and sit at X = 0 (no left margin).
+        var root = Layout(
+            "<body><div style=\"margin: 0 auto\">x</div></body>",
+            new Size(400, 600));
+
+        var div = FindBox(root, "div")!;
+        div.Frame.X.Should().BeApproximately(0, 0.5);
+        // div should fill body content width (400 - 16 = 384)
+        div.Frame.Width.Should().BeApproximately(384, 0.5);
+    }
+
+    [Fact]
+    public void Margin_auto_with_overflowing_width_clamps_to_left_edge()
+    {
+        // div is wider than container → slack is negative → both margins become 0.
+        var root = Layout(
+            "<body><div style=\"width: 2000px; margin: 0 auto\">x</div></body>",
+            new Size(400, 600));
+
+        var div = FindBox(root, "div")!;
+        div.Frame.X.Should().BeApproximately(0, 0.5);
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private static Box.Box? FindBox(Box.Box root, string localName)
