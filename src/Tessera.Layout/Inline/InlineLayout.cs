@@ -129,12 +129,18 @@ internal sealed class InlineLayout
 
     /// <summary>
     /// Place an inline-block box atomically on the current line. Resolves its
-    /// own box model, lays its (text) children out within its content box,
-    /// and sets its <see cref="Box.Box.Frame"/> in the enclosing anonymous
-    /// block's content-coordinate space. The painter walks the box like any
-    /// other block: background + border first, then children translated by
-    /// our padding+border edge.
+    /// own box model, lays its children out within its content box, and sets
+    /// its <see cref="Box.Box.Frame"/> in the enclosing anonymous block's
+    /// content-coordinate space. The painter walks the box like any other
+    /// block: background + border first, then children translated by our
+    /// padding+border edge.
     /// </summary>
+    /// <remarks>
+    /// Per CSS 2.1 §10.1, an inline-block establishes a new block formatting
+    /// context. When the box has any block-level children we run a nested
+    /// <see cref="Block.BlockLayout"/> pass over them. Otherwise we use the
+    /// lighter text-only path (<see cref="LayoutAtomicContent"/>).
+    /// </remarks>
     private void LayoutAtomic(
         InlineBox box,
         double availableWidth,
@@ -148,14 +154,40 @@ internal sealed class InlineLayout
         var fontSize = ResolveFontSize(box.Style);
         var spec = ResolveFontSpec(box.Style);
         var lineHeight = ResolveLineHeight(box.Style, fontSize, spec);
-        var contentWidth = LayoutAtomicContent(box, fontSize, spec);
+
+        double contentWidth;
+        double contentHeight;
+
+        if (HasBlockLevelChild(box))
+        {
+            // Inline-block with mixed/block children: run a BFC sub-pass.
+            // For width we use the available width remaining on the current
+            // line, capped to the viewport. A real intrinsic min/max-content
+            // pass is future work; this approximation matches how a browser
+            // would shrink-to-fit when no explicit width is set.
+            var subWidth = Math.Max(0, availableWidth - cursorX);
+            if (_viewport is { } vp && vp.Width > 0)
+                subWidth = Math.Min(subWidth, vp.Width);
+            var explicitInner = ResolveLength(box.Style, PropertyId.Width, availableWidth);
+            if (explicitInner is { } iw) subWidth = iw;
+
+            var viewport = _viewport ?? new Size(availableWidth, 0);
+            var sub = new Block.BlockLayout(_measurer, viewport);
+            var consumed = sub.LayoutChildren(box, subWidth);
+            contentWidth = subWidth;
+            contentHeight = consumed;
+        }
+        else
+        {
+            contentWidth = LayoutAtomicContent(box, fontSize, spec);
+            contentHeight = lineHeight;
+        }
 
         // CSS width: prefer an explicit value if the cascade gave us one.
         // Percentages resolve against the enclosing block's content width.
         var explicitWidth = ResolveLength(box.Style, PropertyId.Width, availableWidth);
         if (explicitWidth is { } w) contentWidth = w;
 
-        var contentHeight = lineHeight;
         var explicitHeight = ResolveLength(box.Style, PropertyId.Height, lineHeight);
         if (explicitHeight is { } h) contentHeight = h;
 
@@ -461,6 +493,21 @@ internal sealed class InlineLayout
         if (box.Style is null) return false;
         return box.Style.Get(PropertyId.Display) is CssKeyword k
             && k.Name.Equals("inline-block", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// True if any direct child is block-level (BlockContainer or
+    /// AnonymousBlock — the latter being the wrapper around inline runs that
+    /// share scope with real block children).
+    /// </summary>
+    private static bool HasBlockLevelChild(Box.Box box)
+    {
+        foreach (var child in box.Children)
+        {
+            if (child.Kind is BoxKind.BlockContainer or BoxKind.AnonymousBlock)
+                return true;
+        }
+        return false;
     }
 
     private static string NormalizeWhitespace(string text)

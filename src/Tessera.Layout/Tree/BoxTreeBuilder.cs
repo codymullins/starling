@@ -94,11 +94,38 @@ internal sealed class BoxTreeBuilder
     /// children, runs of consecutive inline children are wrapped in anonymous
     /// block boxes so block layout sees a uniform list of blocks.
     /// </summary>
+    /// <remarks>
+    /// An <c>inline-block</c> establishes its own block formatting context
+    /// (CSS 2.1 §10.1). When an inline-block has mixed block + inline
+    /// children, we apply the same anonymous-block wrapping so the BFC sub-pass
+    /// sees a uniform list of blocks. Inline boxes that contain only inline
+    /// content are left alone — they continue to flatten into the parent IFC.
+    /// </remarks>
     private static void WrapInlinesInAnonymousBlocks(Box.Box parent)
     {
-        // AnonymousBlocks are the wrappers; don't re-wrap their (inline) children.
-        if (parent.Kind != BoxKind.BlockContainer)
+        // Text and Replaced boxes have no children worth recursing into.
+        if (parent.Kind == BoxKind.Text || parent.Kind == BoxKind.Replaced)
             return;
+
+        // An anonymous block is itself a wrapper around an inline run; we
+        // never re-wrap its children. But we DO need to descend through it
+        // because it may host an inline-block with mixed children that needs
+        // its own anonymous-block wrapping.
+        if (parent.Kind == BoxKind.AnonymousBlock)
+        {
+            foreach (var child in parent.Children) WrapInlinesInAnonymousBlocks(child);
+            return;
+        }
+
+        // An inline box with no block-level descendants flattens into the
+        // enclosing IFC; no wrapping needed. Only when an inline (including
+        // inline-block) has mixed block + inline children do we treat it like
+        // a block container for anonymous-block wrapping.
+        if (parent.Kind == BoxKind.Inline && !HasBlockLevelChild(parent))
+        {
+            foreach (var child in parent.Children) WrapInlinesInAnonymousBlocks(child);
+            return;
+        }
 
         // Always wrap inline runs in an anonymous block — even when the block
         // contains only inlines — so the block formatting context sees a
@@ -130,6 +157,16 @@ internal sealed class BoxTreeBuilder
         parent.Children.AddRange(newChildren);
 
         foreach (var child in parent.Children) WrapInlinesInAnonymousBlocks(child);
+    }
+
+    private static bool HasBlockLevelChild(Box.Box parent)
+    {
+        foreach (var child in parent.Children)
+        {
+            if (child.Kind is BoxKind.BlockContainer or BoxKind.AnonymousBlock)
+                return true;
+        }
+        return false;
     }
 
     /// <summary>

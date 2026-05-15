@@ -44,7 +44,14 @@ internal sealed class BlockLayout
             contentHeight + root.Padding.Vertical + root.Border.Vertical);
     }
 
-    private double LayoutChildren(Box.Box parent, double containerWidth)
+    /// <summary>
+    /// Lay out <paramref name="parent"/>'s children as a block formatting
+    /// context using <paramref name="containerWidth"/> as the available
+    /// content width. Returns the total consumed height. The parent's own
+    /// frame is not touched — callers (e.g. <see cref="Inline.InlineLayout"/>
+    /// for an inline-block) compose the result into their own box model.
+    /// </summary>
+    internal double LayoutChildren(Box.Box parent, double containerWidth)
     {
         var cursorY = 0d;
         var prevBottomMargin = 0d;
