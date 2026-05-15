@@ -7,10 +7,24 @@ public static class UaStyleSheet
     public const string Source = """
         html, body, div, section, article, main, header, footer, nav, aside,
         p, h1, h2, h3, h4, h5, h6, blockquote, pre, address, figure, figcaption,
-        ul, ol, menu, li, dl, dt, dd, form, fieldset, legend, table, caption,
-        thead, tbody, tfoot, tr, td, th {
+        ul, ol, menu, li, dl, dt, dd, form, fieldset, legend, caption {
           display: block;
         }
+
+        /* Table elements. PLACEHOLDER: a real CSS table layout pass (display:
+           table / table-row / table-cell with column-width resolution, row
+           grouping, border-collapse, etc.) is not yet implemented. To keep the
+           common legacy-footer pattern (Google's footer:
+           <table><tr><td>...</td><td>...</td></tr></table>) from collapsing
+           into a vertical stack, we approximate the visual outcome by having
+           cells flow as `inline-block`s inside a block-level row. Cells get a
+           minimal 1px padding to mirror the historical UA spacing browsers
+           apply (`border-spacing: 2px` plus cell padding). Replace this block
+           when a proper table formatting context lands. */
+        table { display: block; border-spacing: 0; }
+        thead, tbody, tfoot { display: block; }
+        tr { display: block; }
+        td, th { display: inline-block; padding: 1px; vertical-align: top; }
 
         head, title, meta, link, style, script {
           display: none;
