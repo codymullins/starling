@@ -1,4 +1,5 @@
 using Microsoft.Win32.SafeHandles;
+using Tessera.Common.Diagnostics;
 using Tessera.Skia.Interop;
 
 namespace Tessera.Skia.Handles;
@@ -21,7 +22,9 @@ internal sealed class SkContext : SafeHandleZeroOrMinusOneIsInvalid
     /// <exception cref="SkiaInteropException">The native call failed.</exception>
     public static SkContext Create(TsBackendHint hint = TsBackendHint.Auto)
     {
+        NativeCallTrace.Enter("ts_context_create");
         var status = NativeMethods.ts_context_create(hint, out nint handle);
+        NativeCallTrace.Exit("ts_context_create", handle);
         SkiaInteropException.ThrowIfNotOk(status, nameof(NativeMethods.ts_context_create));
 
         var context = new SkContext();
@@ -37,13 +40,17 @@ internal sealed class SkContext : SafeHandleZeroOrMinusOneIsInvalid
     {
         const int bufferLen = 128;
         byte* buffer = stackalloc byte[bufferLen];
+        NativeCallTrace.Enter("ts_context_backend_name", handle);
         nuint written = NativeMethods.ts_context_backend_name(handle, (nint)buffer, bufferLen);
+        NativeCallTrace.Exit("ts_context_backend_name", handle);
         return System.Text.Encoding.UTF8.GetString(buffer, (int)written);
     }
 
     protected override bool ReleaseHandle()
     {
+        NativeCallTrace.Enter("ts_context_destroy", handle);
         NativeMethods.ts_context_destroy(handle);
+        NativeCallTrace.Exit("ts_context_destroy", handle);
         return true;
     }
 }

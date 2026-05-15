@@ -99,6 +99,8 @@ public sealed class Painter
     {
         ArgumentNullException.ThrowIfNull(document);
 
+        Tessera.Common.Diagnostics.NativeCallTrace.Mark("layout.begin");
+
         StyleEngine style;
         using (_diag.Span("paint", "style_cascade"))
             style = CreateStyleEngine(document, defaultFontSize, externalStylesheet);
@@ -114,6 +116,7 @@ public sealed class Painter
         Tessera.Layout.Box.BlockBox root;
         using (_diag.Span("paint", "layout"))
             root = layoutEngine.LayoutDocument(document, viewport);
+        Tessera.Common.Diagnostics.NativeCallTrace.Mark("layout.end");
         return (root, style);
     }
 

@@ -104,15 +104,34 @@ public class TlsClientTests
             .Should().BeTrue();
     }
 
+    [Fact]
+    public void Concurrent_verification_against_shared_root_store_is_stable()
+    {
+        // Regression: RootCertificates.Default is a process-wide singleton whose
+        // X509Certificate2 instances are not thread-safe. Concurrent chain
+        // builds used to race on their native handles and corrupt the heap
+        // (SIGSEGV). Hammer the shared store from many threads and assert a
+        // consistent result with no crash.
+        using var certificate = CreateSelfSigned("CN=bad.example", "bad.example");
+
+        var results = new System.Collections.Concurrent.ConcurrentBag<bool>();
+        Parallel.For(0, 256, new ParallelOptions { MaxDegreeOfParallelism = 16 }, _ =>
+            results.Add(CertificateVerifier.Verify(
+                certificate, extraCertificates: null, "bad.example", RootCertificates.Default)));
+
+        results.Should().HaveCount(256).And.OnlyContain(ok => ok == false);
+    }
+
     [Theory]
     [InlineData("example.com")]
     [InlineData("nginx.org")]
-    public async Task Live_tls13_handshake_when_enabled(string host)
+    public async Task Live_handshake_when_enabled(string host)
     {
         // Env-gated: the CI `network-tests` job sets TESSERA_ALLOW_NETWORK=1.
-        // Note: pinning SslProtocols.Tls13 throws PlatformNotSupportedException
-        // on macOS dev boxes (SecureTransport); the live handshake is verified
-        // on the Linux CI runner where OpenSSL supports TLS 1.3.
+        // SslStreamTlsTransport lets the OS negotiate the protocol version
+        // (SslProtocols.None): TLS 1.2 on macOS/Mac Catalyst (Secure Transport
+        // has no 1.3), TLS 1.3 on the Linux/Windows runners. So this exercises
+        // a real handshake on every platform, not just the Linux runner.
         if (Environment.GetEnvironmentVariable("TESSERA_ALLOW_NETWORK") != "1")
             return;
 

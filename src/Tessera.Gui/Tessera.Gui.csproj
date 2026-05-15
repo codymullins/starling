@@ -28,6 +28,17 @@
     <!-- CA1859 (return concrete types for perf) defaults to error severity;
          MAUI's nested-builder idiom violates it in places we don't control. -->
     <NoWarn>$(NoWarn);CA1859</NoWarn>
+
+    <!-- DIAGNOSTIC (M3-06 TLS crash): MAUI defaults Mac Catalyst to
+         MtouchLink=SdkOnly, which trims the BCL — including the
+         System.Security.Cryptography / System.Net.Security stack. The
+         https://google.com crash is a deterministic single-threaded heap
+         corruption inside X509Chain.Build's managed code (custom-root-trust
+         path), which the trimmer is the prime suspect for. Disabling the
+         linker bisects trimmer-vs-interpreter; if this stops the crash the
+         permanent fix is a TrimmerRootDescriptor preserving the crypto
+         assemblies rather than disabling linking wholesale. -->
+    <MtouchLink>None</MtouchLink>
   </PropertyGroup>
 
   <ItemGroup>
@@ -42,30 +53,45 @@
     paints through the Skia DisplayList path, so the dylib is a *legitimate
     runtime dependency* and must ride inside the .app bundle.
 
-    The original problem the dropped target worked around: MAUI's Mac Catalyst
-    bundler runs `install_name_tool` over every entry in
-    @(_DynamicLibraryToReidentify) to rewrite its install name into the bundle
-    layout, and that step fails on libtessera_skia.dylib's nested
-    runtimes/<rid>/native/ source path.
+    The shim is NOT a link-time dependency: it has no exported symbols the
+    executable references directly — every entry point is reached through
+    [LibraryImport]/[DllImport], and Tessera.Skia's NativeLoader.cs installs a
+    SetDllImportResolver that dlopen()s it by absolute path from the bundle's
+    runtimes/<rid>/native/ layout (and tolerates its absence — see wp:M3-06l).
 
-    Proper fix: keep the dylib in @(_FileNativeReference) so it is *still
-    copied* into the bundle, but exclude it from @(_DynamicLibraryToReidentify)
-    so `install_name_tool` does not touch it. The shim is statically linked
-    (libskia + Dawn folded into one dylib — see Phase 2 of the master plan) and
-    is loaded by Tessera.Skia's SetDllImportResolver (NativeLoader.cs), which
-    probes the bundle's runtimes/<rid>/native/ layout directly — it does not
-    depend on the install-name rewrite. So skipping reidentification is safe.
+    But the Mac Catalyst SDK auto-promotes any runtimes/<rid>/native/*.dylib
+    from a project reference into @(_FileNativeReference) with Kind=Dynamic,
+    which makes the native linker add an LC_LOAD_DYLIB(@rpath/...) to the
+    executable. dyld then *must* resolve the shim at launch — before any
+    managed code runs — and the app's only LC_RPATH points at MonoBundle/,
+    not the nested runtimes/<rid>/native/ dir where the dylib actually lands.
+    Result: a DYLD "Library not loaded" abort at startup, and the M3-06l
+    graceful-fallback path is unreachable because the process dies first.
 
-    @(_DynamicLibraryToReidentify) is *populated by* _ComputeDynamicLibrariesToReidentify,
-    so the Remove has to run AFTER that target and BEFORE _InstallNameTool —
-    not BeforeTargets the compute target, where the item group is still empty.
-    Leaving the entry in @(_FileNativeReference) keeps the dylib copied into the
-    bundle's runtimes/osx-arm64/native/ layout (see _ComputeDynamicLibrariesToPublish).
+    Fix: stamp LinkToExecutable=false on the shim's @(_FileNativeReference)
+    entry. The SDK still *copies* it into the bundle
+    (_ComputeDynamicLibrariesToPublish keys off Kind=Dynamic + CopyToAppBundle,
+    not LinkToExecutable) but drops it from @(_NativeReferences), so no
+    LC_LOAD_DYLIB is emitted — exactly how the SDK treats PluginLibrary
+    assets. Loading is left entirely to NativeLoader.cs at runtime.
+
+    We also drop it from @(_DynamicLibraryToReidentify): with no link-time
+    reference, the install-name rewrite is pointless, and install_name_tool
+    chokes on the nested runtimes/<rid>/native/ source path anyway.
+
+    Timing: @(_FileNativeReference) and @(_DynamicLibraryToReidentify) are
+    both populated by _ComputeDynamicLibrariesToReidentify, and
+    @(_NativeReferences) is computed later in _ComputeLinkNativeExecutableInputs
+    — so this has to run AFTER the former and BEFORE _InstallNameTool (which
+    comfortably precedes the link-input computation).
   -->
-  <Target Name="KeepSkiaNativeUnreidentified"
+  <Target Name="UnlinkSkiaNativeFromExecutable"
           AfterTargets="_ComputeDynamicLibrariesToReidentify"
           BeforeTargets="_InstallNameTool">
     <ItemGroup>
+      <_FileNativeReference Update="@(_FileNativeReference)"
+          Condition="'%(Filename)%(Extension)' == 'libtessera_skia.dylib'"
+          LinkToExecutable="false" />
       <_DynamicLibraryToReidentify Remove="@(_DynamicLibraryToReidentify)"
           Condition="'%(Filename)%(Extension)' == 'libtessera_skia.dylib'" />
     </ItemGroup>

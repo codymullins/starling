@@ -1,3 +1,4 @@
+using Tessera.Common.Diagnostics;
 using Tessera.Common.Image;
 using Tessera.Css.Values;
 using Tessera.Skia.Handles;
@@ -54,6 +55,8 @@ public sealed class SkiaGraphiteBackend : IDisposable
         var width = (int)Math.Ceiling(viewport.Width);
         var height = (int)Math.Ceiling(viewport.Height);
 
+        NativeCallTrace.Mark("render.begin", $"{width}x{height} items={list.Items.Count}");
+
         var context = _context.Value;
         using var surface = SkSurface.Create(context, width, height);
         var canvas = surface.GetCanvas();
@@ -67,6 +70,7 @@ public sealed class SkiaGraphiteBackend : IDisposable
 
         surface.Flush(context);
         var pixels = surface.ReadPixels(context, width, height);
+        NativeCallTrace.Mark("render.end");
         return new RenderedBitmap(width, height, pixels);
     }
 

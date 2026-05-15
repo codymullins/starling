@@ -1,4 +1,5 @@
 using Microsoft.Win32.SafeHandles;
+using Tessera.Common.Diagnostics;
 using Tessera.Skia.Interop;
 
 namespace Tessera.Skia.Handles;
@@ -25,7 +26,9 @@ internal sealed class SkCanvas : SafeHandleZeroOrMinusOneIsInvalid
     /// <exception cref="SkiaInteropException">The native call failed.</exception>
     public void Clear(TsColor color)
     {
+        NativeCallTrace.Enter("ts_canvas_clear", handle);
         var status = NativeMethods.ts_canvas_clear(handle, color);
+        NativeCallTrace.Exit("ts_canvas_clear", handle);
         SkiaInteropException.ThrowIfNotOk(status, nameof(NativeMethods.ts_canvas_clear));
     }
 
@@ -33,7 +36,9 @@ internal sealed class SkCanvas : SafeHandleZeroOrMinusOneIsInvalid
     /// <exception cref="SkiaInteropException">The native call failed.</exception>
     public void FillRect(TsRect rect, TsColor color)
     {
+        NativeCallTrace.Enter("ts_canvas_fill_rect", handle);
         var status = NativeMethods.ts_canvas_fill_rect(handle, rect, color);
+        NativeCallTrace.Exit("ts_canvas_fill_rect", handle);
         SkiaInteropException.ThrowIfNotOk(status, nameof(NativeMethods.ts_canvas_fill_rect));
     }
 
@@ -41,7 +46,9 @@ internal sealed class SkCanvas : SafeHandleZeroOrMinusOneIsInvalid
     /// <exception cref="SkiaInteropException">The native call failed.</exception>
     public void StrokeRect(TsRect rect, TsColor color, float strokeWidth)
     {
+        NativeCallTrace.Enter("ts_canvas_stroke_rect", handle);
         var status = NativeMethods.ts_canvas_stroke_rect(handle, rect, color, strokeWidth);
+        NativeCallTrace.Exit("ts_canvas_stroke_rect", handle);
         SkiaInteropException.ThrowIfNotOk(status, nameof(NativeMethods.ts_canvas_stroke_rect));
     }
 
@@ -51,10 +58,12 @@ internal sealed class SkCanvas : SafeHandleZeroOrMinusOneIsInvalid
     {
         ArgumentNullException.ThrowIfNull(font);
 
+        NativeCallTrace.Enter("ts_canvas_draw_text", handle, $"font=0x{font.Handle:x} glyphs={glyphs.Length}");
         fixed (TsGlyph* glyphPtr = glyphs)
         {
             var status = NativeMethods.ts_canvas_draw_text(
                 handle, font.Handle, glyphPtr, (nuint)glyphs.Length, color);
+            NativeCallTrace.Exit("ts_canvas_draw_text", handle);
             SkiaInteropException.ThrowIfNotOk(status, nameof(NativeMethods.ts_canvas_draw_text));
         }
     }
@@ -66,9 +75,11 @@ internal sealed class SkCanvas : SafeHandleZeroOrMinusOneIsInvalid
     /// <exception cref="SkiaInteropException">The native call failed.</exception>
     public unsafe void DrawImage(ReadOnlySpan<byte> pixels, int width, int height, TsRect dstRect)
     {
+        NativeCallTrace.Enter("ts_canvas_draw_image", handle, $"{width}x{height} bytes={pixels.Length}");
         fixed (byte* pixelPtr = pixels)
         {
             var status = NativeMethods.ts_canvas_draw_image(handle, pixelPtr, width, height, dstRect);
+            NativeCallTrace.Exit("ts_canvas_draw_image", handle);
             SkiaInteropException.ThrowIfNotOk(status, nameof(NativeMethods.ts_canvas_draw_image));
         }
     }

@@ -26,7 +26,13 @@ internal sealed class SocketTcpConnection : ITcpConnection
         if (!_open) return 0;
         var n = await _socket.ReceiveAsync(buffer, SocketFlags.None, ct)
             .ConfigureAwait(false);
-        if (n == 0) _open = false; // peer closed
+        // A zero-length read request always completes with 0 bytes — that is
+        // the documented "poll for readability" idiom, which SslStream issues
+        // to await data without pinning a buffer. Only a 0-byte result for a
+        // *non-empty* request is a peer half-close. Conflating the two marks
+        // the connection dead on SslStream's first zero-byte read and breaks
+        // the TLS handshake with a spurious EOF.
+        if (n == 0 && !buffer.IsEmpty) _open = false; // peer closed
         return n;
     }
 

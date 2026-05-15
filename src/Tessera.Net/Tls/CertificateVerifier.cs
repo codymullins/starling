@@ -1,4 +1,5 @@
 using System.Security.Cryptography.X509Certificates;
+using Tessera.Common.Diagnostics;
 
 namespace Tessera.Net.Tls;
 
@@ -11,6 +12,14 @@ namespace Tessera.Net.Tls;
 /// </summary>
 public static class CertificateVerifier
 {
+    // X509Certificate2 is not thread-safe, and RootCertificates.Default shares
+    // one set of trust-anchor instances across every handshake. Concurrent
+    // chain.Build calls (the engine fetches a page's subresources in parallel)
+    // would race on those shared instances' lazily-materialized native handles
+    // and corrupt the managed heap. Serialize the chain build to prevent it —
+    // verification is sub-millisecond, so this does not bottleneck page loads.
+    private static readonly object _verifyLock = new();
+
     /// <summary>
     /// Verifies <paramref name="leafCertificate"/> (plus any intermediates the
     /// server presented in <paramref name="extraCertificates"/>) chains to a
@@ -27,22 +36,35 @@ public static class CertificateVerifier
         if (roots is null) throw new ArgumentNullException(nameof(roots));
         if (string.IsNullOrWhiteSpace(hostname)) return false;
 
+        NativeCallTrace.Mark("cert.hostmatch.begin", hostname);
         if (!CertificateHostNameMatcher.Matches(leafCertificate, hostname))
+        {
+            NativeCallTrace.Mark("cert.hostmatch.end", "no-match");
             return false;
+        }
+        NativeCallTrace.Mark("cert.hostmatch.end", "match");
 
-        using var chain = new X509Chain();
-        var policy = chain.ChainPolicy;
-        policy.TrustMode = X509ChainTrustMode.CustomRootTrust;
-        policy.CustomTrustStore.Clear();
-        policy.CustomTrustStore.AddRange(roots.Certificates);
-        policy.RevocationMode = X509RevocationMode.NoCheck;
-        policy.VerificationFlags = X509VerificationFlags.NoFlag;
-        if (validationTime is { } when)
-            policy.VerificationTime = when.UtcDateTime;
-        if (extraCertificates is { Count: > 0 })
-            policy.ExtraStore.AddRange(extraCertificates);
+        lock (_verifyLock)
+        {
+            using var chain = new X509Chain();
+            var policy = chain.ChainPolicy;
+            policy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+            policy.CustomTrustStore.Clear();
+            NativeCallTrace.Mark("cert.truststore.begin", $"roots={roots.Certificates.Count}");
+            policy.CustomTrustStore.AddRange(roots.Certificates);
+            NativeCallTrace.Mark("cert.truststore.end");
+            policy.RevocationMode = X509RevocationMode.NoCheck;
+            policy.VerificationFlags = X509VerificationFlags.NoFlag;
+            if (validationTime is { } when)
+                policy.VerificationTime = when.UtcDateTime;
+            if (extraCertificates is { Count: > 0 })
+                policy.ExtraStore.AddRange(extraCertificates);
 
-        return chain.Build(leafCertificate);
+            NativeCallTrace.Mark("cert.build.begin");
+            var result = chain.Build(leafCertificate);
+            NativeCallTrace.Mark("cert.build.end", result ? "ok" : "fail");
+            return result;
+        }
     }
 }
 

@@ -2,6 +2,7 @@ using System.Net.Security;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using Tessera.Common;
+using Tessera.Common.Diagnostics;
 using Tessera.Net.Tcp;
 
 namespace Tessera.Net.Tls;
@@ -19,6 +20,20 @@ namespace Tessera.Net.Tls;
 /// </remarks>
 public sealed class SslStreamTlsTransport : ITlsTransport
 {
+    // The macOS / Mac Catalyst native TLS + X509 stack (Secure Transport +
+    // AppleCrypto SecTrust) is not safe under concurrent handshakes. A page
+    // with several HTTPS origins fans out parallel TLS handshakes, and the
+    // overlapping native certificate-chain work — SslStream's own internal
+    // chain building plus our validation callback's Export / LoadCertificate /
+    // X509Chain.Build — corrupts the managed heap, producing a hard SIGSEGV
+    // (reproducible by navigating to https://google.com; see the WP M3-06 TLS
+    // handoff). Serializing only our CertificateVerifier.Verify was not enough
+    // because the racing X509 work lives outside it. This process-wide gate
+    // serializes the whole handshake instead. Handshakes are CPU-cheap relative
+    // to the page fetch they gate, so the lost parallelism is not the
+    // page-load bottleneck.
+    private static readonly SemaphoreSlim HandshakeGate = new(1, 1);
+
     private readonly SslStream _sslStream;
     private readonly TcpConnectionStream _tcpStream;
     private bool _disposed;
@@ -46,6 +61,7 @@ public sealed class SslStreamTlsTransport : ITlsTransport
         if (string.IsNullOrWhiteSpace(options.ServerName) || options.ApplicationProtocols.Count == 0)
             return Result<SslStreamTlsTransport, TlsError>.Err(TlsError.InvalidOptions);
 
+        NativeCallTrace.Mark("tls.connect.begin", options.ServerName);
         var tcpStream = new TcpConnectionStream(tcpConnection);
 
         // Tracks whether a handshake failure was caused by our custom
@@ -58,14 +74,24 @@ public sealed class SslStreamTlsTransport : ITlsTransport
             leaveInnerStreamOpen: false,
             userCertificateValidationCallback: (_, certificate, chain, _) =>
             {
+                NativeCallTrace.Mark("tls.callback.enter", certificate is null ? "null-cert" : "");
                 if (certificate is null)
                 {
                     certificateRejected = true;
                     return false;
                 }
 
-                using var leaf = X509CertificateLoader.LoadCertificate(certificate.Export(X509ContentType.Cert));
+                NativeCallTrace.Mark("tls.callback.export.begin");
+                var der = certificate.Export(X509ContentType.Cert);
+                NativeCallTrace.Mark("tls.callback.export.end", $"der={der.Length}");
+
+                NativeCallTrace.Mark("tls.callback.load.begin");
+                using var leaf = X509CertificateLoader.LoadCertificate(der);
+                NativeCallTrace.Mark("tls.callback.load.end");
+
                 X509Certificate2Collection? extras = null;
+                NativeCallTrace.Mark("tls.callback.chain.begin",
+                    chain is null ? "null-chain" : $"elems={chain.ChainElements.Count}");
                 if (chain is not null && chain.ChainElements.Count > 1)
                 {
                     extras = new X509Certificate2Collection();
@@ -73,13 +99,16 @@ public sealed class SslStreamTlsTransport : ITlsTransport
                     for (var i = 1; i < chain.ChainElements.Count; i++)
                         extras.Add(chain.ChainElements[i].Certificate);
                 }
+                NativeCallTrace.Mark("tls.callback.chain.end");
 
+                NativeCallTrace.Mark("tls.callback.verify.begin");
                 var ok = CertificateVerifier.Verify(
                     leaf,
                     extras,
                     options.ServerName,
                     RootCertificates.Default,
                     options.ValidationTime);
+                NativeCallTrace.Mark("tls.callback.verify.end", ok ? "ok" : "rejected");
                 if (!ok)
                     certificateRejected = true;
                 return ok;
@@ -88,16 +117,34 @@ public sealed class SslStreamTlsTransport : ITlsTransport
         var authOptions = new SslClientAuthenticationOptions
         {
             TargetHost = options.ServerName,
-            EnabledSslProtocols = SslProtocols.Tls13,
+            // Let the OS TLS stack negotiate the best mutually-supported
+            // protocol. The predecessor BcTlsTransport spoke TLS 1.3 in pure
+            // managed code on every platform, but SslStream delegates to the
+            // OS: on macOS / Mac Catalyst it is backed by Secure Transport,
+            // which has no TLS 1.3 support — pinning SslProtocols.Tls13 there
+            // throws PlatformNotSupportedException and fails every handshake.
+            // SslProtocols.None defers to the OS (and its crypto policy):
+            // TLS 1.2 on Apple platforms, TLS 1.3 on Linux/Windows.
+            EnabledSslProtocols = SslProtocols.None,
             ApplicationProtocols = options.ApplicationProtocols
                 .Select(p => new SslApplicationProtocol(p))
                 .ToList(),
             CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
         };
 
+        // Serialize the whole handshake — AuthenticateAsClientAsync does not
+        // return until the validation callback has run, so holding the gate
+        // across it also serializes SslStream's internal chain building and
+        // our callback. See HandshakeGate above.
+        bool acquiredGate = false;
         try
         {
+            await HandshakeGate.WaitAsync(ct).ConfigureAwait(false);
+            acquiredGate = true;
+
+            NativeCallTrace.Mark("tls.authenticate.begin", options.ServerName);
             await sslStream.AuthenticateAsClientAsync(authOptions, ct).ConfigureAwait(false);
+            NativeCallTrace.Mark("tls.authenticate.end", options.ServerName);
 
             var negotiated = sslStream.NegotiatedApplicationProtocol;
             string? negotiatedName = negotiated.Protocol.IsEmpty
@@ -118,6 +165,11 @@ public sealed class SslStreamTlsTransport : ITlsTransport
             return certificateRejected
                 ? Result<SslStreamTlsTransport, TlsError>.Err(TlsError.CertificateRejected)
                 : Result<SslStreamTlsTransport, TlsError>.Err(TlsError.HandshakeFailed);
+        }
+        finally
+        {
+            if (acquiredGate)
+                HandshakeGate.Release();
         }
     }
 

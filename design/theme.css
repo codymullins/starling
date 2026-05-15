@@ -1,0 +1,256 @@
+/* Tessera design tokens
+   ───────────────────────────────────────────────────────────────────────
+   Three themes (dark / light / contrast), two densities (comfy / compact),
+   two type modes (sans / mono). All flow through CSS custom properties
+   from [data-theme], [data-density], [data-type] on .tessera root.
+*/
+
+/* ─── Fonts ───────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap');
+
+/* ─── Base theme: dark ────────────────────────────────────────────── */
+.tessera {
+  /* surfaces */
+  --bg:        #0c0d10;
+  --panel:     #14161b;
+  --surface:   #1b1e25;
+  --raise:     #232730;
+  --hover:     rgba(255,255,255,0.04);
+  --press:     rgba(255,255,255,0.07);
+
+  /* borders */
+  --border:    rgba(255,255,255,0.06);
+  --hair:      rgba(255,255,255,0.10);
+  --strong:    rgba(255,255,255,0.18);
+
+  /* text */
+  --text:      #e8e9ed;
+  --text-2:    #b8bdc8;
+  --muted:     #7f8492;
+  --faint:     #525866;
+  --inverse:   #0c0d10;
+
+  /* accent (mint, carried over from current Tessera) */
+  --accent:    #7dd3a0;
+  --accent-2:  #5fb886;
+  --accent-on: #0c0d10;
+  --accent-bg: rgba(125,211,160,0.10);
+  --accent-line: rgba(125,211,160,0.35);
+
+  /* status */
+  --ok:        #7dd3a0;
+  --warn:      #f5b942;
+  --err:       #ef6f7a;
+  --info:      #6db3ff;
+
+  /* category palette (flame chart, log levels, IPC channels) */
+  --cat-html:    #7dd3a0;
+  --cat-css:     #a78bfa;
+  --cat-js:      #f59e0b;
+  --cat-layout:  #60a5fa;
+  --cat-paint:   #f472b6;
+  --cat-gc:      #ef6f7a;
+  --cat-net:     #22d3ee;
+  --cat-idle:    #3a3f4b;
+
+  /* webview body (the rendered page area) — light by default,
+     so the page itself doesn't follow chrome theme */
+  --web-bg:     #ffffff;
+  --web-text:   #1a1a1a;
+  --web-link:   #2a5dff;
+  --web-visited:#7c4dff;
+
+  /* density (comfy default) */
+  --row:        36px;
+  --row-sm:     30px;
+  --row-xs:     24px;
+  --pad:        14px;
+  --pad-sm:     10px;
+  --gap:        10px;
+  --gap-sm:     6px;
+  --r:          12px;
+  --r-md:       10px;
+  --r-sm:       7px;
+  --r-pill:     999px;
+
+  /* typography */
+  --font-sans:  'Geist', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono:  'Geist Mono', ui-monospace, 'JetBrains Mono', Menlo, monospace;
+  --font-chrome: var(--font-sans);  /* what chrome uses, swapped by [data-type] */
+
+  --fs-xs:      11px;
+  --fs-sm:      12px;
+  --fs-md:      13px;
+  --fs-lg:      14px;
+  --fs-xl:      16px;
+
+  /* shadows */
+  --sh-1:       0 1px 0 rgba(255,255,255,0.04) inset, 0 1px 2px rgba(0,0,0,0.4);
+  --sh-2:       0 10px 30px rgba(0,0,0,0.35), 0 2px 6px rgba(0,0,0,0.2);
+  --sh-3:       0 24px 60px rgba(0,0,0,0.45);
+
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-chrome);
+  font-size: var(--fs-md);
+  font-feature-settings: 'ss01', 'cv11';
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Light theme ─────────────────────────────────────────────────── */
+/* Warm-paper bg, ink text, sage-mint accent kept readable on both.
+   Saturation pulled down on flame colors so they read on a light panel. */
+.tessera[data-theme="light"] {
+  --bg:        #f4f3ee;        /* warm paper */
+  --panel:     #fbfaf6;        /* card */
+  --surface:   #ffffff;        /* input / well */
+  --raise:     #ebe9e1;
+  --hover:     rgba(0,0,0,0.04);
+  --press:     rgba(0,0,0,0.08);
+  --border:    rgba(40,32,20,0.10);
+  --hair:      rgba(40,32,20,0.14);
+  --strong:    rgba(40,32,20,0.30);
+  --text:      #1a1a17;
+  --text-2:    #44423c;
+  --muted:     #6e6a5e;
+  --faint:     #9a9587;
+  --inverse:   #ffffff;
+  --accent:    #2f8a5e;
+  --accent-2:  #246b48;
+  --accent-on: #ffffff;
+  --accent-bg: rgba(47,138,94,0.10);
+  --accent-line: rgba(47,138,94,0.35);
+  --ok:        #2f8a5e;
+  --warn:      #b97309;
+  --err:       #c54250;
+  --info:      #2a5dcf;
+  --cat-html:    #2f8a5e;
+  --cat-css:     #6a4cd0;
+  --cat-js:      #c47a0a;
+  --cat-layout:  #2a5dcf;
+  --cat-paint:   #c93f7c;
+  --cat-gc:      #c54250;
+  --cat-net:     #0c8398;
+  --cat-idle:    #d4d1c5;
+  --sh-1:       0 1px 0 rgba(255,255,255,0.6) inset, 0 1px 2px rgba(0,0,0,0.05);
+  --sh-2:       0 10px 30px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04);
+  --sh-3:       0 18px 50px rgba(40,32,20,0.12);
+
+  /* Bars on a light bg shouldn't punch black text — switch flame label
+     color so it reads. Hooked in chrome.jsx via var(--bar-ink). */
+  --bar-ink:   #1a1a17;
+}
+.tessera { --bar-ink: #0c0d10; }   /* default for dark/contrast */
+
+/* ─── High contrast ───────────────────────────────────────────────── */
+.tessera[data-theme="contrast"] {
+  --bg:        #000000;
+  --panel:     #0a0a0a;
+  --surface:   #121214;
+  --raise:     #1a1a1c;
+  --hover:     rgba(255,255,255,0.08);
+  --press:     rgba(255,255,255,0.12);
+  --border:    rgba(255,255,255,0.20);
+  --hair:      rgba(255,255,255,0.30);
+  --strong:    rgba(255,255,255,0.55);
+  --text:      #ffffff;
+  --text-2:    #e8e8e8;
+  --muted:     #b0b0b0;
+  --faint:     #808080;
+  --accent:    #a4f5c2;
+  --accent-on: #000000;
+  --accent-bg: rgba(164,245,194,0.15);
+  --accent-line: rgba(164,245,194,0.55);
+}
+
+/* ─── Compact density ─────────────────────────────────────────────── */
+.tessera[data-density="compact"] {
+  --row:        28px;
+  --row-sm:     24px;
+  --row-xs:     20px;
+  --pad:        10px;
+  --pad-sm:     7px;
+  --gap:        7px;
+  --gap-sm:     4px;
+  --r:          9px;
+  --r-md:       7px;
+  --r-sm:       5px;
+  --fs-xs:      10px;
+  --fs-sm:      11px;
+  --fs-md:      12px;
+  --fs-lg:      13px;
+  --fs-xl:      14px;
+}
+
+/* ─── Mono mode ───────────────────────────────────────────────────── */
+.tessera[data-type="mono"] {
+  --font-chrome: var(--font-mono);
+}
+.tessera[data-type="mono"] { letter-spacing: -0.01em; }
+
+/* ─── Resets for the things we use inside .tessera ────────────────── */
+.tessera, .tessera * {
+  box-sizing: border-box;
+}
+.tessera button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+.tessera input {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  outline: none;
+}
+
+/* Pill utility */
+.tessera .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.01em;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-line);
+  white-space: nowrap;
+}
+.tessera .pill .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+
+/* Stat utility */
+.tessera .stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+.tessera .stat b { color: var(--text); font-weight: 500; }
+
+/* Hairline divider */
+.tessera .hr {
+  height: 1px;
+  background: var(--border);
+}
+.tessera .vr {
+  width: 1px;
+  background: var(--border);
+  align-self: stretch;
+}
