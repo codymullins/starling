@@ -2,6 +2,7 @@ namespace Tessera.Css.Properties;
 
 public enum PropertyId
 {
+    // Box / position
     Display,
     Position,
     Top,
@@ -28,6 +29,7 @@ public enum PropertyId
     BoxSizing,
     OverflowX,
     OverflowY,
+    OverflowClipMargin,
     BorderTopWidth,
     BorderRightWidth,
     BorderBottomWidth,
@@ -58,4 +60,183 @@ public enum PropertyId
     TextTransform,
     WhiteSpace,
     Direction,
+
+    // Flexbox
+    FlexDirection,
+    FlexWrap,
+    FlexGrow,
+    FlexShrink,
+    FlexBasis,
+    Order,
+    JustifyContent,
+    AlignItems,
+    AlignSelf,
+    AlignContent,
+    JustifyItems,
+    JustifySelf,
+
+    // Grid
+    GridTemplateColumns,
+    GridTemplateRows,
+    GridTemplateAreas,
+    GridAutoColumns,
+    GridAutoRows,
+    GridAutoFlow,
+    GridColumnStart,
+    GridColumnEnd,
+    GridRowStart,
+    GridRowEnd,
+
+    // Gap
+    RowGap,
+    ColumnGap,
+
+    // Sizing
+    AspectRatio,
+    ObjectFit,
+    ObjectPosition,
+
+    // Visual effects
+    Transform,
+    TransformOrigin,
+    TransformBox,
+    Translate,
+    Scale,
+    Rotate,
+    Perspective,
+    PerspectiveOrigin,
+    Filter,
+    BackdropFilter,
+    MixBlendMode,
+    BackgroundBlendMode,
+    ClipPath,
+    MaskImage,
+    MaskPosition,
+    MaskSize,
+    MaskRepeat,
+    MaskClip,
+    MaskOrigin,
+    MaskComposite,
+    MaskMode,
+
+    // Containment / rendering
+    Contain,
+    ContentVisibility,
+    WillChange,
+    Isolation,
+
+    // Scrolling
+    ScrollBehavior,
+    ScrollSnapType,
+    ScrollSnapAlign,
+    ScrollSnapStop,
+    ScrollMarginTop,
+    ScrollMarginRight,
+    ScrollMarginBottom,
+    ScrollMarginLeft,
+    ScrollPaddingTop,
+    ScrollPaddingRight,
+    ScrollPaddingBottom,
+    ScrollPaddingLeft,
+    OverscrollBehaviorX,
+    OverscrollBehaviorY,
+
+    // Forms / UI
+    AccentColor,
+    CaretColor,
+    ColorScheme,
+    Appearance,
+    PointerEvents,
+    UserSelect,
+    Cursor,
+
+    // Logical: margin
+    MarginInlineStart,
+    MarginInlineEnd,
+    MarginBlockStart,
+    MarginBlockEnd,
+
+    // Logical: padding
+    PaddingInlineStart,
+    PaddingInlineEnd,
+    PaddingBlockStart,
+    PaddingBlockEnd,
+
+    // Logical: border width/style/color
+    BorderInlineStartWidth,
+    BorderInlineEndWidth,
+    BorderBlockStartWidth,
+    BorderBlockEndWidth,
+    BorderInlineStartStyle,
+    BorderInlineEndStyle,
+    BorderBlockStartStyle,
+    BorderBlockEndStyle,
+    BorderInlineStartColor,
+    BorderInlineEndColor,
+    BorderBlockStartColor,
+    BorderBlockEndColor,
+
+    // Logical: border radii (corner-relative)
+    BorderStartStartRadius,
+    BorderStartEndRadius,
+    BorderEndStartRadius,
+    BorderEndEndRadius,
+
+    // Logical: inset
+    InsetInlineStart,
+    InsetInlineEnd,
+    InsetBlockStart,
+    InsetBlockEnd,
+
+    // Logical: sizing
+    InlineSize,
+    BlockSize,
+    MinInlineSize,
+    MinBlockSize,
+    MaxInlineSize,
+    MaxBlockSize,
+
+    // Writing mode
+    WritingMode,
+    TextOrientation,
+    UnicodeBidi,
+
+    // Text decoration
+    TextDecorationLine,
+    TextDecorationStyle,
+    TextDecorationColor,
+    TextDecorationThickness,
+    TextUnderlineOffset,
+    TextUnderlinePosition,
+    TextAlignLast,
+
+    // Text layout
+    TextIndent,
+    WordSpacing,
+    LetterSpacing,
+    WhiteSpaceCollapse,
+    TextWrap,
+    WordBreak,
+    OverflowWrap,
+    Hyphens,
+    TabSize,
+    LineBreak,
+
+    // Transitions
+    TransitionProperty,
+    TransitionDuration,
+    TransitionTimingFunction,
+    TransitionDelay,
+    TransitionBehavior,
+
+    // Animations
+    AnimationName,
+    AnimationDuration,
+    AnimationTimingFunction,
+    AnimationDelay,
+    AnimationIterationCount,
+    AnimationDirection,
+    AnimationFillMode,
+    AnimationPlayState,
+    AnimationComposition,
 }
