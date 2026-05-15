@@ -11,7 +11,11 @@ public abstract record CssRule;
 
 public sealed record StyleRule(
     IReadOnlyList<CssComponentValue> Prelude,
-    IReadOnlyList<CssDeclaration> Declarations) : CssRule;
+    IReadOnlyList<CssDeclaration> Declarations,
+    IReadOnlyList<CssRule>? NestedRules = null) : CssRule
+{
+    public IReadOnlyList<CssRule> NestedRulesOrEmpty => NestedRules ?? [];
+}
 
 public sealed record AtRule(
     string Name,

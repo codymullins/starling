@@ -28,24 +28,65 @@ public sealed class CssParser
         => new(_source, ConsumeRuleList(topLevel: true), origin);
 
     public IReadOnlyList<CssDeclaration> ParseDeclarationList()
+        => ParseDeclarationsAndNested(allowNesting: false).Declarations;
+
+    private (IReadOnlyList<CssDeclaration> Declarations, IReadOnlyList<CssRule> NestedRules) ParseDeclarationsAndNested(bool allowNesting)
     {
         var declarations = new List<CssDeclaration>();
+        var nestedRules = new List<CssRule>();
         while (!IsEnd && Current.Type != CssTokenType.RightBrace)
         {
             SkipWhitespaceAndSemicolons();
             if (Current.Type == CssTokenType.Eof || Current.Type == CssTokenType.RightBrace)
                 break;
 
-            if (Current.Type == CssTokenType.Ident && PeekNonWhitespace(1).Type == CssTokenType.Colon)
+            if (allowNesting && Current.Type == CssTokenType.AtKeyword)
+            {
+                // Nested at-rule inside a style rule.
+                nestedRules.Add(ConsumeAtRule(insideStyleRule: true));
+                continue;
+            }
+
+            if (Current.Type == CssTokenType.Ident && PeekNonWhitespace(1).Type == CssTokenType.Colon &&
+                !LooksLikeNestedRuleStart())
             {
                 declarations.Add(ConsumeDeclaration());
+                continue;
+            }
+
+            if (allowNesting && LooksLikeNestedRuleStart())
+            {
+                nestedRules.Add(ConsumeQualifiedRule(allowNested: true));
                 continue;
             }
 
             ConsumeUntil(CssTokenType.Semicolon, CssTokenType.RightBrace);
         }
 
-        return declarations;
+        return (declarations, nestedRules);
+    }
+
+    // A nested style rule's prelude can be a `&`-prefixed selector, a combinator, an ident type selector,
+    // a class/id/`*`/`[`/`:` start, or arbitrary tokens followed by `{`. The simplest test that catches
+    // all of these and excludes declarations is: scan forward to the next `{` or `;` at depth 0; if `{` wins,
+    // it's a rule.
+    private bool LooksLikeNestedRuleStart()
+    {
+        var depth = 0;
+        for (var i = _position; i < _tokens.Count; i++)
+        {
+            var t = _tokens[i].Type;
+            if (t == CssTokenType.LeftParen || t == CssTokenType.LeftSquare)
+                depth++;
+            else if (t == CssTokenType.RightParen || t == CssTokenType.RightSquare)
+                depth = Math.Max(0, depth - 1);
+            else if (depth == 0)
+            {
+                if (t == CssTokenType.LeftBrace) return true;
+                if (t == CssTokenType.Semicolon || t == CssTokenType.RightBrace || t == CssTokenType.Eof) return false;
+            }
+        }
+        return false;
     }
 
     private List<CssRule> ConsumeRuleList(bool topLevel)
@@ -63,14 +104,14 @@ public sealed class CssParser
             }
 
             rules.Add(Current.Type == CssTokenType.AtKeyword
-                ? ConsumeAtRule()
-                : ConsumeQualifiedRule());
+                ? ConsumeAtRule(insideStyleRule: false)
+                : ConsumeQualifiedRule(allowNested: false));
         }
 
         return rules;
     }
 
-    private AtRule ConsumeAtRule()
+    private AtRule ConsumeAtRule(bool insideStyleRule)
     {
         var name = Current.Value;
         _position++;
@@ -95,24 +136,54 @@ public sealed class CssParser
             return new AtRule(name, prelude, [], declarations);
         }
 
+        // CSS Nesting 1: when an at-rule (media/supports/layer) appears inside a style rule,
+        // its body is a mix of declarations and nested rules, the same as the parent style rule.
+        // We wrap bare declarations in a synthetic StyleRule with `&` as prelude so the
+        // cascade walker treats them as applying to the parent selector.
+        if (insideStyleRule && name is "media" or "supports" or "layer" ||
+            insideStyleRule && IsConditionalAtRule(name))
+        {
+            var (decls, nested) = ParseDeclarationsAndNested(allowNesting: true);
+            var combined = new List<CssRule>();
+            if (decls.Count > 0)
+                combined.Add(SyntheticAmpersandRule(decls));
+            combined.AddRange(nested);
+            ConsumeIf(CssTokenType.RightBrace);
+            return new AtRule(name, prelude, combined, []);
+        }
+
         var rules = ConsumeRuleList(topLevel: false);
         ConsumeIf(CssTokenType.RightBrace);
         return new AtRule(name, prelude, rules, []);
     }
 
-    private StyleRule ConsumeQualifiedRule()
+    private static bool IsConditionalAtRule(string name)
+        => name.Equals("media", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("supports", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("layer", StringComparison.OrdinalIgnoreCase);
+
+    private static StyleRule SyntheticAmpersandRule(IReadOnlyList<CssDeclaration> declarations)
+    {
+        var prelude = new List<CssComponentValue>
+        {
+            new CssTokenValue(new CssToken(CssTokenType.Delim, Delimiter: '&')),
+        };
+        return new StyleRule(prelude, declarations, null);
+    }
+
+    private StyleRule ConsumeQualifiedRule(bool allowNested)
     {
         var prelude = ConsumeComponentValuesUntil(
             preserveWhitespace: true,
             CssTokenType.LeftBrace,
             CssTokenType.Eof);
         if (Current.Type != CssTokenType.LeftBrace)
-            return new StyleRule(prelude, []);
+            return new StyleRule(prelude, [], null);
 
         _position++;
-        var declarations = ParseDeclarationList();
+        var (declarations, nested) = ParseDeclarationsAndNested(allowNesting: true);
         ConsumeIf(CssTokenType.RightBrace);
-        return new StyleRule(prelude, declarations);
+        return new StyleRule(prelude, declarations, nested.Count == 0 ? null : nested);
     }
 
     private CssDeclaration ConsumeDeclaration()
