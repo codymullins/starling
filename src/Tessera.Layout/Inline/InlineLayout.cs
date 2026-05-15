@@ -1,6 +1,7 @@
 using Tessera.Css.Cascade;
 using Tessera.Css.Properties;
 using Tessera.Css.Values;
+using Tessera.Dom;
 using Tessera.Layout.Box;
 using Tessera.Layout.Text;
 
@@ -209,20 +210,54 @@ internal sealed class InlineLayout
             }
         }
 
-        // <input size=N>: HTML attribute that hints at an N-character width.
-        // Spec uses the average character width of the font; 0.5em is a
-        // tolerable approximation that matches what most browsers settle on
-        // for proportional fonts.
-        var sizeAttr = box.Element?.GetAttribute("size");
-        if (!string.IsNullOrEmpty(sizeAttr) &&
-            int.TryParse(sizeAttr, System.Globalization.NumberStyles.Integer,
-                System.Globalization.CultureInfo.InvariantCulture, out var cols) && cols > 0)
+        // <input size=N>: HTML attribute that hints at an N-character width
+        // (used for text-like input types). Per HTML, the default size is 20
+        // and the rendered width is N "average character widths" of the font.
+        // We approximate "average character width" with the advance of the
+        // "0" glyph (a fair proxy for the CSS `ch` unit), which keeps the
+        // sizing in line with what browsers settle on for proportional fonts.
+        var cols = ResolveInputSizeCols(box.Element);
+        if (cols > 0)
         {
-            var minWidth = cols * fontSize * 0.5;
+            var charWidth = _measurer.MeasureWidth("0", fontSize, spec);
+            if (charWidth <= 0) charWidth = fontSize * 0.5;
+            var minWidth = cols * charWidth;
             if (minWidth > width) width = minWidth;
         }
 
         return width;
+    }
+
+    /// <summary>
+    /// Resolve the effective character-column width for an <c>&lt;input&gt;</c>'s
+    /// <c>size</c> attribute. Returns 0 for elements that don't honor <c>size</c>
+    /// (non-input, or input types like checkbox/submit/file) so callers don't
+    /// inflate their width. Text-like input types default to 20 columns when
+    /// the attribute is missing, matching the HTML spec.
+    /// </summary>
+    private static int ResolveInputSizeCols(Element? element)
+    {
+        if (element is null) return 0;
+        if (!string.Equals(element.LocalName, "input", StringComparison.OrdinalIgnoreCase))
+            return 0;
+
+        var sizeAttr = element.GetAttribute("size");
+        if (!string.IsNullOrEmpty(sizeAttr) &&
+            int.TryParse(sizeAttr, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out var explicitCols) && explicitCols > 0)
+        {
+            return explicitCols;
+        }
+
+        // Default size=20 only for the "text"-family input types per the
+        // HTML spec. Buttons, checkboxes, radios, etc. size to their content
+        // (label/glyph) instead.
+        var type = (element.GetAttribute("type") ?? "text").Trim().ToLowerInvariant();
+        return type switch
+        {
+            "text" or "search" or "tel" or "url" or "email" or "password" or "" => 20,
+            _ => 0,
+        };
     }
 
     private void ResolveAtomicBoxModel(InlineBox box, double containerWidth)
