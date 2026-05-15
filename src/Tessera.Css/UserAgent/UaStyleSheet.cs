@@ -59,6 +59,16 @@ public static class UaStyleSheet
         i, em, cite { font-style: italic; }
         pre { white-space: pre; font-family: monospace; }
 
+        /* HTML4 presentational tags. Legacy pages (notably google.com) still
+           emit these, so the UA sheet has to render them sensibly even though
+           they're deprecated in favour of CSS. We map the structural part to
+           CSS here; the per-attribute styling (e.g. `<font color>`) is a
+           separate, larger job. */
+        center { display: block; text-align: center; }
+        font { display: inline; }
+        nobr { white-space: nowrap; }
+        tt, code, kbd, samp { font-family: monospace; }
+
         /* Form controls. Real browsers render these as platform-native widgets;
            we approximate with CSS so an unstyled `<input>`/`<button>` shows up
            as a recognisable box. Author CSS still overrides everything here. */
@@ -78,6 +88,12 @@ public static class UaStyleSheet
           text-align: center;
         }
         input[type="hidden"] { display: none; }
+
+        /* Without an explicit height an empty `<input>` collapses to 0 because
+           we don't render the platform widget's intrinsic chrome. Force a
+           text-line's worth of min-height so empty fields are still visible;
+           author CSS that sets a real height/min-height wins over this. */
+        input { min-height: 1.2em; }
 
         /* <textarea> is multi-line; we don't have multi-line content layout
            for inline-block yet, so it ends up looking like a wide single-line
