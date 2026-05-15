@@ -24,6 +24,18 @@ internal sealed class InlineLayout
     }
 
     public double Layout(Box.Box container, double availableWidth)
+        => Layout(container, availableWidth, measure: false);
+
+    /// <summary>
+    /// Internal overload used by the inline-block shrink-to-fit measurement
+    /// pass. When <paramref name="measure"/> is <c>true</c>, alignment shifts
+    /// (<see cref="AlignLines"/>) are skipped so callers walking the resulting
+    /// frames (via <see cref="MeasureUsedWidth"/>) see the natural pre-shift
+    /// positions. Otherwise a text-align:center under a huge measurement
+    /// width would shift everything right by ~availableWidth/2, defeating
+    /// shrink-to-fit.
+    /// </summary>
+    internal double Layout(Box.Box container, double availableWidth, bool measure)
     {
         var fontSize = ResolveFontSize(container.Style);
         var containerSpec = ResolveFontSpec(container.Style);
@@ -73,7 +85,8 @@ internal sealed class InlineLayout
             }
         }
 
-        AlignLines(container.Style, availableWidth, fragments, placedImages, placedAtomics);
+        if (!measure)
+            AlignLines(container.Style, availableWidth, fragments, placedImages, placedAtomics);
         return cursorY + currentLineHeight;
     }
 
@@ -144,7 +157,7 @@ internal sealed class InlineLayout
     ///   by <see cref="Tree.BoxTreeBuilder"/>).</item>
     ///   <item>Only inline-level non-text children (nested inline-blocks,
     ///   images, <c>&lt;br&gt;</c>, spans) → a recursive inline-formatting
-    ///   sub-pass via <see cref="Layout"/>, sized via a max-content
+    ///   sub-pass via <see cref="Layout(Box.Box, double)"/>, sized via a max-content
     ///   approximation so the inline-block shrinks-to-fit (CSS 2.1 §10.3.5).</item>
     ///   <item>Only text children → the lightweight
     ///   <see cref="LayoutAtomicContent"/> path that measures glyph widths
@@ -200,7 +213,7 @@ internal sealed class InlineLayout
             {
                 const double measureWidth = 1_000_000d;
                 var measureLayout = new Block.BlockLayout(_measurer, viewport);
-                measureLayout.LayoutChildren(box, measureWidth);
+                measureLayout.LayoutChildren(box, measureWidth, measure: true);
                 var maxContent = MeasureUsedWidth(box);
                 var available = Math.Max(0, availableWidth - cursorX);
                 subWidth = Math.Min(maxContent, available);
@@ -230,7 +243,7 @@ internal sealed class InlineLayout
             else
             {
                 const double measureWidth = 1_000_000d;
-                this.Layout(box, measureWidth);
+                this.Layout(box, measureWidth, measure: true);
                 var maxContent = MeasureUsedWidth(box);
                 var available = Math.Max(0, availableWidth - cursorX);
                 subWidth = Math.Min(maxContent, available);
@@ -608,7 +621,7 @@ internal sealed class InlineLayout
     }
 
     /// <summary>
-    /// After a recursive <see cref="Layout"/> sub-pass on
+    /// After a recursive <see cref="Layout(Box.Box, double)"/> sub-pass on
     /// <paramref name="box"/>, measure the rightmost X reached by any placed
     /// descendant. This is the max-content extent of the inline-block —
     /// suitable as its content-box width for shrink-to-fit sizing (CSS 2.1

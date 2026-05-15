@@ -52,18 +52,27 @@ internal sealed class BlockLayout
     /// for an inline-block) compose the result into their own box model.
     /// </summary>
     internal double LayoutChildren(Box.Box parent, double containerWidth)
+        => LayoutChildren(parent, containerWidth, measure: false);
+
+    /// <summary>
+    /// Lay out children with the option of running in measurement mode, used
+    /// by the inline-block shrink-to-fit pass. In measurement mode the inline
+    /// formatting context skips its post-layout alignment shifts so the
+    /// caller's <c>MeasureUsedWidth</c> walk sees natural pre-shift positions.
+    /// </summary>
+    internal double LayoutChildren(Box.Box parent, double containerWidth, bool measure)
     {
         var cursorY = 0d;
         var prevBottomMargin = 0d;
         var first = true;
         foreach (var child in parent.Children)
         {
-            LayoutBlock(child, containerWidth, ref cursorY, ref prevBottomMargin, ref first);
+            LayoutBlock(child, containerWidth, ref cursorY, ref prevBottomMargin, ref first, measure);
         }
         return cursorY;
     }
 
-    private void LayoutBlock(Box.Box child, double containerWidth, ref double cursorY, ref double prevBottomMargin, ref bool first)
+    private void LayoutBlock(Box.Box child, double containerWidth, ref double cursorY, ref double prevBottomMargin, ref bool first, bool measure = false)
     {
         if (child.Kind == BoxKind.AnonymousBlock)
         {
@@ -74,7 +83,7 @@ internal sealed class BlockLayout
             child.Padding = Edges.Zero;
             child.Border = Edges.Zero;
 
-            var inlineHeight = _inline.Layout(child, containerWidth);
+            var inlineHeight = _inline.Layout(child, containerWidth, measure);
             child.Frame = new Rect(0, cursorY, containerWidth, inlineHeight);
             cursorY = child.Frame.Bottom;
             prevBottomMargin = 0;
@@ -98,7 +107,7 @@ internal sealed class BlockLayout
         // handled by ResolveBoxModel).
         ResolveAutoHorizontalMargins(child, containerWidth, width);
 
-        var childContentHeight = LayoutChildren(child, width);
+        var childContentHeight = LayoutChildren(child, width, measure);
 
         var explicitHeight = ResolveLength(child.Style, PropertyId.Height, _viewport.Height, _viewport, allowAuto: true);
         var resolvedHeight = explicitHeight ?? childContentHeight;
