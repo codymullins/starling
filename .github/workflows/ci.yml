@@ -20,14 +20,14 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Install native codec libs (Linux)
         if: runner.os == 'Linux'
-        # Tessera.Codecs' Linux decoder tests dlopen these at runtime; the
+        # Starling.Codecs' Linux decoder tests dlopen these at runtime; the
         # ubuntu runner does not ship libwebp by default.
         run: sudo apt-get update && sudo apt-get install -y libpng16-16 libjpeg-turbo8 libwebp7
       - name: Restore (locked)
         run: dotnet restore --locked-mode
       # The native Skia shim (libtessera_skia.*) is a HARD REQUIREMENT — Skia
       # Graphite is the engine's sole rasterizer, there is no managed fallback.
-      # Tessera.Skia.csproj has a BeforeTargets="Build" guard that fails the
+      # Starling.Skia.csproj has a BeforeTargets="Build" guard that fails the
       # build with an actionable error if the shim for the current OS is
       # missing, so `dotnet build` below cannot pass without it.
       #
@@ -84,27 +84,27 @@ jobs:
         run: dotnet format --verify-no-changes
       - name: interop seam policy — confine native interop
         # Interop seam policy: native LibraryImport/DllImport is confined to the
-        # designated interop projects — Tessera.Skia and Tessera.Codecs. Every
+        # designated interop projects — Starling.Skia and Starling.Codecs. Every
         # other engine project stays P/Invoke-free. The two interop projects are
         # enforced-clean by *omission* from the grep list below: they are simply
         # never added. If the Shell needs platform interop later, narrow this
         # list rather than relax the policy.
-        # NOTE: Tessera.Skia is forward-declared — the project lands in wp:M3-06h.
+        # NOTE: Starling.Skia is forward-declared — the project lands in wp:M3-06h.
         run: |
           set -e
           ! grep -rn --include='*.cs' 'DllImport\|LibraryImport' \
-              src/Tessera.Common/   \
-              src/Tessera.Url/      \
-              src/Tessera.Net/      \
-              src/Tessera.Html/     \
-              src/Tessera.Dom/      \
-              src/Tessera.Css/      \
-              src/Tessera.Layout/   \
-              src/Tessera.Paint/    \
-              src/Tessera.Js/       \
-              src/Tessera.Bindings/ \
-              src/Tessera.Loop/     \
-              src/Tessera.Engine/
+              src/Starling.Common/   \
+              src/Starling.Url/      \
+              src/Starling.Net/      \
+              src/Starling.Html/     \
+              src/Starling.Dom/      \
+              src/Starling.Css/      \
+              src/Starling.Layout/   \
+              src/Starling.Paint/    \
+              src/Starling.Js/       \
+              src/Starling.Bindings/ \
+              src/Starling.Loop/     \
+              src/Starling.Engine/
 
   # Live-network acceptance for the M2 exit demo (wp:M2-07b). Opt-in via
   # TESSERA_ALLOW_NETWORK=1 so the main matrix is not at the mercy of

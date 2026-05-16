@@ -1,0 +1,16 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.3.1">
+
+  <ItemGroup>
+    <ProjectReference Include="..\src\Starling.Headless\Starling.Headless.csproj" />
+    <ProjectReference Include="..\src\Starling.Gui\Starling.Gui.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UserSecretsId>d05a8b79-454f-4a74-8a5c-c50efbcf087f</UserSecretsId>
+  </PropertyGroup>
+
+</Project>

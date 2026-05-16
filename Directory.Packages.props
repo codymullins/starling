@@ -10,8 +10,8 @@
     <PackageVersion Include="SixLabors.ImageSharp.Drawing" Version="2.1.7" />
     <PackageVersion Include="SixLabors.Fonts"              Version="2.1.3" />
 
-    <!-- UI shell — .NET MAUI 10 (Mac Catalyst only at v1; see src/Tessera.Gui).
-         The GUI project is intentionally kept out of Tessera.sln so core/CLI
+    <!-- UI shell — .NET MAUI 10 (Mac Catalyst only at v1; see src/Starling.Gui).
+         The GUI project is intentionally kept out of Starling.sln so core/CLI
          builds don't require MAUI workloads. -->
     <PackageVersion Include="Microsoft.Maui.Controls"      Version="10.0.20" />
     <PackageVersion Include="ModelContextProtocol"         Version="1.3.0" />
@@ -20,10 +20,10 @@
     <PackageVersion Include="BouncyCastle.Cryptography"    Version="2.5.0" />
 
     <!-- Legacy single-byte / CJK encodings (pure-managed; Rule-0 clean).
-         Consumed by Tessera.Engine for WHATWG-table charset support. -->
+         Consumed by Starling.Engine for WHATWG-table charset support. -->
     <PackageVersion Include="System.Text.Encoding.CodePages" Version="9.0.0" />
 
-    <!-- Aspire orchestration + observability (Tessera.AppHost + Tessera.ServiceDefaults). -->
+    <!-- Aspire orchestration + observability (Starling.AppHost + Starling.ServiceDefaults). -->
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience"          Version="10.5.0" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery"         Version="10.5.0" />
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol"  Version="1.15.3" />

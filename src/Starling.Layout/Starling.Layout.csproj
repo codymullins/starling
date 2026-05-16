@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Paint and the test harness reach into layout-internal helpers
+         (BlockLayout.ToPx, etc.) to convert resolved style values to px. -->
+    <InternalsVisibleTo Include="Starling.Paint" />
+    <InternalsVisibleTo Include="Starling.Layout.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Starling.Common\Starling.Common.csproj" />
+    <ProjectReference Include="..\Starling.Css\Starling.Css.csproj" />
+    <ProjectReference Include="..\Starling.Dom\Starling.Dom.csproj" />
+    <ProjectReference Include="..\Starling.Url\Starling.Url.csproj" />
+  </ItemGroup>
+</Project>

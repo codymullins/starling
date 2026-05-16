@@ -1,6 +1,6 @@
 {
   "appHost": {
     "language": "csharp",
-    "path": "Tessera.AppHost/Tessera.AppHost.csproj"
+    "path": "Starling.AppHost/Starling.AppHost.csproj"
   }
 }

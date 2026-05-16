@@ -41,14 +41,14 @@
   </ItemGroup>
 
   <!--
-    Tessera.Skia keeps its Sk* handle wrappers `internal` (only the interop
+    Starling.Skia keeps its Sk* handle wrappers `internal` (only the interop
     seam should name native shapes). wp:M3-06i's SkiaGraphiteBackend lives in
-    Tessera.Paint and drives those handles, so it needs internals access.
-    Declared here rather than in Tessera.Skia.csproj because wp:M3-06i may not
-    edit src/Tessera.Skia/* — 06h owns that project. Scoped by project name so
-    only the Tessera.Skia assembly emits the attribute.
+    Starling.Paint and drives those handles, so it needs internals access.
+    Declared here rather than in Starling.Skia.csproj because wp:M3-06i may not
+    edit src/Starling.Skia/* — 06h owns that project. Scoped by project name so
+    only the Starling.Skia assembly emits the attribute.
   -->
-  <ItemGroup Condition="'$(MSBuildProjectName)' == 'Tessera.Skia'">
-    <InternalsVisibleTo Include="Tessera.Paint" />
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'Starling.Skia'">
+    <InternalsVisibleTo Include="Starling.Paint" />
   </ItemGroup>
 </Project>

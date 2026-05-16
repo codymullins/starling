@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Starling.Common\Starling.Common.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Wired into the GUI (HostBuilder-shaped MauiAppBuilder) and the
+         Headless CLI (plain Main entrypoint). The OTLP exporter reads
+         OTEL_EXPORTER_OTLP_ENDPOINT / OTEL_SERVICE_NAME from env; Aspire
+         AppHost sets these automatically when it launches child resources. -->
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" />
+  </ItemGroup>
+</Project>

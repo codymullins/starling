@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Starling.Common\Starling.Common.csproj" />
+    <ProjectReference Include="..\Starling.Dom\Starling.Dom.csproj" />
+    <ProjectReference Include="..\Starling.Js\Starling.Js.csproj" />
+  </ItemGroup>
+</Project>

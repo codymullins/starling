@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Engine.Tests exercises internal helpers like ExtractDisplayText. -->
+    <InternalsVisibleTo Include="Starling.Engine.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Pure-managed legacy single-byte / CJK encodings (Rule-0 clean).
+         NU1510: .NET 10 ships an in-box copy of this assembly, but the
+         encoding provider must still be registered explicitly at startup
+         (see TesseraEngine static ctor). Suppress the prune warning. -->
+    <PackageReference Include="System.Text.Encoding.CodePages" NoWarn="NU1510" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Starling.Common\Starling.Common.csproj" />
+    <ProjectReference Include="..\Starling.Codecs\Starling.Codecs.csproj" />
+    <ProjectReference Include="..\Starling.Url\Starling.Url.csproj" />
+    <ProjectReference Include="..\Starling.Net\Starling.Net.csproj" />
+    <ProjectReference Include="..\Starling.Html\Starling.Html.csproj" />
+    <ProjectReference Include="..\Starling.Dom\Starling.Dom.csproj" />
+    <ProjectReference Include="..\Starling.Css\Starling.Css.csproj" />
+    <ProjectReference Include="..\Starling.Layout\Starling.Layout.csproj" />
+    <ProjectReference Include="..\Starling.Paint\Starling.Paint.csproj" />
+    <ProjectReference Include="..\Starling.Loop\Starling.Loop.csproj" />
+    <ProjectReference Include="..\Starling.Bindings\Starling.Bindings.csproj" />
+    <ProjectReference Include="..\Starling.Js\Starling.Js.csproj" />
+  </ItemGroup>
+</Project>

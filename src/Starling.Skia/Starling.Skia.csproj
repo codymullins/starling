@@ -1,0 +1,73 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!--
+      Tessera.Skia is one of the two designated interop seams (the other is
+      Tessera.Codecs). LibraryImport source generators are permitted here and
+      nowhere else in the engine — see AGENTS.md and wp:M3-06l-ci-policy.
+      AllowUnsafeBlocks is needed for the fixed-pointer pixel/glyph copies in
+      the native draw + readback paths.
+    -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Starling.Skia.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Starling.Common\Starling.Common.csproj" />
+  </ItemGroup>
+
+  <!--
+    Native packaging. libtessera_skia.{dylib,dll,so} is built out-of-band by
+    wp:M3-06g and lives under the gitignored repo-root runtimes/<rid>/native/
+    tree (NOT a NuGet package yet — that is a later WP). Copy whatever native
+    libs exist for the current RID into the build output's runtimes/<rid>/native
+    layout so the default .NET native loader finds them next to the assembly.
+    The module initializer (NativeLoader.cs) installs a SetDllImportResolver
+    fallback that also probes the repo-root runtimes dir directly — needed for
+    the Mac Catalyst .app-bundle layout and for test runs where the working
+    directory differs from the output dir.
+  -->
+  <PropertyGroup>
+    <_TesseraRuntimesDir>$(MSBuildThisFileDirectory)..\..\runtimes</_TesseraRuntimesDir>
+  </PropertyGroup>
+
+  <ItemGroup Condition="Exists('$(_TesseraRuntimesDir)\osx-arm64\native\libtessera_skia.dylib')">
+    <None Include="$(_TesseraRuntimesDir)\osx-arm64\native\libtessera_skia.dylib">
+      <Link>runtimes\osx-arm64\native\libtessera_skia.dylib</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(_TesseraRuntimesDir)\win-x64\native\tessera_skia.dll')">
+    <None Include="$(_TesseraRuntimesDir)\win-x64\native\tessera_skia.dll">
+      <Link>runtimes\win-x64\native\tessera_skia.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(_TesseraRuntimesDir)\linux-x64\native\libtessera_skia.so')">
+    <None Include="$(_TesseraRuntimesDir)\linux-x64\native\libtessera_skia.so">
+      <Link>runtimes\linux-x64\native\libtessera_skia.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!--
+    Skia Graphite is the engine's SOLE rasterizer — the native shim is a hard
+    requirement, there is no managed fallback. Fail the build loudly and
+    actionably if the shim for the current OS is missing, rather than letting it
+    surface as a runtime DllNotFoundException later. The shim is built
+    out-of-band (native/build-skia.sh) and is intentionally gitignored.
+  -->
+  <Target Name="_VerifyTesseraSkiaShim" BeforeTargets="Build">
+    <Error Condition="$([MSBuild]::IsOSPlatform('OSX')) And !Exists('$(_TesseraRuntimesDir)\osx-arm64\native\libtessera_skia.dylib')"
+           Text="Native Skia shim missing: runtimes/osx-arm64/native/libtessera_skia.dylib. Skia Graphite is the engine's sole rasterizer — there is no managed fallback. Build it: ./native/build-skia.sh (see native/README.md)." />
+    <Error Condition="$([MSBuild]::IsOSPlatform('Windows')) And !Exists('$(_TesseraRuntimesDir)\win-x64\native\tessera_skia.dll')"
+           Text="Native Skia shim missing: runtimes/win-x64/native/tessera_skia.dll. Skia Graphite is the engine's sole rasterizer — there is no managed fallback. Build it from a Developer PowerShell: native\build-skia.ps1 (see native/README.md). NOTE: the win-x64 native build has not been produced yet." />
+    <Error Condition="$([MSBuild]::IsOSPlatform('Linux')) And !Exists('$(_TesseraRuntimesDir)\linux-x64\native\libtessera_skia.so')"
+           Text="Native Skia shim missing: runtimes/linux-x64/native/libtessera_skia.so. Skia Graphite is the engine's sole rasterizer — there is no managed fallback. Build it: ./native/build-skia.sh (see native/README.md). NOTE: the linux-x64 native build has not been produced yet." />
+  </Target>
+</Project>

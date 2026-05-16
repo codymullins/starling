@@ -1,4 +1,4 @@
-# Tessera
+# Starling
 
 Managed-first .NET 10 web browser. Built from primitives, no Chromium / Gecko / WebKit reuse.
 Native interop is confined to two vetted seams (graphics + image codecs); everything
@@ -24,6 +24,7 @@ dotnet test
 
 # Render the static 'hello world' fixture (bare path is auto-normalized to file://)
 dotnet run --project src/Tessera.Headless -- render testdata/hello.html -o out.png
+# The built CLI binary is named `starling`.
 ```
 
 > **Native shim required.** Skia Graphite is the engine's sole rasterizer —
@@ -66,7 +67,7 @@ the engine-project allowlist (all engine projects *except* the two interop proje
 to enforce this — see
 [`02_PROJECT_SETUP.md`](browser-plan/02_PROJECT_SETUP.md#ci-matrix-githubworkflowsciyml).
 
-## Working on Tessera
+## Working on Starling
 
 Each subsystem has a focused doc in [`browser-plan/`](browser-plan/). For agent-facing work
 packages with explicit inputs / outputs / acceptance, see

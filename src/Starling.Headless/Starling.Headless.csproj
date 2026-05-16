@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>starling</AssemblyName>
+    <RootNamespace>Starling.Headless</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Starling.Engine\Starling.Engine.csproj" />
+    <!-- Tessera.Telemetry (OpenTelemetry → OTLP) instead of the heavier
+         Aspire ServiceDefaults: the CLI doesn't use HostBuilder or
+         ASP.NET, and OtelBootstrap.Initialize works on a plain Main. -->
+    <ProjectReference Include="..\Starling.Telemetry\Starling.Telemetry.csproj" />
+  </ItemGroup>
+</Project>

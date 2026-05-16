@@ -1,0 +1,100 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Override Directory.Build.props's single-target net10.0; MAUI needs the
+         per-platform TargetFrameworks shape. Mac Catalyst only at v1 — Windows
+         and Android are deferred. -->
+    <TargetFrameworks>net10.0-maccatalyst</TargetFrameworks>
+    <TargetFramework></TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Starling.Gui</RootNamespace>
+    <UseMaui>true</UseMaui>
+    <SingleProject>true</SingleProject>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <ApplicationTitle>Starling</ApplicationTitle>
+    <ApplicationId>dev.starling.gui</ApplicationId>
+    <ApplicationDisplayVersion>0.1</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+
+    <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">15.0</SupportedOSPlatformVersion>
+
+    <!-- MAUI scaffolding generates code that trips a handful of the strict
+         analyzer rules inherited from Directory.Build.props. The engine
+         projects keep TreatWarningsAsErrors; the GUI relaxes it so MAUI's
+         own generators don't gate the build. -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- CA1859 (return concrete types for perf) defaults to error severity;
+         MAUI's nested-builder idiom violates it in places we don't control. -->
+    <NoWarn>$(NoWarn);CA1859</NoWarn>
+
+    <!-- DIAGNOSTIC (M3-06 TLS crash): MAUI defaults Mac Catalyst to
+         MtouchLink=SdkOnly, which trims the BCL — including the
+         System.Security.Cryptography / System.Net.Security stack. The
+         https://google.com crash is a deterministic single-threaded heap
+         corruption inside X509Chain.Build's managed code (custom-root-trust
+         path), which the trimmer is the prime suspect for. Disabling the
+         linker bisects trimmer-vs-interpreter; if this stops the crash the
+         permanent fix is a TrimmerRootDescriptor preserving the crypto
+         assemblies rather than disabling linking wholesale. -->
+    <MtouchLink>None</MtouchLink>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Controls" />
+    <PackageReference Include="ModelContextProtocol" />
+    <ProjectReference Include="..\Starling.Engine\Starling.Engine.csproj" />
+    <ProjectReference Include="..\Starling.Telemetry\Starling.Telemetry.csproj" />
+  </ItemGroup>
+
+  <!--
+    Tessera.Skia (pulled in transitively via Tessera.Paint) ships
+    libtessera_skia.dylib as a native runtime asset. As of wp:M3-06k the GUI
+    paints through the Skia DisplayList path, so the dylib is a *legitimate
+    runtime dependency* and must ride inside the .app bundle.
+
+    The shim is NOT a link-time dependency: it has no exported symbols the
+    executable references directly — every entry point is reached through
+    [LibraryImport]/[DllImport], and Tessera.Skia's NativeLoader.cs installs a
+    SetDllImportResolver that dlopen()s it by absolute path from the bundle's
+    runtimes/<rid>/native/ layout (and tolerates its absence — see wp:M3-06l).
+
+    But the Mac Catalyst SDK auto-promotes any runtimes/<rid>/native/*.dylib
+    from a project reference into @(_FileNativeReference) with Kind=Dynamic,
+    which makes the native linker add an LC_LOAD_DYLIB(@rpath/...) to the
+    executable. dyld then *must* resolve the shim at launch — before any
+    managed code runs — and the app's only LC_RPATH points at MonoBundle/,
+    not the nested runtimes/<rid>/native/ dir where the dylib actually lands.
+    Result: a DYLD "Library not loaded" abort at startup, and the M3-06l
+    graceful-fallback path is unreachable because the process dies first.
+
+    Fix: stamp LinkToExecutable=false on the shim's @(_FileNativeReference)
+    entry. The SDK still *copies* it into the bundle
+    (_ComputeDynamicLibrariesToPublish keys off Kind=Dynamic + CopyToAppBundle,
+    not LinkToExecutable) but drops it from @(_NativeReferences), so no
+    LC_LOAD_DYLIB is emitted — exactly how the SDK treats PluginLibrary
+    assets. Loading is left entirely to NativeLoader.cs at runtime.
+
+    We also drop it from @(_DynamicLibraryToReidentify): with no link-time
+    reference, the install-name rewrite is pointless, and install_name_tool
+    chokes on the nested runtimes/<rid>/native/ source path anyway.
+
+    Timing: @(_FileNativeReference) and @(_DynamicLibraryToReidentify) are
+    both populated by _ComputeDynamicLibrariesToReidentify, and
+    @(_NativeReferences) is computed later in _ComputeLinkNativeExecutableInputs
+    — so this has to run AFTER the former and BEFORE _InstallNameTool (which
+    comfortably precedes the link-input computation).
+  -->
+  <Target Name="UnlinkSkiaNativeFromExecutable"
+          AfterTargets="_ComputeDynamicLibrariesToReidentify"
+          BeforeTargets="_InstallNameTool">
+    <ItemGroup>
+      <_FileNativeReference Update="@(_FileNativeReference)"
+          Condition="'%(Filename)%(Extension)' == 'libtessera_skia.dylib'"
+          LinkToExecutable="false" />
+      <_DynamicLibraryToReidentify Remove="@(_DynamicLibraryToReidentify)"
+          Condition="'%(Filename)%(Extension)' == 'libtessera_skia.dylib'" />
+    </ItemGroup>
+  </Target>
+</Project>
