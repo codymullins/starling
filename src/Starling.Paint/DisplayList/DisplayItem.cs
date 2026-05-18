@@ -1,6 +1,7 @@
 using Tessera.Common.Image;
 using Tessera.Css.Values;
 using Tessera.Layout;
+using Tessera.Layout.Text;
 
 namespace Tessera.Paint.DisplayList;
 
@@ -23,7 +24,8 @@ public sealed record DrawText(
     CssColor Color,
     IReadOnlyList<string> FontFamilies,
     bool Bold,
-    bool Italic) : DisplayItem;
+    bool Italic,
+    ShapedRun? Shaped = null) : DisplayItem;
 
 /// <summary>
 /// Blit a decoded image into <paramref name="Bounds"/>. <paramref name="Source"/>

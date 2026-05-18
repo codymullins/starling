@@ -234,6 +234,15 @@ public interface ITextMeasurer
     /// <summary>Advance width in CSS px for <paramref name="text"/> at the given font size and spec.</summary>
     double MeasureWidth(string text, double fontSize, FontSpec spec);
 
+    /// <summary>
+    /// Shape <paramref name="text"/> into a positioned glyph run plus its
+    /// total advance. Implementations without real font support (e.g.
+    /// <see cref="DefaultTextMeasurer"/>) may return an empty
+    /// <see cref="ShapedRun.Glyphs"/> array with a heuristic advance — the
+    /// paint backend treats that as "fall back to legacy shaping".
+    /// </summary>
+    ShapedRun Shape(string text, double fontSize, FontSpec spec);
+
     /// <summary>Line-height for the given font at the given size when CSS <c>line-height: normal</c> applies.</summary>
     double NormalLineHeight(double fontSize, FontSpec spec);
 
@@ -261,6 +270,14 @@ public sealed class DefaultTextMeasurer : ITextMeasurer
         }
         return total;
     }
+
+    /// <summary>
+    /// The heuristic has no real glyphs to emit; return an empty
+    /// <see cref="ShapedRun.Glyphs"/> array so the paint backend falls back to
+    /// its legacy shaping path. The advance is the heuristic width.
+    /// </summary>
+    public ShapedRun Shape(string text, double fontSize, FontSpec spec)
+        => new(Array.Empty<ShapedGlyph>(), MeasureWidth(text, fontSize, spec));
 
     public double NormalLineHeight(double fontSize, FontSpec spec) => fontSize * 1.2;
 

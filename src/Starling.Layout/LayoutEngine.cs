@@ -57,7 +57,7 @@ public sealed class LayoutEngine
 
         using (_diag.Span("layout", "block"))
         {
-            var block = new BlockLayout(_measurer, viewport);
+            var block = new BlockLayout(_measurer, viewport, _diag);
             block.Layout(root);
         }
 

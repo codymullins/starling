@@ -107,6 +107,15 @@ public sealed class ImageBox : Box
 /// <summary>
 /// A single line-aligned fragment of text emitted by the inline formatting
 /// context. <see cref="X"/> / <see cref="Y"/> are in the enclosing block's
-/// content-area coordinate space.
+/// content-area coordinate space. <see cref="Shaped"/>, when non-null, carries
+/// the pre-shaped glyph run produced by <see cref="Text.ITextMeasurer.Shape"/>
+/// at layout time so the paint backend can draw it without re-shaping.
 /// </summary>
-public readonly record struct TextFragment(string Text, double X, double Y, double Width, double Height, double Baseline);
+public readonly record struct TextFragment(
+    string Text,
+    double X,
+    double Y,
+    double Width,
+    double Height,
+    double Baseline,
+    Text.ShapedRun? Shaped = null);

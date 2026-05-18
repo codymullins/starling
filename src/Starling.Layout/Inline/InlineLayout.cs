@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using Tessera.Common.Diagnostics;
 using Tessera.Css.Cascade;
 using Tessera.Css.Properties;
 using Tessera.Css.Values;
@@ -16,11 +18,13 @@ internal sealed class InlineLayout
 {
     private readonly ITextMeasurer _measurer;
     private readonly Size? _viewport;
+    private readonly IDiagnostics _diag;
 
-    public InlineLayout(ITextMeasurer measurer, Size? viewport = null)
+    public InlineLayout(ITextMeasurer measurer, Size? viewport = null, IDiagnostics? diagnostics = null)
     {
         _measurer = measurer;
         _viewport = viewport;
+        _diag = diagnostics ?? NoopDiagnostics.Instance;
     }
 
     public double Layout(Box.Box container, double availableWidth)
@@ -37,6 +41,10 @@ internal sealed class InlineLayout
     /// </summary>
     internal double Layout(Box.Box container, double availableWidth, bool measure)
     {
+        using var span = _diag.Span("layout", "inline");
+        Activity.Current?.SetTag("inline.measure", measure);
+        Activity.Current?.SetTag("inline.available_width", availableWidth);
+
         var fontSize = ResolveFontSize(container.Style);
         var containerSpec = ResolveFontSpec(container.Style);
         var lineHeight = ResolveLineHeight(container.Style, fontSize, containerSpec);
@@ -49,6 +57,7 @@ internal sealed class InlineLayout
         // as a single unit with their own frame + box model.
         var runs = new List<InlineRun>();
         Flatten(container, runs);
+        Activity.Current?.SetTag("inline.runs", runs.Count);
 
         // No content → zero height.
         if (runs.Count == 0) return 0;
@@ -114,7 +123,9 @@ internal sealed class InlineLayout
             if (word.Length == 0) continue;
             // Collapse whitespace at the start of a line (white-space: normal).
             if (cursorX == 0 && string.IsNullOrWhiteSpace(word)) continue;
-            var width = _measurer.MeasureWidth(word, localFontSize, localSpec);
+            _diag.Counter("layout.text.measures", 1);
+            var shaped = _measurer.Shape(word, localFontSize, localSpec);
+            var width = shaped.Advance;
             var leadingSpace = word.StartsWith(" ", StringComparison.Ordinal);
 
             if (cursorX > 0 && cursorX + width > availableWidth)
@@ -126,16 +137,17 @@ internal sealed class InlineLayout
                 {
                     var trimmed = word.TrimStart(' ');
                     if (trimmed.Length == 0) continue;
-                    var trimmedWidth = _measurer.MeasureWidth(trimmed, localFontSize, localSpec);
+                    _diag.Counter("layout.text.measures", 1);
+                    var trimmedShape = _measurer.Shape(trimmed, localFontSize, localSpec);
                     AddFragment(run.Owner, fragments,
-                        new TextFragment(trimmed, cursorX, cursorY, trimmedWidth, currentLineHeight, containerBaseline));
-                    cursorX += trimmedWidth;
+                        new TextFragment(trimmed, cursorX, cursorY, trimmedShape.Advance, currentLineHeight, containerBaseline, trimmedShape));
+                    cursorX += trimmedShape.Advance;
                     continue;
                 }
             }
 
             AddFragment(run.Owner, fragments,
-                new TextFragment(word, cursorX, cursorY, width, currentLineHeight, _measurer.Baseline(localFontSize, localSpec)));
+                new TextFragment(word, cursorX, cursorY, width, currentLineHeight, _measurer.Baseline(localFontSize, localSpec), shaped));
             cursorX += width;
         }
     }
@@ -172,6 +184,8 @@ internal sealed class InlineLayout
         ref double cursorY,
         ref double currentLineHeight)
     {
+        using var span = _diag.Span("layout", "inline.atomic");
+
         ResolveAtomicBoxModel(box, availableWidth);
 
         var fontSize = ResolveFontSize(box.Style);
@@ -183,6 +197,7 @@ internal sealed class InlineLayout
 
         if (HasBlockLevelChild(box))
         {
+            Activity.Current?.SetTag("atomic.path", "bfc");
             // Inline-block with mixed/block children: run a BFC sub-pass.
             //
             // CSS 2.1 §10.3.5 shrink-to-fit:
@@ -211,21 +226,25 @@ internal sealed class InlineLayout
             }
             else
             {
-                const double measureWidth = 1_000_000d;
-                var measureLayout = new Block.BlockLayout(_measurer, viewport);
-                measureLayout.LayoutChildren(box, measureWidth, measure: true);
-                var maxContent = MeasureUsedWidth(box);
-                var available = Math.Max(0, availableWidth - cursorX);
-                subWidth = Math.Min(maxContent, available);
+                using (_diag.Span("layout", "inline.measure_pass"))
+                {
+                    const double measureWidth = 1_000_000d;
+                    var measureLayout = new Block.BlockLayout(_measurer, viewport, _diag);
+                    measureLayout.LayoutChildren(box, measureWidth, measure: true);
+                    var maxContent = MeasureUsedWidth(box);
+                    var available = Math.Max(0, availableWidth - cursorX);
+                    subWidth = Math.Min(maxContent, available);
+                }
             }
 
-            var sub = new Block.BlockLayout(_measurer, viewport);
+            var sub = new Block.BlockLayout(_measurer, viewport, _diag);
             var consumed = sub.LayoutChildren(box, subWidth);
             contentWidth = subWidth;
             contentHeight = consumed;
         }
         else if (HasNonTextInlineChild(box))
         {
+            Activity.Current?.SetTag("atomic.path", "ifc");
             // Inline-block whose children are inline-level non-text (nested
             // inline-blocks, <br>, <img>, spans). The text-only path would
             // silently drop these. Run an IFC sub-pass shrunk-to-fit via the
@@ -242,11 +261,14 @@ internal sealed class InlineLayout
             }
             else
             {
-                const double measureWidth = 1_000_000d;
-                this.Layout(box, measureWidth, measure: true);
-                var maxContent = MeasureUsedWidth(box);
-                var available = Math.Max(0, availableWidth - cursorX);
-                subWidth = Math.Min(maxContent, available);
+                using (_diag.Span("layout", "inline.measure_pass"))
+                {
+                    const double measureWidth = 1_000_000d;
+                    this.Layout(box, measureWidth, measure: true);
+                    var maxContent = MeasureUsedWidth(box);
+                    var available = Math.Max(0, availableWidth - cursorX);
+                    subWidth = Math.Min(maxContent, available);
+                }
             }
 
             var consumed = this.Layout(box, subWidth);
@@ -255,6 +277,7 @@ internal sealed class InlineLayout
         }
         else
         {
+            Activity.Current?.SetTag("atomic.path", "text");
             contentWidth = LayoutAtomicContent(box, fontSize, spec);
             contentHeight = lineHeight;
         }

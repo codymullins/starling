@@ -85,7 +85,7 @@ public sealed class MainPage : ContentPage, IBrowserController
         _browserControl.Attach(this);
 
         // The page surface and its interaction state outlive theme rebuilds.
-        _webview = new WebviewPanel(tm, OnLinkActivated, OnWebviewStatus);
+        _webview = new WebviewPanel(tm, OnLinkActivated, OnWebviewStatus, diag);
 
         _statusText = $"mcp → {_mcpServer.Endpoint} · trace log → {NativeCallTrace.Path}";
         _statusIsError = false;

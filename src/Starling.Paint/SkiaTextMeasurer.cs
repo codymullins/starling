@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 using Tessera.Layout.Text;
 using Tessera.Skia.Handles;
+using Tessera.Skia.Interop;
 
 namespace Tessera.Paint;
 
@@ -45,24 +47,38 @@ public sealed class SkiaTextMeasurer : ITextMeasurer, IDisposable
     }
 
     public double MeasureWidth(string text, double fontSize, FontSpec spec)
+        => Shape(text, fontSize, spec).Advance;
+
+    /// <summary>
+    /// Shape <paramref name="text"/> once, return the run's glyphs plus its
+    /// total advance. The advance is recovered via the same trailing-probe
+    /// trick <see cref="MeasureWidth"/> used to use — the difference is that
+    /// the real glyphs survive the call instead of being thrown away. The
+    /// paint backend draws them directly, eliminating the per-render reshape.
+    /// </summary>
+    public ShapedRun Shape(string text, double fontSize, FontSpec spec)
     {
         ArgumentNullException.ThrowIfNull(text);
         if (text.Length == 0 || fontSize <= 0)
-            return 0;
+            return new ShapedRun(Array.Empty<ShapedGlyph>(), 0d);
 
         var font = GetFont((float)fontSize, spec);
 
         // Shape `text + probe`: the probe glyph's pen X is the advance the run
         // before it consumed — i.e. the exact width of `text`.
-        var glyphs = font.ShapeText(text + AdvanceProbe);
-        if (glyphs.Length == 0)
-            return 0;
+        var raw = font.ShapeText(text + AdvanceProbe);
+        if (raw.Length == 0)
+            return new ShapedRun(Array.Empty<ShapedGlyph>(), 0d);
 
-        // The probe contributes its own trailing glyph; its X marks the end of
-        // `text`. If the shaper collapsed something (it should not, for a plain
-        // probe char) fall back to the last real glyph's X.
-        var probeGlyph = glyphs[^1];
-        return probeGlyph.X;
+        // The last glyph is the probe; its X is the run's total advance. Copy
+        // the real glyphs out (ShapedGlyph and TsGlyph share sequential
+        // layout, so the cast is zero-cost).
+        var probeX = raw[^1].X;
+        var realCount = raw.Length - 1;
+        var glyphs = new ShapedGlyph[realCount];
+        if (realCount > 0)
+            MemoryMarshal.Cast<TsGlyph, ShapedGlyph>(raw.AsSpan(0, realCount)).CopyTo(glyphs);
+        return new ShapedRun(glyphs, probeX);
     }
 
     public double NormalLineHeight(double fontSize, FontSpec spec)

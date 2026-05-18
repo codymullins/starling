@@ -1,4 +1,5 @@
 using Microsoft.Maui.Layouts;
+using Tessera.Common.Diagnostics;
 using Tessera.Css.Properties;
 using Tessera.Engine;
 using Tessera.Gui.Theme;
@@ -22,7 +23,8 @@ public sealed class WebviewPanel : Grid
     private readonly ThemeManager _tm;
     private readonly Action<string> _onLinkActivated;
     private readonly Action<string, bool> _onStatus;
-    private readonly PageRenderer _pageRenderer = new();
+    private readonly IDiagnostics _diag;
+    private readonly PageRenderer _pageRenderer;
 
     private readonly ScrollView _pageScroll;
     private readonly Image _pageImage;
@@ -45,11 +47,13 @@ public sealed class WebviewPanel : Grid
     private (double X, double Y)? _panOrigin;
     private (double X, double Y) _lastPointerDoc;
 
-    public WebviewPanel(ThemeManager tm, Action<string> onLinkActivated, Action<string, bool> onStatus)
+    public WebviewPanel(ThemeManager tm, Action<string> onLinkActivated, Action<string, bool> onStatus, IDiagnostics? diagnostics = null)
     {
         _tm = tm;
         _onLinkActivated = onLinkActivated;
         _onStatus = onStatus;
+        _diag = diagnostics ?? NoopDiagnostics.Instance;
+        _pageRenderer = new PageRenderer(_diag);
         var t = tm.Tokens;
 
         RowDefinitions.Add(new RowDefinition(GridLength.Auto)); // find bar
@@ -150,6 +154,8 @@ public sealed class WebviewPanel : Grid
 
     public void ShowPage(LaidOutPage page)
     {
+        using var span = _diag.Span("gui", "show_page");
+
         _currentPage?.Dispose();
         _currentPage = page;
 
@@ -164,18 +170,30 @@ public sealed class WebviewPanel : Grid
         var density = (float)DeviceDisplay.Current.MainDisplayInfo.Density;
         if (!(density > 0.0f)) density = 1.0f;
         var uiScale = (float)ThemeManager.UiScale;
-        using var bitmap = _pageRenderer.Render(page.Root, density * uiScale);
-        _pageImage.Source = PageRenderer.ToImageSource(bitmap, density);
 
-        var docWidth = Math.Max(1, page.Root.Frame.Width) * uiScale;
-        var docHeight = Math.Max(1, page.Root.Frame.Height) * uiScale;
-        AbsoluteLayout.SetLayoutBounds(_pageImage, new Rect(0, 0, docWidth, docHeight));
-        _pageCanvas.WidthRequest = docWidth;
-        _pageCanvas.HeightRequest = docHeight;
-        _pageScroll.Content = _pageCanvas;
+        ImageSource imageSource;
+        using (_diag.Span("gui", "show_page.render"))
+        using (var bitmap = _pageRenderer.Render(page.Root, density * uiScale))
+        {
+            using (_diag.Span("gui", "show_page.to_image_source"))
+                imageSource = PageRenderer.ToImageSource(bitmap, density);
+        }
+        _pageImage.Source = imageSource;
 
-        _fragments = BoxHitTester.CollectFragments(page.Root);
-        RebuildFindIndex();
+        using (_diag.Span("gui", "show_page.layout_invalidate"))
+        {
+            var docWidth = Math.Max(1, page.Root.Frame.Width) * uiScale;
+            var docHeight = Math.Max(1, page.Root.Frame.Height) * uiScale;
+            AbsoluteLayout.SetLayoutBounds(_pageImage, new Rect(0, 0, docWidth, docHeight));
+            _pageCanvas.WidthRequest = docWidth;
+            _pageCanvas.HeightRequest = docHeight;
+            _pageScroll.Content = _pageCanvas;
+        }
+
+        using (_diag.Span("gui", "show_page.hit_index"))
+            _fragments = BoxHitTester.CollectFragments(page.Root);
+        using (_diag.Span("gui", "show_page.find_index"))
+            RebuildFindIndex();
     }
 
     // --- Interaction re-derived from the laid-out box tree ------------------

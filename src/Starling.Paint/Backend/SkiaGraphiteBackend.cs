@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Tessera.Common.Diagnostics;
 using Tessera.Common.Image;
 using Tessera.Css.Values;
@@ -38,6 +40,7 @@ public sealed class SkiaGraphiteBackend : IDisposable
     private readonly Lazy<SkContext> _context;
     private readonly FontResolver _fonts;
     private readonly FontFaceRegistry? _webFonts;
+    private readonly IDiagnostics _diag;
     private readonly ConcurrentDictionary<FontCacheKey, SkFont> _fontCache = new();
 
     public SkiaGraphiteBackend()
@@ -45,11 +48,12 @@ public sealed class SkiaGraphiteBackend : IDisposable
     {
     }
 
-    public SkiaGraphiteBackend(FontResolver fonts, FontFaceRegistry? webFonts)
+    public SkiaGraphiteBackend(FontResolver fonts, FontFaceRegistry? webFonts, IDiagnostics? diagnostics = null)
     {
         ArgumentNullException.ThrowIfNull(fonts);
         _fonts = fonts;
         _webFonts = webFonts;
+        _diag = diagnostics ?? NoopDiagnostics.Instance;
         // Defer the native context creation until the first render so merely
         // constructing the backend (e.g. for the flag selector on a platform
         // without the dylib) does not touch the shim.
@@ -90,24 +94,49 @@ public sealed class SkiaGraphiteBackend : IDisposable
 
         NativeCallTrace.Mark("render.begin", $"{width}x{height} scale={scale} items={list.Items.Count}");
 
-        var context = _context.Value;
-        using var surface = SkSurface.Create(context, width, height);
-        var canvas = surface.GetCanvas();
+        Activity.Current?.SetTag("raster.width", width);
+        Activity.Current?.SetTag("raster.height", height);
+        Activity.Current?.SetTag("raster.scale", scale);
+        Activity.Current?.SetTag("raster.items", list.Items.Count);
 
-        // ImageSharpBackend starts from an opaque white canvas; match that so
-        // the two backends are diffable.
-        canvas.Clear(new TsColor(255, 255, 255, 255));
+        SkContext context;
+        using (_diag.Span("paint", "raster.context_init"))
+            context = _context.Value;
 
-        if (scale != 1.0f)
-            canvas.Scale(scale, scale);
+        SkSurface surface;
+        using (_diag.Span("paint", "raster.surface_alloc"))
+            surface = SkSurface.Create(context, width, height);
 
-        foreach (var item in list.Items)
-            Apply(canvas, item, scale);
+        try
+        {
+            var canvas = surface.GetCanvas();
 
-        surface.Flush(context);
-        var pixels = surface.ReadPixels(context, width, height);
-        NativeCallTrace.Mark("render.end");
-        return new RenderedBitmap(width, height, pixels);
+            // ImageSharpBackend starts from an opaque white canvas; match that so
+            // the two backends are diffable.
+            canvas.Clear(new TsColor(255, 255, 255, 255));
+
+            if (scale != 1.0f)
+                canvas.Scale(scale, scale);
+
+            using (_diag.Span("paint", "raster.command_record"))
+            {
+                foreach (var item in list.Items)
+                    Apply(canvas, item, scale);
+            }
+            using (_diag.Span("paint", "raster.flush"))
+                surface.Flush(context);
+
+            byte[] pixels;
+            using (_diag.Span("paint", "raster.readback"))
+                pixels = surface.ReadPixels(context, width, height);
+
+            NativeCallTrace.Mark("render.end");
+            return new RenderedBitmap(width, height, pixels);
+        }
+        finally
+        {
+            surface.Dispose();
+        }
     }
 
     private void Apply(SkCanvas canvas, DisplayList.DisplayItem item, float scale)
@@ -116,15 +145,19 @@ public sealed class SkiaGraphiteBackend : IDisposable
         {
             case DisplayList.FillRect fill:
                 if (fill.Bounds.Width <= 0 || fill.Bounds.Height <= 0) return;
+                _diag.Counter("paint.fill_rect", 1);
                 canvas.FillRect(SnapRect(fill.Bounds, scale), ToColor(fill.Color));
                 break;
             case DisplayList.StrokeRect stroke:
+                _diag.Counter("paint.stroke_rect", 1);
                 canvas.StrokeRect(SnapRect(stroke.Bounds, scale), ToColor(stroke.Color), (float)stroke.Width);
                 break;
             case DisplayList.DrawText text:
+                _diag.Counter("paint.draw_text", 1);
                 DrawText(canvas, text, scale);
                 break;
             case DisplayList.DrawImage image:
+                _diag.Counter("paint.draw_image", 1);
                 DrawImage(canvas, image);
                 break;
         }
@@ -134,17 +167,6 @@ public sealed class SkiaGraphiteBackend : IDisposable
     {
         if (string.IsNullOrEmpty(text.Text)) return;
 
-        // The shim does SkFont::textToGlyphs shaping (LTR). ts_shape_text
-        // returns glyph pen positions relative to the run origin (0,0); the
-        // display-list X/Y is the baseline origin, so translate every glyph by
-        // it before handing the run to ts_canvas_draw_text.
-        //
-        // To honour unicode-range-subset web fonts, we partition the text
-        // into sub-runs by face affinity: each contiguous span of codepoints
-        // that resolves to the same face is shaped on its own face and laid
-        // out continuously. This breaks ligatures across face boundaries
-        // (intentional — a Latin/Cyrillic switch has no shared ligatures
-        // anyway).
         var spec = FontSpecFromDrawText(text);
         var color = ToColor(text.Color);
         var size = (float)text.FontSize;
@@ -156,28 +178,49 @@ public sealed class SkiaGraphiteBackend : IDisposable
         // fractional X for smooth advances.
         var baselineY = SnapToPixel((float)text.Y, scale);
 
+        // Fast path: glyphs were already shaped at layout time and travel on
+        // the DrawText item. Translate them by the fragment origin and hand
+        // them straight to the canvas — no PartitionByFace, no ShapeText, no
+        // MeasureRunEnd reshape. ShapedGlyph and TsGlyph share sequential
+        // layout, so the cast to TsGlyph is zero-copy.
+        if (text.Shaped is { Glyphs.Length: > 0 } shaped)
+        {
+            _diag.Counter("paint.draw_text.shaped", 1);
+            var font = ResolveFont(spec, probeCodepoint: 0, size);
+            var glyphs = new ShapedGlyph[shaped.Glyphs.Length];
+            for (var i = 0; i < glyphs.Length; i++)
+            {
+                var g = shaped.Glyphs[i];
+                glyphs[i] = new ShapedGlyph(g.GlyphId, g.X + pen, g.Y + baselineY);
+            }
+            canvas.DrawText(font, MemoryMarshal.Cast<ShapedGlyph, TsGlyph>(glyphs), color);
+            return;
+        }
+
+        _diag.Counter("paint.draw_text.unshaped", 1);
+
+        // Fallback (used only when layout supplied no shape — heuristic
+        // measurer in tests, or future codepaths). To honour unicode-range
+        // subset web fonts, partition the text into sub-runs by face affinity
+        // and shape each on its own face. This breaks ligatures across face
+        // boundaries (intentional — a Latin/Cyrillic switch has no shared
+        // ligatures anyway).
         foreach (var (start, length, font) in PartitionByFace(text.Text, spec, size))
         {
             var sub = text.Text.Substring(start, length);
             var glyphs = font.ShapeText(sub);
             if (glyphs.Length == 0) continue;
 
-            // Glyphs come back with pen positions relative to (0,0); shift by
-            // our running pen + the run's baseline.
-            float maxEnd = 0;
             for (var i = 0; i < glyphs.Length; i++)
             {
                 glyphs[i].X += pen;
                 glyphs[i].Y += baselineY;
-                if (glyphs[i].X > maxEnd) maxEnd = glyphs[i].X;
             }
             canvas.DrawText(font, glyphs, color);
 
             // Advance the pen by the sub-run width. ShapeText doesn't return
             // the trailing advance; the conventional trick is to append a
-            // sentinel and read its pen position. We do that via a fresh
-            // shape on the same sub-run plus an 'x' sentinel — cheap enough
-            // for the rare cross-face case.
+            // sentinel and read its pen position.
             pen = MeasureRunEnd(font, sub, pen);
         }
     }

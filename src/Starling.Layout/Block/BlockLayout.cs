@@ -1,3 +1,4 @@
+using Tessera.Common.Diagnostics;
 using Tessera.Css.Cascade;
 using Tessera.Css.Properties;
 using Tessera.Css.Values;
@@ -23,11 +24,11 @@ internal sealed class BlockLayout
     private readonly Size _viewport;
     private readonly InlineLayout _inline;
 
-    public BlockLayout(ITextMeasurer measurer, Size viewport)
+    public BlockLayout(ITextMeasurer measurer, Size viewport, IDiagnostics? diagnostics = null)
     {
         _measurer = measurer;
         _viewport = viewport;
-        _inline = new InlineLayout(measurer, viewport);
+        _inline = new InlineLayout(measurer, viewport, diagnostics);
     }
 
     public void Layout(Box.Box root)

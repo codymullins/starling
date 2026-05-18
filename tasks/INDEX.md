@@ -15,46 +15,46 @@ order: milestone, then numeric id, then sub-letter.
 | ID | Status | Owner | Subsystem |
 |---|---|---|---|
 | [wp:M0-01-scaffold](M0/wp-M0-01-scaffold.md) | 🟢 complete | — | build |
-| [wp:M0-02-common](M0/wp-M0-02-common.md) | 🟢 complete | — | Tessera.Common |
-| [wp:M0-03-paint-stub](M0/wp-M0-03-paint-stub.md) | 🟢 complete | — | Tessera.Paint |
-| [wp:M0-04-headless-cli](M0/wp-M0-04-headless-cli.md) | 🟢 complete | — | Tessera.Headless |
+| [wp:M0-02-common](M0/wp-M0-02-common.md) | 🟢 complete | — | Starling.Common |
+| [wp:M0-03-paint-stub](M0/wp-M0-03-paint-stub.md) | 🟢 complete | — | Starling.Paint |
+| [wp:M0-04-headless-cli](M0/wp-M0-04-headless-cli.md) | 🟢 complete | — | Starling.Headless |
 
 ## M1 — HTML+CSS static rendering
 
 | ID | Status | Owner | Subsystem |
 |---|---|---|---|
-| [wp:M1-01-html-tokenizer](M1/wp-M1-01-html-tokenizer.md) | 🟢 complete | — | Tessera.Html |
-| [wp:M1-01a-tokenizer-scaffold](M1/wp-M1-01a-tokenizer-scaffold.md) | 🟢 complete | agent-claude-cody | Tessera.Html |
-| [wp:M1-01b-tokenizer-tag-states](M1/wp-M1-01b-tokenizer-tag-states.md) | 🟢 complete | agent-claude-cody | Tessera.Html |
-| [wp:M1-01c-tokenizer-rcdata-rawtext](M1/wp-M1-01c-tokenizer-rcdata-rawtext.md) | 🟢 complete | agent-claude-cody | Tessera.Html |
-| [wp:M1-01d-tokenizer-script](M1/wp-M1-01d-tokenizer-script.md) | 🟢 complete | agent-copilot-gpt-5.5 | Tessera.Html |
-| [wp:M1-01e-tokenizer-comment-cdata](M1/wp-M1-01e-tokenizer-comment-cdata.md) | 🟢 complete | agent-claude-cody | Tessera.Html |
-| [wp:M1-01f-tokenizer-doctype](M1/wp-M1-01f-tokenizer-doctype.md) | 🟢 complete | agent-claude-cody | Tessera.Html |
-| [wp:M1-01g-tokenizer-entities](M1/wp-M1-01g-tokenizer-entities.md) | 🟢 complete | agent-claude-cody | Tessera.Html |
-| [wp:M1-01h-tokenizer-html5lib](M1/wp-M1-01h-tokenizer-html5lib.md) | 🟢 complete | agent-copilot-gpt-5.5 | Tessera.Html |
-| [wp:M1-02-html-tree-builder](M1/wp-M1-02-html-tree-builder.md) | 🟢 complete | agent-copilot-gpt-5.5 | Tessera.Html |
-| [wp:M1-03-dom-core](M1/wp-M1-03-dom-core.md) | 🟢 complete | agent-copilot-gpt-5.5 | Tessera.Dom |
-| [wp:M1-04-dom-events](M1/wp-M1-04-dom-events.md) | 🟢 complete | agent-copilot-gpt-5.5 | Tessera.Dom |
-| [wp:M1-05-css-tokenizer-parser](M1/wp-M1-05-css-tokenizer-parser.md) | 🟢 complete | agent-copilot-gpt-5.5 | Tessera.Css |
-| [wp:M1-06-css-selectors](M1/wp-M1-06-css-selectors.md) | 🟢 complete | agent-copilot-gpt-5.5 | Tessera.Css |
-| [wp:M1-07-css-cascade](M1/wp-M1-07-css-cascade.md) | 🟢 complete | agent-copilot-gpt-5.5 | Tessera.Css |
-| [wp:M1-08-layout-block-inline](M1/wp-M1-08-layout-block-inline.md) | 🟢 complete | agent-copilot-gpt-5.5 | Tessera.Layout |
-| [wp:M1-09-paint-display-list](M1/wp-M1-09-paint-display-list.md) | 🟢 complete | agent-copilot-gpt-5.5 | Tessera.Paint |
+| [wp:M1-01-html-tokenizer](M1/wp-M1-01-html-tokenizer.md) | 🟢 complete | — | Starling.Html |
+| [wp:M1-01a-tokenizer-scaffold](M1/wp-M1-01a-tokenizer-scaffold.md) | 🟢 complete | agent-claude-cody | Starling.Html |
+| [wp:M1-01b-tokenizer-tag-states](M1/wp-M1-01b-tokenizer-tag-states.md) | 🟢 complete | agent-claude-cody | Starling.Html |
+| [wp:M1-01c-tokenizer-rcdata-rawtext](M1/wp-M1-01c-tokenizer-rcdata-rawtext.md) | 🟢 complete | agent-claude-cody | Starling.Html |
+| [wp:M1-01d-tokenizer-script](M1/wp-M1-01d-tokenizer-script.md) | 🟢 complete | agent-copilot-gpt-5.5 | Starling.Html |
+| [wp:M1-01e-tokenizer-comment-cdata](M1/wp-M1-01e-tokenizer-comment-cdata.md) | 🟢 complete | agent-claude-cody | Starling.Html |
+| [wp:M1-01f-tokenizer-doctype](M1/wp-M1-01f-tokenizer-doctype.md) | 🟢 complete | agent-claude-cody | Starling.Html |
+| [wp:M1-01g-tokenizer-entities](M1/wp-M1-01g-tokenizer-entities.md) | 🟢 complete | agent-claude-cody | Starling.Html |
+| [wp:M1-01h-tokenizer-html5lib](M1/wp-M1-01h-tokenizer-html5lib.md) | 🟢 complete | agent-copilot-gpt-5.5 | Starling.Html |
+| [wp:M1-02-html-tree-builder](M1/wp-M1-02-html-tree-builder.md) | 🟢 complete | agent-copilot-gpt-5.5 | Starling.Html |
+| [wp:M1-03-dom-core](M1/wp-M1-03-dom-core.md) | 🟢 complete | agent-copilot-gpt-5.5 | Starling.Dom |
+| [wp:M1-04-dom-events](M1/wp-M1-04-dom-events.md) | 🟢 complete | agent-copilot-gpt-5.5 | Starling.Dom |
+| [wp:M1-05-css-tokenizer-parser](M1/wp-M1-05-css-tokenizer-parser.md) | 🟢 complete | agent-copilot-gpt-5.5 | Starling.Css |
+| [wp:M1-06-css-selectors](M1/wp-M1-06-css-selectors.md) | 🟢 complete | agent-copilot-gpt-5.5 | Starling.Css |
+| [wp:M1-07-css-cascade](M1/wp-M1-07-css-cascade.md) | 🟢 complete | agent-copilot-gpt-5.5 | Starling.Css |
+| [wp:M1-08-layout-block-inline](M1/wp-M1-08-layout-block-inline.md) | 🟢 complete | agent-copilot-gpt-5.5 | Starling.Layout |
+| [wp:M1-09-paint-display-list](M1/wp-M1-09-paint-display-list.md) | 🟢 complete | agent-copilot-gpt-5.5 | Starling.Paint |
 
 ## M2 — Networking
 
 | ID | Status | Owner | Subsystem |
 |---|---|---|---|
-| [wp:M2-01-url-parser](M2/wp-M2-01-url-parser.md) | 🟢 complete | agent-claude-cody | Tessera.Url |
-| [wp:M2-02-dns](M2/wp-M2-02-dns.md) | 🟢 complete | agent-claude-cody | Tessera.Net |
-| [wp:M2-03-tcp](M2/wp-M2-03-tcp.md) | 🟢 complete | agent-claude-cody | Tessera.Net |
-| [wp:M2-04-tls](M2/wp-M2-04-tls.md) | 🟢 complete | agent-copilot-gpt-5.5 | Tessera.Net |
-| [wp:M2-05-http1](M2/wp-M2-05-http1.md) | 🟢 complete | agent-copilot-gpt-5.5 | Tessera.Net |
-| [wp:M2-07-network-end-to-end](M2/wp-M2-07-network-end-to-end.md) | 🟢 complete | agent-copilot-gpt-5.5 | Tessera.Engine |
-| [wp:M2-07a-img-fetch-decode-paint](M2/wp-M2-07a-img-fetch-decode-paint.md) | 🟢 complete | agent-claude-cody | Tessera.Paint |
-| [wp:M2-07b-live-https-fixture](M2/wp-M2-07b-live-https-fixture.md) | 🟢 complete | agent-claude-cody | Tessera.Engine |
-| [wp:M2-07c-http-keepalive-pool](M2/wp-M2-07c-http-keepalive-pool.md) | 🟢 complete | agent-claude-cody | Tessera.Net |
-| [wp:M2-07d-encoding-hardening](M2/wp-M2-07d-encoding-hardening.md) | 🟢 complete | agent-claude-cody | Tessera.Engine |
+| [wp:M2-01-url-parser](M2/wp-M2-01-url-parser.md) | 🟢 complete | agent-claude-cody | Starling.Url |
+| [wp:M2-02-dns](M2/wp-M2-02-dns.md) | 🟢 complete | agent-claude-cody | Starling.Net |
+| [wp:M2-03-tcp](M2/wp-M2-03-tcp.md) | 🟢 complete | agent-claude-cody | Starling.Net |
+| [wp:M2-04-tls](M2/wp-M2-04-tls.md) | 🟢 complete | agent-copilot-gpt-5.5 | Starling.Net |
+| [wp:M2-05-http1](M2/wp-M2-05-http1.md) | 🟢 complete | agent-copilot-gpt-5.5 | Starling.Net |
+| [wp:M2-07-network-end-to-end](M2/wp-M2-07-network-end-to-end.md) | 🟢 complete | agent-copilot-gpt-5.5 | Starling.Engine |
+| [wp:M2-07a-img-fetch-decode-paint](M2/wp-M2-07a-img-fetch-decode-paint.md) | 🟢 complete | agent-claude-cody | Starling.Paint |
+| [wp:M2-07b-live-https-fixture](M2/wp-M2-07b-live-https-fixture.md) | 🟢 complete | agent-claude-cody | Starling.Engine |
+| [wp:M2-07c-http-keepalive-pool](M2/wp-M2-07c-http-keepalive-pool.md) | 🟢 complete | agent-claude-cody | Starling.Net |
+| [wp:M2-07d-encoding-hardening](M2/wp-M2-07d-encoding-hardening.md) | 🟢 complete | agent-claude-cody | Starling.Engine |
 
 > **M2 exit checklist closed.** All of M2 is complete. The MVP demo
 > `tessera render https://example.com -o out.png` is gated in CI via the
@@ -66,8 +66,10 @@ order: milestone, then numeric id, then sub-letter.
 ## M3 — Native interop pivot
 
 Abandons "Rule 0" for a "managed-first, native at vetted seams" policy:
-Skia Graphite + ANGLE rasterizer, OS-native image codecs, and `SslStream`
-TLS. Parent `wp:M3-06-native-interop-pivot` decomposes into 12 children
+Skia Graphite + ANGLE rasterizer and OS-native image codecs. (The TLS
+side of the pivot — `SslStream` — landed in `wp:M3-06e` but was reverted
+in `939f3a5`; the active TLS path is BouncyCastle. See the closure note
+below.) Parent `wp:M3-06-native-interop-pivot` decomposes into 12 children
 across three parallel tracks (see the parent file for the wave/dependency
 structure).
 
@@ -76,43 +78,51 @@ structure).
 | [wp:M3-06-native-interop-pivot](M3/wp-M3-06-native-interop-pivot.md) | 🟢 complete | agent-claude-cody | build |
 | [wp:M3-06a-native-scaffold](M3/wp-M3-06a-native-scaffold.md) | 🟢 complete | agent-claude-cody-native | build |
 | [wp:M3-06b-native-build](M3/wp-M3-06b-native-build.md) | 🟢 complete | agent-claude-cody-native | build |
-| [wp:M3-06c-decoded-image](M3/wp-M3-06c-decoded-image.md) | 🟢 complete | agent-claude-cody-image | Tessera.Common |
-| [wp:M3-06d-codecs](M3/wp-M3-06d-codecs.md) | 🟢 complete | agent-claude-cody-codecs | Tessera.Codecs |
-| [wp:M3-06e-sslstream-tls](M3/wp-M3-06e-sslstream-tls.md) | 🟢 complete | agent-claude-cody-tls | Tessera.Net |
+| [wp:M3-06c-decoded-image](M3/wp-M3-06c-decoded-image.md) | 🟢 complete | agent-claude-cody-image | Starling.Common |
+| [wp:M3-06d-codecs](M3/wp-M3-06d-codecs.md) | 🟢 complete | agent-claude-cody-codecs | Starling.Codecs |
+| [wp:M3-06e-sslstream-tls](M3/wp-M3-06e-sslstream-tls.md) | 🟢 complete *(reverted in `939f3a5`)* | agent-claude-cody-tls | Starling.Net |
 | [wp:M3-06f-docs-policy](M3/wp-M3-06f-docs-policy.md) | 🟢 complete | agent-claude-cody-docs | docs |
 | [wp:M3-06g-skia-shim](M3/wp-M3-06g-skia-shim.md) | 🟢 complete | agent-claude-cody-shim | native |
 | [wp:M3-06g2-shim-drawimage](M3/wp-M3-06g2-shim-drawimage.md) | 🟢 complete | agent-claude-cody-shim2 | native |
-| [wp:M3-06h-skia-interop](M3/wp-M3-06h-skia-interop.md) | 🟢 complete | agent-claude-cody-skia-net | Tessera.Skia |
-| [wp:M3-06i-skia-backend](M3/wp-M3-06i-skia-backend.md) | 🟢 complete | agent-claude-cody-skia-backend | Tessera.Paint |
-| [wp:M3-06j-skia-fonts](M3/wp-M3-06j-skia-fonts.md) | 🟢 complete | agent-claude-cody-skia-fonts | Tessera.Paint |
-| [wp:M3-06k-gui-canvas](M3/wp-M3-06k-gui-canvas.md) | 🟢 complete | agent-claude-cody-gui | Tessera.Gui |
+| [wp:M3-06h-skia-interop](M3/wp-M3-06h-skia-interop.md) | 🟢 complete | agent-claude-cody-skia-net | Starling.Skia |
+| [wp:M3-06i-skia-backend](M3/wp-M3-06i-skia-backend.md) | 🟢 complete | agent-claude-cody-skia-backend | Starling.Paint |
+| [wp:M3-06j-skia-fonts](M3/wp-M3-06j-skia-fonts.md) | 🟢 complete | agent-claude-cody-skia-fonts | Starling.Paint |
+| [wp:M3-06k-gui-canvas](M3/wp-M3-06k-gui-canvas.md) | 🟢 complete | agent-claude-cody-gui | Starling.Gui |
 | [wp:M3-06l-ci-policy](M3/wp-M3-06l-ci-policy.md) | 🟢 complete | agent-claude-cody-ci | build |
 
-> **M3-06 native interop pivot: COMPLETE.** All 13 packages (06a–06l + the
-> 06g2 shim follow-up) are `complete`; full `dotnet build && dotnet test` green
-> on osx-arm64. Skia Graphite is the default paint backend; the interop seam
-> policy is enforced (native interop confined to `Tessera.Skia` +
-> `Tessera.Codecs`); BouncyCastle is gone (`SslStream`); image decode is
-> OS-native; the GUI renders through the unified `DisplayList` path
-> (`BoxTreeRenderer` deleted). The native Skia + Graphite + Dawn build
-> (`build-skia.sh`) was hardened through five real fixes and produces
-> `libtessera_skia.dylib`. **Deliberate deviations:** there is **no fallback** —
-> Skia Graphite is the sole rasterizer (an interim ImageSharp fallback was built
-> then removed per user direction). A missing shim is a hard build failure
-> (`Tessera.Skia.csproj` build-time guard + actionable `DllNotFoundException`).
-> Validation is **osx-arm64 only** — win/linux native builds are still pending,
-> so those CI legs are honestly red until they exist. Open follow-ups are listed
-> in the parent WP's handoff log.
+> **M3-06 native interop pivot: COMPLETE (with one revert).** All 13 packages
+> (06a–06l + the 06g2 shim follow-up) shipped; full `dotnet build && dotnet test`
+> green on osx-arm64. Skia Graphite is the default paint backend; the interop
+> seam policy is enforced (native interop confined to `Starling.Skia` +
+> `Starling.Codecs`); image decode is OS-native; the GUI renders through the
+> unified `DisplayList` path (`BoxTreeRenderer` deleted). The native Skia +
+> Graphite + Dawn build (`build-skia.sh`) was hardened through five real fixes
+> and produces `libtessera_skia.dylib`. **TLS reverted:** `wp:M3-06e` moved
+> `Starling.Net` to `SslStream`, but `939f3a5 fix ssl crash` (2026-05-14) deleted
+> the SslStream transport and re-added `BcTlsTransport` after a macOS TLS 1.3
+> issue surfaced in integration. The active TLS path is **BouncyCastle**
+> (`BcTlsTransport`); `TesseraHttpClient.cs:242` calls `BcTlsTransport.ConnectAsync`.
+> The interop-seam policy still holds — BouncyCastle.Cryptography is pure-managed
+> and adds no P/Invoke. **Deliberate deviations:** there is **no rasterizer
+> fallback** — Skia Graphite is the sole rasterizer (an interim ImageSharp
+> fallback was built then removed per user direction). A missing shim is a hard
+> build failure (`Starling.Skia.csproj` build-time guard + actionable
+> `DllNotFoundException`). Validation is **osx-arm64 only** — win/linux native
+> builds are still pending, so those CI legs are honestly red until they exist.
+> Open follow-ups are listed in the parent WP's handoff log.
 
 ## Available right now (no dependencies pending)
 
 The M3-06 native interop pivot is closed. Remaining pivot follow-ups (win/linux
 native builds, `CAMetalLayer` GUI presentation, HarfBuzz shaping, PR-CI native
-artifact restore) are catalogued in `wp:M3-06-native-interop-pivot`'s handoff
-log — file them as new WPs when picked up. Otherwise the next high-impact work
-is the JS engine: M3-02 sub-tasks (02c classes/modules, 02d destructuring, 02e
-Test262 ≥ 80%) are unfiled but available, and an M3-05 (intrinsics) ticket is
-the single largest gating piece for any interactive demo.
+artifact restore, **and re-attempting the SslStream TLS migration after
+diagnosing the macOS TLS 1.3 caveat that drove the `939f3a5` revert — or
+formally re-blessing BouncyCastle as the long-term TLS path**) are catalogued
+in `wp:M3-06-native-interop-pivot`'s handoff log — file them as new WPs when
+picked up. Otherwise the next high-impact work is the JS engine: M3-02 sub-tasks
+(02c classes/modules, 02d destructuring, 02e Test262 ≥ 80%) are unfiled but
+available, and an M3-05 (intrinsics) ticket is the single largest gating piece
+for any interactive demo.
 
 ## Recently completed
 

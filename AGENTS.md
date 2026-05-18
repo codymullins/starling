@@ -66,10 +66,10 @@ tessera/
 │   ├── lib/claim.sh           ← atomic claim/release helper
 │   └── M<n>/wp-*.md           ← one file per work package
 ├── src/                       ← engine + Headless CLI + MAUI Gui (Mac Catalyst)
-├── Tessera.AppHost/           ← Aspire AppHost (orchestrates Gui + Headless)
-├── Tessera.ServiceDefaults/   ← Aspire OTel + health-check shared bootstrap
+├── Starling.AppHost/          ← Aspire AppHost (orchestrates Gui + Headless)
+├── Starling.ServiceDefaults/  ← Aspire OTel + health-check shared bootstrap
 ├── tests/                     ← one xUnit project per src/ module + E2E
-├── bench/Tessera.Bench/       ← BenchmarkDotNet
+├── bench/Starling.Bench/      ← BenchmarkDotNet
 └── testdata/                  ← fixtures + golden PNGs + WPT subsets
 ```
 
@@ -89,14 +89,20 @@ only — CI runs without the flag.
 ## Interop policy — managed-first, native at vetted seams
 
 Native interop (`[LibraryImport]`/`[DllImport]`) is confined to two
-**designated interop projects**: `src/Tessera.Skia` (graphics) and
-`src/Tessera.Codecs` (image decode). Every other engine module under
-`src/Tessera.{Common,Url,Net,Html,Dom,Css,Layout,Paint,Js,Bindings,Loop,Engine}/`
+**designated interop projects**: `src/Starling.Skia` (graphics) and
+`src/Starling.Codecs` (image decode). Every other engine module under
+`src/Starling.{Common,Url,Net,Html,Dom,Css,Layout,Paint,Js,Bindings,Loop,Engine}/`
 stays **pure managed** — no P/Invoke, no native dependencies beyond what the
-.NET BCL ships. `SslStream` is the sanctioned TLS path: it is pure-managed BCL,
-so `Tessera.Net` keeps its clean bill. CI greps the engine-project allowlist
+.NET BCL ships. **TLS path: BouncyCastle.** `Starling.Net` uses
+`BouncyCastle.Cryptography` (pure-managed, no P/Invoke) for TLS 1.3 via
+`BcTlsTransport`. The `wp:M3-06e` SslStream migration was rolled back in
+`939f3a5 fix ssl crash` (2026-05-14) after a macOS TLS 1.3 issue surfaced in
+integration; re-attempting SslStream — or formally re-blessing BouncyCastle as
+the long-term path — is a tracked open item in `wp:M3-06-native-interop-pivot`'s
+handoff log. The interop-seam policy is still satisfied either way, because
+BouncyCastle adds no native dependency. CI greps the engine-project allowlist
 (every engine project *except* the two interop projects); the lint job fails if
-you regress it. The GUI shell (`src/Tessera.Gui`, .NET MAUI) and the Aspire
+you regress it. The GUI shell (`src/Starling.Gui`, .NET MAUI) and the Aspire
 AppHost/ServiceDefaults projects are exempt — they link against UIKit/Cocoa
 (Catalyst) and ASP.NET host plumbing respectively, which is fine because the
 engine never imports from any of them. The engine projects must continue to
@@ -133,7 +139,7 @@ honestly red until they exist.
   72 h with no commits referencing the package, any agent may release
   the claim and start over (or pick up using the handoff log).
 - **Cross-package edits:** if your work changes a shared file
-  (`Directory.Build.props`, `Directory.Packages.props`, `Tessera.sln`),
+  (`Directory.Build.props`, `Directory.Packages.props`, `Starling.sln`),
   call it out in the handoff log so a concurrent agent can rebase
   cleanly. These files are the merge-conflict hotspots.
 

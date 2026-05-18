@@ -123,7 +123,8 @@ public sealed class DisplayListBuilder
                 color,
                 spec.Families,
                 spec.Bold,
-                spec.Italic));
+                spec.Italic,
+                frag.Shaped));
 
             if (IsUnderlined(style))
             {

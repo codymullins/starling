@@ -1,8 +1,11 @@
+using System.Diagnostics;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+using Tessera.Common.Diagnostics;
 using Tessera.Common.Image;
 using Tessera.Gui.Imaging;
 using Tessera.Layout.Box;
+using Tessera.Paint;
 using Tessera.Paint.Backend;
 using Tessera.Paint.DisplayList;
 using LayoutSize = Tessera.Layout.Size;
@@ -38,8 +41,15 @@ namespace Tessera.Gui;
 /// </remarks>
 public sealed class PageRenderer : IDisposable
 {
-    private readonly SkiaGraphiteBackend _backend = new();
+    private readonly IDiagnostics _diag;
+    private readonly SkiaGraphiteBackend _backend;
     private bool _disposed;
+
+    public PageRenderer(IDiagnostics? diagnostics = null)
+    {
+        _diag = diagnostics ?? NoopDiagnostics.Instance;
+        _backend = new SkiaGraphiteBackend(FontResolver.Default, webFonts: null, _diag);
+    }
 
     /// <summary>
     /// Builds a display list from <paramref name="root"/> and rasterizes it
@@ -57,7 +67,12 @@ public sealed class PageRenderer : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(root);
 
-        PaintList displayList = new DisplayListBuilder().Build(root);
+        PaintList displayList;
+        using (_diag.Span("paint", "raster.display_list_build"))
+        {
+            displayList = new DisplayListBuilder().Build(root);
+            Activity.Current?.SetTag("displaylist.items", displayList.Items.Count);
+        }
         var surfaceSize = new LayoutSize(
             Math.Max(1, root.Frame.Width),
             Math.Max(1, root.Frame.Height));
