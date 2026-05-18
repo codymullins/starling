@@ -58,3 +58,5 @@ third_party/skia/
 native/out/
 # CMake build directory for the shim:
 native/build/
+
+**/sixlabors.lic
