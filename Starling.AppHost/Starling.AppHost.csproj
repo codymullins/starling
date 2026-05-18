@@ -2,7 +2,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\src\Starling.Headless\Starling.Headless.csproj" />
-    <ProjectReference Include="..\src\Starling.Gui\Starling.Gui.csproj" />
     <ProjectReference Include="..\src\Starling.Gui.Avalonia\Starling.Gui.Avalonia.csproj" />
   </ItemGroup>
 

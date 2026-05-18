@@ -27,8 +27,7 @@
     layout so the default .NET native loader finds them next to the assembly.
     The module initializer (NativeLoader.cs) installs a SetDllImportResolver
     fallback that also probes the repo-root runtimes dir directly — needed for
-    the Mac Catalyst .app-bundle layout and for test runs where the working
-    directory differs from the output dir.
+    test runs where the working directory differs from the output dir.
   -->
   <PropertyGroup>
     <_TesseraRuntimesDir>$(MSBuildThisFileDirectory)..\..\runtimes</_TesseraRuntimesDir>

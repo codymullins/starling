@@ -4,12 +4,11 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Starling.Paint.Tests" />
-    <!-- GUI's PageRenderer routes through PaintBackendSelector so a
+    <!-- GUI's PageRendererHost routes through PaintBackendSelector so a
          TESSERA_PAINT_BACKEND switch flips both layout (measurer) and raster
          backend together — mixing them produces glyph-index/codepoint
          confusion when ImageSharp's measurer hands codepoints to Skia's
          shaped-text fast path. -->
-    <InternalsVisibleTo Include="Starling.Gui" />
     <InternalsVisibleTo Include="Starling.Gui.Avalonia" />
   </ItemGroup>
   <ItemGroup>
@@ -37,24 +36,12 @@
   <PropertyGroup Condition=" '$(EnableImageSharpDrawing3)' == 'true' ">
     <DefineConstants>$(DefineConstants);TESSERA_IMAGESHARP_DRAWING</DefineConstants>
   </PropertyGroup>
-  <!--
-    wgpu-native (the Rust WebGPU runtime that SixLabors.ImageSharp.Drawing.WebGPU
-    binds via Silk.NET) ships its dylibs under runtimes/<rid>/native/ in NuGet.
-    For net10.0 consumers (Headless, Engine, tests) NuGet's normal runtime-asset
-    resolution copies the right RID into the output and no help is needed.
-    The MAUI Mac Catalyst SDK is the exception — it doesn't resolve osx-*
-    native assets from transitive packages, AND its install_name_tool step
-    chokes on files under runtimes/<rid>/native/. That case is handled by an
-    explicit copy rule in Starling.Gui.csproj that drops the dylib into a
-    wgpu-native/ sidecar dir (which MAUI's bundler leaves alone).
-    WgpuNativeLoader.Resolve probes both layouts at runtime.
-  -->
   <ItemGroup>
     <!-- Bundled fonts. EmbeddedResource (not None+CopyToOutputDirectory) so the
-         font ships inside Tessera.Paint.dll and survives Mac Catalyst's .app
-         bundling, single-file publish, and sandboxed environments where the
-         output directory is read-only or system font paths are blocked.
-         FontResolver scans GetManifestResourceNames() for *.ttf/*.otf. -->
+         font ships inside Starling.Paint.dll and survives single-file publish
+         and sandboxed environments where the output directory is read-only or
+         system font paths are blocked. FontResolver scans
+         GetManifestResourceNames() for *.ttf/*.otf. -->
     <EmbeddedResource Include="Resources\Fonts\**\*.ttf" />
     <EmbeddedResource Include="Resources\Fonts\**\*.otf" />
   </ItemGroup>
