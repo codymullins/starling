@@ -32,6 +32,9 @@ public sealed class StatusBar : Border
         Child = _left;
     }
 
+    /// <summary>The current left-side text, used to restore status across theme rebuilds.</summary>
+    public string LeftText => _left.Text ?? string.Empty;
+
     /// <summary>Sets the left-side text — hover hint or navigation message.</summary>
     public void SetLeft(string text, bool isError = false)
     {

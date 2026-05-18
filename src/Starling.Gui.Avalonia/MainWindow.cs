@@ -28,28 +28,12 @@ public sealed class MainWindow : Window, IBrowserController
 {
     private static readonly EngineSize Viewport = new(1200, 900);
 
-    // Hardcoded chrome content — port of MainPage.cs:23-43 verbatim so the
-    // Avalonia sidebar matches the MAUI sidebar's seed state.
     private static readonly IReadOnlyList<TabInfo> Bookmarks =
     [
         new TabInfo("b1", "google.com",       "Google",                  Url: "https://google.com"),
         new TabInfo("b2", "justinjackson.ca", "Words — Justin Jackson",  Url: "https://justinjackson.ca/words.html"),
         new TabInfo("b3", "ladybird.org",     "Ladybird",                Url: "https://ladybird.org/"),
         new TabInfo("b4", "mcmaster.com",     "McMaster-Carr",           Url: "https://www.mcmaster.com/"),
-    ];
-
-    private static readonly IReadOnlyList<TabInfo> PinnedTabs =
-    [
-        new TabInfo("p1", "mail.fastmail.com", "Inbox",         Url: "https://mail.fastmail.com/"),
-        new TabInfo("p2", "cal.starling.dev",  "Calendar",      Url: "https://cal.starling.dev/"),
-    ];
-
-    private static readonly IReadOnlyList<TabInfo> TodayTabs =
-    [
-        new TabInfo("t1", "justinjackson.ca", "Words — Justin Jackson", Audio: false, Url: "https://justinjackson.ca/words.html"),
-        new TabInfo("t2", "starling.dev",     "Starling — Status",      Url: "https://starling.dev/"),
-        new TabInfo("t3", "github.com",       "github.com/starling",    Url: "https://github.com/"),
-        new TabInfo("t4", "localhost:3000",   "localhost:3000",         Url: "http://localhost:3000/"),
     ];
 
     private readonly ThemeManager _tm;
@@ -60,17 +44,21 @@ public sealed class MainWindow : Window, IBrowserController
     private DevToolsPanel? _devtools;
     private GridSplitter? _devSplitter;
 
-    private readonly IconButton _backButton;
-    private readonly IconButton _forwardButton;
-    private readonly IconButton _reloadButton;
-    private readonly IconButton _stopButton;
-    private readonly IconButton _themeButton;
-    private readonly IconButton _devToolsButton;
-    private readonly UrlBar _urlBar;
-    private readonly StatusBar _statusBar;
-    private readonly Border _toolbar;
-    private readonly Sidebar _sidebar;
-    private readonly Grid _contentStack;
+    // Chrome controls are rebuilt on every theme change (ChromeKit's static
+    // builders bake colors at construction time, so a "theme flip plus a tree
+    // rebuild" is the documented way to keep the UI in sync). None of these
+    // fields are readonly for that reason.
+    private IconButton _backButton = null!;
+    private IconButton _forwardButton = null!;
+    private IconButton _reloadButton = null!;
+    private IconButton _stopButton = null!;
+    private IconButton _themeButton = null!;
+    private IconButton _devToolsButton = null!;
+    private UrlBar _urlBar = null!;
+    private StatusBar _statusBar = null!;
+    private Border _toolbar = null!;
+    private Sidebar _sidebar = null!;
+    private Grid _contentStack = null!;
 
     private CancellationTokenSource? _navCts;
     private bool _busy;
@@ -89,20 +77,28 @@ public sealed class MainWindow : Window, IBrowserController
         Width = 1280;
         Height = 860;
 
+        BuildChrome(urlText: string.Empty, statusText: "Ready", devToolsTab: null);
+        _tm.Changed += (_, _) => RebuildChromeForTheme();
+    }
+
+    private void BuildChrome(string urlText, string statusText, DevToolsTab? devToolsTab)
+    {
         _backButton = new IconButton(_tm, Icons.Back, "Back");
         _backButton.Clicked += BackClicked;
         _forwardButton = new IconButton(_tm, Icons.Fwd, "Forward");
         _forwardButton.Clicked += ForwardClicked;
         _reloadButton = new IconButton(_tm, Icons.Reload, "Reload");
         _reloadButton.Clicked += ReloadClicked;
-        _stopButton = new IconButton(_tm, Icons.Stop, "Stop") { IsVisible = false };
+        _stopButton = new IconButton(_tm, Icons.Stop, "Stop") { IsVisible = _busy };
         _stopButton.Clicked += StopClicked;
         _themeButton = new IconButton(_tm, _tm.Theme == ThemeMode.Dark ? Icons.Sun : Icons.Moon, "Toggle theme");
         _themeButton.Clicked += (_, _) => ToggleTheme();
         _devToolsButton = new IconButton(_tm, Icons.Bug, "Toggle DevTools");
         _devToolsButton.Clicked += (_, _) => ToggleDevTools();
+        _reloadButton.IsVisible = !_busy;
 
         _urlBar = new UrlBar(_tm);
+        _urlBar.Address.Text = urlText;
         _urlBar.Submitted += async (_, _) => await NavigateAsync(_urlBar.Address.Text, ignoreEmpty: false);
         _urlBar.FindClicked += (_, _) => _webview.FocusFind();
 
@@ -122,13 +118,17 @@ public sealed class MainWindow : Window, IBrowserController
         toolbarGrid.Children.Add(_devToolsButton); Grid.SetColumn(_devToolsButton, 4);
         toolbarGrid.Children.Add(_themeButton); Grid.SetColumn(_themeButton, 5);
 
+        var t = _tm.Tokens;
         _toolbar = new Border
         {
             Child = toolbarGrid,
             BorderThickness = new Thickness(0, 0, 0, 1),
+            Background = new SolidColorBrush(t.Panel),
+            BorderBrush = new SolidColorBrush(t.Border),
         };
 
         _statusBar = new StatusBar(_tm);
+        _statusBar.SetLeft(statusText);
 
         // Content stack: toolbar / [webview | optional devtools] / status bar.
         // The middle row is a Grid("*,Auto,Auto") so the DevTools panel can be
@@ -141,27 +141,52 @@ public sealed class MainWindow : Window, IBrowserController
         _contentStack.Children.Add(middle); Grid.SetRow(middle, 1);
         _contentStack.Children.Add(_statusBar); Grid.SetRow(_statusBar, 2);
 
-        // The "t1" id matches MAUI's seed-active state — the words.html tab in
-        // the Today section is rendered with the active rail/surface tint.
-        _sidebar = new Sidebar(_tm, Bookmarks, PinnedTabs, TodayTabs, activeId: "t1", OnSidebarTabActivated);
+        _sidebar = new Sidebar(_tm, Bookmarks, activeId: null, OnSidebarTabActivated);
 
         var rootGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
         rootGrid.Children.Add(_sidebar); Grid.SetColumn(_sidebar, 0);
         rootGrid.Children.Add(_contentStack); Grid.SetColumn(_contentStack, 1);
+        Background = new SolidColorBrush(t.Bg);
         Content = rootGrid;
 
-        ApplyTheme();
-        _tm.Changed += (_, _) => ApplyTheme();
-        _statusBar.SetLeft("Ready");
+        if (devToolsTab is { } tab) OpenDevTools(tab);
         UpdateNavButtonStates();
     }
 
-    private void ApplyTheme()
+    private void RebuildChromeForTheme()
     {
-        var t = _tm.Tokens;
-        Background = new SolidColorBrush(t.Bg);
-        _toolbar.Background = new SolidColorBrush(t.Panel);
-        _toolbar.BorderBrush = new SolidColorBrush(t.Border);
+        var urlText = _urlBar.Address.Text ?? string.Empty;
+        var statusText = _statusBar.LeftText;
+        DevToolsTab? activeTab = _devtools?.ActiveTab;
+
+        // Detach _webview from the old middle grid so it can be re-parented to
+        // the new one — Avalonia controls reject being added to a second parent.
+        if (_webview.Parent is Panel oldParent) oldParent.Children.Remove(_webview);
+
+        if (_devtools is not null)
+        {
+            _devtools.Dispose();
+            _devtools = null;
+            _devSplitter = null;
+        }
+
+        BuildChrome(urlText, statusText, activeTab);
+    }
+
+    private void OpenDevTools(DevToolsTab tab)
+    {
+        var middle = (Grid)_contentStack.Children[1];
+        _devtools = new DevToolsPanel(_tm, _telemetry, tab);
+        _devtools.CloseRequested += (_, _) => ToggleDevTools();
+        _devSplitter = new GridSplitter
+        {
+            Width = 4,
+            ResizeDirection = GridResizeDirection.Columns,
+            Background = new SolidColorBrush(_tm.Tokens.Border),
+        };
+        middle.ColumnDefinitions = new ColumnDefinitions("*,Auto,420");
+        middle.Children.Add(_devSplitter); Grid.SetColumn(_devSplitter, 1);
+        middle.Children.Add(_devtools); Grid.SetColumn(_devtools, 2);
     }
 
     private void ToggleTheme()
@@ -173,20 +198,10 @@ public sealed class MainWindow : Window, IBrowserController
         // webview). Toggle DevTools by replacing that Grid with a 3-column
         // layout adding a splitter + DevToolsPanel on the right; tearing down
         // reverts to single-column.
-        var middle = (Grid)((Control)_contentStack.Children[1]);
+        var middle = (Grid)_contentStack.Children[1];
         if (_devtools is null)
         {
-            _devtools = new DevToolsPanel(_tm, _telemetry);
-            _devtools.CloseRequested += (_, _) => ToggleDevTools();
-            _devSplitter = new GridSplitter
-            {
-                Width = 4,
-                ResizeDirection = GridResizeDirection.Columns,
-                Background = new SolidColorBrush(_tm.Tokens.Border),
-            };
-            middle.ColumnDefinitions = new ColumnDefinitions("*,Auto,420");
-            middle.Children.Add(_devSplitter); Grid.SetColumn(_devSplitter, 1);
-            middle.Children.Add(_devtools); Grid.SetColumn(_devtools, 2);
+            OpenDevTools(DevToolsTab.Performance);
         }
         else
         {

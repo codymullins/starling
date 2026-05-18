@@ -24,6 +24,9 @@ public sealed class DevToolsPanel : Grid, IDisposable
 
     public event EventHandler? CloseRequested;
 
+    /// <summary>The currently selected tab — used to restore selection across theme rebuilds.</summary>
+    public DevToolsTab ActiveTab => _active;
+
     public DevToolsPanel(ThemeManager tm, TelemetryStream stream, DevToolsTab active = DevToolsTab.Performance)
     {
         _tm = tm;

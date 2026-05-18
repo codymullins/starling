@@ -20,9 +20,7 @@ public sealed class Sidebar : Grid
     public Sidebar(
         ThemeManager tm,
         IReadOnlyList<TabInfo> bookmarks,
-        IReadOnlyList<TabInfo> pinned,
-        IReadOnlyList<TabInfo> today,
-        string activeId,
+        string? activeId,
         Action<TabInfo>? onTabActivated = null)
     {
         var t = tm.Tokens;
@@ -37,7 +35,7 @@ public sealed class Sidebar : Grid
         var commandStub = BuildCommandStub(tm);
         Children.Add(commandStub); SetRow(commandStub, 1);
 
-        var sections = BuildSections(tm, bookmarks, pinned, today, activeId, onTabActivated);
+        var sections = BuildSections(tm, bookmarks, activeId, onTabActivated);
         Children.Add(sections); SetRow(sections, 2);
 
         var footer = BuildFooter(tm);
@@ -102,9 +100,7 @@ public sealed class Sidebar : Grid
     private static Control BuildSections(
         ThemeManager tm,
         IReadOnlyList<TabInfo> bookmarks,
-        IReadOnlyList<TabInfo> pinned,
-        IReadOnlyList<TabInfo> today,
-        string activeId,
+        string? activeId,
         Action<TabInfo>? onTabActivated)
     {
         var stack = new StackPanel { Spacing = 1 };
@@ -114,12 +110,6 @@ public sealed class Sidebar : Grid
             foreach (var tab in bookmarks)
                 stack.Children.Add(TabRow(tm, tab, tab.Id == activeId, onTabActivated));
         }
-        stack.Children.Add(SectionLabel(tm, "Pinned"));
-        foreach (var tab in pinned)
-            stack.Children.Add(TabRow(tm, tab, tab.Id == activeId, onTabActivated));
-        stack.Children.Add(SectionLabel(tm, "Today"));
-        foreach (var tab in today)
-            stack.Children.Add(TabRow(tm, tab, tab.Id == activeId, onTabActivated));
 
         return new ScrollViewer
         {
