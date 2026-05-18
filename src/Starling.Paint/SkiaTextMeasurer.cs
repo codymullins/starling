@@ -38,7 +38,18 @@ public sealed class SkiaTextMeasurer : ITextMeasurer, IDisposable
     private readonly FontResolver _fonts;
     private readonly FontFaceRegistry? _webFonts;
     private readonly ConcurrentDictionary<FontCacheKey, SkFont> _fontCache = new();
+    // Per-measurer shape cache. The shim's ts_shape_text is content-only
+    // (no contextual kerning across run boundaries — see SkFont::textToGlyphs
+    // + getWidths in the shim) so the same (text, size, spec) always
+    // produces the same glyph array with positions relative to (0,0). A
+    // `<p>` full of common words like "the", "and", "of" hits this cache
+    // hundreds of times on article-class pages. ShapedRun is immutable so
+    // handing the same instance to many TextFragments is safe — the paint
+    // backend translates by the fragment origin without mutating glyphs.
+    private readonly ConcurrentDictionary<ShapeCacheKey, ShapedRun> _shapeCache = new();
     private bool _disposed;
+
+    private readonly record struct ShapeCacheKey(string Text, float Size, FontSpec Spec);
 
     public SkiaTextMeasurer(FontResolver? fonts = null, FontFaceRegistry? webFonts = null)
     {
@@ -62,13 +73,22 @@ public sealed class SkiaTextMeasurer : ITextMeasurer, IDisposable
         if (text.Length == 0 || fontSize <= 0)
             return new ShapedRun(Array.Empty<ShapedGlyph>(), 0d);
 
-        var font = GetFont((float)fontSize, spec);
+        var size = (float)fontSize;
+        var key = new ShapeCacheKey(text, size, spec);
+        if (_shapeCache.TryGetValue(key, out var hit))
+            return hit;
+
+        var font = GetFont(size, spec);
 
         // Shape `text + probe`: the probe glyph's pen X is the advance the run
         // before it consumed — i.e. the exact width of `text`.
         var raw = font.ShapeText(text + AdvanceProbe);
         if (raw.Length == 0)
-            return new ShapedRun(Array.Empty<ShapedGlyph>(), 0d);
+        {
+            var empty = new ShapedRun(Array.Empty<ShapedGlyph>(), 0d);
+            _shapeCache[key] = empty;
+            return empty;
+        }
 
         // The last glyph is the probe; its X is the run's total advance. Copy
         // the real glyphs out (ShapedGlyph and TsGlyph share sequential
@@ -78,7 +98,9 @@ public sealed class SkiaTextMeasurer : ITextMeasurer, IDisposable
         var glyphs = new ShapedGlyph[realCount];
         if (realCount > 0)
             MemoryMarshal.Cast<TsGlyph, ShapedGlyph>(raw.AsSpan(0, realCount)).CopyTo(glyphs);
-        return new ShapedRun(glyphs, probeX);
+        var shaped = new ShapedRun(glyphs, probeX);
+        _shapeCache[key] = shaped;
+        return shaped;
     }
 
     public double NormalLineHeight(double fontSize, FontSpec spec)
@@ -118,6 +140,7 @@ public sealed class SkiaTextMeasurer : ITextMeasurer, IDisposable
         foreach (var font in _fontCache.Values)
             font.Dispose();
         _fontCache.Clear();
+        _shapeCache.Clear();
 
         // Typefaces are owned by the FontResolver (it caches and reuses them),
         // so the measurer does not dispose them here.

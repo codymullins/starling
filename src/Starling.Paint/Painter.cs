@@ -15,9 +15,9 @@ namespace Tessera.Paint;
 
 /// <summary>
 /// Paint façade for the full pipeline: parse → style → layout → display list →
-/// Skia Graphite raster. Skia is the engine's sole rasterizer; there is no
-/// managed fallback. The native shim (<c>libtessera_skia</c>) is a hard
-/// requirement — see <c>native/build-skia.sh</c>.
+/// raster. Skia Graphite is the default rasterizer; ImageSharp.Drawing 3.0 is
+/// selectable via the <c>TESSERA_PAINT_BACKEND</c> env var on builds compiled
+/// with <c>EnableImageSharpDrawing3=true</c>.
 /// </summary>
 public sealed class Painter
 {
@@ -58,13 +58,13 @@ public sealed class Painter
         using (_diag.Span("paint", "display_list"))
             displayList = new DisplayListBuilder().Build(root);
 
-        using (_diag.Span("paint", "raster:skiagraphite"))
+        using (_diag.Span("paint", $"raster:{PaintBackendSelector.Selected.ToString().ToLowerInvariant()}"))
         {
-            // DisplayList / DisplayItem is the renderer-neutral seam. Skia
-            // Graphite is the engine's sole rasterizer — layout (above) measures
-            // with Skia's shaped metrics, so paint and layout always agree.
-            using var skia = new SkiaGraphiteBackend(_fonts, webFonts);
-            return skia.Render(displayList, viewport);
+            // DisplayList is the renderer-neutral seam. Skia Graphite is the
+            // default; setting TESSERA_PAINT_BACKEND=imagesharp swaps in the
+            // ImageSharp.Drawing 3.0 backend on builds that enabled it.
+            using var backend = PaintBackendSelector.Create(_fonts, webFonts, _diag);
+            return backend.Render(displayList, viewport);
         }
     }
 
@@ -114,13 +114,20 @@ public sealed class Painter
         // it is created per layout call and disposed when done. (The layout
         // engine's own DefaultTextMeasurer remains for paint-free layout unit
         // tests, but the Painter pipeline is always Skia.)
-        using var measurer = new SkiaTextMeasurer(_fonts, webFonts);
-        var layoutEngine = new LayoutEngineImpl(style, measurer, images, _diag);
-        Tessera.Layout.Box.BlockBox root;
-        using (_diag.Span("paint", "layout"))
-            root = layoutEngine.LayoutDocument(document, viewport);
-        Tessera.Common.Diagnostics.NativeCallTrace.Mark("layout.end");
-        return (root, style);
+        var measurer = PaintBackendSelector.CreateMeasurer(_fonts, webFonts);
+        try
+        {
+            var layoutEngine = new LayoutEngineImpl(style, measurer, images, _diag);
+            Tessera.Layout.Box.BlockBox root;
+            using (_diag.Span("paint", "layout"))
+                root = layoutEngine.LayoutDocument(document, viewport);
+            Tessera.Common.Diagnostics.NativeCallTrace.Mark("layout.end");
+            return (root, style);
+        }
+        finally
+        {
+            (measurer as IDisposable)?.Dispose();
+        }
     }
 
     private static StyleEngine CreateStyleEngine(

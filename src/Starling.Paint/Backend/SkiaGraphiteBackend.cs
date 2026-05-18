@@ -32,10 +32,12 @@ namespace Tessera.Paint.Backend;
 /// disposed with the backend.
 /// </para>
 /// </remarks>
-public sealed class SkiaGraphiteBackend : IDisposable
+public sealed class SkiaGraphiteBackend : IDisposable, IPaintBackend
 {
     // The DisplayList carries colors as straight sRGBA; the shim's TsColor is
     // the same 8-bit straight sRGBA shape, so the conversion is a field copy.
+
+    public string Name => "skiagraphite";
 
     private readonly Lazy<SkContext> _context;
     private readonly FontResolver _fonts;

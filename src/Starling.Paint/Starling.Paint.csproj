@@ -10,15 +10,25 @@
     <ProjectReference Include="..\Starling.Layout\Starling.Layout.csproj" />
     <ProjectReference Include="..\Starling.Dom\Starling.Dom.csproj" />
     <ProjectReference Include="..\Starling.Css\Starling.Css.csproj" />
-    <!-- Skia Graphite raster backend (wp:M3-06i). Opt-in behind the
-         TESSERA_PAINT_BACKEND flag; ImageSharp stays the default path. -->
+    <!-- Skia Graphite is the default rasterizer. ImageSharp.Drawing 3.0 is
+         opt-in at both build time (MSBuild property EnableImageSharpDrawing3=true)
+         and runtime (env var TESSERA_PAINT_BACKEND=imagesharp). -->
     <ProjectReference Include="..\Starling.Skia\Starling.Skia.csproj" />
   </ItemGroup>
-  <ItemGroup>
+  <ItemGroup Condition=" '$(EnableImageSharpDrawing3)' != 'true' ">
     <PackageReference Include="SixLabors.ImageSharp" />
+  </ItemGroup>
+  <!-- ImageSharp 4, Fonts 3, and Drawing 3 all require a Six Labors license
+       key at build time. Gate them together so the default build is
+       license-key-free. ImageSharp 4 replaces 3.1.12 via VersionOverride. -->
+  <ItemGroup Condition=" '$(EnableImageSharpDrawing3)' == 'true' ">
+    <PackageReference Include="SixLabors.ImageSharp" VersionOverride="4.0.*" />
     <PackageReference Include="SixLabors.ImageSharp.Drawing" />
     <PackageReference Include="SixLabors.Fonts" />
   </ItemGroup>
+  <PropertyGroup Condition=" '$(EnableImageSharpDrawing3)' == 'true' ">
+    <DefineConstants>$(DefineConstants);TESSERA_IMAGESHARP_DRAWING</DefineConstants>
+  </PropertyGroup>
   <ItemGroup>
     <!-- Bundled fonts. EmbeddedResource (not None+CopyToOutputDirectory) so the
          font ships inside Tessera.Paint.dll and survives Mac Catalyst's .app
