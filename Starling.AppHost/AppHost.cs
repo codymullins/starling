@@ -53,6 +53,17 @@ var gui = builder.AddExecutable(
     workingDirectory: Path.GetDirectoryName(guiBinary)!)
     .WithOtlpExporter();
 
+// Avalonia 12 GUI experiment. Plain net10.0 desktop exe — no Catalyst bundle,
+// no `open -a`, no AssemblyName/_AppBundleName divergence — so the normal
+// AddProject<>() path works and OTLP env vars inherit cleanly.
+//
+// MCP port: the MAUI GUI defaults to http://127.0.0.1:3077/mcp. Push the
+// Avalonia GUI to 3078 so both can listen simultaneously when Aspire brings
+// them up together; the env var still wins if the developer overrides it.
+var guiAvalonia = builder.AddProject<Projects.Starling_Gui_Avalonia>("gui-avalonia")
+    .WithEnvironment("TESSERA_MCP_URL", "http://127.0.0.1:3078/mcp")
+    .WithOtlpExporter();
+
 // Headless CLI. Pre-baked to render the bundled hello.html fixture; the args
 // are absolute paths because Aspire's default cwd for a project resource is
 // the csproj directory (src/Tessera.Headless/), not the repo root.
@@ -75,6 +86,7 @@ if (!string.IsNullOrWhiteSpace(paintBackend))
 {
     headless.WithEnvironment("TESSERA_PAINT_BACKEND", paintBackend);
     gui.WithEnvironment("TESSERA_PAINT_BACKEND", paintBackend);
+    guiAvalonia.WithEnvironment("TESSERA_PAINT_BACKEND", paintBackend);
 }
 
 // wgpu-native (Rust) honors RUST_LOG for tracing. Forward it through so we
@@ -88,6 +100,7 @@ if (!string.IsNullOrWhiteSpace(rustLog))
 {
     headless.WithEnvironment("RUST_LOG", rustLog);
     gui.WithEnvironment("RUST_LOG", rustLog);
+    guiAvalonia.WithEnvironment("RUST_LOG", rustLog);
 }
 
 builder.Build().Run();

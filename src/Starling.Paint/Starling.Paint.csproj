@@ -10,6 +10,7 @@
          confusion when ImageSharp's measurer hands codepoints to Skia's
          shaped-text fast path. -->
     <InternalsVisibleTo Include="Starling.Gui" />
+    <InternalsVisibleTo Include="Starling.Gui.Avalonia" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Starling.Common\Starling.Common.csproj" />

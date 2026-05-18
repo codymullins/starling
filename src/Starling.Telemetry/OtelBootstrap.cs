@@ -35,6 +35,11 @@ public static class OtelBootstrap
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentException.ThrowIfNullOrWhiteSpace(serviceName);
 
+        // The in-memory log sink is its own ILoggerProvider, registered
+        // alongside OpenTelemetry's so DevTools' ConsolePanel can read recent
+        // entries even when no OTLP endpoint is configured.
+        var logSink = new InMemoryLogSink();
+        builder.Logging.AddProvider(logSink);
         builder.Logging.AddOpenTelemetry(logging =>
         {
             logging.IncludeFormattedMessage = true;
@@ -57,6 +62,18 @@ public static class OtelBootstrap
 
         builder.Services.AddSingleton<IDiagnostics>(sp =>
             new OtelDiagnostics(sp.GetRequiredService<ILoggerFactory>()));
+
+        // In-memory sinks feeding DevTools' ConsolePanel / PerformancePanel /
+        // InternalsPanel. The activity and meter listeners self-register at
+        // construction; coexists with the OTel SDK's own listeners (multiple
+        // ActivityListeners per source are allowed). One TelemetryStream
+        // facade aggregates the three for DevTools to subscribe to.
+        builder.Services.AddSingleton(logSink);
+        builder.Services.AddSingleton(_ =>
+            new InMemoryActivitySink(serviceName, OtelDiagnostics.SourceName));
+        builder.Services.AddSingleton(_ =>
+            new InMemoryMeterSink(OtelDiagnostics.SourceName));
+        builder.Services.AddSingleton<TelemetryStream>();
 
         return builder;
     }
