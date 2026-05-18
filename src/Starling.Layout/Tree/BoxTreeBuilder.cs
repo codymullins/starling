@@ -29,26 +29,30 @@ internal sealed class BoxTreeBuilder
         if (root is null)
             return new BlockBox(style: null, element: null);
 
-        var rootStyle = _style.Compute(root);
+        // One cache per box-tree-build pass: the cascade for a given element
+        // is identical across every visit during this traversal, so we can
+        // memoize and skip the ancestor recursion on the hot path.
+        var cache = new CascadeCache();
+        var rootStyle = _style.Compute(root, context: null, cache);
         var rootBox = new BlockBox(rootStyle, root);
-        BuildChildren(root, rootStyle, rootBox);
+        BuildChildren(root, rootStyle, rootBox, cache);
         WrapInlinesInAnonymousBlocks(rootBox);
         return rootBox;
     }
 
-    private void BuildChildren(Node parentNode, ComputedStyle parentStyle, Box.Box parentBox)
+    private void BuildChildren(Node parentNode, ComputedStyle parentStyle, Box.Box parentBox, CascadeCache cache)
     {
         for (var child = parentNode.FirstChild; child is not null; child = child.NextSibling)
         {
             switch (child)
             {
                 case Element element:
-                    var elementStyle = _style.Compute(element);
+                    var elementStyle = _style.Compute(element, context: null, cache);
                     var display = DisplayKeyword(elementStyle);
                     if (display == "none") continue;
                     if (display == "contents")
                     {
-                        BuildChildren(element, elementStyle, parentBox);
+                        BuildChildren(element, elementStyle, parentBox, cache);
                         continue;
                     }
                     if (string.Equals(element.LocalName, "img", StringComparison.OrdinalIgnoreCase))
@@ -71,7 +75,7 @@ internal sealed class BoxTreeBuilder
                         ? new InlineBox(elementStyle, element)
                         : new BlockBox(elementStyle, element);
                     parentBox.AppendChild(box);
-                    BuildChildren(element, elementStyle, box);
+                    BuildChildren(element, elementStyle, box, cache);
                     // <input> is a void element with no DOM children — synthesize
                     // a TextBox from its value/placeholder so the search box and
                     // submit button labels actually show up. Real intrinsic

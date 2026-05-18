@@ -131,7 +131,10 @@ public sealed class StyleEngine
         => _layerOrders[origin].AllLayers;
 
     public ComputedStyle Compute(Element element)
-        => Compute(element, context: null);
+        => Compute(element, context: null, cache: null);
+
+    public ComputedStyle Compute(Element element, SelectorMatchContext? context)
+        => Compute(element, context, cache: null);
 
     /// <summary>
     /// Compute styles for <paramref name="element"/>, optionally honouring an
@@ -141,14 +144,30 @@ public sealed class StyleEngine
     /// (etc.) set, then ask the engine for an updated style to push to the
     /// affected view.
     /// </summary>
-    public ComputedStyle Compute(Element element, SelectorMatchContext? context)
+    /// <remarks>
+    /// Pass a <see cref="CascadeCache"/> when computing styles for many
+    /// elements that share ancestors (e.g. during box-tree construction) to
+    /// avoid recomputing each ancestor's cascade once per descendant. The
+    /// cache is bypassed when <paramref name="context"/> is non-null because
+    /// pseudo-class state (<c>:hover</c>/<c>:focus</c>/<c>:active</c>) is part
+    /// of the selector-match input and would otherwise contaminate entries
+    /// computed under a different context.
+    /// </remarks>
+    public ComputedStyle Compute(Element element, SelectorMatchContext? context, CascadeCache? cache)
     {
         ArgumentNullException.ThrowIfNull(element);
+
+        // Interactive cascades are skipped — see remarks. Treating the cache
+        // as a miss is the safest option: it keeps callers that share a cache
+        // across a hover/focus pass correct without forcing them to build a
+        // separate cache for each pseudo-class state.
+        var effectiveCache = context is null ? cache : null;
+
         using var _ = _diag.Span("css", "cascade");
         try
         {
             var elementsStyled = 0;
-            var result = ComputeWithAncestors(element, context, ref elementsStyled);
+            var result = ComputeWithAncestors(element, context, effectiveCache, ref elementsStyled);
             Activity.Current?.SetTag("css.elements_styled", elementsStyled);
             Activity.Current?.SetTag("css.sheets", _sheets.Count);
             _diag.Counter("css.cascades", 1);
@@ -161,12 +180,23 @@ public sealed class StyleEngine
         }
     }
 
-    private ComputedStyle ComputeWithAncestors(Element element, SelectorMatchContext? context, ref int elementsStyled)
+    private ComputedStyle ComputeWithAncestors(
+        Element element,
+        SelectorMatchContext? context,
+        CascadeCache? cache,
+        ref int elementsStyled)
     {
+        if (cache is not null && cache.TryGet(element, out var cached))
+            return cached;
+
         var parent = element.ParentNode as Element;
-        var parentStyle = parent is null ? null : ComputeWithAncestors(parent, context, ref elementsStyled);
+        var parentStyle = parent is null
+            ? null
+            : ComputeWithAncestors(parent, context, cache, ref elementsStyled);
         elementsStyled++;
-        return Compute(element, parentStyle, context);
+        var computed = Compute(element, parentStyle, context);
+        cache?.Set(element, computed);
+        return computed;
     }
 
     public void Invalidate(Element root)
