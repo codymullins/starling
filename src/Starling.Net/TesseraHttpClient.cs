@@ -108,6 +108,7 @@ public sealed class TesseraHttpClient : IDisposable
             if (pooled is not null)
             {
                 _diag.Counter("net.http.connection_reused", 1);
+                Activity.Current?.SetTag("connection.reused", true);
                 var pooledOutcome = await TrySendOnTransportAsync(
                     pooled, request, url, fromPool: true, requestCts.Token).ConfigureAwait(false);
                 if (pooledOutcome.UsedTransport)
@@ -116,8 +117,14 @@ public sealed class TesseraHttpClient : IDisposable
                     return pooledOutcome.Result;
                 }
                 // Otherwise the connection was unusable (closed/IO) — dispose
-                // and retry with a fresh dial.
+                // and retry with a fresh dial. Re-tag the span: this request
+                // ended up paying for a fresh handshake despite the pool hit.
+                Activity.Current?.SetTag("connection.reused", false);
                 await SafeDisposeAsync(pooled).ConfigureAwait(false);
+            }
+            else
+            {
+                Activity.Current?.SetTag("connection.reused", false);
             }
 
             // 2. Dial + (optionally) TLS-handshake a new transport.
