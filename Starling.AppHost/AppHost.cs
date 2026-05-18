@@ -57,10 +57,17 @@ var gui = builder.AddExecutable(
 // no `open -a`, no AssemblyName/_AppBundleName divergence — so the normal
 // AddProject<>() path works and OTLP env vars inherit cleanly.
 //
+// Paint backend: defaults to `imagesharp` so `aspire run` picks the
+// cross-platform managed rasterizer out of the box. The build-time gate
+// (EnableImageSharpDrawing3) auto-flips on in Directory.Build.props when a
+// Six Labors license is present, so this default is wired end-to-end. The
+// developer-set TESSERA_PAINT_BACKEND below still wins (skia / imagesharp-webgpu).
+//
 // MCP port: the MAUI GUI defaults to http://127.0.0.1:3077/mcp. Push the
 // Avalonia GUI to 3078 so both can listen simultaneously when Aspire brings
 // them up together; the env var still wins if the developer overrides it.
 var guiAvalonia = builder.AddProject<Projects.Starling_Gui_Avalonia>("gui-avalonia")
+    .WithEnvironment("TESSERA_PAINT_BACKEND", "imagesharp")
     .WithEnvironment("TESSERA_MCP_URL", "http://127.0.0.1:3078/mcp")
     .WithOtlpExporter();
 

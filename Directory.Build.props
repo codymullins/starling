@@ -27,6 +27,16 @@
          unset (the licensing targets aren't imported). -->
     <SixLaborsLicenseFile Condition="'$(SixLaborsLicenseFile)' == '' And Exists('$(MSBuildThisFileDirectory)sixlabors.lic')">$(MSBuildThisFileDirectory)sixlabors.lic</SixLaborsLicenseFile>
 
+    <!-- When a Six Labors license is present, compile the ImageSharp.Drawing 3
+         backend in by default so `aspire run` (and any local `dotnet build`)
+         can pick TESSERA_PAINT_BACKEND=imagesharp without an extra
+         /p:EnableImageSharpDrawing3=true flag. Without a license, the
+         property stays unset and the default license-key-free build path
+         (SixLabors.ImageSharp 3.1.12, no Drawing 3) is preserved. Set
+         EnableImageSharpDrawing3=false explicitly on the command line to
+         opt back out when the license is present. -->
+    <EnableImageSharpDrawing3 Condition="'$(EnableImageSharpDrawing3)' == '' And '$(SixLaborsLicenseFile)' != ''">true</EnableImageSharpDrawing3>
+
     <!--
       Strict-on-purpose, but a handful of CA / RCS rules are noisy on
       engine-internal code (no localization, lots of framework-instantiated
