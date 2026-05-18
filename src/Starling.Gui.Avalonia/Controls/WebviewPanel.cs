@@ -486,8 +486,14 @@ internal sealed class WebviewPanel : UserControl, IDisposable
             _selectionOverlays.Add(overlay);
         }
 
-        _selectionText = string.Join(" ",
-            _fragments.GetRange(startIdx, endIdx - startIdx + 1).ConvertAll(f => f.Text));
+        // Whitespace fragments are now in the list (so selection paints over
+        // inter-word gaps); drop them before joining so word fragments get
+        // exactly one separating space whether the gap was an explicit space
+        // fragment or a dropped-at-wrap line break.
+        var picked = _fragments.GetRange(startIdx, endIdx - startIdx + 1)
+            .FindAll(f => !string.IsNullOrWhiteSpace(f.Text))
+            .ConvertAll(f => f.Text);
+        _selectionText = string.Join(" ", picked);
         _onStatus($"Selected {_selectionText.Length} chars — ⌘C to copy", false);
     }
 

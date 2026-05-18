@@ -75,6 +75,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Starling.Skia.Tests", "test
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Starling.Gui.Avalonia", "src\Starling.Gui.Avalonia\Starling.Gui.Avalonia.csproj", "{4C3D3D22-5445-46FC-B1AB-31E25E4EBEC5}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Starling.Gui.Avalonia.Tests", "tests\Starling.Gui.Avalonia.Tests\Starling.Gui.Avalonia.Tests.csproj", "{6266CF06-8FC2-4FCC-ABAD-51792555671E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -505,6 +507,18 @@ Global
 		{4C3D3D22-5445-46FC-B1AB-31E25E4EBEC5}.Release|x64.Build.0 = Release|Any CPU
 		{4C3D3D22-5445-46FC-B1AB-31E25E4EBEC5}.Release|x86.ActiveCfg = Release|Any CPU
 		{4C3D3D22-5445-46FC-B1AB-31E25E4EBEC5}.Release|x86.Build.0 = Release|Any CPU
+		{6266CF06-8FC2-4FCC-ABAD-51792555671E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6266CF06-8FC2-4FCC-ABAD-51792555671E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6266CF06-8FC2-4FCC-ABAD-51792555671E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{6266CF06-8FC2-4FCC-ABAD-51792555671E}.Debug|x64.Build.0 = Debug|Any CPU
+		{6266CF06-8FC2-4FCC-ABAD-51792555671E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{6266CF06-8FC2-4FCC-ABAD-51792555671E}.Debug|x86.Build.0 = Debug|Any CPU
+		{6266CF06-8FC2-4FCC-ABAD-51792555671E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6266CF06-8FC2-4FCC-ABAD-51792555671E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6266CF06-8FC2-4FCC-ABAD-51792555671E}.Release|x64.ActiveCfg = Release|Any CPU
+		{6266CF06-8FC2-4FCC-ABAD-51792555671E}.Release|x64.Build.0 = Release|Any CPU
+		{6266CF06-8FC2-4FCC-ABAD-51792555671E}.Release|x86.ActiveCfg = Release|Any CPU
+		{6266CF06-8FC2-4FCC-ABAD-51792555671E}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -516,5 +530,6 @@ Global
 		{7717852A-C874-49DE-B82B-0FD8AD350CF5} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{D56AEC46-99F0-4DBA-A424-93566DAD1350} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{4C3D3D22-5445-46FC-B1AB-31E25E4EBEC5} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{6266CF06-8FC2-4FCC-ABAD-51792555671E} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

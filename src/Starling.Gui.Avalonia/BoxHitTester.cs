@@ -63,9 +63,12 @@ public static class BoxHitTester
         // a TextBox's own Frame may be zero-sized, so test its fragments too.
         if (box is TextBox tb)
         {
+            // Include whitespace fragments so a click on the space between two
+            // words inside a link still hits the link, and so drag-selection
+            // covers the inter-word gaps instead of skipping over them.
             foreach (var frag in tb.Fragments)
             {
-                if (string.IsNullOrWhiteSpace(frag.Text)) continue;
+                if (frag.Width <= 0) continue;
                 var fx = frameX + frag.X;
                 var fy = frameY + frag.Y;
                 if (x >= fx && x < fx + frag.Width && y >= fy && y < fy + frag.Height)
@@ -194,9 +197,12 @@ public static class BoxHitTester
 
         if (box is TextBox tb)
         {
+            // Emit whitespace fragments too so selection painting covers the
+            // gaps between words; the caller filters them out where empty text
+            // would be wrong (copied-text join, find index).
             foreach (var frag in tb.Fragments)
             {
-                if (string.IsNullOrWhiteSpace(frag.Text)) continue;
+                if (frag.Width <= 0) continue;
                 sink.Add(new PlacedFragment(
                     frameX + frag.X, frameY + frag.Y, frag.Width, frag.Height, frag.Text));
             }
