@@ -116,15 +116,32 @@ internal sealed class InlineLayout
         var localFontSize = ResolveFontSize(effectiveStyle);
         var localSpec = ResolveFontSpec(effectiveStyle);
         var localLineHeight = ResolveLineHeight(effectiveStyle, localFontSize, localSpec);
+        var localBaseline = _measurer.Baseline(localFontSize, localSpec);
         currentLineHeight = Math.Max(currentLineHeight, localLineHeight);
 
+        // Shape the whole normalized run once and slice per-word. This collapses
+        // the per-word native HarfBuzz call to a single call per text run.
+        // Slicing relies on a 1:1 glyph-to-character mapping; non-ASCII text
+        // with ligatures, combining marks, or surrogate pairs may shape to a
+        // different glyph count, in which case we fall back to per-word shaping
+        // to preserve correctness on complex scripts.
+        _diag.Counter("layout.text.measures", 1);
+        var whole = _measurer.Shape(normalized, localFontSize, localSpec);
+        var canSlice = whole.Glyphs.Length == normalized.Length;
+
+        var charOffset = 0;
         foreach (var word in SplitToWords(normalized))
         {
+            var wordStart = charOffset;
+            charOffset += word.Length;
+
             if (word.Length == 0) continue;
             // Collapse whitespace at the start of a line (white-space: normal).
             if (cursorX == 0 && string.IsNullOrWhiteSpace(word)) continue;
-            _diag.Counter("layout.text.measures", 1);
-            var shaped = _measurer.Shape(word, localFontSize, localSpec);
+
+            var shaped = canSlice
+                ? whole.Slice(wordStart, wordStart + word.Length)
+                : ShapeWord(word, localFontSize, localSpec);
             var width = shaped.Advance;
             var leadingSpace = word.StartsWith(" ", StringComparison.Ordinal);
 
@@ -137,8 +154,13 @@ internal sealed class InlineLayout
                 {
                     var trimmed = word.TrimStart(' ');
                     if (trimmed.Length == 0) continue;
-                    _diag.Counter("layout.text.measures", 1);
-                    var trimmedShape = _measurer.Shape(trimmed, localFontSize, localSpec);
+                    // The trimmed slice starts past the run's leading spaces;
+                    // its glyph indices and char indices stay aligned because
+                    // every leading char was a space (1 glyph, 1 char).
+                    var trimmedStart = wordStart + (word.Length - trimmed.Length);
+                    var trimmedShape = canSlice
+                        ? whole.Slice(trimmedStart, trimmedStart + trimmed.Length)
+                        : ShapeWord(trimmed, localFontSize, localSpec);
                     AddFragment(run.Owner, fragments,
                         new TextFragment(trimmed, cursorX, cursorY, trimmedShape.Advance, currentLineHeight, containerBaseline, trimmedShape));
                     cursorX += trimmedShape.Advance;
@@ -147,9 +169,15 @@ internal sealed class InlineLayout
             }
 
             AddFragment(run.Owner, fragments,
-                new TextFragment(word, cursorX, cursorY, width, currentLineHeight, _measurer.Baseline(localFontSize, localSpec), shaped));
+                new TextFragment(word, cursorX, cursorY, width, currentLineHeight, localBaseline, shaped));
             cursorX += width;
         }
+    }
+
+    private ShapedRun ShapeWord(string word, double fontSize, FontSpec spec)
+    {
+        _diag.Counter("layout.text.measures", 1);
+        return _measurer.Shape(word, fontSize, spec);
     }
 
     /// <summary>

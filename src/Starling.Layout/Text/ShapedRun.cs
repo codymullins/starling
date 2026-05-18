@@ -27,4 +27,46 @@ public readonly record struct ShapedGlyph(uint GlyphId, float X, float Y);
 /// the sentinel-reshape trick that <see cref="ITextMeasurer.MeasureWidth"/>
 /// used to recover.
 /// </param>
-public sealed record ShapedRun(ShapedGlyph[] Glyphs, double Advance);
+public sealed record ShapedRun(ShapedGlyph[] Glyphs, double Advance)
+{
+    /// <summary>
+    /// Carve a sub-run out of an already-shaped run. Used by inline layout to
+    /// shape a whole text run once and then split the result per-word for the
+    /// existing per-fragment data structures (hit-testing, alignment, line
+    /// wrapping). Pen positions in the returned run start at 0, so the slice
+    /// can drop into a <see cref="Box.TextFragment"/> exactly as if it had
+    /// been shaped on its own.
+    /// <para>
+    /// Assumes a 1:1 glyph-to-character mapping. The caller is responsible for
+    /// detecting non-1:1 cases (combining marks, surrogate pairs, ligatures,
+    /// complex script reshaping) and falling back to a per-slice shape call —
+    /// the simplest check is <c>Glyphs.Length == text.Length</c> on the source.
+    /// </para>
+    /// </summary>
+    /// <param name="startGlyph">Inclusive start glyph index into <see cref="Glyphs"/>.</param>
+    /// <param name="endGlyph">Exclusive end glyph index. <c>endGlyph == Glyphs.Length</c>
+    /// means "to the end of the run"; the slice's advance then uses this run's
+    /// <see cref="Advance"/> as the trailing pen-X.</param>
+    public ShapedRun Slice(int startGlyph, int endGlyph)
+    {
+        if (startGlyph < 0 || endGlyph > Glyphs.Length || startGlyph > endGlyph)
+            throw new ArgumentOutOfRangeException(nameof(startGlyph));
+
+        if (startGlyph == endGlyph)
+            return new ShapedRun(Array.Empty<ShapedGlyph>(), 0d);
+
+        var startX = Glyphs[startGlyph].X;
+        // The pen-X just past the slice's last glyph: either the next glyph's
+        // origin (intermediate slice) or the whole run's total advance (slice
+        // touches the run's tail). Both are computed without a re-shape.
+        var endX = endGlyph < Glyphs.Length ? Glyphs[endGlyph].X : (float)Advance;
+
+        var sliced = new ShapedGlyph[endGlyph - startGlyph];
+        for (var i = 0; i < sliced.Length; i++)
+        {
+            var g = Glyphs[startGlyph + i];
+            sliced[i] = new ShapedGlyph(g.GlyphId, g.X - startX, g.Y);
+        }
+        return new ShapedRun(sliced, endX - startX);
+    }
+}
