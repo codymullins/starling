@@ -19,6 +19,16 @@ public sealed class StyleEngine
         = new(ReferenceEqualityComparer.Instance);
     private readonly IDiagnostics _diag;
     private MediaContext _mediaContext = MediaContext.Default;
+    // True when any active stylesheet contains a selector that the
+    // SharingKey signature cannot disambiguate (nth-child / nth-of-type /
+    // last-child / only-child / has(). Sharing is correctness-bounded:
+    // when these appear, two elements with identical (tag, attrs, parent
+    // style, prev-sibling) could still match selectors differently, so
+    // we disable the sharing cache for the whole engine. Pages without
+    // these selectors keep getting cache hits — most pages don't use
+    // positional pseudo-classes (the UA sheet's one `:first-child` is
+    // already handled via SharingKey.PreviousElementSiblingTag).
+    private bool _sharingDisabled;
 
     public StyleEngine(bool includeUserAgentStyleSheet = true, IDiagnostics? diagnostics = null)
     {
@@ -55,7 +65,10 @@ public sealed class StyleEngine
         ArgumentNullException.ThrowIfNull(sheet);
         _sheets.Add(sheet);
         RegisterLayers(sheet.Rules, sheet.Origin, currentPath: null);
-        _sheetIndexes[sheet] = BuildSheetIndex(sheet);
+        var index = BuildSheetIndex(sheet);
+        _sheetIndexes[sheet] = index;
+        if (!_sharingDisabled && SheetUsesUnshareableSelectors(index))
+            _sharingDisabled = true;
     }
 
     public void RemoveStyleSheet(StyleSheet sheet)
@@ -63,7 +76,40 @@ public sealed class StyleEngine
         ArgumentNullException.ThrowIfNull(sheet);
         _sheets.Remove(sheet);
         _sheetIndexes.Remove(sheet);
+        // Re-evaluate whether sharing can be re-enabled after removal.
+        _sharingDisabled = _sheetIndexes.Values.Any(SheetUsesUnshareableSelectors);
     }
+
+    /// <summary>
+    /// True if any selector in <paramref name="index"/> uses a pseudo-class
+    /// whose result depends on more than the element's own attributes, its
+    /// parent's computed style, and its previous element sibling's tag —
+    /// inputs the <see cref="SharingKey"/> can capture. Positional pseudos
+    /// like <c>:nth-child</c>, <c>:last-child</c>, <c>:only-of-type</c>, and
+    /// <c>:has()</c> can't be expressed in the signature without making it
+    /// O(siblings) or O(subtree), so the cache is disabled outright when
+    /// any of them appear. <c>:first-child</c> is OK because
+    /// "previous element sibling is null" is in the signature already.
+    /// </summary>
+    private static bool SheetUsesUnshareableSelectors(SheetIndex index)
+    {
+        foreach (var parsed in index.ParsedSelectorLists.Values)
+            foreach (var complex in parsed.Selectors)
+                foreach (var part in complex.Parts)
+                    foreach (var simple in part.Compound.SimpleSelectors)
+                        if (simple is PseudoClassSelector pc && IsUnshareablePseudoClass(pc.Name))
+                            return true;
+        return false;
+    }
+
+    private static bool IsUnshareablePseudoClass(string name) => name switch
+    {
+        "nth-child" or "nth-last-child" or "nth-of-type" or "nth-last-of-type"
+            or "last-child" or "only-child"
+            or "first-of-type" or "last-of-type" or "only-of-type"
+            or "has" => true,
+        _ => false,
+    };
 
     /// <summary>
     /// Per-sheet selector bucketing. Each top-level <see cref="StyleRule"/>
@@ -137,6 +183,73 @@ public sealed class StyleEngine
         => Compute(element, context, cache: null);
 
     /// <summary>
+    /// Pre-cascade an entire element subtree in parallel, populating
+    /// <paramref name="cache"/> so subsequent
+    /// <see cref="Compute(Element, SelectorMatchContext?, CascadeCache?)"/>
+    /// calls hit the cache without doing real work. This is the Stylo-style
+    /// depth-breadth-first parallel cascade: level K+1 elements are
+    /// independent of each other (they only depend on level K's already-
+    /// cached styles), so the level can be split across cores.
+    /// </summary>
+    /// <remarks>
+    /// Falls back to sequential when:
+    /// <list type="bullet">
+    ///   <item><paramref name="context"/> is non-null (pseudo-class state is
+    ///   per-element; the cache is bypassed anyway).</item>
+    ///   <item>A level has very few elements — the Parallel.ForEach setup
+    ///   overhead outweighs the work.</item>
+    /// </list>
+    /// Thread safety: <see cref="CascadeCache"/> uses ConcurrentDictionary
+    /// internally so concurrent <c>Set</c>/<c>SetShared</c> from worker threads
+    /// is safe. <c>Compute</c> itself is otherwise re-entrant — it reads
+    /// <c>_sheets</c>/<c>_sheetIndexes</c>/<c>_layerOrders</c> which are not
+    /// mutated during cascade.
+    /// </remarks>
+    public void PrecomputeTree(Element root, CascadeCache cache, SelectorMatchContext? context = null)
+    {
+        ArgumentNullException.ThrowIfNull(root);
+        ArgumentNullException.ThrowIfNull(cache);
+
+        // Interactive cascades (hover/focus) are per-element and the cache
+        // bypass kicks in inside Compute. Nothing to pre-cache.
+        if (context is not null)
+            return;
+
+        // Group descendants by depth (relative to root). Root is level 0.
+        var levels = new List<List<Element>> { new() { root } };
+        FillLevels(root, depth: 1, levels);
+
+        foreach (var level in levels)
+        {
+            // For tiny levels parallelism is a net loss — Parallel.ForEach
+            // creates a Task per partition, queues to ThreadPool, and joins.
+            // The break-even point is around a dozen items; below that, run
+            // straight through.
+            if (level.Count < 12)
+            {
+                foreach (var el in level)
+                    Compute(el, context: null, cache);
+            }
+            else
+            {
+                Parallel.ForEach(level, el => Compute(el, context: null, cache));
+            }
+        }
+    }
+
+    private static void FillLevels(Element parent, int depth, List<List<Element>> levels)
+    {
+        while (levels.Count <= depth) levels.Add(new List<Element>());
+        var bucket = levels[depth];
+        foreach (var child in parent.ChildNodes)
+            if (child is Element el)
+                bucket.Add(el);
+        foreach (var child in parent.ChildNodes)
+            if (child is Element el)
+                FillLevels(el, depth + 1, levels);
+    }
+
+    /// <summary>
     /// Compute styles for <paramref name="element"/>, optionally honouring an
     /// interactive <see cref="SelectorMatchContext"/> so <c>:hover</c>,
     /// <c>:focus</c>, and <c>:active</c> selectors fire. Interactive shells
@@ -193,10 +306,85 @@ public sealed class StyleEngine
         var parentStyle = parent is null
             ? null
             : ComputeWithAncestors(parent, context, cache, ref elementsStyled);
+
+        // Style sharing: two elements with identical selector-relevant inputs
+        // produce identical cascade results. Build a signature from those
+        // inputs and consult the sharing cache before doing the real work.
+        SharingKey? sharingKey = null;
+        if (cache is not null && !_sharingDisabled)
+        {
+            sharingKey = BuildSharingKey(element, parentStyle);
+            if (cache.TryGetShared(sharingKey.Value, out var shared))
+            {
+                cache.Set(element, shared);
+                _diag.Counter("css.style_sharing.hit", 1);
+                return shared;
+            }
+        }
+
         elementsStyled++;
         var computed = Compute(element, parentStyle, context);
         cache?.Set(element, computed);
+        if (sharingKey is { } key)
+        {
+            cache!.SetShared(key, computed);
+            _diag.Counter("css.style_sharing.miss", 1);
+        }
         return computed;
+    }
+
+    /// <summary>
+    /// Build the style-sharing signature for <paramref name="element"/>. The
+    /// signature captures every input visible to selector matching that the
+    /// sharing cache supports: tag, sorted attribute set, parent computed
+    /// style (reference), and previous element sibling's tag (null when the
+    /// element is the first element child — handles <c>:first-child</c> and
+    /// <c>+</c>/<c>~</c> combinators that look one back).
+    /// </summary>
+    private static SharingKey BuildSharingKey(Element element, ComputedStyle? parentStyle)
+        => new(
+            element.LocalName,
+            SerializeAttributes(element),
+            parentStyle,
+            PreviousElementSiblingTag(element));
+
+    private static string SerializeAttributes(Element element)
+    {
+        var count = element.Attributes.Count;
+        if (count == 0) return string.Empty;
+        // Sort by name so two elements with the same attributes in different
+        // source order hit the same key. For attribute names + values we use
+        // ordinal comparison — HTML attribute names are already lower-cased
+        // by Element on set, and CSS attribute selectors are case-sensitive
+        // for values unless an `i` flag is present.
+        if (count == 1)
+        {
+            var only = element.Attributes[0];
+            return only.Name + "=" + only.Value;
+        }
+        var pairs = new (string Name, string Value)[count];
+        for (var i = 0; i < count; i++)
+        {
+            var a = element.Attributes[i];
+            pairs[i] = (a.Name, a.Value);
+        }
+        Array.Sort(pairs, (a, b) => string.CompareOrdinal(a.Name, b.Name));
+        var sb = new System.Text.StringBuilder();
+        for (var i = 0; i < pairs.Length; i++)
+        {
+            if (i > 0) sb.Append(';');
+            sb.Append(pairs[i].Name);
+            sb.Append('=');
+            sb.Append(pairs[i].Value);
+        }
+        return sb.ToString();
+    }
+
+    private static string? PreviousElementSiblingTag(Element element)
+    {
+        for (var n = element.PreviousSibling; n is not null; n = n.PreviousSibling)
+            if (n is Element prev) return prev.LocalName;
+        return null;
     }
 
     public void Invalidate(Element root)

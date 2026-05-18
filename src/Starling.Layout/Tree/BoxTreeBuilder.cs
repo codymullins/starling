@@ -33,6 +33,13 @@ internal sealed class BoxTreeBuilder
         // is identical across every visit during this traversal, so we can
         // memoize and skip the ancestor recursion on the hot path.
         var cache = new CascadeCache();
+        // Pre-cascade the whole DOM in parallel by depth. After this, every
+        // _style.Compute(element, ..., cache) call below is a cache hit and
+        // the box-tree walk is pure CPU-bound traversal. Falls through to
+        // sequential for tiny trees (Parallel.ForEach has fixed overhead
+        // around ~50μs per partition that beats serial only past ~12 items
+        // per depth).
+        _style.PrecomputeTree(root, cache);
         var rootStyle = _style.Compute(root, context: null, cache);
         var rootBox = new BlockBox(rootStyle, root);
         BuildChildren(root, rootStyle, rootBox, cache);
