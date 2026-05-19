@@ -19,11 +19,8 @@ public class IntrinsicChainTests
     [Fact]
     public void Math_max_bound_inherits_Function_prototype()
     {
-        // `instanceof` opcode isn't wired yet (wp:M3-05); walk the proto chain
-        // manually via Object.getPrototypeOf instead.
         var rt = new JsRuntime();
-        var r = RunWith(rt,
-            "Object.getPrototypeOf(Math.max.bind(null, 1, 2)) === Function.prototype;");
+        var r = RunWith(rt, "Math.max.bind(null, 1, 2) instanceof Function;");
         r.AsBool.Should().BeTrue();
     }
 
@@ -172,11 +169,9 @@ public class IntrinsicChainTests
     [Fact]
     public void RegisterGlobal_function_inherits_Function_prototype()
     {
-        // `instanceof` opcode isn't wired yet (wp:M3-05); the equivalent
-        // proto-chain check verifies the migration intent.
         var rt = new JsRuntime();
         rt.RegisterGlobal("hostFoo", (JsValue[] _) => JsValue.Undefined);
-        var r = RunWith(rt, "Object.getPrototypeOf(hostFoo) === Function.prototype;");
+        var r = RunWith(rt, "hostFoo instanceof Function;");
         r.AsBool.Should().BeTrue();
     }
 

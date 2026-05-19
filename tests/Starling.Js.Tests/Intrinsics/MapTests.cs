@@ -91,18 +91,12 @@ public class MapTests
     [Fact]
     public void ForEach_invokes_callback_with_value_key_map()
     {
-        // Callback writes through a captured object reference because the
-        // compiler does not yet support write-back through upvalue snapshots
-        // (wp:M3-04c2). The compound `+=` operator on a property also reads
-        // the snapshotted base value, so we use explicit `obj.x = obj.x + …`
-        // to force fresh reads each iteration. Both points are tracked
-        // separately; the forEach intrinsic itself is correct.
         var r = Eval(@"
             var m = new Map();
             m.set('a', 1); m.set('b', 2);
-            var ctx = { out: '' };
-            m.forEach(function(v, k) { ctx.out = ctx.out + k + '=' + v + ';'; });
-            ctx.out;");
+            var out = '';
+            m.forEach(function(v, k) { out += k + '=' + v + ';'; });
+            out;");
         r.AsString.Should().Be("a=1;b=2;");
     }
 

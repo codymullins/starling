@@ -9,11 +9,7 @@ namespace Tessera.Js.Tests.Intrinsics;
 /// <summary>
 /// End-to-end (parse → compile → run) tests for B4-3 BigInt: literal syntax,
 /// arithmetic/bitwise operators, comparison rules, the BigInt constructor +
-/// static helpers (asIntN/asUintN), and prototype methods. Throws surface
-/// as host-side <see cref="JsThrow"/> exceptions; <c>instanceof</c> is not
-/// available yet (wp:M3-05), so we assert via C# rather than in-script
-/// catch+instanceof. Once the instanceof opcode lands, the tests can be
-/// rewritten to use try/catch in JS for additional spec fidelity.
+/// static helpers (asIntN/asUintN), and prototype methods.
 /// </summary>
 public class BigIntTests
 {

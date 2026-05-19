@@ -13,8 +13,7 @@ public class ProxyTests
     public void Empty_handler_is_transparent_to_target_properties()
     {
         Eval("var p = new Proxy({a:1}, {}); p.a;").AsNumber.Should().Be(1);
-        // `in` operator isn't lowered yet (wp:M3-05); use Reflect.has for the same semantic.
-        Eval("var p = new Proxy({a:1}, {}); Reflect.has(p, 'a');").AsBool.Should().BeTrue();
+        Eval("var p = new Proxy({a:1}, {}); 'a' in p;").AsBool.Should().BeTrue();
     }
 
     [Fact]
@@ -29,39 +28,33 @@ public class ProxyTests
     [Fact]
     public void Set_trap_observes_side_effects_and_signals_success()
     {
-        // Trap captures side effects on a host object (free-variable assignment
-        // from inside a nested function would write to a different binding given
-        // the script-local/global split in the current compiler).
         Eval(@"
-            var box = { observed: null };
+            var observed = null;
             var p = new Proxy({}, {
-                set: function(t, k, v) { box.observed = k + '=' + v; return true; }
+                set: function(t, k, v) { observed = k + '=' + v; return true; }
             });
             p.x = 7;
-            box.observed;
+            observed;
         ").AsString.Should().Be("x=7");
     }
 
     [Fact]
     public void Has_trap_drives_in_operator()
     {
-        // `in` operator pending (wp:M3-05); Reflect.has hits the same trap.
-        Eval("var p = new Proxy({}, { has: function() { return true; } }); Reflect.has(p, 'foo');").AsBool.Should().BeTrue();
-        Eval("var p = new Proxy({a:1}, { has: function() { return false; } }); Reflect.has(p, 'a');").AsBool.Should().BeFalse();
+        Eval("var p = new Proxy({}, { has: function() { return true; } }); 'foo' in p;").AsBool.Should().BeTrue();
+        Eval("var p = new Proxy({a:1}, { has: function() { return false; } }); 'a' in p;").AsBool.Should().BeFalse();
     }
 
     [Fact]
     public void DeleteProperty_trap_drives_delete_operator()
     {
-        // `delete` operator + global `++` aren't lowered yet (wp:M3-05);
-        // Reflect.deleteProperty + box-counted hits exercise the same trap path.
         Eval(@"
-            var box = { hits: 0 };
+            var hits = 0;
             var p = new Proxy({a:1}, {
-                deleteProperty: function(t, k) { box.hits = box.hits + 1; Reflect.deleteProperty(t, k); return true; }
+                deleteProperty: function(t, k) { hits++; delete t[k]; return true; }
             });
-            var ok = Reflect.deleteProperty(p, 'a');
-            ok ? box.hits : -1;
+            var ok = delete p.a;
+            ok ? hits : -1;
         ").AsNumber.Should().Be(1);
     }
 
@@ -82,12 +75,12 @@ public class ProxyTests
     public void DefineProperty_trap_intercepts_object_defineProperty()
     {
         Eval(@"
-            var box = { seenKey: null };
+            var seenKey = null;
             var p = new Proxy({}, {
-                defineProperty: function(t, k, d) { box.seenKey = k; return true; }
+                defineProperty: function(t, k, d) { seenKey = k; return true; }
             });
             Object.defineProperty(p, 'foo', { value: 1, writable: true, enumerable: true, configurable: true });
-            box.seenKey;
+            seenKey;
         ").AsString.Should().Be("foo");
     }
 
@@ -100,10 +93,10 @@ public class ProxyTests
             Object.getPrototypeOf(p).tag;
         ").AsString.Should().Be("fake-proto");
         Eval(@"
-            var box = { hits: 0 };
-            var p = new Proxy({}, { setPrototypeOf: function(t, v) { box.hits = box.hits + 1; return true; } });
+            var hits = 0;
+            var p = new Proxy({}, { setPrototypeOf: function(t, v) { hits++; return true; } });
             Object.setPrototypeOf(p, {});
-            box.hits;
+            hits;
         ").AsNumber.Should().Be(1);
     }
 
@@ -115,13 +108,13 @@ public class ProxyTests
             Object.isExtensible(p);
         ").AsBool.Should().BeTrue();
         Eval(@"
-            var box = { hits: 0 };
+            var hits = 0;
             var t = {};
             var p = new Proxy(t, {
-                preventExtensions: function(target) { box.hits = box.hits + 1; Object.preventExtensions(target); return true; }
+                preventExtensions: function(target) { hits++; Object.preventExtensions(target); return true; }
             });
             Object.preventExtensions(p);
-            box.hits + (Object.isExtensible(p) ? 100 : 0);
+            hits + (Object.isExtensible(p) ? 100 : 0);
         ").AsNumber.Should().Be(1);
     }
 

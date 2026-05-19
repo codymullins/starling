@@ -30,12 +30,11 @@ public class WeakSetTests
     [Fact]
     public void Primitive_throws_TypeError_on_add()
     {
-        // Test rewritten to use the C# boundary because the compiler does
-        // not yet support `try`/`catch` or `instanceof` (wp:M3-05). The
-        // thrown JsThrow's value is the spec-mandated TypeError instance.
-        Action act = () => Eval("new WeakSet().add(1);");
-        act.Should().Throw<JsThrow>()
-            .Which.Value.AsObject.Get("name").AsString.Should().Be("TypeError");
+        Eval(@"
+            var ok = false;
+            try { new WeakSet().add(1); }
+            catch (e) { ok = e instanceof TypeError; }
+            ok;").AsBool.Should().BeTrue();
     }
 
     [Fact]

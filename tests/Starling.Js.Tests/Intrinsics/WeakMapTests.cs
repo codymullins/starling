@@ -30,12 +30,11 @@ public class WeakMapTests
     [Fact]
     public void Primitive_key_on_set_throws_TypeError()
     {
-        // Test rewritten to use the C# boundary because the compiler does
-        // not yet support `try`/`catch` or `instanceof` (wp:M3-05). The
-        // thrown JsThrow's value is the spec-mandated TypeError instance.
-        Action act = () => Eval("new WeakMap().set(1, 'x');");
-        act.Should().Throw<JsThrow>()
-            .Which.Value.AsObject.Get("name").AsString.Should().Be("TypeError");
+        Eval(@"
+            var ok = false;
+            try { new WeakMap().set(1, 'x'); }
+            catch (e) { ok = e instanceof TypeError; }
+            ok;").AsBool.Should().BeTrue();
     }
 
     [Fact]

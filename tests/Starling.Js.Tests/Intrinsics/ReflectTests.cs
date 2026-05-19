@@ -35,11 +35,10 @@ public class ReflectTests
     [Fact]
     public void Reflect_deleteProperty_removes_property()
     {
-        // `in` operator pending (wp:M3-05); use Reflect.has to verify the property is gone.
         Eval(@"
             var o = {a: 1, b: 2};
             var ok = Reflect.deleteProperty(o, 'a');
-            ok && !Reflect.has(o, 'a');
+            ok && !('a' in o);
         ").AsBool.Should().BeTrue();
     }
 

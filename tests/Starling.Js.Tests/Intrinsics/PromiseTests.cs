@@ -252,16 +252,14 @@ public class PromiseTests
     [Fact]
     public void Promise_any_aggregate_error_is_real_AggregateError_instance()
     {
-        // instanceof is not yet wired (mirrors ErrorTests style); walk the
-        // prototype chain manually instead.
         var rt = Run(@"
             globalThis.isAgg = false;
             globalThis.isErr = false;
             globalThis.msg = '';
             Promise.any([Promise.reject(1), Promise.reject(2)])
                 .catch(function(e) {
-                    globalThis.isAgg = Object.getPrototypeOf(e) === AggregateError.prototype;
-                    globalThis.isErr = Object.getPrototypeOf(AggregateError.prototype) === Error.prototype;
+                    globalThis.isAgg = e instanceof AggregateError;
+                    globalThis.isErr = e instanceof Error;
                     globalThis.msg = e.message;
                 });
         ");

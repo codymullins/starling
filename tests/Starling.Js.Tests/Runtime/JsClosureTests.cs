@@ -7,10 +7,8 @@ using Xunit;
 namespace Tessera.Js.Tests.Runtime;
 
 /// <summary>
-/// wp:M3-04c — snapshot-semantics closures. Inner functions can READ
-/// enclosing-scope locals (snapshotted at MakeClosure time), but
-/// mutation through an upvalue is deferred to wp:M3-04c2 with Cell-
-/// based slots.
+/// Closure capture tests. Inner functions read and write enclosing-scope
+/// locals via Cell-based upvalues (live binding semantics).
 /// </summary>
 public class JsClosureTests
 {
@@ -126,12 +124,9 @@ public class JsClosureTests
     [Fact]
     public void Closure_observes_later_local_reassignment()
     {
-        // gap:closure-write-back (wp:M3-04c2): closures now use Cell-based
-        // upvalues, so reassigning the captured local in the parent IS
-        // observed by the closure on the next call. This is the JS spec
-        // behavior — what V8/SpiderMonkey/JSC all do — and what every
-        // real-world closure pattern (counters, event handlers, module
-        // pattern) depends on.
+        // Closures use Cell-based upvalues (live binding semantics); a
+        // reassignment of the captured local in the parent IS observed
+        // by the closure on the next call.
         var r = Eval(@"
             function make() {
                 var n = 10;

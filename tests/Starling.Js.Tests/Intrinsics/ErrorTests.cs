@@ -12,12 +12,6 @@ namespace Tessera.Js.Tests.Intrinsics;
 /// expected name/message/toString behavior, and inherits via the right
 /// prototype chain.
 /// </summary>
-/// <remarks>
-/// <c>instanceof</c> is not yet wired in the compiler (tracked in
-/// wp:M3-05), so the inheritance assertions below probe the prototype chain
-/// directly via <c>Object.getPrototypeOf</c> instead. The semantics are
-/// equivalent — <c>instanceof</c> walks the same chain.
-/// </remarks>
 public class ErrorTests
 {
     // ---------------------------------------------------------- callable
@@ -112,24 +106,13 @@ public class ErrorTests
     [Fact]
     public void TypeError_instance_chain_reaches_Error_prototype()
     {
-        // Equivalent to `new TypeError() instanceof Error` — walks the chain
-        // looking for Error.prototype.
-        Eval(@"
-            var e = new TypeError();
-            var p1 = Object.getPrototypeOf(e);
-            var p2 = Object.getPrototypeOf(p1);
-            p2 === Error.prototype;
-        ").Should().Be(JsValue.True);
+        Eval("new TypeError() instanceof Error;").Should().Be(JsValue.True);
     }
 
     [Fact]
     public void TypeError_instance_chain_reaches_TypeError_prototype()
     {
-        // Equivalent to `new TypeError() instanceof TypeError`.
-        Eval(@"
-            var e = new TypeError();
-            Object.getPrototypeOf(e) === TypeError.prototype;
-        ").Should().Be(JsValue.True);
+        Eval("new TypeError() instanceof TypeError;").Should().Be(JsValue.True);
     }
 
     [Fact]
