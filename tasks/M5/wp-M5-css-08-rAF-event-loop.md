@@ -1,7 +1,7 @@
 ---
 id: wp:M5-css-08-rAF-event-loop
 milestone: M5
-status: "claimed"
+status: "complete"
 claimed_by: "agent-copilot-claude-opus-4.7"
 claimed_at: "2026-05-19T15:41:33Z"
 branch: "main"
@@ -60,3 +60,26 @@ spec requires.
 
 - 2026-05-19T16:25Z — created (agent-copilot-claude-opus-4.7).
 - 2026-05-19T15:41:33Z — claimed by agent-copilot-claude-opus-4.7, working on main
+- 2026-05-19T19:00Z — completed.
+  * `WebEventLoop` gained `RequestAnimationFrame`/`CancelAnimationFrame`/
+    `RunFrame(long nowMs)`. Frame ordering: microtasks → due timers
+    (each followed by microtask drain) → snapshotted rAF queue (each
+    followed by microtask drain) → final microtask drain. All rAF
+    callbacks in a single frame see the same nowMs. Nested rAFs land
+    in the freshly-emptied queue, so they fire on the *next* frame.
+  * `AdvanceBy(n)` now routes through `RunFrame(_nowMs + n)` for
+    back-compat — existing timer-only tests stay green and rAFs now
+    fire as part of time advancement.
+  * `RunFrame` rejects backwards time.
+  * New `AnimationFrameBinding.Install(runtime, loop)` mirrors
+    `TimersBinding`: defines `requestAnimationFrame` /
+    `cancelAnimationFrame` on the global. Non-callable handler throws
+    TypeError; callback errors route through `ConsoleSink` at Error
+    level (does not stop the frame).
+  * 8 new `AnimationFrameTests` (loop layer), 5 new
+    `AnimationFrameBindingTests` (binding layer). Full sln test sweep
+    shows only the two pre-existing failures
+    (`NativeImageDecoderTests.DecodesPngCornerPixels`,
+    `DisplayListBuilderTests.Underlined_link_emits_text_and_underline_fill`)
+    — no regressions.
+  * Engine wiring deferred to wp:M5-css-10 (now unblocked).
