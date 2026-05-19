@@ -92,6 +92,8 @@ blocker; defer to M6 wp:M3-09.
 | gap:operator-bundle — instanceof/in/delete/compound-assign | ✅ | `src/Starling.Js/Bytecode/{Opcode,JsCompiler}.cs` (4 new opcodes + EmitDelete + Dup2 on compound-assign), `src/Starling.Js/Runtime/{JsVm,JsObject,AbstractOperations}.cs` (HasProperty + Has chain-walk via HasOwn), `tests/Starling.Js.Tests/Runtime/JsOperatorsGapTests.cs` (44 tests) |
 | gap:script-top-var-not-global | ✅ | `src/Starling.Js/Bytecode/{Opcode,JsCompiler,Disassembler}.cs` (DeclareGlobalVar opcode, idempotent CreateGlobalVarBinding), `src/Starling.Js/Runtime/JsVm.cs`, `tests/Starling.Js.Tests/Runtime/JsScriptTopVarTests.cs` (13 tests) |
 | @@toStringTag — Object.prototype.toString | ✅ | `src/Starling.Js/Intrinsics/{ObjectCtor,SymbolCtor,PromiseCtor,ArrayBufferCtor,DataViewCtor,MathObj,JsonObj,TypedArrayCtors}.cs` (spec-faithful Object.prototype.toString + 8 new tags), `tests/Starling.Js.Tests/Intrinsics/ToStringTagTests.cs` (27 tests) |
+| B1b-2c — async/await + generators | ✅ | `src/Starling.Js/Runtime/{SuspendedFrame,JsGenerator,JsFunction,JsVm,JsRuntime}.cs`, `src/Starling.Js/Intrinsics/{GeneratorIntrinsics,PromiseCtor}.cs`, `src/Starling.Js/{Ast/{Expressions,Statements},Lex/JsLexer,Parse/{JsParser,JsParser.Statements},Bytecode/{Opcode,JsCompiler,Disassembler}}.cs`, `tests/Starling.Js.Tests/Runtime/{JsGeneratorTests,JsAsyncAwaitTests}.cs` (16 tests; thread-per-suspension model) |
+| cleanup — un-rewrite tests that dodged engine gaps | ✅ | `tests/Starling.Js.Tests/{Runtime/{JsTryCatchTests,JsClosureTests},Intrinsics/{ErrorTests,PromiseTests,ProxyTests,ReflectTests,MapTests,WeakMapTests,WeakSetTests,IntrinsicChainTests,BigIntTests}}.cs` (17 rewrites: 5 instanceof, 3 in, 1 delete, 6 closure-write-back, 2 try/catch) |
 
 ### B0 surface delivered
 
@@ -185,8 +187,9 @@ session. Other rows in the queue are free for other agents/sessions.
 | **gap:operator-bundle** instanceof/in/delete/compound-assign | claude-cody (agent) | complete (2026-05-19) |
 | **gap:script-top-var-not-global** | claude-cody (agent) | complete (2026-05-19) |
 | **@@toStringTag** Object.prototype.toString | claude-cody (agent) | complete (2026-05-19) |
-| **B1b-2c** async/await + generators | claude-cody (agent) | in progress (2026-05-19) |
-| **cleanup:un-rewrite** dodge tests | claude-cody (agent) | in progress (2026-05-19) |
+| **B1b-2c** async/await + generators | claude-cody (agent) | complete (2026-05-19) |
+| **cleanup:un-rewrite** dodge tests | claude-cody (agent) | complete (2026-05-19) |
+| **B7** end-to-end google.com smoke test | claude-cody (agent) | in progress (2026-05-19) |
 
 ## Work queue
 
