@@ -133,6 +133,29 @@ features previously listed as deferred — `:has`, `:nth-*`, `:is`, `:where`,
 | [wp:M5-css-11-per-keyframe-timing](M5/wp-M5-css-11-per-keyframe-timing.md) | 🟢 complete | — | Starling.Css |
 | [wp:M5-skia-removal](M5/wp-M5-skia-removal.md) | 🟢 complete | agent-copilot-claude-opus-4.7 | Starling.Paint |
 
+## M12 — Tiled compositor + layer tree
+
+Long-term fix for "we render the entire page in one bitmap" (the architectural
+root cause of the netclaw.dev / wgpu max-texture-dimension crash, currently
+papered over by a CPU fallback in `ImageSharpBackend`). Lands a Chrome/Safari-
+shape compositor: stacking-context layer tree, per-layer tile cache,
+compositor-thread composite, and transform/opacity animations that don't
+re-paint. Sequenced so each WP is independently shippable and the rendering
+quality monotonically improves at every step.
+
+| ID | Status | Owner | Subsystem |
+|---|---|---|---|
+| [wp:M12-01-viewport-clip](M12/wp-M12-01-viewport-clip.md) | 🔵 available | — | Starling.Paint |
+| [wp:M12-02-picture-cache](M12/wp-M12-02-picture-cache.md) | ⚫ blocked | — | Starling.Paint |
+| [wp:M12-03-stacking-contexts](M12/wp-M12-03-stacking-contexts.md) | 🔵 available | — | Starling.Layout |
+| [wp:M12-04-layer-tree](M12/wp-M12-04-layer-tree.md) | ⚫ blocked | — | Starling.Paint |
+| [wp:M12-05-tile-grid](M12/wp-M12-05-tile-grid.md) | ⚫ blocked | — | Starling.Paint |
+| [wp:M12-06-invalidation](M12/wp-M12-06-invalidation.md) | ⚫ blocked | — | Starling.Paint |
+| [wp:M12-07-compositor-thread](M12/wp-M12-07-compositor-thread.md) | ⚫ blocked | — | Starling.Paint |
+| [wp:M12-08-prefetch-ring](M12/wp-M12-08-prefetch-ring.md) | ⚫ blocked | — | Starling.Paint |
+| [wp:M12-09-compositor-anim](M12/wp-M12-09-compositor-anim.md) | ⚫ blocked | — | Starling.Paint |
+| [wp:M12-10-render-on-demand](M12/wp-M12-10-render-on-demand.md) | 🔵 available | — | Starling.Paint |
+
 ## Available right now (no dependencies pending)
 
 The M3-06 native interop pivot is closed. Remaining pivot follow-ups (win/linux
