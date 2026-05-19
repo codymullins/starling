@@ -82,6 +82,10 @@ blocker; defer to M6 wp:M3-09.
 | B4-4 — Proxy + Reflect | ✅ | `src/Starling.Js/Runtime/{JsProxy,JsObject,AbstractOperations,JsRealm}.cs`, `src/Starling.Js/Intrinsics/{ProxyCtor,ReflectObj,ObjectCtor}.cs`, `tests/Starling.Js.Tests/Intrinsics/{ProxyTests,ReflectTests}.cs` |
 | B4-2 — Date | ✅ | `src/Starling.Js/Runtime/JsDate.cs`, `src/Starling.Js/Intrinsics/DateCtor.cs`, `src/Starling.Js/Runtime/{JsRealm,JsRuntime}.cs`, `tests/Starling.Js.Tests/Intrinsics/DateTests.cs` |
 | B4-1-followup-b — matchAll iterator | ✅ | `src/Starling.Js/Intrinsics/{RegExpStringIterator,StringCtor,RegExpCtor}.cs`, `tests/Starling.Js.Tests/Intrinsics/RegExpTests.cs` (+ iterator-shape tests) |
+| gap:try-catch — try / catch / finally | ✅ | `src/Starling.Js/Bytecode/{Opcode,JsCompiler,Disassembler}.cs` (EnterTry/LeaveTry/EndFinally), `src/Starling.Js/Runtime/JsVm.cs` (TryFrame stack + DivertReturnThroughFinally), `tests/Starling.Js.Tests/Runtime/JsTryCatchTests.cs` (16 tests; spec-complete incl. finally-overrides-completion) |
+| B5-4 — Observers | ✅ | `src/Starling.Bindings/Observers/{MutationObserverBinding,IntersectionObserverBinding,ResizeObserverBinding,MutationRecord}.cs`, `src/Starling.Bindings/WindowBinding.cs`, `src/Starling.Js/Runtime/JsRealm.cs`, `tests/Starling.Bindings.Tests/{MutationObserverTests,IntersectionObserverTests,ResizeObserverTests}.cs` (JS surface complete; record-firing stubbed pending DOM/render hooks) |
+| B6-3 — position sticky | ✅ | `src/Starling.Layout/Position/Sticky.cs` (clamped-relative), `src/Starling.Layout/Position/{PositionLayout,PositionProperties,PositionParser}.cs`, `tests/Starling.Layout.Tests/Position/StickyLayoutTests.cs` |
+| B4-3 — BigInt | ✅ | `src/Starling.Js/Runtime/{JsValue,BigIntOps,JsRealm,JsRuntime,AbstractOperations,JsVm,SameValueZeroComparer}.cs`, `src/Starling.Js/Intrinsics/BigIntCtor.cs`, `src/Starling.Js/{Bytecode/{Chunk,JsCompiler},Ast/Expressions,Parse/JsParser}.cs`, `tests/Starling.Js.Tests/Intrinsics/BigIntTests.cs` (60 tests; mixed-type strict, asIntN/asUintN) |
 
 ### B0 surface delivered
 
@@ -160,11 +164,15 @@ session. Other rows in the queue are free for other agents/sessions.
 | **B2-4** Array + JsArray | claude-cody (agent) | complete (2026-05-19) |
 | **B5-2** Timers | claude-cody (agent) | complete (2026-05-19) |
 | **B5-1** Window/document/EventTarget | claude-cody (agent) | complete (2026-05-19) |
-| **B5-3** fetch + XMLHttpRequest | claude-cody (agent) | in progress (2026-05-19) |
-| **B3-2** Iterator protocol | claude-cody (agent) | in progress (2026-05-19) |
-| **B4-1** RegExp | claude-cody (agent) | in progress (2026-05-19) |
-| **B3-4-followup-a/b** Parser fix + AggregateError swap | claude-cody (agent) | in progress (2026-05-19) |
+| **B5-3** fetch + XMLHttpRequest | claude-cody (agent) | complete (2026-05-19) |
+| **B3-2** Iterator protocol | claude-cody (agent) | complete (2026-05-19) |
+| **B4-1** RegExp | claude-cody (agent) | complete (2026-05-19) |
+| **B3-4-followup-a/b** Parser fix + AggregateError swap | claude-cody (agent) | complete (2026-05-19) |
 | **B5-5** history / storage / cookie / performance | claude-cody (agent, lane-F) | complete (2026-05-19) |
+| **gap:try-catch** | claude-cody (agent) | complete (2026-05-19) |
+| **B5-4** Observers | claude-cody (agent) | complete (2026-05-19) |
+| **B6-3** sticky positioning | claude-cody (agent) | complete (2026-05-19) |
+| **B4-3** BigInt | claude-cody (agent) | complete (2026-05-19) |
 
 ## Work queue
 
