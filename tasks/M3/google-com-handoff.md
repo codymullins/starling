@@ -50,9 +50,13 @@ blocker; defer to M6 wp:M3-09.
 | B0 — JS runtime foundations | ✅ | `src/Starling.Js/Runtime/{PropertyDescriptor,JsObject,JsRealm,AbstractOperations,JsBoundFunction,JsRuntime,JsVm}.cs` |
 | B1a — Lexer hardening | ✅ | `src/Starling.Js/Lex/{JsLexer,JsTokenKind,JsLexError}.cs` |
 | B1b-1 — Modern syntax slice | ✅ | `src/Starling.Js/{Ast/Expressions.cs,Parse/JsParser.cs,Bytecode/{JsCompiler,Opcode}.cs,Runtime/JsVm.cs}` |
+| B2-1 — Object intrinsic | ✅ | `src/Starling.Js/Intrinsics/ObjectCtor.cs`, `tests/Starling.Js.Tests/Intrinsics/ObjectTests.cs`, `src/Starling.Js/Runtime/JsRealm.cs` (+`ObjectConstructor`) |
 | B2-5 — String intrinsic | ✅ | `src/Starling.Js/Intrinsics/StringCtor.cs`, `tests/Starling.Js.Tests/Intrinsics/StringTests.cs` |
 | B2-6 — Number/Boolean/globals | ✅ | `src/Starling.Js/Intrinsics/{NumberCtor,BooleanCtor,Globals}.cs`, `tests/Starling.Js.Tests/Intrinsics/{NumberTests,BooleanTests,GlobalsTests}.cs` |
+| B2-7 — Math intrinsic | ✅ | `src/Starling.Js/Intrinsics/MathObj.cs`, `tests/Starling.Js.Tests/Intrinsics/MathTests.cs` |
+| B2-8 — JSON intrinsic | ✅ | `src/Starling.Js/Intrinsics/JsonObj.cs`, `tests/Starling.Js.Tests/Intrinsics/JsonTests.cs`, `src/Starling.Js/Runtime/{JsRealm,JsVm}.cs` (+`ActiveVm` + reentrancy-safe Run wrapper) |
 | B2-9 — console | ✅ | `src/Starling.Js/Intrinsics/ConsoleObj.cs`, `src/Starling.Js/Runtime/{ConsoleSink,JsRealm,JsRuntime}.cs`, `tests/Starling.Js.Tests/Intrinsics/ConsoleTests.cs` |
+| B6-1 — Flex layout | ✅ | `src/Starling.Layout/Flex/{FlexProperties,FlexParser,FlexLayout}.cs`, `src/Starling.Layout/Block/BlockLayout.cs` (dispatch), `tests/Starling.Layout.Tests/Flex/FlexLayoutTests.cs` |
 
 ### B0 surface delivered
 
@@ -104,13 +108,20 @@ session. Other rows in the queue are free for other agents/sessions.
 
 | ID | Owner | Status |
 |---|---|---|
-| **B2-1** Object intrinsic | claude-cody (agent) | in progress |
-| **B2-7** Math intrinsic | claude-cody (agent) | in progress |
-| **B2-8** JSON intrinsic | claude-cody (agent) | in progress |
-| **B6-1** Flex layout | claude-cody (agent) | in progress |
+| **B2-1** Object intrinsic | claude-cody (agent) | complete (2026-05-18) |
+| **B2-7** Math intrinsic | claude-cody (agent) | complete (2026-05-18) |
+| **B2-8** JSON intrinsic | claude-cody (agent) | complete (2026-05-18) |
+| **B6-1** Flex layout | claude-cody (agent) | complete (2026-05-18) |
 | **B2-5** String prototype | claude-cody (agent, lane-C-1) | complete (2026-05-19) |
 | **B2-6** Number/Boolean/globals | claude-cody (agent, lane-C-2) | complete (2026-05-19) |
 | **B2-9** console | claude-cody (agent, lane-C-3) | complete (2026-05-18) |
+| **B2-2** Function intrinsic | claude-cody (agent) | in progress (2026-05-18) |
+| **B2-3** Error hierarchy | claude-cody (agent) | in progress (2026-05-18) |
+| **B3-4** Promise + microtasks | claude-cody (agent) | in progress (2026-05-18) |
+| **B6-2** position: absolute / fixed | claude-cody (agent) | in progress (2026-05-18) |
+| **B1b-2b** Destructuring | claude-cody (agent, lane-A) | in progress (2026-05-18) |
+| **B3-1** Symbol + well-known symbols | claude-cody (agent, lane-D) | in progress (2026-05-18) |
+| **B4-5** TypedArray/ArrayBuffer/DataView | claude-cody (agent, lane-E) | in progress (2026-05-18) |
 
 ## Work queue
 
