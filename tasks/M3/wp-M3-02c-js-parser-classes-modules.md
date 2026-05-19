@@ -66,3 +66,4 @@ this sub-task is purely modules.
   modules only because classes/async/yield are already in the parser.
 - 2026-05-19T21:14:48Z — claimed by agent-copilot-claude-opus-4.7-modules, working on main
 - 2026-05-19T21:21:59Z — merged; complete
+- 2026-05-19 — completed by agent-copilot-claude-opus-4.7-modules. Assumptions: module records are parser/AST metadata only (no loader/compiler semantics), `from`/`as` remain contextual identifiers, and static module declarations are accepted only through Program-scope dispatch. Validation: `dotnet build src/Starling.Js/Starling.Js.csproj -c Debug --nologo --verbosity:quiet`; `dotnet test tests/Starling.Js.Tests/Starling.Js.Tests.csproj -c Debug --nologo --verbosity:quiet`.
