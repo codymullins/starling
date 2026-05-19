@@ -66,6 +66,17 @@ public enum Opcode : byte
     // ----- Globals (for free identifiers / Test262 host bindings) -----
     LoadGlobal,     // [u16 nameIdx] → push global by name
     StoreGlobal,    // [u16 nameIdx] → pop value, store global
+    /// <summary>[u16 nameIdx] — gap:script-top-var-not-global. Idempotent
+    /// CreateGlobalVarBinding (§16.1.7 / §9.1.1.4.16): if the global object
+    /// already has an own property with this name, do nothing; otherwise
+    /// install a fresh own data property initialized to <c>undefined</c>
+    /// with <c>writable=true</c>, <c>enumerable=true</c>, and
+    /// <c>configurable=false</c> (per spec for <c>var</c> declarations in
+    /// non-eval Script code). Emitted by the compiler at every script-top
+    /// <c>var</c> declarator so the binding exists as a global property
+    /// before its initializer runs, and so a later redeclaration without
+    /// an initializer doesn't reset its value.</summary>
+    DeclareGlobalVar,
 
     // ----- Stack manipulation -----
     Pop,
@@ -197,6 +208,26 @@ public enum Opcode : byte
     EnterTry,
     LeaveTry,
     EndFinally,
+
+    // ----- Operator bundle (gap:instanceof / gap:in / gap:delete) -----
+    /// <summary>Pop right, pop left, push <c>left instanceof right</c>.
+    /// Implements §13.10.2 InstanceofOperator: consults
+    /// <c>target[@@hasInstance]</c> when present, else walks the prototype
+    /// chain for OrdinaryHasInstance.</summary>
+    Instanceof,
+    /// <summary>Pop right, pop key, push <c>key in right</c>. Implements
+    /// §13.10.1 RelationalExpression: throws TypeError when the right-hand
+    /// side is not an Object; otherwise returns
+    /// <c>HasProperty(ToPropertyKey(key))</c>.</summary>
+    In,
+    /// <summary>Pop key, pop receiver, push <c>delete receiver[key]</c>.
+    /// Implements §13.5.1 [[Delete]] dispatch. Receivers that are not
+    /// objects (after spec-typing) return <c>true</c> with no effect.</summary>
+    DeleteProperty,
+    /// <summary>Duplicate the top two stack values (a, b → a, b, a, b).
+    /// Used by compound assignment on member targets to keep the
+    /// receiver/key live across the read.</summary>
+    Dup2,
 
     Halt,           // end-of-program sentinel
 }

@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Tessera.Js.Bytecode;
 using Tessera.Js.Parse;
+using Tessera.Js.Runtime;
 using Xunit;
 
 namespace Tessera.Js.Tests.Bytecode;
@@ -54,22 +55,38 @@ public class JsCompilerTests
     }
 
     [Fact]
-    public void Var_declaration_reserves_local_and_initializes()
+    public void Script_top_var_declaration_emits_global_binding()
     {
+        // gap:script-top-var-not-global — `var x = 1;` at script top creates
+        // a property on the global object (§16.1.7 ScriptEvaluation →
+        // CreateGlobalVarBinding), so the compiler emits the idempotent
+        // DeclareGlobalVar + LoadConst + StoreGlobal sequence rather than
+        // local-slot opcodes.
         var c = Compile("var x = 1;");
-        c.LocalCount.Should().Be(1);
-        // DeclareLocal(0) LoadConst(1.0) StoreLocal(0) Halt
         var d = Disassembler.Disassemble(c);
-        d.Should().Contain("DeclareLocal 0")
+        d.Should().Contain("DeclareGlobalVar")
             .And.Contain("LoadConst")
-            .And.Contain("StoreLocal 0");
+            .And.Contain("StoreGlobal");
     }
 
     [Fact]
-    public void Local_lookup_resolves_to_LoadLocal()
+    public void Var_declaration_inside_function_still_reserves_local()
     {
+        // Regression: only script-top `var` becomes a global. Inside a
+        // function body, vars stay as fast local slots (DeclareLocal +
+        // StoreLocal).
+        var d = DisassembleNestedFunction(Compile("function f(){ var x = 1; return x; }"));
+        d.Should().Contain("DeclareLocal").And.Contain("StoreLocal");
+    }
+
+    [Fact]
+    public void Script_top_var_read_resolves_to_LoadGlobal()
+    {
+        // gap:script-top-var-not-global — reading a script-top var name
+        // goes through LoadGlobal rather than LoadLocal, since the binding
+        // lives on the global object.
         var d = Disassembler.Disassemble(Compile("var x = 1; x;"));
-        d.Should().Contain("LoadLocal 0");
+        d.Should().Contain("LoadGlobal").And.Contain("\"x\"");
     }
 
     [Fact]
@@ -180,26 +197,35 @@ public class JsCompilerTests
     }
 
     [Fact]
-    public void Assignment_to_local()
+    public void Assignment_to_function_local()
     {
-        var d = Disassembler.Disassemble(Compile("var x = 0; x = 5;"));
-        d.Should().Contain("StoreLocal 0");
+        var d = DisassembleNestedFunction(Compile("function f(){ var x = 0; x = 5; return x; }"));
+        d.Should().Contain("StoreLocal");
     }
 
     [Fact]
-    public void Compound_assignment_compiles_to_load_op_store()
+    public void Compound_assignment_to_local_compiles_to_load_op_store()
     {
-        var d = Disassembler.Disassemble(Compile("var x = 1; x += 2;"));
-        d.Should().Contain("LoadLocal 0")
+        var d = DisassembleNestedFunction(Compile("function f(){ var x = 1; x += 2; return x; }"));
+        d.Should().Contain("LoadLocal")
             .And.Contain("Add")
-            .And.Contain("StoreLocal 0");
+            .And.Contain("StoreLocal");
     }
 
     [Fact]
-    public void Postfix_increment_dups_before_mutation()
+    public void Postfix_increment_on_local_dups_before_mutation()
     {
+        var d = DisassembleNestedFunction(Compile("function f(){ var x = 0; x++; return x; }"));
+        d.Should().Contain("Dup").And.Contain("Add").And.Contain("StoreLocal");
+    }
+
+    [Fact]
+    public void Postfix_increment_on_script_top_var_uses_global()
+    {
+        // gap:script-top-var-not-global — `x++` for a script-top var now
+        // loads/stores through the global object.
         var d = Disassembler.Disassemble(Compile("var x = 0; x++;"));
-        d.Should().Contain("Dup").And.Contain("Add").And.Contain("StoreLocal 0");
+        d.Should().Contain("LoadGlobal").And.Contain("Add").And.Contain("StoreGlobal");
     }
 
     [Fact]
@@ -255,4 +281,18 @@ public class JsCompilerTests
 
     private static Chunk Compile(string src)
         => JsCompiler.Compile(new JsParser(src).ParseProgram());
+
+    /// <summary>Find the first <see cref="JsFunction"/> template embedded in
+    /// the constant pool of <paramref name="script"/> and disassemble its
+    /// body. Used by tests that need to assert on the bytecode of a nested
+    /// function (which the script-level disassembly only references by
+    /// constant index).</summary>
+    private static string DisassembleNestedFunction(Chunk script)
+    {
+        foreach (var c in script.Constants)
+        {
+            if (c is JsFunction fn) return Disassembler.Disassemble(fn.Body);
+        }
+        throw new System.InvalidOperationException("script chunk has no embedded function template");
+    }
 }

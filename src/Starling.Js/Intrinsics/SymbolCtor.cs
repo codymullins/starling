@@ -68,6 +68,9 @@ public static class SymbolCtor
         DefineData(descriptionGetter, "length", JsValue.Number(0), false, false, true);
         proto.DefineOwnProperty("description", PropertyDescriptor.Accessor(descriptionGetter, null, enumerable: false, configurable: true));
         DefineSymbolMethod(proto, ToPrimitive, "[Symbol.toPrimitive]", (thisV, _) => JsValue.Symbol(ThisSymbol(realm, thisV)), 1);
+        // §20.4.3.6 Symbol.prototype[@@toStringTag] = "Symbol" (non-writable, non-enumerable, configurable).
+        proto.DefineOwnProperty(ToStringTag,
+            PropertyDescriptor.Data(JsValue.String("Symbol"), writable: false, enumerable: false, configurable: true));
 
         realm.SymbolConstructor = ctor;
         realm.GlobalObject.DefineOwnProperty("Symbol", PropertyDescriptor.Data(JsValue.Object(ctor), true, false, true));

@@ -292,10 +292,37 @@ public sealed class JsVm
                     AbstractOperations.Set(this, globalObj, name, value, JsValue.Object(globalObj));
                     break;
                 }
+                // gap:script-top-var-not-global — idempotent CreateGlobalVarBinding
+                // (§16.1.7 / §9.1.1.4.16). Skip if the global already has an own
+                // property of this name (function-decl hoist may have installed
+                // it first, or this is the second `var x` of a redeclaration);
+                // otherwise install an own data property seeded with undefined.
+                case Opcode.DeclareGlobalVar:
+                {
+                    var idx = ReadU16();
+                    var name = (string)constants[idx]!;
+                    var globalObj = _runtime.Realm.GlobalObject;
+                    if (!globalObj.HasOwn(name))
+                    {
+                        globalObj.DefineOwnProperty(name,
+                            PropertyDescriptor.Data(JsValue.Undefined,
+                                writable: true, enumerable: true, configurable: false));
+                    }
+                    break;
+                }
 
                 // ----- Stack manipulation -----
                 case Opcode.Pop: sp--; break;
                 case Opcode.Dup: Push(Peek()); break;
+                case Opcode.Dup2:
+                {
+                    // (..., a, b) → (..., a, b, a, b)
+                    var b = stack[sp - 1];
+                    var a = stack[sp - 2];
+                    Push(a);
+                    Push(b);
+                    break;
+                }
                 case Opcode.Swap:
                 {
                     var b = stack[sp - 1];
@@ -740,6 +767,48 @@ public sealed class JsVm
                             return rv;
                         }
                     }
+                    break;
+                }
+
+                // ----- Operator bundle (gap:instanceof / gap:in / gap:delete) -----
+                case Opcode.Instanceof:
+                {
+                    var target = Pop();
+                    var value = Pop();
+                    Push(JsValue.Boolean(InstanceofOperator(value, target)));
+                    break;
+                }
+                case Opcode.In:
+                {
+                    var rhs = Pop();
+                    var key = Pop();
+                    if (!rhs.IsObject)
+                        throw new JsThrow(_runtime.Realm.NewTypeError(
+                            "Cannot use 'in' operator to search for '"
+                            + JsValue.ToStringValue(key) + "' in "
+                            + JsValue.ToStringValue(rhs)));
+                    var pk = AbstractOperations.ToPropertyKey(key);
+                    Push(JsValue.Boolean(AbstractOperations.HasProperty(rhs.AsObject, pk)));
+                    break;
+                }
+                case Opcode.DeleteProperty:
+                {
+                    var key = Pop();
+                    var receiver = Pop();
+                    if (!receiver.IsObject)
+                    {
+                        // §13.5.1: ToObject for primitives so we can delete keys
+                        // on a wrapper — wrappers report success since no own
+                        // properties exist matching the key. For null/undefined
+                        // the spec throws TypeError.
+                        if (receiver.IsNullish)
+                            throw new JsThrow(_runtime.Realm.NewTypeError(
+                                "Cannot convert undefined or null to object"));
+                        var boxed = AbstractOperations.ToObject(_runtime.Realm, receiver);
+                        Push(JsValue.Boolean(boxed.Delete(AbstractOperations.ToPropertyKey(key))));
+                        break;
+                    }
+                    Push(JsValue.Boolean(receiver.AsObject.Delete(AbstractOperations.ToPropertyKey(key))));
                     break;
                 }
 
@@ -1190,6 +1259,46 @@ public sealed class JsVm
             return BigIntOps.Add(a.AsBigInt, b.AsBigInt);
         }
         return JsValue.Number(JsValue.ToNumber(a) + JsValue.ToNumber(b));
+    }
+
+    /// <summary>§13.10.2 InstanceofOperator. Consults
+    /// <c>target[@@hasInstance]</c> first; if absent, falls back to
+    /// §10.4.6.4 OrdinaryHasInstance which walks the prototype chain.
+    /// Throws TypeError when the target is not callable.</summary>
+    private bool InstanceofOperator(JsValue value, JsValue target)
+    {
+        if (!target.IsObject)
+            throw new JsThrow(_runtime.Realm.NewTypeError(
+                "Right-hand side of 'instanceof' is not an object"));
+        var targetObj = target.AsObject;
+        // §13.10.2 step 2: invoke the well-known method if defined anywhere
+        // on the prototype chain.
+        var hasInstance = AbstractOperations.Get(this, targetObj,
+            JsPropertyKey.Symbol(Tessera.Js.Intrinsics.SymbolCtor.HasInstance));
+        if (!hasInstance.IsUndefined && !hasInstance.IsNull)
+        {
+            if (!AbstractOperations.IsCallable(hasInstance))
+                throw new JsThrow(_runtime.Realm.NewTypeError(
+                    "Symbol.hasInstance method is not callable"));
+            var result = AbstractOperations.Call(this, hasInstance, target, new[] { value });
+            return JsValue.ToBoolean(result);
+        }
+        // §10.4.6.4 OrdinaryHasInstance.
+        if (!AbstractOperations.IsCallable(target))
+            throw new JsThrow(_runtime.Realm.NewTypeError(
+                "Right-hand side of 'instanceof' is not callable"));
+        // Unwrap bound functions: instanceof checks against the bound target.
+        var unwrapped = targetObj;
+        while (unwrapped is JsBoundFunction bf) unwrapped = bf.Target;
+        if (!value.IsObject) return false;
+        var proto = AbstractOperations.Get(this, unwrapped, "prototype");
+        if (!proto.IsObject)
+            throw new JsThrow(_runtime.Realm.NewTypeError(
+                "Function has non-object prototype in instanceof check"));
+        var protoObj = proto.AsObject;
+        for (var p = value.AsObject.Prototype; p is not null; p = p.Prototype)
+            if (ReferenceEquals(p, protoObj)) return true;
+        return false;
     }
 
     /// <summary>Less-than per §7.2.13. Returns false for NaN comparisons

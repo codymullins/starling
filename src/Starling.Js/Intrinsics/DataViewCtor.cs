@@ -51,6 +51,8 @@ public static class DataViewCtor
         ArrayBufferCtor.DefineData(ctor, "name", JsValue.String("DataView"), false, false, true);
         ArrayBufferCtor.DefineData(ctor, "length", JsValue.Number(1), false, false, true);
         ArrayBufferCtor.DefineData(proto, "constructor", JsValue.Object(ctor), true, false, true);
+        proto.DefineOwnProperty(SymbolCtor.ToStringTag,
+            PropertyDescriptor.Data(JsValue.String("DataView"), writable: false, enumerable: false, configurable: true));
 
         DefineGet(realm, proto, "getInt8", 1, 1, (s, le) => JsValue.Number(unchecked((sbyte)s[0])));
         DefineGet(realm, proto, "getUint8", 1, 1, (s, le) => JsValue.Number(s[0]));

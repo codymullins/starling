@@ -93,6 +93,15 @@ public sealed partial class JsCompiler
     /// the local at this slot? Used by load/store emission sites.</summary>
     private bool IsSlotCaptured(int slot) => _b.IsCaptured(slot);
 
+    /// <summary>gap:script-top-var-not-global — true when this compiler is
+    /// emitting the top-level script chunk (i.e. not inside any function or
+    /// arrow body). Script-top <c>var</c> / <c>let</c> / <c>const</c>
+    /// declarations become properties on the global object per §16.1.7
+    /// ScriptEvaluation, so they're addressed by name (LoadGlobal /
+    /// StoreGlobal / DeclareGlobalVar) rather than allocated to local
+    /// slots.</summary>
+    private bool IsScriptTop => _parent is null;
+
     public static Chunk Compile(Program program, string? name = "<script>")
     {
         var c = new JsCompiler();
@@ -114,15 +123,16 @@ public sealed partial class JsCompiler
         return c._b.Build(name);
     }
 
-    /// <summary>gap:closure-write-back — populate <see cref="_capturedNames"/>
-    /// for the script-top "function": which top-level names are referenced
-    /// from inside nested functions? Top-level vars become globals in our
-    /// implementation, so they'd be writable via LoadGlobal/StoreGlobal
-    /// anyway, but function-decl bindings at script top still flow
-    /// through closure capture and need the cell treatment.</summary>
+    /// <summary>gap:script-top-var-not-global — script-top declarations
+    /// (<c>var</c>, <c>let</c>, <c>const</c>, function-declarations, classes)
+    /// all bind on the global object now, so nested functions resolve any
+    /// free identifier through <see cref="Opcode.LoadGlobal"/> /
+    /// <see cref="Opcode.StoreGlobal"/>. There are no script-top "locals"
+    /// to capture, so the captured-name set is empty.</summary>
     private void RunCaptureAnalysisForScript(IReadOnlyList<Statement> body)
     {
-        _capturedNames = CaptureAnalysis.Compute(Array.Empty<Expression>(), body);
+        _ = body;
+        _capturedNames = new HashSet<string>(StringComparer.Ordinal);
     }
 
     /// <summary>gap:closure-write-back — populate <see cref="_capturedNames"/>
@@ -601,9 +611,19 @@ public sealed partial class JsCompiler
                 if (d.Id is Identifier id)
                 {
                     EmitExpression(d.Init);
-                    if (!TryResolveLocal(id.Name, out var slot))
-                        throw new InvalidOperationException($"missing declared local '{id.Name}'");
-                    EmitStoreLocalSlot(slot);
+                    // gap:script-top-var-not-global — at script top, the
+                    // binding is a global property (not a local slot), so
+                    // the initializer write routes through StoreGlobal.
+                    if (IsScriptTop)
+                    {
+                        _b.EmitU16(Opcode.StoreGlobal, _b.AddConstant(id.Name));
+                    }
+                    else
+                    {
+                        if (!TryResolveLocal(id.Name, out var slot))
+                            throw new InvalidOperationException($"missing declared local '{id.Name}'");
+                        EmitStoreLocalSlot(slot);
+                    }
                 }
                 else
                 {
@@ -787,6 +807,18 @@ public sealed partial class JsCompiler
                 EmitLogical(log);
                 return;
             case UnaryExpression u:
+                if (u.Op == "delete")
+                {
+                    EmitDelete(u);
+                    return;
+                }
+                if (u.Op == "void")
+                {
+                    EmitExpression(u.Argument);
+                    _b.Emit(Opcode.Pop);
+                    _b.Emit(Opcode.LoadUndefined);
+                    return;
+                }
                 EmitExpression(u.Argument);
                 _b.Emit(UnaryOpToOpcode(u.Op));
                 return;
@@ -1012,9 +1044,57 @@ public sealed partial class JsCompiler
                 _b.Emit(Opcode.StoreUpvalue, (byte)upIdx);
                 return;
             }
-            throw new NotSupportedException("update of global not yet supported");
+            // gap:script-top-var-not-global — `x++` where `x` is a global
+            // (e.g. a script-top `var`) does Load, ±1, Store through the
+            // global object. The `Dup` ordering mirrors the local/upvalue
+            // arms above so postfix returns the pre-update value and prefix
+            // returns the post-update value.
+            var nameIdx = _b.AddConstant(id.Name);
+            _b.EmitU16(Opcode.LoadGlobal, nameIdx);
+            if (!up.Prefix) _b.Emit(Opcode.Dup);
+            _b.EmitU16(Opcode.LoadConst, _b.AddConstant(1.0));
+            _b.Emit(up.Op == "++" ? Opcode.Add : Opcode.Sub);
+            if (up.Prefix) _b.Emit(Opcode.Dup);
+            _b.EmitU16(Opcode.StoreGlobal, nameIdx);
+            return;
         }
         throw new NotSupportedException("update target must be identifier in this slice");
+    }
+
+    /// <summary>gap:delete — lower <c>delete expr</c> per §13.5.1. For
+    /// member targets, evaluate the receiver + key and emit
+    /// <see cref="Opcode.DeleteProperty"/>. For non-Reference targets
+    /// (plain identifiers, literals, parenthesized expressions), the spec
+    /// says evaluate-for-side-effects then return <c>true</c> (sloppy mode);
+    /// our engine does not enforce strict mode globally so unqualified
+    /// <c>delete x</c> is a no-op that yields <c>true</c>.</summary>
+    private void EmitDelete(UnaryExpression u)
+    {
+        if (u.Argument is MemberExpression me)
+        {
+            // Reject `delete super.x` — §13.5.1.2 throws SyntaxError.
+            if (me.Object is SuperPropertyExpression)
+                throw new NotSupportedException("delete of super property is a SyntaxError");
+            // Private fields cannot be deleted (early error per §13.5.1).
+            if (!me.Computed && me.Property is PrivateNameExpression)
+                throw new NotSupportedException("delete of a private field is a SyntaxError");
+            EmitExpression(me.Object);
+            if (me.Computed) EmitExpression(me.Property);
+            else _b.EmitU16(Opcode.LoadConst, _b.AddConstant(((Identifier)me.Property).Name));
+            _b.Emit(Opcode.DeleteProperty);
+            return;
+        }
+        // Non-Reference: evaluate the operand for side effects, drop, push true.
+        // (Identifier deletes are also routed here — they are reference-of-an-
+        // environment-record per spec; sloppy mode returns true.)
+        if (u.Argument is Identifier)
+        {
+            _b.Emit(Opcode.LoadTrue);
+            return;
+        }
+        EmitExpression(u.Argument);
+        _b.Emit(Opcode.Pop);
+        _b.Emit(Opcode.LoadTrue);
     }
 
     private void EmitAssignment(AssignmentExpression a)
@@ -1072,6 +1152,40 @@ public sealed partial class JsCompiler
                 _b.EmitU16(Opcode.PrivateSet, _b.AddConstant(mangled));
                 return;
             }
+            // gap:compound-assign-property — for compound forms (`obj.x += v`,
+            // `obj[k] *= v`, …) the spec (§13.15.2) evaluates the base
+            // **once**, reads the property, applies the op, then writes
+            // back to the same base/key. Previously we re-emitted the
+            // member expression on the write side, which evaluated the
+            // base (and any computed-key side effects) a second time and
+            // could route the write to the wrong place when the base
+            // expression was non-pure. Fix: dup the resolved base (+ key
+            // for computed) before the read, then reuse those dup'd
+            // values on the store side.
+            if (a.Op != "=")
+            {
+                EmitExpression(me.Object);
+                if (me.Computed)
+                {
+                    EmitExpression(me.Property);
+                    _b.Emit(Opcode.Dup2);                 // base, key, base, key
+                    _b.Emit(Opcode.LoadComputed);         // base, key, oldVal
+                    EmitExpression(a.Value);              // base, key, oldVal, rhs
+                    _b.Emit(CompoundOpToBinaryOpcode(a.Op)); // base, key, newVal
+                    _b.Emit(Opcode.StoreComputed);        // newVal
+                }
+                else
+                {
+                    _b.Emit(Opcode.Dup);                  // base, base
+                    var nameIdx = _b.AddConstant(((Identifier)me.Property).Name);
+                    _b.EmitU16(Opcode.LoadProperty, nameIdx); // base, oldVal
+                    EmitExpression(a.Value);              // base, oldVal, rhs
+                    _b.Emit(CompoundOpToBinaryOpcode(a.Op)); // base, newVal
+                    _b.EmitU16(Opcode.StoreProperty, nameIdx); // newVal
+                }
+                return;
+            }
+            // Plain `obj.x = v` / `obj[k] = v`.
             // StoreProperty / StoreComputed already re-push the assigned
             // value, so the expression's net result is one value on the
             // stack — no extra Dup needed (it would leak a value).
@@ -1343,6 +1457,18 @@ public sealed partial class JsCompiler
         switch (pattern)
         {
             case Identifier id:
+                // gap:script-top-var-not-global — at script top, a `var`
+                // binding becomes an own data property on the global object
+                // (§16.1.7 ScriptEvaluation → CreateGlobalVarBinding). Emit
+                // the idempotent declare opcode so a redeclaration without
+                // an initializer doesn't reset an existing value, and a
+                // hoisted function-decl that already installed the name
+                // keeps its function value.
+                if (IsScriptTop)
+                {
+                    _b.EmitU16(Opcode.DeclareGlobalVar, _b.AddConstant(id.Name));
+                    return;
+                }
                 if (!_scopes[^1].ContainsKey(id.Name))
                 {
                     var slot = _b.ReserveLocal();
@@ -1614,7 +1740,8 @@ public sealed partial class JsCompiler
         "==" => Opcode.Eq, "!=" => Opcode.NEq,
         "===" => Opcode.StrictEq, "!==" => Opcode.StrictNEq,
         "<" => Opcode.Lt, "<=" => Opcode.LtEq, ">" => Opcode.Gt, ">=" => Opcode.GtEq,
-        "in" or "instanceof" => throw new NotSupportedException($"'{op}' opcode wp:M3-05"),
+        "instanceof" => Opcode.Instanceof,
+        "in" => Opcode.In,
         _ => throw new NotSupportedException($"binary op '{op}'"),
     };
 

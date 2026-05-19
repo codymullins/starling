@@ -81,9 +81,9 @@ public static class ObjectCtor
         DefineMethod(realm, objectProto, "hasOwnProperty", (thisV, args) => ProtoHasOwnProperty(realm, thisV, args), length: 1);
         DefineMethod(realm, objectProto, "isPrototypeOf", (thisV, args) => ProtoIsPrototypeOf(realm, thisV, args), length: 1);
         DefineMethod(realm, objectProto, "propertyIsEnumerable", (thisV, args) => ProtoPropertyIsEnumerable(realm, thisV, args), length: 1);
-        DefineMethod(realm, objectProto, "toString", (thisV, args) => ProtoToString(thisV), length: 0);
+        DefineMethod(realm, objectProto, "toString", (thisV, args) => ProtoToString(realm, thisV), length: 0);
         DefineMethod(realm, objectProto, "valueOf", (thisV, args) => ProtoValueOf(realm, thisV), length: 0);
-        DefineMethod(realm, objectProto, "toLocaleString", (thisV, args) => ProtoToLocaleString(thisV), length: 0);
+        DefineMethod(realm, objectProto, "toLocaleString", (thisV, args) => ProtoToLocaleString(realm, thisV), length: 0);
 
         realm.ObjectConstructor = ctor;
         realm.GlobalObject.DefineOwnProperty("Object",
@@ -579,16 +579,50 @@ public static class ObjectCtor
         return JsValue.Boolean(d is { } dv && dv.Enumerable);
     }
 
-    /// <summary>§20.1.3.6 Object.prototype.toString. The full <c>@@toStringTag</c>
-    /// path arrives with Symbol (B3-1); for now plain objects yield
-    /// <c>"[object Object]"</c> and primitives are stringified via the spec
-    /// fast paths.</summary>
-    private static JsValue ProtoToString(JsValue thisV) => thisV.Kind switch
+    /// <summary>§20.1.3.6 Object.prototype.toString. Spec-faithful: classifies
+    /// the receiver's internal class to pick a default tag, then consults
+    /// <c>@@toStringTag</c> on the (ToObject'd) receiver — if present and a
+    /// string, it overrides the default tag.</summary>
+    private static JsValue ProtoToString(JsRealm realm, JsValue thisV)
     {
-        JsValueKind.Undefined => JsValue.String("[object Undefined]"),
-        JsValueKind.Null => JsValue.String("[object Null]"),
-        _ => JsValue.String("[object Object]"),
-    };
+        if (thisV.IsUndefined) return JsValue.String("[object Undefined]");
+        if (thisV.IsNull) return JsValue.String("[object Null]");
+
+        var o = AbstractOperations.ToObject(realm, thisV);
+        var defaultTag = DefaultToStringTag(realm, o);
+
+        // Consult @@toStringTag on the receiver's prototype chain (spec uses
+        // Get which walks the chain). Only string values override.
+        var tag = defaultTag;
+        var tagVal = o.Get(SymbolCtor.ToStringTag);
+        if (tagVal.Kind == JsValueKind.String) tag = tagVal.AsString;
+
+        return JsValue.String("[object " + tag + "]");
+    }
+
+    /// <summary>Pick the default built-in tag per §20.1.3.6 steps 4–14. We
+    /// only model the categories that have a corresponding host class — the
+    /// Arguments exotic isn't modelled, so its branch is omitted.</summary>
+    private static string DefaultToStringTag(JsRealm realm, JsObject o)
+    {
+        if (o is JsArray) return "Array";
+        if (AbstractOperations.IsCallable(JsValue.Object(o))) return "Function";
+        // Error: any object with ErrorPrototype somewhere in its chain.
+        for (var p = o.Prototype; p is not null; p = p.Prototype)
+        {
+            if (ReferenceEquals(p, realm.ErrorPrototype)) return "Error";
+        }
+        // Boxed primitives (String / Number / Boolean) — detect via prototype.
+        for (var p = o.Prototype; p is not null; p = p.Prototype)
+        {
+            if (ReferenceEquals(p, realm.StringPrototype)) return "String";
+            if (ReferenceEquals(p, realm.NumberPrototype)) return "Number";
+            if (ReferenceEquals(p, realm.BooleanPrototype)) return "Boolean";
+        }
+        if (o is JsDate) return "Date";
+        if (o is JsRegExp) return "RegExp";
+        return "Object";
+    }
 
     /// <summary>§20.1.3.7 Object.prototype.valueOf — return <c>this</c> coerced
     /// to an object (primitives box).</summary>
@@ -597,7 +631,7 @@ public static class ObjectCtor
 
     /// <summary>§20.1.3.5 Object.prototype.toLocaleString — defaults to
     /// invoking <c>this.toString()</c>.</summary>
-    private static JsValue ProtoToLocaleString(JsValue thisV)
+    private static JsValue ProtoToLocaleString(JsRealm realm, JsValue thisV)
     {
         if (thisV.IsObject)
         {
@@ -605,6 +639,6 @@ public static class ObjectCtor
             if (ts.IsObject && ts.AsObject is JsNativeFunction nat)
                 return nat.Body(thisV, Array.Empty<JsValue>());
         }
-        return ProtoToString(thisV);
+        return ProtoToString(realm, thisV);
     }
 }

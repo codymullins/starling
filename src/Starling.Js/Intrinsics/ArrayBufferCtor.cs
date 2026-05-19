@@ -24,6 +24,8 @@ public static class ArrayBufferCtor
         DefineData(ctor, "name", JsValue.String("ArrayBuffer"), false, false, true);
         DefineData(ctor, "length", JsValue.Number(1), false, false, true);
         DefineData(proto, "constructor", JsValue.Object(ctor), true, false, true);
+        proto.DefineOwnProperty(SymbolCtor.ToStringTag,
+            PropertyDescriptor.Data(JsValue.String("ArrayBuffer"), writable: false, enumerable: false, configurable: true));
 
         DefineMethod(proto, "slice", (thisV, args) => Slice(realm, thisV, args), 2);
         DefineMethod(ctor, "isView", (_, args) => JsValue.Boolean(args.Length > 0 && IsView(args[0])), 1);

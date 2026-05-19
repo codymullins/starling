@@ -86,6 +86,8 @@ public static class PromiseCtor
 
         proto.DefineOwnProperty("constructor",
             PropertyDescriptor.Data(JsValue.Object(ctor), writable: true, enumerable: false, configurable: true));
+        proto.DefineOwnProperty(SymbolCtor.ToStringTag,
+            PropertyDescriptor.Data(JsValue.String("Promise"), writable: false, enumerable: false, configurable: true));
 
         // --------------------------------------------------------- Statics
         DefineMethod(ctor, "resolve", (thisV, args) =>

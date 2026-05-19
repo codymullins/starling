@@ -151,6 +151,10 @@ public static class MathObj
             return JsValue.Number(SysMath.Sqrt(sum));
         });
 
+        // §21.3.1 Math[@@toStringTag] = "Math".
+        math.DefineOwnProperty(SymbolCtor.ToStringTag,
+            PropertyDescriptor.Data(JsValue.String("Math"), writable: false, enumerable: false, configurable: true));
+
         // Stamp Math on the global object as writable + configurable + non-enumerable.
         realm.GlobalObject.DefineOwnProperty("Math",
             PropertyDescriptor.Data(JsValue.Object(math),

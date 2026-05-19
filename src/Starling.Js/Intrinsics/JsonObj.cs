@@ -66,6 +66,10 @@ public static class JsonObj
             return result is null ? JsValue.Undefined : JsValue.String(result);
         });
 
+        // §25.5.1 JSON[@@toStringTag] = "JSON".
+        json.DefineOwnProperty(SymbolCtor.ToStringTag,
+            PropertyDescriptor.Data(JsValue.String("JSON"), writable: false, enumerable: false, configurable: true));
+
         realm.GlobalObject.DefineOwnProperty("JSON",
             PropertyDescriptor.Data(JsValue.Object(json),
                 writable: true, enumerable: false, configurable: true));

@@ -149,6 +149,20 @@ public static class AbstractOperations
         return JsValue.Undefined;
     }
 
+    /// <summary>§7.3.12 HasProperty — chain-walking presence check. Routes
+    /// through <see cref="JsProxy"/> when the target is a Proxy so the
+    /// <c>has</c> trap fires.</summary>
+    public static bool HasProperty(JsObject obj, JsPropertyKey key)
+    {
+        ArgumentNullException.ThrowIfNull(obj);
+        // JsObject.Has already walks the prototype chain and JsProxy
+        // overrides Has to dispatch the `has` trap.
+        return obj.Has(key);
+    }
+
+    public static bool HasProperty(JsObject obj, string key)
+        => HasProperty(obj, JsPropertyKey.String(key));
+
     /// <summary>§10.1.9 OrdinarySet — chain-walking write that respects
     /// accessor setters. Returns false if the write was rejected.</summary>
     public static bool Set(JsVm? vm, JsObject obj, string key, JsValue value, JsValue receiver = default)

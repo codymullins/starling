@@ -115,18 +115,20 @@ public class JsObject
     }
 
     /// <summary>Spec [[HasProperty]] — walks the prototype chain. Virtual so
-    /// <see cref="JsProxy"/> can route through the <c>has</c> trap.</summary>
+    /// <see cref="JsProxy"/> can route through the <c>has</c> trap. Uses
+    /// <see cref="HasOwn(string)"/> so exotic subclasses (JsArray indices,
+    /// JsTypedArray elements) participate in the walk.</summary>
     public virtual bool Has(string name)
     {
         for (var o = this; o is not null; o = o.Prototype)
-            if (o._properties.ContainsKey(name)) return true;
+            if (o.HasOwn(name)) return true;
         return false;
     }
 
     public virtual bool Has(JsSymbol symbol)
     {
         for (var o = this; o is not null; o = o.Prototype)
-            if (o._symbolProperties.ContainsKey(symbol)) return true;
+            if (o.HasOwn(symbol)) return true;
         return false;
     }
 
