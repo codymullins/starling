@@ -86,7 +86,34 @@ public sealed partial class JsParser
     // AssignmentExpression
     private Expression ParseAssignment()
     {
+        // Arrow function fast path: a bare identifier followed by '=>' is the
+        // concise-param form `x => expr`.
+        if (_current.Kind == JsTokenKind.Identifier && _lex.Peek().Kind == JsTokenKind.Arrow)
+        {
+            var paramTok = Advance();
+            var param = new Identifier(paramTok.Lexeme, paramTok.Start, paramTok.End);
+            Expect(JsTokenKind.Arrow, "expected '=>' in arrow function");
+            return ParseArrowBody(new List<Expression> { param }, paramTok.Start);
+        }
+        // Empty-param arrow: `() =>`. Two-token lookahead.
+        if (_current.Kind == JsTokenKind.LParen && _lex.Peek().Kind == JsTokenKind.RParen)
+        {
+            var start = _current.Start;
+            Advance(); Advance(); // consume `(` and `)`
+            Expect(JsTokenKind.Arrow, "expected '=>' after '()' in arrow function");
+            return ParseArrowBody(Array.Empty<Expression>(), start);
+        }
+
         var left = ParseConditional();
+        // Parenthesized-params arrow form: ParseConditional() consumed the
+        // `(...)` as either a grouping or a sequence. Either case maps cleanly
+        // to ArrowFunctionExpression when followed by `=>`.
+        if (_current.Kind == JsTokenKind.Arrow)
+        {
+            Advance();
+            var paramList = LiftArrowParams(left);
+            return ParseArrowBody(paramList, left.Start);
+        }
         if (IsAssignmentOp(_current.Kind))
         {
             var op = _current.Lexeme;
@@ -96,6 +123,46 @@ public sealed partial class JsParser
         }
         return left;
     }
+
+    private ArrowFunctionExpression ParseArrowBody(IReadOnlyList<Expression> @params, JsPosition start)
+    {
+        if (Check(JsTokenKind.LBrace))
+        {
+            var block = ParseBlock();
+            return new ArrowFunctionExpression(@params, block, IsExpression: false, Async: false, start, block.End);
+        }
+        var expr = ParseAssignment();
+        return new ArrowFunctionExpression(@params, expr, IsExpression: true, Async: false, start, expr.End);
+    }
+
+    /// <summary>Turn a parenthesized expression list (already parsed as a
+    /// grouping or <see cref="SequenceExpression"/>) back into an arrow
+    /// parameter list. Today: identifiers only — destructuring patterns land
+    /// in B1b-2.</summary>
+    private static List<Expression> LiftArrowParams(Expression expr)
+    {
+        var list = new List<Expression>();
+        switch (expr)
+        {
+            case SequenceExpression seq:
+                foreach (var e in seq.Expressions) list.Add(LiftSingleParam(e));
+                break;
+            case Identifier id:
+                list.Add(id);
+                break;
+            default:
+                throw new JsParseException(
+                    "arrow parameter list must be identifiers (destructuring lands in B1b-2)", expr.Start);
+        }
+        return list;
+    }
+
+    private static Expression LiftSingleParam(Expression e) => e switch
+    {
+        Identifier => e,
+        _ => throw new JsParseException(
+            "arrow parameter list must be identifiers (destructuring lands in B1b-2)", e.Start),
+    };
 
     private static bool IsAssignmentOp(JsTokenKind k) => k is
         JsTokenKind.Eq or JsTokenKind.PlusEq or JsTokenKind.MinusEq
@@ -467,9 +534,56 @@ public sealed partial class JsParser
                 return ParseObjectLiteral();
             case JsTokenKind.Function:
                 return ParseFunctionExpression();
+            case JsTokenKind.TemplateNoSubstitution:
+            case JsTokenKind.TemplateHead:
+                return ParseTemplateLiteral();
         }
         throw new JsParseException(
             $"unexpected token {t.Kind} '{t.Lexeme}'", t.Start);
+    }
+
+    private TemplateLiteral ParseTemplateLiteral()
+    {
+        var startTok = _current;
+        var quasis = new List<string>();
+        var expressions = new List<Expression>();
+        if (_current.Kind == JsTokenKind.TemplateNoSubstitution)
+        {
+            quasis.Add((string)_current.Value!);
+            var end = _current.End;
+            Advance();
+            return new TemplateLiteral(quasis, expressions, startTok.Start, end);
+        }
+        // Head ... (expr ... Middle)* expr ... Tail
+        quasis.Add((string)_current.Value!);
+        Advance();
+        while (true)
+        {
+            expressions.Add(ParseAssignment());
+            // The substitution must close on `}`; we consume it then re-enter
+            // template-mode via the lexer's continuation entry point.
+            if (_current.Kind != JsTokenKind.RBrace)
+                throw new JsParseException(
+                    $"expected '}}' to close template substitution, got {_current.Kind}", _current.Start);
+            // Reset the parser's lookahead to the post-} character, then ask
+            // the lexer for the next template segment instead of a normal token.
+            _current = _lex.ScanTemplateContinuation();
+            if (_current.Kind == JsTokenKind.TemplateTail)
+            {
+                quasis.Add((string)_current.Value!);
+                var endTok = _current;
+                Advance();
+                return new TemplateLiteral(quasis, expressions, startTok.Start, endTok.End);
+            }
+            if (_current.Kind == JsTokenKind.TemplateMiddle)
+            {
+                quasis.Add((string)_current.Value!);
+                Advance();
+                continue;
+            }
+            throw new JsParseException(
+                $"expected template middle or tail, got {_current.Kind}", _current.Start);
+        }
     }
 
     private ArrayExpression ParseArrayLiteral()
@@ -510,7 +624,21 @@ public sealed partial class JsParser
         var props = new List<ObjectProperty>();
         while (!Check(JsTokenKind.RBrace))
         {
-            props.Add(ParseObjectProperty());
+            // Object spread: { ...other }
+            if (Check(JsTokenKind.Ellipsis))
+            {
+                var sstart = _current.Start;
+                Advance();
+                var inner = ParseAssignment();
+                var spreadKey = new Identifier("", sstart, sstart);  // sentinel for spread
+                var spreadElem = new SpreadElement(inner, sstart, inner.End);
+                props.Add(new ObjectProperty(spreadKey, spreadElem,
+                    Shorthand: false, Computed: false, sstart, inner.End));
+            }
+            else
+            {
+                props.Add(ParseObjectProperty());
+            }
             if (!Match(JsTokenKind.Comma)) break;
         }
         var end = _current.End;
@@ -551,6 +679,16 @@ public sealed partial class JsParser
                 $"expected property name, got {_current.Kind}", _current.Start);
         }
 
+        // Method shorthand: { foo() { … }, [bar](x) { … } }
+        if (Check(JsTokenKind.LParen))
+        {
+            var (parameters, body, endPos) = ParseMethodTail();
+            var methodName = key is Identifier ki ? ki : null;
+            var method = MakeFnExpression(methodName, parameters, body, start, endPos);
+            return new ObjectProperty(key, method,
+                Shorthand: false, Computed: computed, start, endPos);
+        }
+
         if (Match(JsTokenKind.Colon))
         {
             var value = ParseAssignment();
@@ -564,7 +702,32 @@ public sealed partial class JsParser
                 Shorthand: true, Computed: false, start, key.End);
         }
         throw new JsParseException(
-            $"expected ':' after object property key", _current.Start);
+            $"expected ':' or '(' after object property key", _current.Start);
+    }
+
+    private static FunctionExpression MakeFnExpression(
+        Identifier? name, IReadOnlyList<Expression> @params, BlockStatement body,
+        JsPosition start, JsPosition end)
+        => new(name, @params, body, Generator: false, start, end);
+
+    /// <summary>Parse the <c>(params) { body }</c> portion of an object-literal
+    /// method shorthand, having already consumed the property key.</summary>
+    private (List<Expression> Params, BlockStatement Body, JsPosition End) ParseMethodTail()
+    {
+        Expect(JsTokenKind.LParen, "expected '(' for method parameters");
+        var parameters = new List<Expression>();
+        if (!Check(JsTokenKind.RParen))
+        {
+            while (true)
+            {
+                var pTok = Expect(JsTokenKind.Identifier, "expected parameter identifier");
+                parameters.Add(new Identifier(pTok.Lexeme, pTok.Start, pTok.End));
+                if (!Match(JsTokenKind.Comma)) break;
+            }
+        }
+        Expect(JsTokenKind.RParen, "expected ')' after method parameters");
+        var body = ParseBlock();
+        return (parameters, body, body.End);
     }
 
     private static bool IsReservedNameAllowedAsPropertyName(JsTokenKind k)

@@ -30,10 +30,37 @@ public sealed class JsVm
         _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
     }
 
+    /// <summary>The realm this VM dispatches against.</summary>
+    public JsRealm Realm => _runtime.Realm;
+
+    /// <summary>The runtime that owns this VM (host bindings, console sink).</summary>
+    public JsRuntime Runtime => _runtime;
+
     /// <summary>Run a chunk to completion. Returns the topmost value at Halt,
     /// or Undefined if the stack was empty.</summary>
     public JsValue Run(Chunk chunk) =>
         Run(chunk, args: [], thisValue: JsValue.Undefined, upvalues: Array.Empty<JsValue>());
+
+    /// <summary>Invoke a JS function with an explicit <c>this</c> and args.
+    /// Used by <see cref="AbstractOperations.Call"/>.</summary>
+    public JsValue CallFunction(JsFunction fn, JsValue thisValue, JsValue[] args)
+        => Run(fn.Body, args, thisValue, fn.Upvalues);
+
+    /// <summary>Construct a JS function (spec [[Construct]] for ordinary
+    /// functions): allocate a fresh ordinary object inheriting from the
+    /// constructor's <c>prototype</c> property, run the body with <c>this</c>
+    /// bound to it, and return whichever object the body produced.</summary>
+    public JsValue ConstructFunction(JsFunction fn, JsValue[] args, JsObject newTarget)
+    {
+        // OrdinaryCreateFromConstructor: prototype is newTarget.prototype if it's
+        // an object, else the realm's Object.prototype.
+        var protoSlot = newTarget.Get("prototype");
+        var proto = protoSlot.IsObject ? protoSlot.AsObject : _runtime.Realm.ObjectPrototype;
+        var instance = _runtime.Realm.NewObjectWithProto(proto);
+        var thisVal = JsValue.Object(instance);
+        var result = Run(fn.Body, args, thisVal, fn.Upvalues);
+        return result.IsObject ? result : thisVal;
+    }
 
     /// <summary>
     /// Internal entry. Copies <paramref name="args"/> into the first N
@@ -45,6 +72,24 @@ public sealed class JsVm
     /// the .NET call stack mirrors the JS call stack.
     /// </summary>
     private JsValue Run(Chunk chunk, JsValue[] args, JsValue thisValue, IReadOnlyList<JsValue> upvalues)
+    {
+        // Publish this VM on the realm so native intrinsics (JSON.parse
+        // reviver, JSON.stringify replacer/toJSON, etc.) can dispatch JS
+        // callables. Save/restore in case of reentry from a nested host
+        // invocation chain.
+        var prevVm = _runtime.Realm.ActiveVm;
+        _runtime.Realm.ActiveVm = this;
+        try
+        {
+            return RunInner(chunk, args, thisValue, upvalues);
+        }
+        finally
+        {
+            _runtime.Realm.ActiveVm = prevVm;
+        }
+    }
+
+    private JsValue RunInner(Chunk chunk, JsValue[] args, JsValue thisValue, IReadOnlyList<JsValue> upvalues)
     {
         var stack = new JsValue[MaxStack];
         var sp = 0;
@@ -202,7 +247,7 @@ public sealed class JsVm
                         JsValueKind.Boolean => "boolean",
                         JsValueKind.Number => "number",
                         JsValueKind.String => "string",
-                        JsValueKind.Object => v.AsObject is JsNativeFunction ? "function" : "object",
+                        JsValueKind.Object => AbstractOperations.IsCallable(v) ? "function" : "object",
                         JsValueKind.BigInt => "bigint",
                         _ => "undefined",
                     }));
@@ -215,7 +260,9 @@ public sealed class JsVm
                     var idx = ReadU16();
                     var name = (string)constants[idx]!;
                     var obj = Pop();
-                    Push(obj.IsObject ? obj.AsObject.Get(name) : JsValue.Undefined);
+                    if (obj.IsObject) Push(obj.AsObject.Get(name));
+                    else if (!obj.IsNullish) Push(AbstractOperations.ToObject(_runtime.Realm, obj).Get(name));
+                    else Push(JsValue.Undefined);
                     break;
                 }
                 case Opcode.StoreProperty:
@@ -232,7 +279,10 @@ public sealed class JsVm
                 {
                     var key = Pop();
                     var obj = Pop();
-                    Push(obj.IsObject ? obj.AsObject.Get(JsValue.ToStringValue(key)) : JsValue.Undefined);
+                    var propertyKey = JsValue.ToStringValue(key);
+                    if (obj.IsObject) Push(obj.AsObject.Get(propertyKey));
+                    else if (!obj.IsNullish) Push(AbstractOperations.ToObject(_runtime.Realm, obj).Get(propertyKey));
+                    else Push(JsValue.Undefined);
                     break;
                 }
                 case Opcode.StoreComputed:
@@ -255,12 +305,7 @@ public sealed class JsVm
                     var callArgs = new JsValue[argc];
                     for (var i = argc - 1; i >= 0; i--) callArgs[i] = Pop();
                     var callee = Pop();
-                    if (callee.IsObject && callee.AsObject is JsNativeFunction nat)
-                        Push(nat.Body(callArgs));
-                    else if (callee.IsObject && callee.AsObject is JsFunction fn)
-                        Push(Run(fn.Body, callArgs, JsValue.Undefined, fn.Upvalues));
-                    else
-                        throw new JsThrow(JsValue.String($"not a function: {callee}"));
+                    Push(AbstractOperations.Call(this, callee, JsValue.Undefined, callArgs));
                     break;
                 }
                 case Opcode.CallMethod:
@@ -270,12 +315,7 @@ public sealed class JsVm
                     for (var i = argc - 1; i >= 0; i--) callArgs[i] = Pop();
                     var callee = Pop();
                     var receiver = Pop();
-                    if (callee.IsObject && callee.AsObject is JsNativeFunction nat)
-                        Push(nat.Body(callArgs));
-                    else if (callee.IsObject && callee.AsObject is JsFunction fn)
-                        Push(Run(fn.Body, callArgs, receiver, fn.Upvalues));
-                    else
-                        throw new JsThrow(JsValue.String($"not a function: {callee}"));
+                    Push(AbstractOperations.Call(this, callee, receiver, callArgs));
                     break;
                 }
 
@@ -320,7 +360,7 @@ public sealed class JsVm
                     break;
 
                 case Opcode.NewObject:
-                    Push(JsValue.Object(new JsObject()));
+                    Push(JsValue.Object(_runtime.Realm.NewOrdinaryObject()));
                     break;
 
                 case Opcode.New:
@@ -329,29 +369,7 @@ public sealed class JsVm
                     var newArgs = new JsValue[argc];
                     for (var i = argc - 1; i >= 0; i--) newArgs[i] = Pop();
                     var ctor = Pop();
-                    if (ctor.IsObject && ctor.AsObject is JsFunction jsFn)
-                    {
-                        // §13.3.5.1 [[Construct]]: allocate a fresh ordinary
-                        // object, run the body with `this` bound to it. If
-                        // the body returns an object, use that; otherwise
-                        // use the freshly-allocated `this`.
-                        var instance = new JsObject();
-                        var thisVal = JsValue.Object(instance);
-                        var result = Run(jsFn.Body, newArgs, thisVal, jsFn.Upvalues);
-                        Push(result.IsObject ? result : thisVal);
-                    }
-                    else if (ctor.IsObject && ctor.AsObject is JsNativeFunction)
-                    {
-                        // Native constructors land in M3-05 when intrinsics
-                        // arrive (e.g. `new Array(...)`). For now this is
-                        // an error.
-                        throw new JsThrow(JsValue.String(
-                            "new on native function not yet supported (wp:M3-05)"));
-                    }
-                    else
-                    {
-                        throw new JsThrow(JsValue.String($"not a constructor: {ctor}"));
-                    }
+                    Push(AbstractOperations.Construct(this, ctor, newArgs));
                     break;
                 }
 
@@ -382,6 +400,20 @@ public sealed class JsVm
 
                 // ----- Throw -----
                 case Opcode.Throw: throw new JsThrow(Pop());
+
+                case Opcode.SpreadInto:
+                {
+                    var src = Pop();
+                    var dst = Pop();
+                    if (src.IsObject && dst.IsObject)
+                    {
+                        var srcObj = src.AsObject;
+                        var dstObj = dst.AsObject;
+                        foreach (var key in srcObj.EnumerableKeys())
+                            dstObj.Set(key, srcObj.Get(key));
+                    }
+                    break;
+                }
 
                 default:
                     throw new InvalidOperationException($"opcode {op} not implemented in VM");

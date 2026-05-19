@@ -80,5 +80,6 @@ public enum Opcode : byte
     // ----- Misc -----
     TypeOf,
     Throw,
+    SpreadInto,     // pop src and dst objects, copy own enumerable props from src onto dst (object-literal spread)
     Halt,           // end-of-program sentinel
 }

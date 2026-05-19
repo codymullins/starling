@@ -50,6 +50,9 @@ blocker; defer to M6 wp:M3-09.
 | B0 — JS runtime foundations | ✅ | `src/Starling.Js/Runtime/{PropertyDescriptor,JsObject,JsRealm,AbstractOperations,JsBoundFunction,JsRuntime,JsVm}.cs` |
 | B1a — Lexer hardening | ✅ | `src/Starling.Js/Lex/{JsLexer,JsTokenKind,JsLexError}.cs` |
 | B1b-1 — Modern syntax slice | ✅ | `src/Starling.Js/{Ast/Expressions.cs,Parse/JsParser.cs,Bytecode/{JsCompiler,Opcode}.cs,Runtime/JsVm.cs}` |
+| B2-5 — String intrinsic | ✅ | `src/Starling.Js/Intrinsics/StringCtor.cs`, `tests/Starling.Js.Tests/Intrinsics/StringTests.cs` |
+| B2-6 — Number/Boolean/globals | ✅ | `src/Starling.Js/Intrinsics/{NumberCtor,BooleanCtor,Globals}.cs`, `tests/Starling.Js.Tests/Intrinsics/{NumberTests,BooleanTests,GlobalsTests}.cs` |
+| B2-9 — console | ✅ | `src/Starling.Js/Intrinsics/ConsoleObj.cs`, `src/Starling.Js/Runtime/{ConsoleSink,JsRealm,JsRuntime}.cs`, `tests/Starling.Js.Tests/Intrinsics/ConsoleTests.cs` |
 
 ### B0 surface delivered
 
@@ -105,9 +108,9 @@ session. Other rows in the queue are free for other agents/sessions.
 | **B2-7** Math intrinsic | claude-cody (agent) | in progress |
 | **B2-8** JSON intrinsic | claude-cody (agent) | in progress |
 | **B6-1** Flex layout | claude-cody (agent) | in progress |
-| **B2-5** String prototype | claude-cody (agent, lane-C-1) | in progress (2026-05-18) |
-| **B2-6** Number/Boolean/globals | claude-cody (agent, lane-C-2) | in progress (2026-05-18) |
-| **B2-9** console | claude-cody (agent, lane-C-3) | in progress (2026-05-18) |
+| **B2-5** String prototype | claude-cody (agent, lane-C-1) | complete (2026-05-19) |
+| **B2-6** Number/Boolean/globals | claude-cody (agent, lane-C-2) | complete (2026-05-19) |
+| **B2-9** console | claude-cody (agent, lane-C-3) | complete (2026-05-18) |
 
 ## Work queue
 

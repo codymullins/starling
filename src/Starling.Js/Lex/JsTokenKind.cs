@@ -15,11 +15,25 @@ public enum JsTokenKind
 {
     // ----- Literal categories -------------------------------------------
     Identifier,
+    PrivateIdentifier,  // #name — class private fields/methods
     NumericLiteral,
     BigIntLiteral,
     StringLiteral,
     NullLiteral,
     BooleanLiteral, // true / false
+    RegExpLiteral,  // /pattern/flags (parser-driven; see JsLexer.ScanRegExp)
+
+    // ----- Template literal pieces (§12.8.6) ---------------------------
+    // The parser drives template lexing via JsLexer.ScanTemplate so that
+    // ${ ... } substitution expressions can be lexed in normal-expression
+    // mode. Each backtick-delimited literal yields:
+    //   TemplateNoSubstitution            -- `…`
+    //   TemplateHead + (expr*) + TemplateTail
+    //   TemplateHead + (expr+) + TemplateMiddle + (expr*) + TemplateTail
+    TemplateNoSubstitution,
+    TemplateHead,
+    TemplateMiddle,
+    TemplateTail,
 
     // ----- Keywords (ECMAScript §12.6.2 ReservedWord) -------------------
     Break, Case, Catch, Class, Const, Continue,

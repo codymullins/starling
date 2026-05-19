@@ -9,9 +9,12 @@ public enum JsLexError
     InvalidCharacter,
     UnterminatedString,
     UnterminatedComment,
+    UnterminatedTemplate,
+    UnterminatedRegExp,
     InvalidEscape,
     InvalidNumericLiteral,
     InvalidUnicodeEscape,
+    InvalidRegExpFlag,
     UnexpectedEndOfInput,
 }
 

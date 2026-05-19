@@ -76,6 +76,13 @@ public sealed class JsLexer
     // -----------------------------------------------------------------------
     private JsToken Scan()
     {
+        // §12.5 Hashbang comment — only at the very first byte of the script,
+        // mirrors Node/V8/JSC. Treat as a line comment.
+        if (_i == 0 && _src.Length >= 2 && _src[0] == '#' && _src[1] == '!')
+        {
+            while (_i < _src.Length && !IsLineTerminator(_src[_i])) Advance();
+        }
+
         SkipWhitespaceAndComments();
         var start = CurrentPos();
         var precededByLT = _precedingLineTerm;
@@ -90,6 +97,10 @@ public sealed class JsLexer
         if (IsIdStart(c))
             return ScanIdentifier(start, precededByLT);
 
+        // Private identifier — #name, only valid in class bodies (parser enforces).
+        if (c == '#' && _i + 1 < _src.Length && IsIdStart(_src[_i + 1]))
+            return ScanPrivateIdentifier(start, precededByLT);
+
         // Numeric literal
         if (c >= '0' && c <= '9')
             return ScanNumber(start, precededByLT);
@@ -98,8 +109,152 @@ public sealed class JsLexer
         if (c == '"' || c == '\'')
             return ScanString(c, start, precededByLT);
 
+        // Template literal — parser-driven thereafter for substitutions.
+        if (c == '`')
+            return ScanTemplateBody(start, precededByLT, head: true);
+
         // Punctuator
         return ScanPunctuator(start, precededByLT);
+    }
+
+    /// <summary>Parser entry point for the start of a regex literal — called
+    /// when the previous token's grammatical position permits a regex. Assumes
+    /// the next character is <c>/</c>. Emits a single
+    /// <see cref="JsTokenKind.RegExpLiteral"/> token whose <c>Value</c> is the
+    /// tuple <c>(pattern: string, flags: string)</c>.</summary>
+    public JsToken ScanRegExp()
+    {
+        if (_peeked is { } pq && pq.Kind == JsTokenKind.Slash)
+        {
+            // Roll back the peeked `/` — we're going to re-lex it as a regex.
+            _i -= pq.Lexeme.Length;
+            _col -= pq.Lexeme.Length;
+            _peeked = null;
+        }
+        SkipWhitespaceAndComments();
+        var start = CurrentPos();
+        var precededByLT = _precedingLineTerm;
+        _precedingLineTerm = false;
+
+        if (_i >= _src.Length || _src[_i] != '/')
+            throw new InvalidOperationException("ScanRegExp called at non-slash position");
+
+        Advance(); // opening /
+        var patternStart = _i;
+        var inClass = false;
+        while (_i < _src.Length)
+        {
+            var c = _src[_i];
+            if (IsLineTerminator(c))
+            {
+                _errors.Report(JsLexError.UnterminatedRegExp, start, "unterminated regular expression");
+                return MakeToken(JsTokenKind.Invalid, _src[start.Offset.._i], start, CurrentPos(), precededByLT);
+            }
+            if (c == '\\')
+            {
+                Advance();
+                if (_i < _src.Length) Advance();
+                continue;
+            }
+            if (c == '[') { inClass = true; Advance(); continue; }
+            if (c == ']') { inClass = false; Advance(); continue; }
+            if (c == '/' && !inClass) break;
+            Advance();
+        }
+        if (_i >= _src.Length || _src[_i] != '/')
+        {
+            _errors.Report(JsLexError.UnterminatedRegExp, start, "unterminated regular expression");
+            return MakeToken(JsTokenKind.Invalid, _src[start.Offset.._i], start, CurrentPos(), precededByLT);
+        }
+        var pattern = _src[patternStart.._i];
+        Advance(); // closing /
+        var flagsStart = _i;
+        while (_i < _src.Length && IsIdPart(_src[_i])) Advance();
+        var flags = _src[flagsStart.._i];
+        var lex = _src[start.Offset.._i];
+        return MakeToken(JsTokenKind.RegExpLiteral, lex, start, CurrentPos(), precededByLT, (pattern, flags));
+    }
+
+    /// <summary>Parser entry point after a <c>}</c> closes a substitution in a
+    /// template literal. Continues scanning the template body — emits either
+    /// <see cref="JsTokenKind.TemplateMiddle"/> (another <c>${</c> follows) or
+    /// <see cref="JsTokenKind.TemplateTail"/> (closing backtick).</summary>
+    public JsToken ScanTemplateContinuation()
+    {
+        _peeked = null;
+        var start = CurrentPos();
+        return ScanTemplateBody(start, precededByLT: false, head: false);
+    }
+
+    private JsToken ScanTemplateBody(JsPosition start, bool precededByLT, bool head)
+    {
+        // Caller positioned us at either the opening backtick (head=true) or
+        // the character immediately after the `}` of a ${…} substitution.
+        if (head)
+        {
+            if (_i >= _src.Length || _src[_i] != '`')
+                throw new InvalidOperationException("template head called at non-backtick");
+            Advance();
+        }
+        var begin = _i;
+        var sb = new StringBuilder();
+        while (_i < _src.Length)
+        {
+            var c = _src[_i];
+            if (c == '`')
+            {
+                Advance();
+                var kind = head ? JsTokenKind.TemplateNoSubstitution : JsTokenKind.TemplateTail;
+                return MakeToken(kind, _src[begin.._i], start, CurrentPos(), precededByLT, sb.ToString());
+            }
+            if (c == '$' && _i + 1 < _src.Length && _src[_i + 1] == '{')
+            {
+                Advance(); Advance();
+                var kind = head ? JsTokenKind.TemplateHead : JsTokenKind.TemplateMiddle;
+                return MakeToken(kind, _src[begin.._i], start, CurrentPos(), precededByLT, sb.ToString());
+            }
+            if (c == '\\')
+            {
+                Advance();
+                if (_i >= _src.Length) break;
+                // Line continuation \<LineTerminator> is dropped.
+                if (IsLineTerminator(_src[_i]))
+                {
+                    if (_src[_i] == '\r' && _i + 1 < _src.Length && _src[_i + 1] == '\n') AdvanceRaw();
+                    _i++; _line++; _col = 1; _precedingLineTerm = true;
+                    continue;
+                }
+                sb.Append(ScanEscape(start));
+                continue;
+            }
+            if (IsLineTerminator(c))
+            {
+                // Raw newlines are legal inside templates; track them for ASI.
+                _precedingLineTerm = true;
+                if (c == '\r' && _i + 1 < _src.Length && _src[_i + 1] == '\n') AdvanceRaw();
+                sb.Append('\n');
+                _i++; _line++; _col = 1;
+                continue;
+            }
+            sb.Append(c);
+            Advance();
+        }
+        _errors.Report(JsLexError.UnterminatedTemplate, start, "unterminated template literal");
+        return MakeToken(JsTokenKind.Invalid, _src[begin.._i], start, CurrentPos(), precededByLT, sb.ToString());
+    }
+
+    private JsToken ScanPrivateIdentifier(JsPosition start, bool precededByLT)
+    {
+        var begin = _i;
+        Advance(); // '#'
+        var sb = new StringBuilder("#");
+        while (_i < _src.Length && IsIdPart(_src[_i]))
+        {
+            sb.Append(_src[_i]);
+            Advance();
+        }
+        var lex = sb.ToString();
+        return MakeToken(JsTokenKind.PrivateIdentifier, _src[begin.._i], start, CurrentPos(), precededByLT, lex);
     }
 
     // -----------------------------------------------------------------------

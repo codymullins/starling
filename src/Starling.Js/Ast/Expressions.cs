@@ -128,3 +128,36 @@ public sealed record FunctionExpression(
     bool Generator,
     JsPosition Start, JsPosition End)
     : Expression(Start, End);
+
+/// <summary>
+/// Arrow function <c>(x) =&gt; expr</c> or <c>(x) =&gt; { stmts }</c>. Unlike
+/// <see cref="FunctionExpression"/>, an arrow body's <c>this</c> binding is
+/// captured lexically from the enclosing scope. <see cref="IsExpression"/> is
+/// true for concise-body forms (single expression after <c>=&gt;</c>); false for
+/// block-body forms.
+/// </summary>
+public sealed record ArrowFunctionExpression(
+    IReadOnlyList<Expression> Params,
+    AstNode Body,                // BlockStatement or Expression
+    bool IsExpression,           // true => Body is an Expression (concise body)
+    bool Async,
+    JsPosition Start, JsPosition End)
+    : Expression(Start, End);
+
+/// <summary>
+/// Template literal <c>`pre ${a} mid ${b} tail`</c>. <see cref="Quasis"/> is
+/// the literal string segments; <see cref="Expressions"/> is the substitution
+/// expressions. Always <c>Quasis.Count == Expressions.Count + 1</c>.
+/// </summary>
+public sealed record TemplateLiteral(
+    IReadOnlyList<string> Quasis,
+    IReadOnlyList<Expression> Expressions,
+    JsPosition Start, JsPosition End)
+    : Expression(Start, End);
+
+/// <summary>Tagged template — <c>tag`...`</c>.</summary>
+public sealed record TaggedTemplateExpression(
+    Expression Tag,
+    TemplateLiteral Quasi,
+    JsPosition Start, JsPosition End)
+    : Expression(Start, End);

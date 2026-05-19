@@ -403,10 +403,65 @@ public sealed class JsCompiler
                 }
                 EmitExpression(seq.Expressions[^1]);
                 return;
+            case TemplateLiteral tpl:
+                EmitTemplateLiteral(tpl);
+                return;
+            case ArrowFunctionExpression arrow:
+                EmitArrowFunction(arrow);
+                return;
         }
         throw new NotSupportedException(
             $"compiler: expression kind '{e.GetType().Name}' not yet supported.");
     }
+
+    /// <summary>
+    /// Desugar template literal to left-fold string concat:
+    /// `q0${e0}q1${e1}q2` → q0 + e0 + q1 + e1 + q2 (with explicit ToString
+    /// coercion of substitution values implicit in JS '+'). Empty quasi
+    /// segments are skipped.
+    /// </summary>
+    private void EmitTemplateLiteral(TemplateLiteral tpl)
+    {
+        // Always start with the first quasi (which can be "") to anchor as a string —
+        // ensures arithmetic '+' on subsequent operands becomes string concat.
+        _b.EmitU16(Opcode.LoadConst, _b.AddConstant(tpl.Quasis[0]));
+        for (var i = 0; i < tpl.Expressions.Count; i++)
+        {
+            EmitExpression(tpl.Expressions[i]);
+            _b.Emit(Opcode.Add);
+            if (tpl.Quasis[i + 1].Length > 0)
+            {
+                _b.EmitU16(Opcode.LoadConst, _b.AddConstant(tpl.Quasis[i + 1]));
+                _b.Emit(Opcode.Add);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Arrow functions desugar to a regular function for compilation. Their
+    /// only semantic differences (lexical <c>this</c> + no <c>arguments</c>)
+    /// are wired through closure analysis in B1b-2 when class methods land.
+    /// Until then, the body is compiled identically and <c>this</c> rebinding
+    /// is a known limitation tracked in tests.
+    /// </summary>
+    private void EmitArrowFunction(ArrowFunctionExpression arrow)
+    {
+        BlockStatement body = arrow.Body switch
+        {
+            BlockStatement b => b,
+            Expression expr => new BlockStatement(
+                [new ReturnStatement(expr, arrow.Start, arrow.End)],
+                arrow.Start, arrow.End),
+            _ => throw new InvalidOperationException("arrow body must be block or expression"),
+        };
+        var fe = BuildFunctionExpressionShim(null, arrow.Params, body, arrow.Start, arrow.End);
+        EmitFunctionExpression(fe);
+    }
+
+    private static FunctionExpression BuildFunctionExpressionShim(
+        Identifier? name, IReadOnlyList<Expression> @params, BlockStatement body,
+        Tessera.Js.Lex.JsPosition start, Tessera.Js.Lex.JsPosition end)
+        => new(name, @params, body, Generator: false, start, end);
 
     private void EmitIdLoad(string name)
     {
@@ -632,6 +687,16 @@ public sealed class JsCompiler
         _b.Emit(Opcode.NewObject); // [obj]
         foreach (var prop in oe.Properties)
         {
+            // Spread: copy enumerable own properties from the source onto obj.
+            // The parser tags spreads with a SpreadElement value and an empty
+            // sentinel identifier key.
+            if (prop.Value is SpreadElement spread)
+            {
+                _b.Emit(Opcode.Dup);               // [obj, obj]
+                EmitExpression(spread.Argument);   // [obj, obj, src]
+                _b.Emit(Opcode.SpreadInto);        // [obj]
+                continue;
+            }
             // Pattern per property: keep obj on stack, store, discard the
             // value-clone that StoreProperty/Computed re-pushes.
             _b.Emit(Opcode.Dup); // [obj, obj]
