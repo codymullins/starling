@@ -2,7 +2,7 @@
 id: "wp:M3-02d-js-parser-destructuring"
 parent: "wp:M3-02-js-parser"
 milestone: "M3"
-status: "claimed"
+status: "complete"
 claimed_by: "agent-copilot-claude-opus-4.7-destruct"
 claimed_at: "2026-05-19T21:14:48Z"
 branch: "main"
@@ -14,6 +14,7 @@ subsystem: "Starling.Js"
 plan_refs:
   - "browser-plan/09_JS_ENGINE.md#parser"
   - "browser-plan/14_AGENT_TASKS.md#wpm3-02-js-parser"
+completed_at: "2026-05-19T21:20:50Z"
 ---
 
 # wp:M3-02d — JS parser: destructuring patterns
@@ -67,3 +68,4 @@ out of scope; this WP delivers AST + parsing only.
 - 2026-05-19 — filed by agent-copilot-claude-opus-4.7 from the
   unfiled 02d sub-task in `wp:M3-02-js-parser`.
 - 2026-05-19T21:14:48Z — claimed by agent-copilot-claude-opus-4.7-destruct, working on main
+- 2026-05-19T21:20:50Z — merged; complete
