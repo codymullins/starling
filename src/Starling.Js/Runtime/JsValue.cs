@@ -15,6 +15,7 @@ public enum JsValueKind : byte
     String,
     Object,
     BigInt,
+    Symbol,
 }
 
 /// <summary>
@@ -51,6 +52,7 @@ public readonly struct JsValue : IEquatable<JsValue>
     public static JsValue String(string s) => new(JsValueKind.String, 0, s);
     public static JsValue Object(JsObject o) => new(JsValueKind.Object, 0, o);
     public static JsValue BigInt(string digits) => new(JsValueKind.BigInt, 0, digits);
+    public static JsValue Symbol(JsSymbol symbol) => new(JsValueKind.Symbol, 0, symbol);
 
     public bool IsUndefined => Kind == JsValueKind.Undefined;
     public bool IsNull => Kind == JsValueKind.Null;
@@ -59,6 +61,7 @@ public readonly struct JsValue : IEquatable<JsValue>
     public bool IsNumber => Kind == JsValueKind.Number;
     public bool IsString => Kind == JsValueKind.String;
     public bool IsObject => Kind == JsValueKind.Object;
+    public bool IsSymbol => Kind == JsValueKind.Symbol;
 
     public double AsNumber => Kind == JsValueKind.Number
         ? _num
@@ -72,6 +75,9 @@ public readonly struct JsValue : IEquatable<JsValue>
     public JsObject AsObject => Kind == JsValueKind.Object
         ? (JsObject)_ref!
         : throw new InvalidOperationException($"value is {Kind}, not Object");
+    public JsSymbol AsSymbol => Kind == JsValueKind.Symbol
+        ? (JsSymbol)_ref!
+        : throw new InvalidOperationException($"value is {Kind}, not Symbol");
 
     // -----------------------------------------------------------------------
     // ES2024 abstract operations
@@ -87,6 +93,7 @@ public readonly struct JsValue : IEquatable<JsValue>
         JsValueKind.String => ((string)v._ref!).Length > 0,
         JsValueKind.Object => true,
         JsValueKind.BigInt => ((string)v._ref!) != "0",
+        JsValueKind.Symbol => true,
         _ => false,
     };
 
@@ -100,6 +107,7 @@ public readonly struct JsValue : IEquatable<JsValue>
         JsValueKind.String => ParseNumber((string)v._ref!),
         JsValueKind.Object => double.NaN, // simplified: real spec calls ToPrimitive then ToNumber
         JsValueKind.BigInt => throw new InvalidOperationException("can't convert BigInt to Number"),
+        JsValueKind.Symbol => throw new InvalidOperationException("can't convert Symbol to Number"),
         _ => double.NaN,
     };
 
@@ -122,6 +130,7 @@ public readonly struct JsValue : IEquatable<JsValue>
         JsValueKind.String => (string)v._ref!,
         JsValueKind.Object => "[object Object]", // simplified
         JsValueKind.BigInt => (string)v._ref!,
+        JsValueKind.Symbol => ((JsSymbol)v._ref!).DescriptiveString,
         _ => "",
     };
 
@@ -153,6 +162,7 @@ public readonly struct JsValue : IEquatable<JsValue>
             JsValueKind.String => string.Equals((string)a._ref!, (string)b._ref!, StringComparison.Ordinal),
             JsValueKind.Object => ReferenceEquals(a._ref, b._ref),
             JsValueKind.BigInt => string.Equals((string)a._ref!, (string)b._ref!, StringComparison.Ordinal),
+            JsValueKind.Symbol => ReferenceEquals(a._ref, b._ref),
             _ => false,
         };
     }

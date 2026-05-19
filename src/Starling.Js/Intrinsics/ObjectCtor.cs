@@ -234,6 +234,11 @@ public static class ObjectCtor
                 var v = srcObj.Get(key);
                 AbstractOperations.Set(vm: null, targetObj, key, v);
             }
+            foreach (var key in srcObj.EnumerableSymbolKeys())
+            {
+                var v = srcObj.Get(key);
+                AbstractOperations.Set(vm: null, targetObj, JsPropertyKey.Symbol(key), v);
+            }
         }
         return target;
     }
@@ -317,7 +322,7 @@ public static class ObjectCtor
     {
         var target = RequireObject(realm, args.Length > 0 ? args[0] : JsValue.Undefined);
         var bag = realm.NewOrdinaryObject();
-        foreach (var key in target.Keys)
+        foreach (var key in target.OwnPropertyKeys)
         {
             var d = target.GetOwnPropertyDescriptor(key);
             if (d is null) continue;
@@ -336,10 +341,14 @@ public static class ObjectCtor
         return MakeArrayLike(realm, names);
     }
 
-    /// <summary>§20.1.2.11 Object.getOwnPropertySymbols — always empty until
-    /// the Symbol intrinsic lands in B3-1.</summary>
-    private static JsValue GetOwnPropertySymbols(JsRealm realm, JsValue[] args) =>
-        MakeArrayLike(realm, Array.Empty<JsValue>());
+    /// <summary>§20.1.2.11 Object.getOwnPropertySymbols.</summary>
+    private static JsValue GetOwnPropertySymbols(JsRealm realm, JsValue[] args)
+    {
+        var target = RequireObject(realm, args.Length > 0 ? args[0] : JsValue.Undefined);
+        var symbols = new List<JsValue>();
+        foreach (var k in target.SymbolKeys) symbols.Add(JsValue.Symbol(k));
+        return MakeArrayLike(realm, symbols);
+    }
 
     /// <summary>§20.1.2.12 Object.getPrototypeOf.</summary>
     private static JsValue GetPrototypeOf(JsRealm realm, JsValue[] args)
@@ -409,7 +418,7 @@ public static class ObjectCtor
         if (!v.IsObject) return v;
         var obj = v.AsObject;
         // Snapshot keys to avoid mutation-during-enumeration.
-        var keys = new List<string>(obj.Keys);
+        var keys = new List<JsPropertyKey>(obj.OwnPropertyKeys);
         foreach (var key in keys)
         {
             var d = obj.GetOwnPropertyDescriptor(key);
@@ -431,7 +440,7 @@ public static class ObjectCtor
         if (!v.IsObject) return JsValue.True; // primitives are frozen by definition
         var obj = v.AsObject;
         if (obj.Extensible) return JsValue.False;
-        foreach (var key in obj.Keys)
+        foreach (var key in obj.OwnPropertyKeys)
         {
             var d = obj.GetOwnPropertyDescriptor(key);
             if (d is null) continue;
@@ -449,7 +458,7 @@ public static class ObjectCtor
         var v = args.Length > 0 ? args[0] : JsValue.Undefined;
         if (!v.IsObject) return v;
         var obj = v.AsObject;
-        var keys = new List<string>(obj.Keys);
+        var keys = new List<JsPropertyKey>(obj.OwnPropertyKeys);
         foreach (var key in keys)
         {
             var d = obj.GetOwnPropertyDescriptor(key);
@@ -471,7 +480,7 @@ public static class ObjectCtor
         if (!v.IsObject) return JsValue.True;
         var obj = v.AsObject;
         if (obj.Extensible) return JsValue.False;
-        foreach (var key in obj.Keys)
+        foreach (var key in obj.OwnPropertyKeys)
         {
             var d = obj.GetOwnPropertyDescriptor(key);
             if (d is null) continue;

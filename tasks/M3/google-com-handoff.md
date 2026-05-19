@@ -57,6 +57,7 @@ blocker; defer to M6 wp:M3-09.
 | B2-7 — Math intrinsic | ✅ | `src/Starling.Js/Intrinsics/MathObj.cs`, `tests/Starling.Js.Tests/Intrinsics/MathTests.cs` |
 | B2-8 — JSON intrinsic | ✅ | `src/Starling.Js/Intrinsics/JsonObj.cs`, `tests/Starling.Js.Tests/Intrinsics/JsonTests.cs`, `src/Starling.Js/Runtime/{JsRealm,JsVm}.cs` (+`ActiveVm` + reentrancy-safe Run wrapper) |
 | B2-9 — console | ✅ | `src/Starling.Js/Intrinsics/ConsoleObj.cs`, `src/Starling.Js/Runtime/{ConsoleSink,JsRealm,JsRuntime}.cs`, `tests/Starling.Js.Tests/Intrinsics/ConsoleTests.cs` |
+| B4-5 — TypedArray/ArrayBuffer/DataView | ✅ | `src/Starling.Js/Intrinsics/{ArrayBufferCtor,DataViewCtor,TypedArrayCtors}.cs`, `src/Starling.Js/Runtime/{JsArrayBuffer,JsTypedArray}.cs`, `tests/Starling.Js.Tests/Intrinsics/TypedArrayTests.cs` |
 | B6-1 — Flex layout | ✅ | `src/Starling.Layout/Flex/{FlexProperties,FlexParser,FlexLayout}.cs`, `src/Starling.Layout/Block/BlockLayout.cs` (dispatch), `tests/Starling.Layout.Tests/Flex/FlexLayoutTests.cs` |
 
 ### B0 surface delivered
@@ -122,7 +123,7 @@ session. Other rows in the queue are free for other agents/sessions.
 | **B6-2** position: absolute / fixed | claude-cody (agent) | in progress (2026-05-18) |
 | **B1b-2b** Destructuring | claude-cody (agent, lane-A) | complete (2026-05-19) |
 | **B3-1** Symbol + well-known symbols | claude-cody (agent, lane-D) | in progress (2026-05-18) |
-| **B4-5** TypedArray/ArrayBuffer/DataView | claude-cody (agent, lane-E) | in progress (2026-05-18) |
+| **B4-5** TypedArray/ArrayBuffer/DataView | claude-cody (agent, lane-E) | complete (2026-05-19) |
 
 ## Work queue
 

@@ -9,15 +9,23 @@ namespace Tessera.Js.Runtime;
 /// </summary>
 public static class AbstractOperations
 {
-    /// <summary>§7.1.1 ToPrimitive — invariant locale fast path. The "hint"
-    /// matters only when an object overrides <c>Symbol.toPrimitive</c>, which
-    /// lands with the Symbol intrinsic. Today: returns the value unchanged
-    /// for primitives, falls back to <c>toString</c>/<c>valueOf</c> for
-    /// objects via the host bridge when available.</summary>
+    /// <summary>§7.1.1 ToPrimitive — checks ECMA-262 §20.4's
+    /// <c>@@toPrimitive</c> well-known Symbol first, then falls back to
+    /// <c>toString</c>/<c>valueOf</c> for objects via the host bridge when
+    /// available.</summary>
     public static JsValue ToPrimitive(JsValue input, string hint = "default")
+        => ToPrimitive(null, input, hint);
+
+    public static JsValue ToPrimitive(JsVm? vm, JsValue input, string hint = "default")
     {
         if (input.Kind != JsValueKind.Object) return input;
         var obj = input.AsObject;
+        var exotic = obj.Get(Tessera.Js.Intrinsics.SymbolCtor.ToPrimitive);
+        if (IsCallable(exotic))
+        {
+            var r = Call(vm, exotic, input, new[] { JsValue.String(hint) });
+            if (r.Kind != JsValueKind.Object) return r;
+        }
         // OrdinaryToPrimitive: try toString or valueOf in order.
         var first = hint == "string" ? "toString" : "valueOf";
         var second = hint == "string" ? "valueOf" : "toString";
@@ -51,14 +59,19 @@ public static class AbstractOperations
             JsValueKind.Number => realm.BoxNumber(value),
             JsValueKind.String => realm.BoxString(value),
             JsValueKind.BigInt => realm.BoxBigInt(value),
+            JsValueKind.Symbol => realm.BoxSymbol(value),
             _ => throw new InvalidOperationException($"unhandled kind {value.Kind}"),
         };
     }
 
-    /// <summary>§7.1.19 ToPropertyKey — strings stay strings, numbers/etc.
-    /// stringify per <c>ToString</c>. Symbols land later.</summary>
-    public static string ToPropertyKey(JsValue value)
-        => value.Kind == JsValueKind.String ? value.AsString : JsValue.ToStringValue(value);
+    /// <summary>§7.1.19 ToPropertyKey — Symbols are already property keys;
+    /// every other primitive is stringified.</summary>
+    public static JsPropertyKey ToPropertyKey(JsValue value)
+    {
+        if (value.IsObject) value = ToPrimitive(value, "string");
+        return value.IsSymbol ? JsPropertyKey.Symbol(value.AsSymbol)
+            : JsPropertyKey.String(value.Kind == JsValueKind.String ? value.AsString : JsValue.ToStringValue(value));
+    }
 
     /// <summary>§7.2.3 IsCallable — true if the value is an object with a
     /// callable internal method ([[Call]]). For us: a JsFunction, a
@@ -87,6 +100,9 @@ public static class AbstractOperations
     /// invokes accessor getters via <paramref name="vm"/> when present.
     /// Passing a null VM falls back to the data-only path.</summary>
     public static JsValue Get(JsVm? vm, JsObject obj, string key, JsValue receiver = default)
+        => Get(vm, obj, JsPropertyKey.String(key), receiver);
+
+    public static JsValue Get(JsVm? vm, JsObject obj, JsPropertyKey key, JsValue receiver = default)
     {
         if (receiver.IsUndefined) receiver = JsValue.Object(obj);
         for (var o = obj; o is not null; o = o.Prototype)
@@ -107,6 +123,9 @@ public static class AbstractOperations
     /// <summary>§10.1.9 OrdinarySet — chain-walking write that respects
     /// accessor setters. Returns false if the write was rejected.</summary>
     public static bool Set(JsVm? vm, JsObject obj, string key, JsValue value, JsValue receiver = default)
+        => Set(vm, obj, JsPropertyKey.String(key), value, receiver);
+
+    public static bool Set(JsVm? vm, JsObject obj, JsPropertyKey key, JsValue value, JsValue receiver = default)
     {
         if (receiver.IsUndefined) receiver = JsValue.Object(obj);
         // Find existing descriptor anywhere on the chain.
@@ -125,7 +144,12 @@ public static class AbstractOperations
             // Fall through to write on the receiver's own slot.
             break;
         }
-        if (!obj.Extensible && !obj.HasOwn(key)) return false;
+        if (obj.HasOwn(key))
+        {
+            obj.Set(key, value);
+            return true;
+        }
+        if (!obj.Extensible) return false;
         return obj.DefineOwnProperty(key, PropertyDescriptor.Data(value));
     }
 

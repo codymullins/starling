@@ -24,6 +24,7 @@ public sealed class JsRealm
     internal Dictionary<string, System.Diagnostics.Stopwatch> ConsoleTimers { get; } = new(StringComparer.Ordinal);
     internal Dictionary<string, int> ConsoleCounts { get; } = new(StringComparer.Ordinal);
     internal int ConsoleGroupDepth { get; set; }
+    internal Dictionary<string, JsSymbol> SymbolRegistry { get; } = new(StringComparer.Ordinal);
 
     // §9.3.1 — Intrinsic prototypes. Populated by each intrinsic's Install pass.
     public JsObject ObjectPrototype { get; }
@@ -36,6 +37,7 @@ public sealed class JsRealm
     public JsObject? StringConstructor { get; internal set; }
     public JsObject? NumberConstructor { get; internal set; }
     public JsObject? BooleanConstructor { get; internal set; }
+    public JsObject? SymbolConstructor { get; internal set; }
     public JsObject ArrayPrototype { get; internal set; }
     public JsObject StringPrototype { get; internal set; }
     public JsObject NumberPrototype { get; internal set; }
@@ -170,6 +172,7 @@ public sealed class JsRealm
         return box;
     }
     internal JsObject BoxBigInt(JsValue v) => BoxPrimitive(BigIntPrototype, v);
+    internal JsObject BoxSymbol(JsValue v) => BoxPrimitive(SymbolPrototype, v);
 
     private static JsObject BoxPrimitive(JsObject proto, JsValue value)
     {

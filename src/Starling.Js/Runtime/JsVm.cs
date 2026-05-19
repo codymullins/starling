@@ -249,6 +249,7 @@ public sealed class JsVm
                         JsValueKind.String => "string",
                         JsValueKind.Object => AbstractOperations.IsCallable(v) ? "function" : "object",
                         JsValueKind.BigInt => "bigint",
+                        JsValueKind.Symbol => "symbol",
                         _ => "undefined",
                     }));
                     break;
@@ -260,8 +261,8 @@ public sealed class JsVm
                     var idx = ReadU16();
                     var name = (string)constants[idx]!;
                     var obj = Pop();
-                    if (obj.IsObject) Push(obj.AsObject.Get(name));
-                    else if (!obj.IsNullish) Push(AbstractOperations.ToObject(_runtime.Realm, obj).Get(name));
+                    if (obj.IsObject) Push(AbstractOperations.Get(this, obj.AsObject, name));
+                    else if (!obj.IsNullish) Push(AbstractOperations.Get(this, AbstractOperations.ToObject(_runtime.Realm, obj), name, obj));
                     else Push(JsValue.Undefined);
                     break;
                 }
@@ -271,7 +272,7 @@ public sealed class JsVm
                     var name = (string)constants[idx]!;
                     var value = Pop();
                     var obj = Pop();
-                    if (obj.IsObject) obj.AsObject.Set(name, value);
+                    if (obj.IsObject) AbstractOperations.Set(this, obj.AsObject, name, value);
                     Push(value);
                     break;
                 }
@@ -279,9 +280,9 @@ public sealed class JsVm
                 {
                     var key = Pop();
                     var obj = Pop();
-                    var propertyKey = JsValue.ToStringValue(key);
-                    if (obj.IsObject) Push(obj.AsObject.Get(propertyKey));
-                    else if (!obj.IsNullish) Push(AbstractOperations.ToObject(_runtime.Realm, obj).Get(propertyKey));
+                    var propertyKey = AbstractOperations.ToPropertyKey(key);
+                    if (obj.IsObject) Push(AbstractOperations.Get(this, obj.AsObject, propertyKey));
+                    else if (!obj.IsNullish) Push(AbstractOperations.Get(this, AbstractOperations.ToObject(_runtime.Realm, obj), propertyKey, obj));
                     else Push(JsValue.Undefined);
                     break;
                 }
@@ -290,7 +291,7 @@ public sealed class JsVm
                     var value = Pop();
                     var key = Pop();
                     var obj = Pop();
-                    if (obj.IsObject) obj.AsObject.Set(JsValue.ToStringValue(key), value);
+                    if (obj.IsObject) AbstractOperations.Set(this, obj.AsObject, AbstractOperations.ToPropertyKey(key), value);
                     Push(value);
                     break;
                 }
@@ -411,6 +412,8 @@ public sealed class JsVm
                         var dstObj = dst.AsObject;
                         foreach (var key in srcObj.EnumerableKeys())
                             dstObj.Set(key, srcObj.Get(key));
+                        foreach (var key in srcObj.EnumerableSymbolKeys())
+                            dstObj.Set(key, srcObj.Get(key));
                     }
                     break;
                 }
@@ -469,11 +472,15 @@ public sealed class JsVm
     // Helpers
     // -----------------------------------------------------------------------
 
-    /// <summary>JS '+': string-concat if either operand is a string after
-    /// ToPrimitive (which we approximate as ToString for non-primitives),
-    /// otherwise numeric add.</summary>
-    private static JsValue JsAdd(JsValue a, JsValue b)
+    /// <summary>JS '+': run ToPrimitive first; Symbols reject implicit string
+    /// conversion per ECMA-262 §20.4, while explicit String(sym) is allowed by
+    /// the String constructor.</summary>
+    private JsValue JsAdd(JsValue a, JsValue b)
     {
+        a = AbstractOperations.ToPrimitive(this, a);
+        b = AbstractOperations.ToPrimitive(this, b);
+        if (a.IsSymbol || b.IsSymbol)
+            throw new JsThrow(_runtime.Realm.NewTypeError("Cannot convert a Symbol value to a string"));
         if (a.IsString || b.IsString)
             return JsValue.String(JsValue.ToStringValue(a) + JsValue.ToStringValue(b));
         return JsValue.Number(JsValue.ToNumber(a) + JsValue.ToNumber(b));

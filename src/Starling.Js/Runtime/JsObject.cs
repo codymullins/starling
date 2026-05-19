@@ -5,15 +5,16 @@ namespace Tessera.Js.Runtime;
 /// chain. Subclasses override behavior for arrays, functions, proxies, etc.
 /// </summary>
 /// <remarks>
-/// Property storage is a single <see cref="Dictionary{TKey,TValue}"/> keyed by
-/// property name (string). Symbol-keyed properties land with the Symbol intrinsic
-/// (wp:M3-05/B3). Indexed-integer fast paths land with <c>JsArray</c>'s dense
-/// storage subclass.
+/// String and Symbol property keys live in separate namespaces per ECMA-262
+/// §6.1.7. Indexed-integer fast paths land with <c>JsArray</c>'s dense storage
+/// subclass.
 /// </remarks>
 public class JsObject
 {
     private readonly Dictionary<string, PropertyDescriptor> _properties =
         new(StringComparer.Ordinal);
+    private readonly Dictionary<JsSymbol, PropertyDescriptor> _symbolProperties =
+        new();
 
     /// <summary>The [[Prototype]] internal slot. Mutate via
     /// <see cref="SetPrototypeOf"/> so subclasses can override.</summary>
@@ -55,6 +56,18 @@ public class JsObject
         return JsValue.Undefined;
     }
 
+    public virtual JsValue Get(JsSymbol symbol)
+    {
+        for (var o = this; o is not null; o = o.Prototype)
+        {
+            if (o._symbolProperties.TryGetValue(symbol, out var desc))
+                return desc.IsAccessor ? JsValue.Undefined : desc.Value;
+        }
+        return JsValue.Undefined;
+    }
+
+    public JsValue Get(JsPropertyKey key) => key.IsSymbol ? Get(key.AsSymbol) : Get(key.AsString);
+
     /// <summary>Spec [[Set]] simplified: own-data-property fast path for the
     /// vast majority of writes. Accessor + cross-chain writes go through
     /// <c>AbstractOperations.Set</c> (VM-aware).</summary>
@@ -71,6 +84,25 @@ public class JsObject
         _properties[name] = PropertyDescriptor.Data(value);
     }
 
+    public virtual void Set(JsSymbol symbol, JsValue value)
+    {
+        if (_symbolProperties.TryGetValue(symbol, out var desc))
+        {
+            if (desc.IsAccessor) return;
+            if (!desc.Writable) return;
+            _symbolProperties[symbol] = desc.WithValue(value);
+            return;
+        }
+        if (!Extensible) return;
+        _symbolProperties[symbol] = PropertyDescriptor.Data(value);
+    }
+
+    public void Set(JsPropertyKey key, JsValue value)
+    {
+        if (key.IsSymbol) Set(key.AsSymbol, value);
+        else Set(key.AsString, value);
+    }
+
     /// <summary>Spec [[HasProperty]] — walks the prototype chain.</summary>
     public bool Has(string name)
     {
@@ -79,19 +111,44 @@ public class JsObject
         return false;
     }
 
+    public bool Has(JsSymbol symbol)
+    {
+        for (var o = this; o is not null; o = o.Prototype)
+            if (o._symbolProperties.ContainsKey(symbol)) return true;
+        return false;
+    }
+
+    public bool Has(JsPropertyKey key) => key.IsSymbol ? Has(key.AsSymbol) : Has(key.AsString);
+
     /// <summary>§10.1.5 [[GetOwnProperty]] — own slot only, no chain walk.</summary>
     public bool HasOwn(string name) => _properties.ContainsKey(name);
+    public bool HasOwn(JsSymbol symbol) => _symbolProperties.ContainsKey(symbol);
+    public bool HasOwn(JsPropertyKey key) => key.IsSymbol ? HasOwn(key.AsSymbol) : HasOwn(key.AsString);
 
     /// <summary>Returns the own descriptor, or <c>null</c> if no own property.</summary>
     public PropertyDescriptor? GetOwnPropertyDescriptor(string name)
         => _properties.TryGetValue(name, out var d) ? d : null;
+    public PropertyDescriptor? GetOwnPropertyDescriptor(JsSymbol symbol)
+        => _symbolProperties.TryGetValue(symbol, out var d) ? d : null;
+    public PropertyDescriptor? GetOwnPropertyDescriptor(JsPropertyKey key)
+        => key.IsSymbol ? GetOwnPropertyDescriptor(key.AsSymbol) : GetOwnPropertyDescriptor(key.AsString);
 
     /// <summary>§10.1.6 [[DefineOwnProperty]] (simplified validator). Returns
     /// false when the operation is rejected (e.g. non-configurable conflict
     /// or non-extensible object).</summary>
     public virtual bool DefineOwnProperty(string name, PropertyDescriptor desc)
+        => DefineOwnPropertyCore(_properties, name, desc);
+
+    public virtual bool DefineOwnProperty(JsSymbol symbol, PropertyDescriptor desc)
+        => DefineOwnPropertyCore(_symbolProperties, symbol, desc);
+
+    public bool DefineOwnProperty(JsPropertyKey key, PropertyDescriptor desc)
+        => key.IsSymbol ? DefineOwnProperty(key.AsSymbol, desc) : DefineOwnProperty(key.AsString, desc);
+
+    private bool DefineOwnPropertyCore<TKey>(Dictionary<TKey, PropertyDescriptor> table, TKey key, PropertyDescriptor desc)
+        where TKey : notnull
     {
-        if (_properties.TryGetValue(name, out var existing))
+        if (table.TryGetValue(key, out var existing))
         {
             if (!existing.Configurable)
             {
@@ -107,7 +164,7 @@ public class JsObject
         {
             return false;
         }
-        _properties[name] = desc;
+        table[key] = desc;
         return true;
     }
 
@@ -120,15 +177,39 @@ public class JsObject
         return _properties.Remove(name);
     }
 
+    public bool Delete(JsSymbol symbol)
+    {
+        if (!_symbolProperties.TryGetValue(symbol, out var desc)) return true;
+        if (!desc.Configurable) return false;
+        return _symbolProperties.Remove(symbol);
+    }
+
+    public bool Delete(JsPropertyKey key) => key.IsSymbol ? Delete(key.AsSymbol) : Delete(key.AsString);
+
     /// <summary>All own keys, in insertion order (Dictionary preserves it
     /// since .NET 6).</summary>
     public IEnumerable<string> Keys => _properties.Keys;
+    public IEnumerable<JsSymbol> SymbolKeys => _symbolProperties.Keys;
+    public IEnumerable<JsPropertyKey> OwnPropertyKeys
+    {
+        get
+        {
+            foreach (var key in _properties.Keys) yield return JsPropertyKey.String(key);
+            foreach (var key in _symbolProperties.Keys) yield return JsPropertyKey.Symbol(key);
+        }
+    }
 
     /// <summary>Own keys filtered to enumerable data properties — used by
     /// <c>Object.keys</c> and friends.</summary>
     public IEnumerable<string> EnumerableKeys()
     {
         foreach (var pair in _properties)
+            if (pair.Value.Enumerable) yield return pair.Key;
+    }
+
+    public IEnumerable<JsSymbol> EnumerableSymbolKeys()
+    {
+        foreach (var pair in _symbolProperties)
             if (pair.Value.Enumerable) yield return pair.Key;
     }
 

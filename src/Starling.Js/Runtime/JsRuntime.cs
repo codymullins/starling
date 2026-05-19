@@ -41,6 +41,7 @@ public sealed class JsRuntime
         StringCtor.Install(Realm);
         NumberCtor.Install(Realm);
         BooleanCtor.Install(Realm);
+        SymbolCtor.Install(Realm);
         Globals.Install(Realm);
         MathObj.Install(Realm);
         JsonObj.Install(Realm);
