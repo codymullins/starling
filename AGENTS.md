@@ -65,7 +65,7 @@ starling/
 │   ├── INDEX.md               ← current status of all packages
 │   ├── lib/claim.sh           ← atomic claim/release helper
 │   └── M<n>/wp-*.md           ← one file per work package
-├── src/                       ← engine + Headless CLI + MAUI Gui (Mac Catalyst)
+├── src/                       ← engine + Headless CLI + Avalonia Gui (win/mac/linux)
 ├── Starling.AppHost/          ← Aspire AppHost (orchestrates Gui + Headless)
 ├── Starling.ServiceDefaults/  ← Aspire OTel + health-check shared bootstrap
 ├── tests/                     ← one xUnit project per src/ module + E2E
@@ -102,9 +102,9 @@ the long-term path — is a tracked open item in `wp:M3-06-native-interop-pivot`
 handoff log. The interop-seam policy is still satisfied either way, because
 BouncyCastle adds no native dependency. CI greps the engine-project allowlist
 (every engine project *except* the Codecs interop project); the lint job fails
-if you regress it. The GUI shell (`src/Starling.Gui`, .NET MAUI) and the Aspire
-AppHost/ServiceDefaults projects are exempt — they link against UIKit/Cocoa
-(Catalyst) and ASP.NET host plumbing respectively, which is fine because the
+if you regress it. The GUI shell (`src/Starling.Gui`, Avalonia 12) and the Aspire
+AppHost/ServiceDefaults projects are exempt — they link against Avalonia desktop
+backends and ASP.NET host plumbing respectively, which is fine because the
 engine never imports from any of them. The engine projects must continue to
 build and test cleanly without those heavier platforms loaded.
 
@@ -113,10 +113,11 @@ Skia/Graphite shim (`src/Starling.Skia` + `native/`) was removed in
 `wp:M5-skia-removal`; the engine paints exclusively via
 `src/Starling.Paint/Backend/ImageSharpBackend.cs` (SixLabors.ImageSharp 4 +
 ImageSharp.Drawing 3 + Fonts 3, pure-managed, requires the repo-root
-`sixlabors.lic`). An experimental WebGPU compute target is opt-in via
-`STARLING_PAINT_BACKEND=imagesharp-webgpu`. There is no native graphics shim
-to build — a fresh checkout's `dotnet build` should succeed without any
-non-.NET prerequisites.
+`sixlabors.lic`). The default backend is the WebGPU compute-shader target
+(equivalent to `STARLING_PAINT_BACKEND=imagesharp-webgpu`); set
+`STARLING_PAINT_BACKEND=imagesharp` to opt back into the pure-CPU path.
+There is no native graphics shim to build — a fresh checkout's `dotnet build`
+should succeed without any non-.NET prerequisites.
 
 ## Decision hierarchy when something's ambiguous
 
@@ -139,7 +140,7 @@ non-.NET prerequisites.
   72 h with no commits referencing the package, any agent may release
   the claim and start over (or pick up using the handoff log).
 - **Cross-package edits:** if your work changes a shared file
-  (`Directory.Build.props`, `Directory.Packages.props`, `Starling.sln`),
+  (`Directory.Build.props`, `Directory.Packages.props`, `Starling.slnx`),
   call it out in the handoff log so a concurrent agent can rebase
   cleanly. These files are the merge-conflict hotspots.
 

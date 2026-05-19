@@ -31,7 +31,7 @@ This is the work-package backlog. Each package is a **self-contained unit of wor
 
 - **Inputs**: none.
 - **Subsystem**: [02_PROJECT_SETUP.md](02_PROJECT_SETUP.md).
-- **Outputs**: `Starling.sln`, `Directory.Build.props`, `Directory.Packages.props`, `.editorconfig`, `.gitignore`, `.github/workflows/ci.yml`, all 13 source + 13 test + 1 e2e + 1 bench + 1 headless projects.
+- **Outputs**: `Starling.slnx`, `Directory.Build.props`, `Directory.Packages.props`, `.editorconfig`, `.gitignore`, `.github/workflows/ci.yml`, all 13 source + 13 test + 1 e2e + 1 bench + 1 headless projects.
 - **Acceptance**: `dotnet build` + `dotnet test` exit 0 on all three OS matrix. Rule-0 lint passes.
 
 ### wp:M0-02-common

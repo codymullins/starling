@@ -1,8 +1,8 @@
 # Starling
 
 Managed-first .NET 10 web browser. Built from primitives, no Chromium / Gecko / WebKit reuse.
-Native interop is confined to two vetted seams (graphics + image codecs); everything
-else is pure-managed.
+Native interop is confined to one vetted seam (image codecs); everything
+else — including paint — is pure-managed.
 
 ## Status — high-level buckets
 
@@ -12,14 +12,14 @@ Legend: ✅ shipped · 🟡 partial / actively iterating · ⚫ not started
 |---|---|---|
 | **HTML parsing** | ✅ | Tokenizer (html5lib 100%) + spec-compliant tree builder. |
 | **DOM** | ✅ | Nodes, mutations, live collections, events. |
-| **CSS** | 🟡 | Tokenizer, parser, selectors (incl. `:has`, pseudo-elements, modern pseudo-classes), cascade + layers, Values 4 math (`calc`/`min`/`max`/`clamp`), Color 4 spaces + gamut mapping, Media 5 + `@supports`, CSS Nesting, `revert`/`unset`, `@font-face` + WOFF/WOFF2, 183 PropertyIds. Further property/feature coverage ongoing. |
+| **CSS** | 🟡 | Tokenizer, parser, selectors (incl. `:has`, pseudo-elements, modern pseudo-classes), cascade + layers, Values 4 math (`calc`/`min`/`max`/`clamp`), Color 4 spaces + gamut mapping, Media 5 + `@supports`, CSS Nesting, `revert`/`unset`, `@font-face` + WOFF/WOFF2, 207 PropertyIds. Further property/feature coverage ongoing. |
 | **Layout** | 🟡 | Block + inline + inline-block (with BFC for block children and two-pass max-content shrink-to-fit), margin collapse, `margin: auto` centering, text-align, minimal table layout via UA-stylesheet inline-block cells, form controls visible by default. Flex/grid not yet. |
-| **Paint** | ✅ | ImageSharp.Drawing 3 (pure-managed, SixLabors licensed via repo-root `sixlabors.lic`). DisplayList drives both headless and GUI. Experimental WebGPU compute target available via `STARLING_PAINT_BACKEND=imagesharp-webgpu`. |
+| **Paint** | ✅ | ImageSharp.Drawing 3 (pure-managed, SixLabors licensed via repo-root `sixlabors.lic`). DisplayList drives both headless and GUI. WebGPU compute target is the default; opt back to the CPU path with `STARLING_PAINT_BACKEND=imagesharp`. |
 | **Networking** | ✅ | URL (WPT 100%), DNS, TCP, **TLS 1.3 via BouncyCastle** (an `SslStream` migration was reverted in `939f3a5` after a macOS TLS 1.3 issue — see [AGENTS.md](AGENTS.md)), HTTP/1.1 with keep-alive connection pool, gzip/brotli/deflate, redirects, RFC 6265bis cookies + PSL, WHATWG encoding labels (43/43 curated WPT subset), CCADB root store. `starling render https://example.com` is gated in CI. |
 | **Image pipeline** | ✅ | OS-native codecs (`Starling.Codecs`: ImageIO on macOS, WIC on Windows, libjpeg/png/webp on Linux), `data:` URI support, accessible names for unrenderable `<img>`/`<svg>`. |
 | **JS engine** | 🟡 | Lex + parse + bytecode compiler + register VM; functions, recursion, snapshot closures, `new`/`this`, method binding. Still ahead: intrinsics (Object/Array/String/Number/Math/JSON/Date/RegExp), Promise + microtasks, ES modules, async/await, destructuring, classes, Test262 ≥ 80%. **The single largest gating piece for interactive demos.** |
 | **DOM bindings / Web APIs** | ⚫ | Blocked on JS intrinsics. A temporary `DomBindingHost` exists for read/update + click dispatch experiments. |
-| **GUI shell** | 🟡 | .NET MAUI / Mac Catalyst. Chrome (Sidebar, UrlBar, StatusBar, WebviewPanel, Favicon, MiniLoadChart), DevTools panels (Console, Performance, Internals), `BrowserSession` (shared cookies + nav history across tabs), an in-process MCP server (`GuiMcpServer`) exposing browser-control tools to external agents. See [`src/Starling.Gui/`](src/Starling.Gui/). |
+| **GUI shell** | 🟡 | Avalonia 12 (desktop: win/mac/linux). Chrome (Sidebar, UrlBar, StatusBar, WebviewPanel, Favicon, MiniLoadChart), DevTools panels (Console, Performance, Internals), `BrowserSession` (shared cookies + nav history across tabs), an in-process MCP server (`GuiMcpServer`) exposing browser-control tools to external agents. See [`src/Starling.Gui/`](src/Starling.Gui/). |
 | **Telemetry / Aspire** | ✅ | Aspire AppHost orchestrates Gui + Headless; shared OTel + health-check bootstrap. |
 | **Multi-process / sandbox / disk cache / HSTS** | ⚫ | M9+, not started. |
 
@@ -58,7 +58,7 @@ Subcommands beyond `render` and `tokenize` are still incremental and may return 
 ```
 starling/
 ├── browser-plan/             # The entire design spec. Read 00_INDEX.md first.
-├── src/                      # 12 engine modules + Headless CLI + MAUI Gui (Mac Catalyst)
+├── src/                      # 14 engine modules + Headless CLI + Avalonia Gui (win/mac/linux)
 ├── Starling.AppHost/         # Aspire AppHost orchestrating Gui + Headless
 ├── Starling.ServiceDefaults/ # Shared OTel + health-check bootstrap for future services
 ├── tests/                    # One xUnit project per src/ module + an E2E project
@@ -84,9 +84,10 @@ packages with explicit inputs / outputs / acceptance, see
 
 **Implementation agents:** start with [`AGENTS.md`](AGENTS.md) and the queue at
 [`tasks/INDEX.md`](tasks/INDEX.md). Multiple agents can work in parallel — claim
-an unblocked package via `./tasks/lib/claim.sh`, work on the dedicated branch,
-leave a handoff-log entry on stop, and complete when merged. The full workflow
-is in [`tasks/README.md`](tasks/README.md).
+an unblocked package via `./tasks/lib/claim.sh`, commit directly to `main` with
+the wp id in the subject, leave a handoff-log entry on stop, and mark complete
+via `./tasks/lib/claim.sh complete <wp-id>`. The full workflow is in
+[`tasks/README.md`](tasks/README.md).
 
 ## License
 

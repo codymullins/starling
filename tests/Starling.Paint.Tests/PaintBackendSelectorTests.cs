@@ -10,8 +10,8 @@ public sealed class PaintBackendSelectorTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public void Unset_or_blank_defaults_to_imagesharp(string? value)
-        => PaintBackendSelector.Parse(value).Should().Be(PaintBackendKind.ImageSharp);
+    public void Unset_or_blank_defaults_to_imagesharp_webgpu(string? value)
+        => PaintBackendSelector.Parse(value).Should().Be(PaintBackendKind.ImageSharpWebGpu);
 
     [Theory]
     [InlineData("imagesharp", "ImageSharp")]

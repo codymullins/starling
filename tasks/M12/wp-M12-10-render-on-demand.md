@@ -38,7 +38,7 @@ current code, just on a different thread.
 
 - Current frame loop: `Starling.Engine.FrameLoop` / Avalonia
   `CompositionTarget.Rendering`. The exact wiring is in
-  `src/Starling.Engine/` and `src/Starling.Gui.Avalonia/`.
+  `src/Starling.Engine/` and `src/Starling.Gui/`.
 - M5's animation compositor (`wp:M5-css-09-animation-compositor`) — it
   already knows whether any animation is active; we can subscribe.
 - Avalonia exposes the display refresh rate via `Screen.Scaling`/

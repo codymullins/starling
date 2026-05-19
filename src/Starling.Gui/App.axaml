@@ -1,0 +1,15 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Starling.Gui.App"
+             RequestedThemeVariant="Dark">
+  <Application.Resources>
+    <FontFamily x:Key="GeistSans">avares://Starling.Gui/Assets/Fonts/Geist-Variable.ttf#Geist</FontFamily>
+    <FontFamily x:Key="GeistMono">avares://Starling.Gui/Assets/Fonts/GeistMono-Variable.ttf#Geist Mono</FontFamily>
+  </Application.Resources>
+  <Application.Styles>
+    <FluentTheme />
+    <Style Selector="Window">
+      <Setter Property="FontFamily" Value="{StaticResource GeistSans}" />
+    </Style>
+  </Application.Styles>
+</Application>

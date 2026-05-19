@@ -1,0 +1,50 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/src/">
+    <Project Path="src/Starling.Codecs/Starling.Codecs.csproj" />
+    <Project Path="src/Starling.Gui/Starling.Gui.csproj" />
+    <Project Path="src/Starling.Telemetry/Starling.Telemetry.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Starling.Codecs.Tests/Starling.Codecs.Tests.csproj" />
+    <Project Path="tests/Starling.Css.Spec.Tests/Starling.Css.Spec.Tests.csproj" />
+    <Project Path="tests/Starling.Gui.Tests/Starling.Gui.Tests.csproj" />
+    <Project Path="tests/Starling.Spec.Common/Starling.Spec.Common.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Starling.SpecGen/Starling.SpecGen.csproj" />
+  </Folder>
+  <Project Path="bench/Starling.Bench/Starling.Bench.csproj" />
+  <Project Path="src/Starling.Bindings/Starling.Bindings.csproj" />
+  <Project Path="src/Starling.Common/Starling.Common.csproj" />
+  <Project Path="src/Starling.Css/Starling.Css.csproj" />
+  <Project Path="src/Starling.Dom/Starling.Dom.csproj" />
+  <Project Path="src/Starling.Engine/Starling.Engine.csproj" />
+  <Project Path="src/Starling.Headless/Starling.Headless.csproj" />
+  <Project Path="src/Starling.Html/Starling.Html.csproj" />
+  <Project Path="src/Starling.Js/Starling.Js.csproj" />
+  <Project Path="src/Starling.Layout/Starling.Layout.csproj" />
+  <Project Path="src/Starling.Loop/Starling.Loop.csproj" />
+  <Project Path="src/Starling.Net/Starling.Net.csproj" />
+  <Project Path="src/Starling.Paint/Starling.Paint.csproj" />
+  <Project Path="src/Starling.Url/Starling.Url.csproj" />
+  <Project Path="Starling.AppHost/Starling.AppHost.csproj" />
+  <Project Path="Starling.ServiceDefaults/Starling.ServiceDefaults.csproj" />
+  <Project Path="tests/Starling.Bindings.Tests/Starling.Bindings.Tests.csproj" />
+  <Project Path="tests/Starling.Common.Tests/Starling.Common.Tests.csproj" />
+  <Project Path="tests/Starling.Css.Tests/Starling.Css.Tests.csproj" />
+  <Project Path="tests/Starling.Dom.Tests/Starling.Dom.Tests.csproj" />
+  <Project Path="tests/Starling.E2E/Starling.E2E.csproj" />
+  <Project Path="tests/Starling.Engine.Tests/Starling.Engine.Tests.csproj" />
+  <Project Path="tests/Starling.Html.Tests/Starling.Html.Tests.csproj" />
+  <Project Path="tests/Starling.Js.Tests/Starling.Js.Tests.csproj" />
+  <Project Path="tests/Starling.Layout.Tests/Starling.Layout.Tests.csproj" />
+  <Project Path="tests/Starling.Loop.Tests/Starling.Loop.Tests.csproj" />
+  <Project Path="tests/Starling.Net.Tests/Starling.Net.Tests.csproj" />
+  <Project Path="tests/Starling.Paint.Tests/Starling.Paint.Tests.csproj" />
+  <Project Path="tests/Starling.Url.Tests/Starling.Url.Tests.csproj" />
+</Solution>

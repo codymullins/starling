@@ -26,7 +26,7 @@ var repoRoot = LocateRepoRoot();
 //
 // MCP port: defaults to http://127.0.0.1:3078/mcp; the env var still wins
 // if the developer overrides it.
-var guiAvalonia = builder.AddProject<Projects.Starling_Gui_Avalonia>("gui-avalonia")
+var gui = builder.AddProject<Projects.Starling_Gui>("gui")
     .WithEnvironment("STARLING_PAINT_BACKEND", "imagesharp-gpu")
     .WithEnvironment("STARLING_MCP_URL", "http://127.0.0.1:3078/mcp")
     .WithOtlpExporter();
@@ -52,7 +52,7 @@ var paintBackend = Environment.GetEnvironmentVariable("STARLING_PAINT_BACKEND");
 if (!string.IsNullOrWhiteSpace(paintBackend))
 {
     headless.WithEnvironment("STARLING_PAINT_BACKEND", paintBackend);
-    guiAvalonia.WithEnvironment("STARLING_PAINT_BACKEND", paintBackend);
+    gui.WithEnvironment("STARLING_PAINT_BACKEND", paintBackend);
 }
 
 // wgpu-native (Rust) honors RUST_LOG for tracing. Forward it through so we
@@ -63,7 +63,7 @@ var rustLog = Environment.GetEnvironmentVariable("RUST_LOG");
 if (!string.IsNullOrWhiteSpace(rustLog))
 {
     headless.WithEnvironment("RUST_LOG", rustLog);
-    guiAvalonia.WithEnvironment("RUST_LOG", rustLog);
+    gui.WithEnvironment("RUST_LOG", rustLog);
 }
 
 builder.Build().Run();

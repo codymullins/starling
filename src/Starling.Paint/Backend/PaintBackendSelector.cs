@@ -15,11 +15,11 @@ internal enum PaintBackendKind
 /// single render.
 /// <para>
 /// After the Skia/Graphite native shim was removed, ImageSharp.Drawing 3.0 is
-/// the only paint backend. The env var still exists so callers can opt into
-/// the experimental WebGPU compute-shader target
-/// (<c>STARLING_PAINT_BACKEND=imagesharp-webgpu</c>). Any other non-empty
-/// value is rejected loudly rather than silently falling back, so a typo in
-/// an Aspire manifest or CI matrix surfaces immediately.
+/// the only paint backend. The default is the WebGPU compute-shader target
+/// (equivalent to <c>STARLING_PAINT_BACKEND=imagesharp-webgpu</c>); callers
+/// can opt back to the pure-CPU path with <c>STARLING_PAINT_BACKEND=imagesharp</c>.
+/// Any other non-empty value is rejected loudly rather than silently falling
+/// back, so a typo in an Aspire manifest or CI matrix surfaces immediately.
 /// </para>
 /// </summary>
 internal static class PaintBackendSelector
@@ -35,7 +35,7 @@ internal static class PaintBackendSelector
     internal static PaintBackendKind Parse(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw))
-            return PaintBackendKind.ImageSharp;
+            return PaintBackendKind.ImageSharpWebGpu;
 
         return raw.Trim().ToLowerInvariant() switch
         {

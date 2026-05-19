@@ -7,7 +7,7 @@
     <!-- GUI's PageRendererHost routes through PaintBackendSelector so
          STARLING_PAINT_BACKEND=imagesharp-webgpu flips both layout (measurer)
          and raster backend together. -->
-    <InternalsVisibleTo Include="Starling.Gui.Avalonia" />
+    <InternalsVisibleTo Include="Starling.Gui" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Starling.Common\Starling.Common.csproj" />

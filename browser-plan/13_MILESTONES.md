@@ -254,7 +254,7 @@ claude.ai's hardness comes from: heavy React, intersection observers, fetch stre
 
 **Entry**: M5 (paint backend stable on ImageSharp). Sequenced after M11 in
 the linear plan but can run in parallel with M6–M8 since it only touches
-`Starling.{Layout,Paint}` + `Starling.Gui.Avalonia`.
+`Starling.{Layout,Paint}` + `Starling.Gui`.
 
 **Goal**: The paint pipeline matches the Chrome/Safari shape — a CSS
 stacking-context layer tree, per-layer tile cache, compositor-thread

@@ -53,7 +53,7 @@ Then wire up references per the dependency graph in [01_ARCHITECTURE.md](01_ARCH
 
 ```
 starling/
-├── Starling.sln
+├── Starling.slnx
 ├── Directory.Build.props        # shared TFM + nullable + warnings
 ├── Directory.Packages.props     # central package versions (CPM)
 ├── .editorconfig

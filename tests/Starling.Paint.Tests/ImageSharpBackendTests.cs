@@ -116,7 +116,7 @@ public sealed class ImageSharpBackendTests
     /// a CreateTexture validation error into a process <c>abort()</c>, which
     /// no C# try/catch can intercept. Regression: loading netclaw.dev under
     /// the AppHost default (<c>STARLING_PAINT_BACKEND=imagesharp-gpu</c>)
-    /// aborted Starling.Gui.Avalonia inside <c>wgpuDeviceCreateTexture</c>.
+    /// aborted Starling.Gui inside <c>wgpuDeviceCreateTexture</c>.
     /// </summary>
     [Fact]
     public void Oversized_viewport_falls_back_to_cpu_instead_of_aborting()
