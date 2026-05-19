@@ -41,6 +41,25 @@ public sealed class DisplayListBuilder
         var frameX = originX + box.Frame.X;
         var frameY = originY + box.Frame.Y;
 
+        // CSS `transform` is applied around the box's transform-origin (default
+        // 50% 50% 0). Layout is unaffected: the box keeps its frame coordinates
+        // and paint composes T(+origin) × M × T(-origin) on top of every
+        // primitive in this subtree (paint of this box and every descendant).
+        // Transform-origin parsing is a follow-up; the default centre is the
+        // most common case and matches the spec's initial value.
+        var transformMatrix = TryGetTransformMatrix(box, styleOverride, frameX, frameY);
+        var transformed = transformMatrix is not null;
+        if (transformed)
+            list.Add(new PushTransform(transformMatrix!.Value));
+
+        PaintBoxAndChildren(box, rootBounds, list, frameX, frameY, styleOverride);
+
+        if (transformed)
+            list.Add(PopTransform.Instance);
+    }
+
+    private static void PaintBoxAndChildren(Box box, Rect rootBounds, DisplayList list, double frameX, double frameY, Func<Box, ComputedStyle?>? styleOverride)
+    {
         // Backgrounds and borders for box-bearing boxes. BlockContainer and
         // AnonymousBlock always qualify; InlineBox qualifies only when it is
         // an atomic inline (display:inline-block) — flattened spans have a
@@ -86,6 +105,37 @@ public sealed class DisplayListBuilder
         var contentOriginY = frameY + box.Border.Top + box.Padding.Top;
         foreach (var child in box.Children)
             Visit(child, rootBounds, list, contentOriginX, contentOriginY, styleOverride);
+    }
+
+    /// <summary>
+    /// Reads <c>PropertyId.Transform</c> off the box's effective style and
+    /// composes it with the (centre-of-box) transform-origin into a single
+    /// document-space matrix. Returns <c>null</c> when no transform applies
+    /// (<c>none</c>, identity, or unparseable). The hardcoded centre origin
+    /// is a known limitation tracked in the WP follow-ups; full
+    /// <c>transform-origin</c> value parsing is its own work item.
+    /// </summary>
+    private static Matrix2D? TryGetTransformMatrix(Box box, Func<Box, ComputedStyle?>? styleOverride, double frameX, double frameY)
+    {
+        if (box.Frame.Width <= 0 && box.Frame.Height <= 0) return null;
+        var style = EffectiveStyle(box, styleOverride);
+        if (style is null) return null;
+        var raw = style.Get(PropertyId.Transform);
+        if (raw is null or CssKeyword { Name: "none" }) return null;
+
+        var transform = CssTransformParser.Parse(raw);
+        if (transform.IsNone) return null;
+
+        var local = transform.ToMatrix(box.Frame.Width, box.Frame.Height);
+        if (local.IsIdentity) return null;
+
+        var originX = frameX + box.Frame.Width * 0.5;
+        var originY = frameY + box.Frame.Height * 0.5;
+
+        // final = T(+origin) × local × T(-origin)
+        var preOrigin = Matrix2D.Translate(-originX, -originY);
+        var postOrigin = Matrix2D.Translate(originX, originY);
+        return postOrigin.Multiply(local).Multiply(preOrigin);
     }
 
     private static void EmitBorders(Box box, double x, double y, DisplayList list, ComputedStyle style)

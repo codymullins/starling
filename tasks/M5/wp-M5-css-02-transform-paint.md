@@ -1,9 +1,10 @@
 ---
 id: wp:M5-css-02-transform-paint
 milestone: M5
-status: "claimed"
+status: "complete"
 claimed_by: "agent-copilot-claude-opus-4.7"
 claimed_at: "2026-05-19T14:53:52Z"
+completed_at: "2026-05-19T15:30:00Z"
 branch: "main"
 depends_on:
   - wp:M5-css-01-transform-value
@@ -109,3 +110,36 @@ every primitive call.
   the (now-deleted) Skia shim's `ts_canvas_save`/`concat44`. The backend now
   owns the transform stack in managed code. (agent-copilot-claude-opus-4.7)
 - 2026-05-19T14:53:52Z — claimed by agent-copilot-claude-opus-4.7, working on main
+- 2026-05-19T15:30Z — implemented. Discovered the WP's assumption about
+  `DrawingOptions.Transform` was wrong: ImageSharp.Drawing 3.0's `DrawingCanvas`
+  Fill/Draw/DrawText overloads **do not** accept a `DrawingOptions` parameter
+  (the type still has a `Transform` property, but the canvas surface ignores
+  it). Real seam in 3.0 is `IPath.Transform(Matrix4x4)` for shape geometry
+  and `TextBuilder.GenerateGlyphs(text, TextOptions)` + per-glyph
+  `GlyphPathCollection.Transform(Matrix4x4)` for text, then `canvas.Fill`
+  on each glyph's `PathList`. Implementation:
+    * `DisplayItem.cs` — added `PushTransform(Matrix2D)` / `PopTransform`
+      (singleton `Instance`).
+    * `DisplayListBuilder.cs` — `Visit` now brackets `PaintBoxAndChildren`
+      with push/pop when `transform` is non-identity, baking
+      `T(+origin) × M × T(-origin)` with the centre origin (the
+      `transform-origin` parser is still TODO; centre is the spec default).
+    * `ImageSharpBackend.cs` — new private `TransformStack` (post-multiply
+      composition matching CSS §6.1), threaded through both `RenderCpu`
+      and `RenderWebGpu`. Fill/StrokeRect on a non-identity stack build
+      a 4-point `Polygon` from the rect's corners transformed by the
+      current CSS-space matrix then scaled to device px. DrawText on a
+      non-identity stack generates glyph outlines via `TextBuilder`,
+      transforms each glyph by `(linear part) × scale(translate)` lifted
+      to Matrix4x4, then fills its `PathList`. DrawImage on a non-identity
+      stack paints at its untransformed position and bumps a
+      `paint.draw_image.transform_skipped` counter — documented limitation.
+    * Tests: 3 new `DisplayListBuilderTransformTests` covering the no-op
+      case, translate matrix payload, and rotate-around-centre baking.
+      All 3 pass; full sln test run shows only the two pre-existing failures
+      (`Underlined_link_emits_text_and_underline_fill` and
+      `NativeImageDecoderTests.DecodesPngCornerPixels`).
+  Follow-ups intentionally not in this WP: golden-image tests (need
+  cross-machine SSIM harness), `transform-origin` parser, transformed
+  `<img>` rendering, hit-testing inverse-matrix walk.
+  (agent-copilot-claude-opus-4.7)

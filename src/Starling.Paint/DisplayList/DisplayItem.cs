@@ -34,3 +34,25 @@ public sealed record DrawText(
 /// source's native size the backend resamples.
 /// </summary>
 public sealed record DrawImage(Rect Bounds, DecodedImage Source) : DisplayItem;
+
+/// <summary>
+/// Pushes a 2D affine <paramref name="Matrix"/> onto the backend's transform
+/// stack. Subsequent paint items between this <see cref="PushTransform"/> and
+/// its matching <see cref="PopTransform"/> are rendered with <c>current ×
+/// Matrix</c> applied — left-to-right composition matches CSS Transforms 1
+/// §6.1 (the outer push applies last, so a nested transform sees its parent's
+/// matrix as the surrounding coordinate frame).
+/// <para>
+/// The <see cref="DisplayListBuilder"/> pre-bakes the box's
+/// <c>transform-origin</c> into the matrix
+/// (<c>T(+origin) × M × T(-origin)</c>), so the backend just applies the
+/// composed matrix verbatim — it does not need to know the box geometry.
+/// </para>
+/// </summary>
+public sealed record PushTransform(Matrix2D Matrix) : DisplayItem;
+
+/// <summary>Pops the most recent <see cref="PushTransform"/> off the backend stack.</summary>
+public sealed record PopTransform : DisplayItem
+{
+    public static PopTransform Instance { get; } = new();
+}
