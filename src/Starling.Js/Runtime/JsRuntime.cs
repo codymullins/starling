@@ -45,6 +45,9 @@ public sealed class JsRuntime
         Globals.Install(Realm);
         MathObj.Install(Realm);
         JsonObj.Install(Realm);
+        ArrayBufferCtor.Install(Realm);
+        DataViewCtor.Install(Realm);
+        TypedArrayCtors.Install(Realm);
         ConsoleObj.Install(Realm);
         Global.Set("globalThis", JsValue.Object(Global));
         Global.Set("undefined", JsValue.Undefined);

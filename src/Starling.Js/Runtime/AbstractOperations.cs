@@ -105,6 +105,10 @@ public static class AbstractOperations
     public static JsValue Get(JsVm? vm, JsObject obj, JsPropertyKey key, JsValue receiver = default)
     {
         if (receiver.IsUndefined) receiver = JsValue.Object(obj);
+        // ECMA-262 §25.2.5: integer-indexed exotic element access is handled
+        // by the typed-array object before ordinary descriptor lookup.
+        if (obj is JsTypedArray ta && key.IsString && IsCanonicalArrayIndex(key.AsString))
+            return ta.Get(key.AsString);
         for (var o = obj; o is not null; o = o.Prototype)
         {
             var desc = o.GetOwnPropertyDescriptor(key);
@@ -128,6 +132,13 @@ public static class AbstractOperations
     public static bool Set(JsVm? vm, JsObject obj, JsPropertyKey key, JsValue value, JsValue receiver = default)
     {
         if (receiver.IsUndefined) receiver = JsValue.Object(obj);
+        // ECMA-262 §25.2.5 integer-indexed exotic writes go to the backing
+        // ArrayBuffer instead of creating ordinary own properties.
+        if (obj is JsTypedArray ta && key.IsString && IsCanonicalArrayIndex(key.AsString))
+        {
+            ta.Set(key.AsString, value);
+            return true;
+        }
         // Find existing descriptor anywhere on the chain.
         for (var o = obj; o is not null; o = o.Prototype)
         {
@@ -215,6 +226,13 @@ public static class AbstractOperations
             return na == nb;
         }
         return JsValue.StrictEquals(a, b);
+    }
+
+    private static bool IsCanonicalArrayIndex(string key)
+    {
+        if (key.Length == 0 || key[0] == '-' || key.Contains('.', StringComparison.Ordinal)) return false;
+        return int.TryParse(key, System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture, out _);
     }
 
     private static JsValue[] ConcatBoundArgs(IReadOnlyList<JsValue> bound, JsValue[] extra)
