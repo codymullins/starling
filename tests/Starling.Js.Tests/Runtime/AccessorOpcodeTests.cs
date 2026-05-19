@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Runtime;
 
 /// <summary>
@@ -15,9 +13,10 @@ namespace Starling.Js.Tests.Runtime;
 /// <c>AbstractOperations.Get</c> / <c>AbstractOperations.Set</c> so getters
 /// and setters are invoked.
 /// </summary>
+[TestClass]
 public class AccessorOpcodeTests
 {
-    [Fact]
+    [TestMethod]
     public void Global_accessor_read_invokes_getter()
     {
         Eval(@"
@@ -26,7 +25,7 @@ public class AccessorOpcodeTests
         ").AsNumber.Should().Be(42);
     }
 
-    [Fact]
+    [TestMethod]
     public void Global_accessor_write_invokes_setter()
     {
         Eval(@"
@@ -37,7 +36,7 @@ public class AccessorOpcodeTests
         ").AsNumber.Should().Be(99);
     }
 
-    [Fact]
+    [TestMethod]
     public void Global_accessor_no_setter_silently_ignored_in_sloppy_mode()
     {
         // No setter — write should be a no-op (sloppy mode); subsequent read
@@ -49,7 +48,7 @@ public class AccessorOpcodeTests
         ").AsNumber.Should().Be(7);
     }
 
-    [Fact]
+    [TestMethod]
     public void Property_accessor_read_invokes_getter()
     {
         Eval(@"
@@ -59,7 +58,7 @@ public class AccessorOpcodeTests
         ").AsNumber.Should().Be(7);
     }
 
-    [Fact]
+    [TestMethod]
     public void Property_accessor_write_invokes_setter()
     {
         Eval(@"
@@ -70,7 +69,7 @@ public class AccessorOpcodeTests
         ").AsNumber.Should().Be(5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Object_defineProperty_chained_getter()
     {
         Eval(@"
@@ -80,7 +79,7 @@ public class AccessorOpcodeTests
         ").AsNumber.Should().Be(11);
     }
 
-    [Fact]
+    [TestMethod]
     public void Inherited_accessor_read_via_prototype_chain()
     {
         Eval(@"
@@ -91,7 +90,7 @@ public class AccessorOpcodeTests
         ").AsString.Should().Be("p");
     }
 
-    [Fact]
+    [TestMethod]
     public void Accessor_getter_receives_this_as_receiver()
     {
         Eval(@"
@@ -101,7 +100,7 @@ public class AccessorOpcodeTests
         ").AsNumber.Should().Be(9);
     }
 
-    [Fact]
+    [TestMethod]
     public void Object_spread_invokes_source_getters()
     {
         // §7.3.27 CopyDataProperties — spread of an object with an accessor
@@ -117,7 +116,7 @@ public class AccessorOpcodeTests
         ").AsString.Should().Be("spread-41");
     }
 
-    [Fact]
+    [TestMethod]
     public void Rest_object_invokes_source_getters()
     {
         // Destructuring rest also goes through CopyDataProperties — accessors
@@ -133,7 +132,7 @@ public class AccessorOpcodeTests
         ").AsNumber.Should().Be(42);
     }
 
-    [Fact]
+    [TestMethod]
     public void Global_data_property_round_trips_unchanged()
     {
         // Regression guard: the AO-routed fast path must still write/read plain

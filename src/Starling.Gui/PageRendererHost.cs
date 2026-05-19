@@ -16,8 +16,8 @@ namespace Starling.Gui;
 /// Drives the same DisplayListBuilder + paint-backend pipeline that
 /// src/Starling.Gui/PageRenderer.cs uses on the MAUI side, returning a raw
 /// <see cref="RenderedBitmap"/> that <c>BitmapBridge</c> can hand to Avalonia.
-/// The backend (Skia Graphite / ImageSharp CPU / ImageSharp WebGPU) is picked
-/// by <see cref="PaintBackendSelector"/> from the <c>STARLING_PAINT_BACKEND</c>
+/// The backend (ImageSharp CPU / ImageSharp WebGPU) is picked by
+/// <see cref="PaintBackendSelector"/> from the <c>STARLING_PAINT_BACKEND</c>
 /// env var. Avalonia takes the RGBA buffer directly — the MAUI-specific
 /// <c>ToImageSource</c> tail isn't needed.
 /// </summary>

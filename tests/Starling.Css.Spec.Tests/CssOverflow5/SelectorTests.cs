@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssOverflow5;
 /// <summary>
 /// Selector conformance for <see href="https://drafts.csswg.org/css-overflow-5/">CSS Overflow Module Level 5</see>.
 /// </summary>
+[TestClass]
 [Spec("css-overflow-5", "https://drafts.csswg.org/css-overflow-5/")]
 public sealed class SelectorTests
 {

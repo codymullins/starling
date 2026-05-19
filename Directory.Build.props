@@ -45,4 +45,17 @@
     <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" PrivateAssets="all" />
     <PackageReference Include="Roslynator.Analyzers" PrivateAssets="all" />
   </ItemGroup>
+
+  <!--
+    Test projects (IsTestProject=true) use MSTest running on the
+    Microsoft Testing Platform (MTP). Each test csproj becomes a runnable
+    executable hosted by the MSTest MTP runner; `dotnet test` discovers it
+    via TestingPlatformDotnetTestSupport. No Microsoft.NET.Test.Sdk required.
+  -->
+  <PropertyGroup Condition="'$(IsTestProject)' == 'true'">
+    <OutputType>Exe</OutputType>
+    <EnableMSTestRunner>true</EnableMSTestRunner>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
 </Project>

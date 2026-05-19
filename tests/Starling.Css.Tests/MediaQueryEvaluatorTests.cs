@@ -5,13 +5,13 @@ using Starling.Css.Parser;
 using Starling.Css.Properties;
 using Starling.Css.Values;
 using Starling.Dom;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("mediaqueries-5", "https://www.w3.org/TR/mediaqueries-5/")]
 
+[TestClass]
 public sealed class MediaQueryEvaluatorTests
 {
     private static MediaQueryList Parse(string query)
@@ -21,7 +21,7 @@ public sealed class MediaQueryEvaluatorTests
         return MediaQueryParser.ParseList(at.Prelude);
     }
 
-    [Fact]
+    [TestMethod]
     public void Min_width_matches_when_viewport_is_wider()
     {
         var list = Parse("(min-width: 400px)");
@@ -29,7 +29,7 @@ public sealed class MediaQueryEvaluatorTests
         MediaQueryEvaluator.Evaluate(list, new MediaContext(ViewportWidthPx: 300)).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Max_width_inverts_min_width()
     {
         var list = Parse("(max-width: 600px)");
@@ -37,7 +37,7 @@ public sealed class MediaQueryEvaluatorTests
         MediaQueryEvaluator.Evaluate(list, new MediaContext(ViewportWidthPx: 700)).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Range_syntax_greater_or_equal_works()
     {
         var list = Parse("(width >= 400px)");
@@ -45,7 +45,7 @@ public sealed class MediaQueryEvaluatorTests
         MediaQueryEvaluator.Evaluate(list, new MediaContext(ViewportWidthPx: 399)).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Range_syntax_double_bounds_match()
     {
         var list = Parse("(400px <= width <= 800px)");
@@ -55,7 +55,7 @@ public sealed class MediaQueryEvaluatorTests
         MediaQueryEvaluator.Evaluate(list, new MediaContext(ViewportWidthPx: 300)).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Orientation_portrait_matches_when_height_ge_width()
     {
         var list = Parse("(orientation: portrait)");
@@ -63,7 +63,7 @@ public sealed class MediaQueryEvaluatorTests
         MediaQueryEvaluator.Evaluate(list, new MediaContext(ViewportWidthPx: 800, ViewportHeightPx: 400)).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Prefers_color_scheme_dark_matches_dark_context()
     {
         var list = Parse("(prefers-color-scheme: dark)");
@@ -71,7 +71,7 @@ public sealed class MediaQueryEvaluatorTests
         MediaQueryEvaluator.Evaluate(list, new MediaContext(ColorScheme: ColorScheme.Light)).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Not_inverts_query()
     {
         var list = Parse("not (min-width: 400px)");
@@ -79,7 +79,7 @@ public sealed class MediaQueryEvaluatorTests
         MediaQueryEvaluator.Evaluate(list, new MediaContext(ViewportWidthPx: 500)).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Only_keyword_requires_media_type_to_match()
     {
         var list = Parse("only screen and (min-width: 400px)");
@@ -87,7 +87,7 @@ public sealed class MediaQueryEvaluatorTests
         MediaQueryEvaluator.Evaluate(list, new MediaContext(MediaType: "print", ViewportWidthPx: 500)).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void And_requires_all_conditions()
     {
         var list = Parse("(min-width: 400px) and (orientation: landscape)");
@@ -95,7 +95,7 @@ public sealed class MediaQueryEvaluatorTests
         MediaQueryEvaluator.Evaluate(list, new MediaContext(ViewportWidthPx: 500, ViewportHeightPx: 800)).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Or_requires_any_condition()
     {
         var list = Parse("(min-width: 1000px) or (orientation: portrait)");
@@ -103,7 +103,7 @@ public sealed class MediaQueryEvaluatorTests
         MediaQueryEvaluator.Evaluate(list, new MediaContext(ViewportWidthPx: 400, ViewportHeightPx: 300)).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Comma_list_is_or()
     {
         var list = Parse("(min-width: 1000px), (max-width: 400px)");
@@ -112,7 +112,7 @@ public sealed class MediaQueryEvaluatorTests
         MediaQueryEvaluator.Evaluate(list, new MediaContext(ViewportWidthPx: 600)).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Aspect_ratio_compares_ratio_value()
     {
         var list = Parse("(min-aspect-ratio: 16/9)");
@@ -120,7 +120,7 @@ public sealed class MediaQueryEvaluatorTests
         MediaQueryEvaluator.Evaluate(list, new MediaContext(ViewportWidthPx: 800, ViewportHeightPx: 600)).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Resolution_dppx_units()
     {
         var list = Parse("(min-resolution: 2dppx)");
@@ -128,7 +128,7 @@ public sealed class MediaQueryEvaluatorTests
         MediaQueryEvaluator.Evaluate(list, new MediaContext(Resolution: 1.0)).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Hover_keyword_matches_hover_context()
     {
         var list = Parse("(hover: hover)");
@@ -136,7 +136,7 @@ public sealed class MediaQueryEvaluatorTests
         MediaQueryEvaluator.Evaluate(list, new MediaContext(Hover: Hover.None)).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Boolean_feature_works()
     {
         var list = Parse("(color)");
@@ -144,7 +144,7 @@ public sealed class MediaQueryEvaluatorTests
         MediaQueryEvaluator.Evaluate(list, new MediaContext(Color: 0)).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void StyleEngine_skips_non_matching_media_block()
     {
         // Regression for "unconditional @media" bug.
@@ -162,7 +162,7 @@ public sealed class MediaQueryEvaluatorTests
             "the @media block requires a viewport at least 600px wide");
     }
 
-    [Fact]
+    [TestMethod]
     public void StyleEngine_applies_matching_media_block()
     {
         var doc = new Document();
@@ -178,7 +178,7 @@ public sealed class MediaQueryEvaluatorTests
         style.GetColor(PropertyId.Color).Should().Be(new CssColor(255, 0, 0));
     }
 
-    [Fact]
+    [TestMethod]
     public void MatchMedia_string_api_works()
     {
         var engine = new StyleEngine(includeUserAgentStyleSheet: false);

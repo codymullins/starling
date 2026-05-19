@@ -1,7 +1,4 @@
 using FluentAssertions;
-using Starling.Gui;
-using Xunit;
-
 namespace Starling.Gui.Tests;
 
 /// <summary>
@@ -10,19 +7,20 @@ namespace Starling.Gui.Tests;
 /// <c>google.com</c> should navigate to <c>https://google.com</c>, while
 /// <c>localhost</c> and IPv4 literals default to <c>http://</c>.
 /// </summary>
+[TestClass]
 public sealed class UrlBarInputNormalizerTests
 {
     // ---------- Schemeless hostnames default to https -----------------------
 
-    [Theory]
-    [InlineData("google.com", "https://google.com")]
-    [InlineData("www.google.com", "https://www.google.com")]
-    [InlineData("example.co.uk", "https://example.co.uk")]
-    [InlineData("google.com/", "https://google.com/")]
-    [InlineData("google.com/search?q=cats", "https://google.com/search?q=cats")]
-    [InlineData("example.com:8443", "https://example.com:8443")]
-    [InlineData("example.com:8443/path", "https://example.com:8443/path")]
-    [InlineData("example.com#frag", "https://example.com#frag")]
+    [TestMethod]
+    [DataRow("google.com", "https://google.com")]
+    [DataRow("www.google.com", "https://www.google.com")]
+    [DataRow("example.co.uk", "https://example.co.uk")]
+    [DataRow("google.com/", "https://google.com/")]
+    [DataRow("google.com/search?q=cats", "https://google.com/search?q=cats")]
+    [DataRow("example.com:8443", "https://example.com:8443")]
+    [DataRow("example.com:8443/path", "https://example.com:8443/path")]
+    [DataRow("example.com#frag", "https://example.com#frag")]
     public void Schemeless_hostname_defaults_to_https(string input, string expected)
     {
         UrlBarInputNormalizer.Normalize(input).Should().Be(expected);
@@ -30,9 +28,9 @@ public sealed class UrlBarInputNormalizerTests
 
     // ---------- Trimming and casing ----------------------------------------
 
-    [Theory]
-    [InlineData("  google.com  ", "https://google.com")]
-    [InlineData("\tgoogle.com\n", "https://google.com")]
+    [TestMethod]
+    [DataRow("  google.com  ", "https://google.com")]
+    [DataRow("\tgoogle.com\n", "https://google.com")]
     public void Surrounding_whitespace_is_trimmed(string input, string expected)
     {
         UrlBarInputNormalizer.Normalize(input).Should().Be(expected);
@@ -40,19 +38,19 @@ public sealed class UrlBarInputNormalizerTests
 
     // ---------- Already-qualified URLs pass through ------------------------
 
-    [Theory]
-    [InlineData("https://google.com")]
-    [InlineData("http://example.com/page")]
-    [InlineData("file:///tmp/page.html")]
-    [InlineData("about:blank")]
-    [InlineData("data:text/html,<p>hi</p>")]
-    [InlineData("ftp://files.example.com/")]
+    [TestMethod]
+    [DataRow("https://google.com")]
+    [DataRow("http://example.com/page")]
+    [DataRow("file:///tmp/page.html")]
+    [DataRow("about:blank")]
+    [DataRow("data:text/html,<p>hi</p>")]
+    [DataRow("ftp://files.example.com/")]
     public void Inputs_with_an_explicit_scheme_pass_through(string input)
     {
         UrlBarInputNormalizer.Normalize(input).Should().Be(input);
     }
 
-    [Fact]
+    [TestMethod]
     public void Http_input_is_not_silently_upgraded_to_https()
     {
         // The user typed http:// explicitly — respect it. (HSTS upgrades are
@@ -63,20 +61,20 @@ public sealed class UrlBarInputNormalizerTests
 
     // ---------- localhost and loopback default to http ---------------------
 
-    [Theory]
-    [InlineData("localhost", "http://localhost")]
-    [InlineData("localhost:8080", "http://localhost:8080")]
-    [InlineData("localhost:3000/api/health", "http://localhost:3000/api/health")]
-    [InlineData("LOCALHOST", "http://LOCALHOST")]
+    [TestMethod]
+    [DataRow("localhost", "http://localhost")]
+    [DataRow("localhost:8080", "http://localhost:8080")]
+    [DataRow("localhost:3000/api/health", "http://localhost:3000/api/health")]
+    [DataRow("LOCALHOST", "http://LOCALHOST")]
     public void Localhost_defaults_to_http(string input, string expected)
     {
         UrlBarInputNormalizer.Normalize(input).Should().Be(expected);
     }
 
-    [Theory]
-    [InlineData("127.0.0.1", "http://127.0.0.1")]
-    [InlineData("127.0.0.1:8080", "http://127.0.0.1:8080")]
-    [InlineData("192.168.1.1/admin", "http://192.168.1.1/admin")]
+    [TestMethod]
+    [DataRow("127.0.0.1", "http://127.0.0.1")]
+    [DataRow("127.0.0.1:8080", "http://127.0.0.1:8080")]
+    [DataRow("192.168.1.1/admin", "http://192.168.1.1/admin")]
     public void Ipv4_literals_default_to_http(string input, string expected)
     {
         UrlBarInputNormalizer.Normalize(input).Should().Be(expected);
@@ -84,7 +82,7 @@ public sealed class UrlBarInputNormalizerTests
 
     // ---------- Protocol-relative ------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Protocol_relative_input_is_promoted_to_https()
     {
         UrlBarInputNormalizer.Normalize("//cdn.example.com/asset.js")
@@ -93,20 +91,20 @@ public sealed class UrlBarInputNormalizerTests
 
     // ---------- Things that are not URLs at all ----------------------------
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
-    [InlineData("\t\n")]
+    [TestMethod]
+    [DataRow(null)]
+    [DataRow("")]
+    [DataRow("   ")]
+    [DataRow("\t\n")]
     public void Empty_or_whitespace_input_returns_null(string? input)
     {
         UrlBarInputNormalizer.Normalize(input).Should().BeNull();
     }
 
-    [Theory]
-    [InlineData("hello")]
-    [InlineData("just-a-word")]
-    [InlineData("foo_bar")]
+    [TestMethod]
+    [DataRow("hello")]
+    [DataRow("just-a-word")]
+    [DataRow("foo_bar")]
     public void Bare_word_with_no_dot_or_port_returns_null(string input)
     {
         // A real browser would route this to its search provider. This
@@ -115,18 +113,18 @@ public sealed class UrlBarInputNormalizerTests
         UrlBarInputNormalizer.Normalize(input).Should().BeNull();
     }
 
-    [Theory]
-    [InlineData("hello world")]
-    [InlineData("two words")]
-    [InlineData("multi word search query")]
+    [TestMethod]
+    [DataRow("hello world")]
+    [DataRow("two words")]
+    [DataRow("multi word search query")]
     public void Multi_word_input_returns_null(string input)
     {
         UrlBarInputNormalizer.Normalize(input).Should().BeNull();
     }
 
-    [Theory]
-    [InlineData("/foo")]
-    [InlineData("/foo/bar")]
+    [TestMethod]
+    [DataRow("/foo")]
+    [DataRow("/foo/bar")]
     public void Path_only_input_returns_null(string input)
     {
         // No host to navigate to — refuse rather than guessing.
@@ -135,7 +133,7 @@ public sealed class UrlBarInputNormalizerTests
 
     // ---------- Regression for the original report -------------------------
 
-    [Fact]
+    [TestMethod]
     public void User_typing_google_com_navigates_to_https_google_com()
     {
         // The literal example from the bug report: typing a bare hostname

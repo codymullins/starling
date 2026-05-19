@@ -8,10 +8,9 @@ using Starling.Paint.DisplayList;
 
 namespace Starling.Bench;
 
-// Display-list IR build cost. The Skia Graphite raster backend is excluded
-// from BDN — it requires the osx-arm64 native shim and produces
-// machine-dependent timings — but `DisplayListBuilder.Build` is pure managed
-// and is the seam every backend reads from.
+// Display-list IR build cost. The raster step is excluded from BDN because
+// timings vary by host (CPU/GPU), but `DisplayListBuilder.Build` is pure
+// managed and is the seam every backend reads from.
 [MemoryDiagnoser]
 public class PaintBench
 {

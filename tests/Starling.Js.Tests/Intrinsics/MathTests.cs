@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Intrinsics;
 
 /// <summary>
@@ -11,23 +9,24 @@ namespace Starling.Js.Tests.Intrinsics;
 /// <c>MathObj.Install</c>. Each test compiles a small script that exercises a
 /// constant, method, or edge case and asserts on the runtime value.
 /// </summary>
+[TestClass]
 public class MathTests
 {
     // ---------------------------------------------------------- constants
 
-    [Fact]
+    [TestMethod]
     public void Math_PI_matches_system_pi()
     {
         Eval("Math.PI;").AsNumber.Should().Be(System.Math.PI);
     }
 
-    [Fact]
+    [TestMethod]
     public void Math_E_matches_system_e()
     {
         Eval("Math.E;").AsNumber.Should().Be(System.Math.E);
     }
 
-    [Fact]
+    [TestMethod]
     public void Math_all_eight_constants_present_with_expected_values()
     {
         Eval("Math.LN10;").AsNumber.Should().Be(System.Math.Log(10));
@@ -40,13 +39,13 @@ public class MathTests
 
     // ---------------------------------------------------------- abs
 
-    [Fact]
+    [TestMethod]
     public void Math_abs_returns_magnitude()
     {
         Eval("Math.abs(-3);").AsNumber.Should().Be(3);
     }
 
-    [Fact]
+    [TestMethod]
     public void Math_abs_of_NaN_is_NaN()
     {
         double.IsNaN(Eval("Math.abs(NaN);").AsNumber).Should().BeTrue();
@@ -54,25 +53,25 @@ public class MathTests
 
     // ---------------------------------------------------------- max / min
 
-    [Fact]
+    [TestMethod]
     public void Math_max_with_args_returns_largest()
     {
         Eval("Math.max(1, 2, 3);").AsNumber.Should().Be(3);
     }
 
-    [Fact]
+    [TestMethod]
     public void Math_max_with_no_args_is_negative_infinity()
     {
         Eval("Math.max();").AsNumber.Should().Be(double.NegativeInfinity);
     }
 
-    [Fact]
+    [TestMethod]
     public void Math_min_with_args_returns_smallest()
     {
         Eval("Math.min(1, 2, 3);").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Math_min_with_no_args_is_positive_infinity()
     {
         Eval("Math.min();").AsNumber.Should().Be(double.PositiveInfinity);
@@ -80,14 +79,14 @@ public class MathTests
 
     // ---------------------------------------------------------- round
 
-    [Fact]
+    [TestMethod]
     public void Math_round_half_rounds_up_for_positive()
     {
         // JS-specific: rounds half toward +∞, not banker's-rounding.
         Eval("Math.round(0.5);").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Math_round_half_rounds_toward_zero_for_negative()
     {
         // Math.round(-0.5) is 0 in JS (half toward +∞ ⇒ -0.5 → -0).
@@ -96,19 +95,19 @@ public class MathTests
 
     // ---------------------------------------------------------- floor / ceil / trunc
 
-    [Fact]
+    [TestMethod]
     public void Math_floor_drops_fractional()
     {
         Eval("Math.floor(1.7);").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Math_ceil_rounds_up()
     {
         Eval("Math.ceil(1.2);").AsNumber.Should().Be(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void Math_trunc_drops_fractional_toward_zero()
     {
         Eval("Math.trunc(-1.7);").AsNumber.Should().Be(-1);
@@ -116,19 +115,19 @@ public class MathTests
 
     // ---------------------------------------------------------- sqrt / pow
 
-    [Fact]
+    [TestMethod]
     public void Math_sqrt_of_perfect_square()
     {
         Eval("Math.sqrt(9);").AsNumber.Should().Be(3);
     }
 
-    [Fact]
+    [TestMethod]
     public void Math_pow_2_to_the_10_is_1024()
     {
         Eval("Math.pow(2, 10);").AsNumber.Should().Be(1024);
     }
 
-    [Fact]
+    [TestMethod]
     public void Math_pow_NaN_to_zero_is_one()
     {
         // ES spec quirk: pow(NaN, 0) === 1.
@@ -137,7 +136,7 @@ public class MathTests
 
     // ---------------------------------------------------------- hypot
 
-    [Fact]
+    [TestMethod]
     public void Math_hypot_classic_3_4_5_triangle()
     {
         Eval("Math.hypot(3, 4);").AsNumber.Should().Be(5);
@@ -145,13 +144,13 @@ public class MathTests
 
     // ---------------------------------------------------------- sign
 
-    [Fact]
+    [TestMethod]
     public void Math_sign_of_negative_is_minus_one()
     {
         Eval("Math.sign(-5);").AsNumber.Should().Be(-1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Math_sign_of_positive_zero_is_positive_zero()
     {
         var v = Eval("Math.sign(0);").AsNumber;
@@ -159,7 +158,7 @@ public class MathTests
         double.IsNegative(v).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Math_sign_of_negative_zero_is_negative_zero()
     {
         // Discriminate -0 from +0 via 1/x — Object.is isn't available yet.
@@ -169,7 +168,7 @@ public class MathTests
 
     // ---------------------------------------------------------- imul
 
-    [Fact]
+    [TestMethod]
     public void Math_imul_handles_uint32_overflow()
     {
         // 0xffffffff (== -1 as Int32) * 5 == -5 in Int32 mod 2^32.
@@ -178,13 +177,13 @@ public class MathTests
 
     // ---------------------------------------------------------- clz32
 
-    [Fact]
+    [TestMethod]
     public void Math_clz32_of_one_is_thirty_one()
     {
         Eval("Math.clz32(1);").AsNumber.Should().Be(31);
     }
 
-    [Fact]
+    [TestMethod]
     public void Math_clz32_of_zero_is_thirty_two()
     {
         Eval("Math.clz32(0);").AsNumber.Should().Be(32);

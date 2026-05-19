@@ -4,13 +4,13 @@ using Starling.Css.Parser;
 using Starling.Css.Properties;
 using Starling.Css.Values;
 using Starling.Dom;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("css-animations-1", "https://www.w3.org/TR/css-animations-1/")]
 
+[TestClass]
 public sealed class PerKeyframeTimingTests
 {
     private static KeyframesRule ParseKeyframes(string css)
@@ -21,7 +21,7 @@ public sealed class PerKeyframeTimingTests
         return k!;
     }
 
-    [Fact]
+    [TestMethod]
     public void Per_keyframe_steps_overrides_animation_timing_function()
     {
         var rule = ParseKeyframes("""
@@ -54,7 +54,7 @@ public sealed class PerKeyframeTimingTests
             .Should().BeApproximately(0.5, 1e-6);
     }
 
-    [Fact]
+    [TestMethod]
     public void End_keyframe_timing_function_is_ignored()
     {
         // §7.1: a timing function on the last keyframe has nothing to time

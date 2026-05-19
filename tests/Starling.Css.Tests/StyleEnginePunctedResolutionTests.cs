@@ -5,10 +5,9 @@ using Starling.Css.Parser;
 using Starling.Css.Properties;
 using Starling.Css.Values;
 using Starling.Dom;
-using Xunit;
-
 namespace Starling.Css.Tests;
 
+[TestClass]
 public sealed class StyleEnginePunctedResolutionTests
 {
     private static (Element el, StyleEngine engine) Setup(string css)
@@ -23,7 +22,7 @@ public sealed class StyleEnginePunctedResolutionTests
 
     // ---------- A.5 — UsedValue / containing-block percentage resolution ----------
 
-    [Fact]
+    [TestMethod]
     public void UsedValue_resolves_percentage_against_containing_block()
     {
         var (el, engine) = Setup("div { width: 50%; }");
@@ -32,7 +31,7 @@ public sealed class StyleEnginePunctedResolutionTests
         used.Should().BeOfType<CssLength>().Which.Value.Should().Be(400);
     }
 
-    [Fact]
+    [TestMethod]
     public void UsedLengthPx_resolves_percentage_directly_to_pixels()
     {
         var (el, engine) = Setup("div { width: 75%; }");
@@ -41,7 +40,7 @@ public sealed class StyleEnginePunctedResolutionTests
         px.Should().Be(300);
     }
 
-    [Fact]
+    [TestMethod]
     public void UsedLengthPx_passes_through_absolute_lengths()
     {
         var (el, engine) = Setup("div { margin-left: 24px; }");
@@ -50,7 +49,7 @@ public sealed class StyleEnginePunctedResolutionTests
         px.Should().Be(24);
     }
 
-    [Fact]
+    [TestMethod]
     public void UsedValue_resolves_calc_with_percentage_at_layout_time()
     {
         var (el, engine) = Setup("div { width: calc(50% + 20px); }");
@@ -61,7 +60,7 @@ public sealed class StyleEnginePunctedResolutionTests
 
     // ---------- A.6 — Real cq* via ContainerSizeLookup ----------
 
-    [Fact]
+    [TestMethod]
     public void ContainerSizeLookup_supplies_cqw_size()
     {
         var doc = new Document();
@@ -78,7 +77,7 @@ public sealed class StyleEnginePunctedResolutionTests
         style.GetLength(PropertyId.Width).Value.Should().Be(200);
     }
 
-    [Fact]
+    [TestMethod]
     public void ContainerSizeLookup_supplies_cqh_size()
     {
         var doc = new Document();
@@ -95,7 +94,7 @@ public sealed class StyleEnginePunctedResolutionTests
         style.GetLength(PropertyId.Height).Value.Should().Be(300);
     }
 
-    [Fact]
+    [TestMethod]
     public void ContainerSizeLookup_cqmin_uses_smaller_dimension()
     {
         var doc = new Document();
@@ -112,7 +111,7 @@ public sealed class StyleEnginePunctedResolutionTests
         style.GetLength(PropertyId.Width).Value.Should().Be(200);
     }
 
-    [Fact]
+    [TestMethod]
     public void ContainerSizeLookup_walks_up_to_nearest_container()
     {
         var doc = new Document();
@@ -132,7 +131,7 @@ public sealed class StyleEnginePunctedResolutionTests
         style.GetLength(PropertyId.Width).Value.Should().Be(500);
     }
 
-    [Fact]
+    [TestMethod]
     public void Cqw_without_lookup_falls_back_to_small_viewport()
     {
         var (el, engine) = Setup("div { width: 50cqw; }");
@@ -165,7 +164,7 @@ public sealed class StyleEnginePunctedResolutionTests
         }
     }
 
-    [Fact]
+    [TestMethod]
     public void Ex_resolves_against_provider_xheight()
     {
         var (el, engine) = Setup("div { padding-top: 2ex; }");
@@ -175,7 +174,7 @@ public sealed class StyleEnginePunctedResolutionTests
         style.GetLength(PropertyId.PaddingTop).Value.Should().Be(18);
     }
 
-    [Fact]
+    [TestMethod]
     public void Cap_resolves_against_provider_capheight()
     {
         var (el, engine) = Setup("div { padding-top: 1cap; }");
@@ -184,7 +183,7 @@ public sealed class StyleEnginePunctedResolutionTests
         style.GetLength(PropertyId.PaddingTop).Value.Should().Be(14);
     }
 
-    [Fact]
+    [TestMethod]
     public void Ch_resolves_against_provider_zero_advance()
     {
         var (el, engine) = Setup("div { width: 4ch; }");
@@ -193,7 +192,7 @@ public sealed class StyleEnginePunctedResolutionTests
         style.GetLength(PropertyId.Width).Value.Should().Be(44);
     }
 
-    [Fact]
+    [TestMethod]
     public void Ic_resolves_against_provider_ic_advance()
     {
         var (el, engine) = Setup("div { width: 3ic; }");
@@ -202,7 +201,7 @@ public sealed class StyleEnginePunctedResolutionTests
         style.GetLength(PropertyId.Width).Value.Should().Be(60);
     }
 
-    [Fact]
+    [TestMethod]
     public void FontMetrics_provider_receives_cascaded_font_spec()
     {
         var (el, engine) = Setup("""
@@ -217,7 +216,7 @@ public sealed class StyleEnginePunctedResolutionTests
         fake.LastWeight.Should().Be(700);
     }
 
-    [Fact]
+    [TestMethod]
     public void Heuristic_provider_is_the_default()
     {
         var (el, engine) = Setup("div { padding-top: 2ex; }");

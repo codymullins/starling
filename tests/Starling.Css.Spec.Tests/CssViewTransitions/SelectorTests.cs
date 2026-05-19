@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssViewTransitions;
 /// <summary>
 /// Selector conformance for <see href="https://drafts.csswg.org/css-view-transitions-2/">CSS View Transitions Module Level 2</see>.
 /// </summary>
+[TestClass]
 [Spec("css-view-transitions", "https://drafts.csswg.org/css-view-transitions-2/")]
 public sealed class SelectorTests
 {

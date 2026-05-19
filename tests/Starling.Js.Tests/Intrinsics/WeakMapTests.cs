@@ -2,14 +2,13 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Intrinsics;
 
 /// <summary>End-to-end coverage for <c>WeakMap</c> (B3-3).</summary>
+[TestClass]
 public class WeakMapTests
 {
-    [Fact]
+    [TestMethod]
     public void WeakMap_constructor_wired()
     {
         var rt = new JsRuntime();
@@ -17,7 +16,7 @@ public class WeakMapTests
         rt.Realm.WeakMapConstructor.Should().NotBeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Set_get_with_object_key()
     {
         Eval(@"
@@ -27,7 +26,7 @@ public class WeakMapTests
             m.get(k);").AsNumber.Should().Be(7);
     }
 
-    [Fact]
+    [TestMethod]
     public void Primitive_key_on_set_throws_TypeError()
     {
         Eval(@"
@@ -37,7 +36,7 @@ public class WeakMapTests
             ok;").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Has_and_delete()
     {
         var r = Eval(@"
@@ -50,7 +49,7 @@ public class WeakMapTests
         r.AsString.Should().Be("true,false");
     }
 
-    [Fact]
+    [TestMethod]
     public void No_size_and_no_symbol_iterator()
     {
         // Spec: WeakMap.prototype has no `size` and no @@iterator. Plain

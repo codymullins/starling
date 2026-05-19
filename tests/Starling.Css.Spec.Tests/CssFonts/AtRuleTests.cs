@@ -11,6 +11,7 @@ namespace Starling.Css.Spec.Tests.CssFonts;
 /// <summary>
 /// At-rule conformance for <see href="https://drafts.csswg.org/css-fonts-4/">CSS Fonts Module Level 4</see>.
 /// </summary>
+[TestClass]
 [Spec("css-fonts", "https://drafts.csswg.org/css-fonts-4/")]
 public sealed class AtRuleTests
 {

@@ -4,6 +4,7 @@ namespace Starling.Css.Spec.Tests.CssColor5;
 /// <see href="https://www.w3.org/TR/css-color-5/#relative-colors">CSS Color L5 §4</see>:
 /// Relative color syntax — <c>rgb(from &lt;color&gt; r g b)</c> etc.
 /// </summary>
+[TestClass]
 [Spec("css-color-5", "https://www.w3.org/TR/css-color-5/", section: "4")]
 public sealed class RelativeColorSyntaxTests
 {

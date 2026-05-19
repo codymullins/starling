@@ -3,16 +3,15 @@ using Starling.Dom;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Bindings.Tests;
 
 /// <summary>
 /// B5-1 tests for the Window / document / EventTarget JS bindings.
 /// </summary>
+[TestClass]
 public sealed class WindowDocumentTests
 {
-    [Fact]
+    [TestMethod]
     public void Window_equals_global_this()
     {
         var (runtime, _) = BuildEnv();
@@ -20,7 +19,7 @@ public sealed class WindowDocumentTests
             .AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Document_is_stable_identity()
     {
         var (runtime, _) = BuildEnv();
@@ -28,7 +27,7 @@ public sealed class WindowDocumentTests
             .AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Document_create_element_tag_name_is_uppercase()
     {
         var (runtime, _) = BuildEnv();
@@ -36,7 +35,7 @@ public sealed class WindowDocumentTests
             .AsString.Should().Be("DIV");
     }
 
-    [Fact]
+    [TestMethod]
     public void Element_id_attribute_round_trips()
     {
         var (runtime, _) = BuildEnv();
@@ -48,7 +47,7 @@ public sealed class WindowDocumentTests
             .AsString.Should().Be("bar");
     }
 
-    [Fact]
+    [TestMethod]
     public void Document_body_append_child_makes_node_part_of_children()
     {
         var (runtime, doc) = BuildEnv();
@@ -64,7 +63,7 @@ public sealed class WindowDocumentTests
             .AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Add_event_listener_fires_with_this_equal_to_target()
     {
         var (runtime, _) = BuildEnv();
@@ -90,7 +89,7 @@ public sealed class WindowDocumentTests
         runtime.GetGlobal("tgt").AsBool.Should().BeTrue("e.target should equal btn");
     }
 
-    [Fact]
+    [TestMethod]
     public void Remove_event_listener_actually_unregisters()
     {
         var (runtime, _) = BuildEnv();
@@ -106,7 +105,7 @@ public sealed class WindowDocumentTests
         """).AsNumber.Should().Be(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Once_option_fires_only_once()
     {
         var (runtime, _) = BuildEnv();
@@ -122,7 +121,7 @@ public sealed class WindowDocumentTests
         runtime.GetGlobal("count").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Event_object_exposes_spec_fields()
     {
         var (runtime, _) = BuildEnv();
@@ -143,7 +142,7 @@ public sealed class WindowDocumentTests
         runtime.GetGlobal("captured_defaultPrevented").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Stop_propagation_halts_bubble()
     {
         var (runtime, _) = BuildEnv();
@@ -160,7 +159,7 @@ public sealed class WindowDocumentTests
         """).AsNumber.Should().Be(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Window_location_href_reflects_install_url()
     {
         var (runtime, _) = BuildEnv("https://example.com/path?q=1#frag");
@@ -176,7 +175,7 @@ public sealed class WindowDocumentTests
             .AsString.Should().Be("#frag");
     }
 
-    [Fact]
+    [TestMethod]
     public void Document_get_element_by_id_returns_wrapper()
     {
         var (runtime, doc) = BuildEnv();
@@ -189,7 +188,7 @@ public sealed class WindowDocumentTests
             .IsNull.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Wrapper_identity_is_stable_via_caching()
     {
         var (runtime, _) = BuildEnv();
@@ -200,7 +199,7 @@ public sealed class WindowDocumentTests
         """).AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Document_prototype_is_exposed_via_constructor()
     {
         var (runtime, _) = BuildEnv();
@@ -210,7 +209,7 @@ public sealed class WindowDocumentTests
             .AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Window_add_event_listener_fires_on_window_dispatch()
     {
         var (runtime, _) = BuildEnv();
@@ -226,7 +225,7 @@ public sealed class WindowDocumentTests
         runtime.GetGlobal("fired").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Text_content_round_trips_through_js()
     {
         var (runtime, _) = BuildEnv();
@@ -238,7 +237,7 @@ public sealed class WindowDocumentTests
         """).AsString.Should().Be("hello world");
     }
 
-    [Fact]
+    [TestMethod]
     public void Class_name_setter_writes_class_attribute()
     {
         var (runtime, _) = BuildEnv();
@@ -249,7 +248,7 @@ public sealed class WindowDocumentTests
         """).AsString.Should().Be("one two");
     }
 
-    [Fact]
+    [TestMethod]
     public void Query_selector_supports_id_class_and_tag()
     {
         var (runtime, doc) = BuildEnv();
@@ -271,7 +270,7 @@ public sealed class WindowDocumentTests
             .AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Navigator_user_agent_is_exposed()
     {
         var (runtime, _) = BuildEnv();
@@ -279,7 +278,7 @@ public sealed class WindowDocumentTests
             .AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Event_target_is_set_during_dispatch()
     {
         var (runtime, _) = BuildEnv();
@@ -301,7 +300,7 @@ public sealed class WindowDocumentTests
         runtime.GetGlobal("ok").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Host_side_listener_added_in_csharp_fires_on_dispatch_from_js()
     {
         var (runtime, doc) = BuildEnv();

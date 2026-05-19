@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssValues5;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-values-5/">CSS Values and Units Module Level 5</see>.
 /// </summary>
+[TestClass]
 [Spec("css-values-5", "https://drafts.csswg.org/css-values-5/")]
 public sealed class PropertyTests
 {

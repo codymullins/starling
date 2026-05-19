@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssAnchorPosition2;
 /// <summary>
 /// At-rule conformance for <see href="https://drafts.csswg.org/css-anchor-position-2/">CSS Anchor Positioning Module Level 2</see>.
 /// </summary>
+[TestClass]
 [Spec("css-anchor-position-2", "https://drafts.csswg.org/css-anchor-position-2/")]
 public sealed class AtRuleTests
 {

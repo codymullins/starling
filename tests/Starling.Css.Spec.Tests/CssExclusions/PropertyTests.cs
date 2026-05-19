@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssExclusions;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-exclusions-1/">CSS Exclusions Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-exclusions", "https://drafts.csswg.org/css-exclusions-1/")]
 public sealed class PropertyTests
 {

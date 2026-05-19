@@ -3,13 +3,12 @@ using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
 using Starling.Loop;
-using Xunit;
-
 namespace Starling.Bindings.Tests;
 
+[TestClass]
 public sealed class TimersTests
 {
-    [Fact]
+    [TestMethod]
     public void SetTimeout_returns_numeric_id_and_does_not_fire_before_delay()
     {
         var (runtime, loop, _) = NewHost();
@@ -26,7 +25,7 @@ public sealed class TimersTests
         runtime.GetGlobal("__fired").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void SetTimeout_zero_delay_fires_on_RunUntilIdle()
     {
         var (runtime, loop, _) = NewHost();
@@ -38,7 +37,7 @@ public sealed class TimersTests
         runtime.GetGlobal("__fired").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void SetTimeout_forwards_extra_arguments()
     {
         var (runtime, loop, _) = NewHost();
@@ -52,7 +51,7 @@ public sealed class TimersTests
         runtime.GetGlobal("__captured").AsString.Should().Be("a:1:true");
     }
 
-    [Fact]
+    [TestMethod]
     public void ClearTimeout_cancels_pending_handler()
     {
         var (runtime, loop, _) = NewHost();
@@ -67,7 +66,7 @@ public sealed class TimersTests
         runtime.GetGlobal("__fired").AsBool.Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void ClearTimeout_double_clear_is_noop()
     {
         var (runtime, loop, _) = NewHost();
@@ -83,7 +82,7 @@ public sealed class TimersTests
         loop.PendingTimerCount.Should().Be(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void SetInterval_fires_repeatedly_and_clearInterval_stops_chain()
     {
         var (runtime, loop, _) = NewHost();
@@ -105,7 +104,7 @@ public sealed class TimersTests
         runtime.GetGlobal("__count").AsNumber.Should().Be(3);
     }
 
-    [Fact]
+    [TestMethod]
     public void Non_callable_handler_throws_TypeError()
     {
         var (runtime, _, _) = NewHost();
@@ -114,7 +113,7 @@ public sealed class TimersTests
         act.Should().Throw<JsThrow>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Negative_delay_clamps_to_zero()
     {
         var (runtime, loop, _) = NewHost();
@@ -125,7 +124,7 @@ public sealed class TimersTests
         runtime.GetGlobal("__fired").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Timer_callback_drains_microtasks_for_promise_reactions()
     {
         var (runtime, loop, _) = NewHost();
@@ -141,7 +140,7 @@ public sealed class TimersTests
         runtime.GetGlobal("__settled").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Handler_throw_is_routed_to_ConsoleSink_and_subsequent_timers_still_fire()
     {
         var (runtime, loop, errors) = NewHost();
@@ -158,7 +157,7 @@ public sealed class TimersTests
         runtime.GetGlobal("__second").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void SetInterval_handler_can_call_clearInterval_on_itself()
     {
         var (runtime, loop, _) = NewHost();

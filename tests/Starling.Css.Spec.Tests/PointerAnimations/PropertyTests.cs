@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.PointerAnimations;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/pointer-animations-1/">Pointer-driven Animations Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("pointer-animations", "https://drafts.csswg.org/pointer-animations-1/")]
 public sealed class PropertyTests
 {

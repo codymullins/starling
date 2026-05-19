@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssSyntax;
 /// <summary>
 /// At-rule conformance for <see href="https://drafts.csswg.org/css-syntax-3/">CSS Syntax Module Level 3</see>.
 /// </summary>
+[TestClass]
 [Spec("css-syntax", "https://drafts.csswg.org/css-syntax-3/")]
 public sealed class AtRuleTests
 {

@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssAnimations2;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-animations-2/">CSS Animations Module Level 2</see>.
 /// </summary>
+[TestClass]
 [Spec("css-animations-2", "https://drafts.csswg.org/css-animations-2/")]
 public sealed class PropertyTests
 {

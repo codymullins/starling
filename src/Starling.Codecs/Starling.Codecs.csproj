@@ -2,11 +2,11 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <!--
-      Starling.Codecs is one of the two designated interop seams (the other is
-      Starling.Skia). LibraryImport / GeneratedComInterface source generators are
-      permitted here and nowhere else in the engine — see AGENTS.md and
-      wp:M3-06l-ci-policy. AllowUnsafeBlocks is needed for the fixed-pointer
-      copies in the native decode paths.
+      Starling.Codecs is the designated interop seam for the engine.
+      LibraryImport / GeneratedComInterface source generators are permitted
+      here and nowhere else — see AGENTS.md and wp:M3-06l-ci-policy.
+      AllowUnsafeBlocks is needed for the fixed-pointer copies in the native
+      decode paths.
     -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>

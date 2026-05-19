@@ -1,11 +1,10 @@
 using FluentAssertions;
-using Xunit;
-
 namespace Starling.Dom.Tests;
 
+[TestClass]
 public class DomTreeTests
 {
-    [Fact]
+    [TestMethod]
     public void AppendChild_sets_parent_and_owner_document()
     {
         var doc = new Document();
@@ -15,7 +14,7 @@ public class DomTreeTests
         html.OwnerDocument.Should().BeSameAs(doc);
     }
 
-    [Fact]
+    [TestMethod]
     public void Siblings_link_up_in_insertion_order()
     {
         var doc = new Document();
@@ -35,7 +34,7 @@ public class DomTreeTests
         c.PreviousSibling.Should().BeSameAs(b);
     }
 
-    [Fact]
+    [TestMethod]
     public void TextContent_concatenates_descendant_text()
     {
         var doc = new Document();
@@ -50,7 +49,7 @@ public class DomTreeTests
         p.TextContent.Should().Be("Hello, world.");
     }
 
-    [Fact]
+    [TestMethod]
     public void RemoveFromParent_unlinks_and_bumps_mutation_version()
     {
         var doc = new Document();
@@ -63,7 +62,7 @@ public class DomTreeTests
         doc.MutationVersion.Should().BeGreaterThan(v0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Body_resolves_first_body_descendant()
     {
         var doc = new Document();
@@ -78,7 +77,7 @@ public class DomTreeTests
         doc.Head.Should().BeSameAs(head);
     }
 
-    [Fact]
+    [TestMethod]
     public void InsertBefore_ReplaceChild_and_RemoveChild_maintain_links()
     {
         var doc = new Document();
@@ -110,7 +109,7 @@ public class DomTreeTests
             .Should().ContainInOrder("a", "c");
     }
 
-    [Fact]
+    [TestMethod]
     public void InsertBefore_same_node_reference_is_noop()
     {
         var doc = new Document();
@@ -127,7 +126,7 @@ public class DomTreeTests
         child.NextSibling.Should().BeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void InsertBefore_rejects_cycles_and_external_reference_children()
     {
         var doc = new Document();
@@ -146,7 +145,7 @@ public class DomTreeTests
         actReference.Should().Throw<InvalidOperationException>();
     }
 
-    [Fact]
+    [TestMethod]
     public void OwnerDocument_propagates_to_reparented_subtrees()
     {
         var doc1 = new Document();
@@ -163,7 +162,7 @@ public class DomTreeTests
         doc1.FirstChild.Should().BeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Element_attributes_are_case_insensitive_and_mutate_document_version()
     {
         var doc = new Document();
@@ -184,7 +183,7 @@ public class DomTreeTests
         el.HasAttribute("id").Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Document_lookup_collections_are_live()
     {
         var doc = new Document();
@@ -209,7 +208,7 @@ public class DomTreeTests
         byClass.Should().BeEmpty();
     }
 
-    [Fact]
+    [TestMethod]
     public void DocumentFragment_inserts_children_and_is_emptied()
     {
         var doc = new Document();
@@ -230,7 +229,7 @@ public class DomTreeTests
         b.ParentNode.Should().BeSameAs(root);
     }
 
-    [Fact]
+    [TestMethod]
     public void TextContent_setter_replaces_children_with_text_node()
     {
         var doc = new Document();
@@ -246,7 +245,7 @@ public class DomTreeTests
         root.TextContent.Should().Be("hello");
     }
 
-    [Fact]
+    [TestMethod]
     public void CharacterData_exposes_node_value_and_mutates_document_version()
     {
         var doc = new Document();
@@ -263,7 +262,7 @@ public class DomTreeTests
         doc.MutationVersion.Should().BeGreaterThan(v0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Document_creates_comments_doctypes_fragments_cdata_and_processing_instructions()
     {
         var doc = new Document();

@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.Compositing;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/compositing-2/">Compositing and Blending Module Level 2</see>.
 /// </summary>
+[TestClass]
 [Spec("compositing", "https://drafts.csswg.org/compositing-2/")]
 public sealed class PropertyTests
 {

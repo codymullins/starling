@@ -5,10 +5,9 @@ using Starling.Css.Parser;
 using Starling.Css.Properties;
 using Starling.Css.Values;
 using Starling.Dom;
-using Xunit;
-
 namespace Starling.Css.Tests;
 
+[TestClass]
 public sealed class StyleEngineResolutionTests
 {
     private static (Document doc, Element el, StyleEngine engine) Setup(string css)
@@ -21,7 +20,7 @@ public sealed class StyleEngineResolutionTests
         return (doc, el, engine);
     }
 
-    [Fact]
+    [TestMethod]
     public void Em_resolves_against_computed_font_size()
     {
         var (_, el, engine) = Setup("div { font-size: 20px; margin: 2em; }");
@@ -29,7 +28,7 @@ public sealed class StyleEngineResolutionTests
         style.GetLength(PropertyId.MarginTop).Should().Be(new CssLength(40, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Rem_resolves_against_root_font_size()
     {
         var (_, el, engine) = Setup("div { font-size: 32px; padding: 1rem; }");
@@ -37,7 +36,7 @@ public sealed class StyleEngineResolutionTests
         style.GetLength(PropertyId.PaddingTop).Should().Be(new CssLength(16, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Vw_resolves_against_viewport()
     {
         var (_, el, engine) = Setup("div { width: 50vw; }");
@@ -46,7 +45,7 @@ public sealed class StyleEngineResolutionTests
         style.GetLength(PropertyId.Width).Should().Be(new CssLength(500, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Vh_resolves_against_viewport()
     {
         var (_, el, engine) = Setup("div { height: 100vh; }");
@@ -55,7 +54,7 @@ public sealed class StyleEngineResolutionTests
         style.GetLength(PropertyId.Height).Should().Be(new CssLength(800, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Lh_resolves_against_line_height()
     {
         // line-height defaults to font-size * 1.2 in our context — 16 * 1.2 = 19.2
@@ -64,7 +63,7 @@ public sealed class StyleEngineResolutionTests
         style.GetLength(PropertyId.PaddingTop).Value.Should().BeApproximately(19.2, 0.001);
     }
 
-    [Fact]
+    [TestMethod]
     public void Calc_with_vh_and_px_resolves_to_pixels()
     {
         var (_, el, engine) = Setup("div { height: calc(100vh - 80px); }");
@@ -73,7 +72,7 @@ public sealed class StyleEngineResolutionTests
         style.GetLength(PropertyId.Height).Should().Be(new CssLength(720, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Calc_with_em_resolves_to_pixels()
     {
         var (_, el, engine) = Setup("div { font-size: 20px; margin: calc(2em + 10px); }");
@@ -81,7 +80,7 @@ public sealed class StyleEngineResolutionTests
         style.GetLength(PropertyId.MarginTop).Value.Should().Be(50);
     }
 
-    [Fact]
+    [TestMethod]
     public void Min_max_clamp_resolve_through_engine()
     {
         var (_, el, engine) = Setup("div { width: clamp(100px, 50vw, 300px); }");
@@ -91,7 +90,7 @@ public sealed class StyleEngineResolutionTests
         style.GetLength(PropertyId.Width).Should().Be(new CssLength(100, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Percentage_stays_symbolic_at_cascade_time()
     {
         var (_, el, engine) = Setup("div { width: 50%; }");
@@ -100,7 +99,7 @@ public sealed class StyleEngineResolutionTests
         style.Get(PropertyId.Width).Should().BeOfType<CssPercentage>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Attr_px_unit_resolves_against_element_attribute()
     {
         var (_, el, engine) = Setup("div { width: attr(data-w px); }");
@@ -109,7 +108,7 @@ public sealed class StyleEngineResolutionTests
         style.GetLength(PropertyId.Width).Should().Be(new CssLength(150, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Attr_uses_fallback_when_attribute_missing()
     {
         var (_, el, engine) = Setup("div { width: attr(data-w px, 200px); }");
@@ -117,7 +116,7 @@ public sealed class StyleEngineResolutionTests
         style.GetLength(PropertyId.Width).Should().Be(new CssLength(200, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Attr_with_color_type_resolves()
     {
         var (_, el, engine) = Setup("div { color: attr(data-color color, black); }");
@@ -126,7 +125,7 @@ public sealed class StyleEngineResolutionTests
         style.GetColor(PropertyId.Color).Should().Be(new CssColor(255, 0, 0));
     }
 
-    [Fact]
+    [TestMethod]
     public void Font_size_em_resolves_against_parent_font_size()
     {
         var doc = new Document();
@@ -145,7 +144,7 @@ public sealed class StyleEngineResolutionTests
         style.GetLength(PropertyId.FontSize).Should().Be(new CssLength(40, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Em_in_child_resolves_against_own_font_size_not_parent()
     {
         var doc = new Document();
@@ -165,7 +164,7 @@ public sealed class StyleEngineResolutionTests
         style.GetLength(PropertyId.MarginTop).Should().Be(new CssLength(30, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Cqw_resolves_against_container_context()
     {
         var (_, el, engine) = Setup("div { width: 50cqw; }");
@@ -175,7 +174,7 @@ public sealed class StyleEngineResolutionTests
         style.GetLength(PropertyId.Width).Value.Should().Be(200);
     }
 
-    [Fact]
+    [TestMethod]
     public void Dvh_resolves_separately_from_vh()
     {
         var (_, el, engine) = Setup("div { height: 100dvh; }");

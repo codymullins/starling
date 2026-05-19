@@ -2,17 +2,16 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Runtime;
 
 /// <summary>
 /// End-to-end parse → compile → run coverage for ECMA-262 §13.15
 /// destructuring assignment and §14.3.3 destructuring binding patterns.
 /// </summary>
+[TestClass]
 public class JsDestructuringTests
 {
-    [Fact]
+    [TestMethod]
     public void Array_binding_patterns_cover_defaults_holes_rest_and_nested()
     {
         Eval("let [a, b] = [1, 2]; a + b;").AsNumber.Should().Be(3);
@@ -26,7 +25,7 @@ public class JsDestructuringTests
         Eval("let [[a, b], c] = [[4, 5], 6]; a * 100 + b * 10 + c;").AsNumber.Should().Be(456);
     }
 
-    [Fact]
+    [TestMethod]
     public void Object_binding_patterns_cover_shorthand_renames_defaults_computed_rest_and_nested()
     {
         Eval("let {x, y} = {x: 1, y: 2}; x + y;").AsNumber.Should().Be(3);
@@ -41,7 +40,7 @@ public class JsDestructuringTests
         Eval("let {a: [x = 1, ...r], z = 9, ...rest} = {a: [undefined, 2, 3], keep: 4}; x * 1000 + r.length * 100 + r[1] * 10 + z + rest.keep;").AsNumber.Should().Be(1243);
     }
 
-    [Fact]
+    [TestMethod]
     public void Function_and_arrow_parameters_can_destructure()
     {
         Eval("function f({x, y}, [a, b = 5]) { return x + y + a + b; } f({x: 1, y: 2}, [3]);").AsNumber.Should().Be(11);
@@ -53,7 +52,7 @@ public class JsDestructuringTests
         Eval("function f({x}, [a, b = 5]) { return (x === undefined ? 10 : x) + (a === undefined ? 20 : a) + b; } f({}, []);").AsNumber.Should().Be(35);
     }
 
-    [Fact]
+    [TestMethod]
     public void Assignment_patterns_write_existing_bindings_and_return_rhs()
     {
         Eval("var a = 0, b = 0; [a, b] = [8, 9]; a * 10 + b;").AsNumber.Should().Be(89);
@@ -64,7 +63,7 @@ public class JsDestructuringTests
     }
 
 
-    [Fact]
+    [TestMethod]
     public void Destructuring_edge_cases_cover_missing_values_members_and_computed_rest()
     {
         Eval("let [a = 1] = []; a;").AsNumber.Should().Be(1);
@@ -89,7 +88,7 @@ public class JsDestructuringTests
         Eval("var a = 1, b = 2; [b, a] = [a, b]; a * 10 + b;").AsNumber.Should().Be(21);
     }
 
-    [Fact]
+    [TestMethod]
     public void Arrow_this_binding_gap_is_pinned_for_follow_up_work()
     {
         Eval("var o = { x: 3, m() { var f = () => this.x; return f(); } }; o.m() === undefined;").AsBool.Should().BeTrue();

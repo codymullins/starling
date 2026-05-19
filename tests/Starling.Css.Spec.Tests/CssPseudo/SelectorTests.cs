@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssPseudo;
 /// <summary>
 /// Selector conformance for <see href="https://drafts.csswg.org/css-pseudo-4/">CSS Pseudo-Elements Module Level 4</see>.
 /// </summary>
+[TestClass]
 [Spec("css-pseudo", "https://drafts.csswg.org/css-pseudo-4/")]
 public sealed class SelectorTests
 {

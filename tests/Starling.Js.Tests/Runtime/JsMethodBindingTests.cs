@@ -2,13 +2,12 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Runtime;
 
+[TestClass]
 public class JsMethodBindingTests
 {
-    [Fact]
+    [TestMethod]
     public void Dot_method_call_binds_this_to_receiver()
     {
         var r = Eval(@"
@@ -21,7 +20,7 @@ public class JsMethodBindingTests
         r.AsNumber.Should().Be(5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Bracket_method_call_binds_this()
     {
         var r = Eval(@"
@@ -35,7 +34,7 @@ public class JsMethodBindingTests
         r.AsNumber.Should().Be(7);
     }
 
-    [Fact]
+    [TestMethod]
     public void Plain_function_call_still_has_undefined_this()
     {
         // Regression: M3-04e only affects member-call sites. Top-level
@@ -47,7 +46,7 @@ public class JsMethodBindingTests
         r.AsString.Should().Be("undefined");
     }
 
-    [Fact]
+    [TestMethod]
     public void Method_can_mutate_via_this()
     {
         var r = Eval(@"
@@ -62,7 +61,7 @@ public class JsMethodBindingTests
         r.AsNumber.Should().Be(3);
     }
 
-    [Fact]
+    [TestMethod]
     public void Chained_method_calls_each_bind_their_own_this()
     {
         var r = Eval(@"
@@ -76,7 +75,7 @@ public class JsMethodBindingTests
         r.AsNumber.Should().Be(30); // 3*2*5
     }
 
-    [Fact]
+    [TestMethod]
     public void Receiver_evaluated_only_once_for_dot_call()
     {
         // The receiver expression in a method call should be evaluated
@@ -98,7 +97,7 @@ public class JsMethodBindingTests
         callCount.Should().Be(1, "receiver evaluation should not double-execute");
     }
 
-    [Fact]
+    [TestMethod]
     public void Method_returning_this_enables_fluent_chain()
     {
         var r = Eval(@"
@@ -112,7 +111,7 @@ public class JsMethodBindingTests
         r.AsString.Should().Be("abc");
     }
 
-    [Fact]
+    [TestMethod]
     public void Stored_method_called_as_bare_function_loses_this()
     {
         // `var fn = obj.method; fn();` is NOT a method call — fn has no

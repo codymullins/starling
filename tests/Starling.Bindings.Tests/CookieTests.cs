@@ -4,13 +4,12 @@ using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
 using Starling.Net.Http.Cookies;
-using Xunit;
-
 namespace Starling.Bindings.Tests;
 
+[TestClass]
 public sealed class CookieTests
 {
-    [Fact]
+    [TestMethod]
     public void Document_cookie_is_empty_with_no_jar()
     {
         var runtime = BuildEnvWithoutJar("https://example.com/");
@@ -20,7 +19,7 @@ public sealed class CookieTests
             .AsString.Should().Be("");
     }
 
-    [Fact]
+    [TestMethod]
     public void Setter_stores_then_getter_serializes()
     {
         var (runtime, _, _) = BuildEnv("https://example.com/");
@@ -28,7 +27,7 @@ public sealed class CookieTests
             .AsString.Should().Be("session=abc");
     }
 
-    [Fact]
+    [TestMethod]
     public void Multiple_cookies_join_with_semicolon()
     {
         var (runtime, _, _) = BuildEnv("https://example.com/");
@@ -39,7 +38,7 @@ public sealed class CookieTests
         """).AsString.Should().Be("a=1; b=2");
     }
 
-    [Fact]
+    [TestMethod]
     public void Cookies_set_via_http_are_visible_to_script()
     {
         var (runtime, _, jar) = BuildEnv("https://example.com/");
@@ -48,7 +47,7 @@ public sealed class CookieTests
         Eval(runtime, "result = document.cookie;").AsString.Should().Be("from_http=yes");
     }
 
-    [Fact]
+    [TestMethod]
     public void Cookies_set_via_script_round_trip_to_jar()
     {
         var (runtime, _, jar) = BuildEnv("https://example.com/");
@@ -57,7 +56,7 @@ public sealed class CookieTests
             .Should().Be("k=v");
     }
 
-    [Fact]
+    [TestMethod]
     public void Cookie_setter_silently_drops_malformed_input()
     {
         var (runtime, _, _) = BuildEnv("https://example.com/");
@@ -65,7 +64,7 @@ public sealed class CookieTests
             .AsString.Should().Be("");
     }
 
-    [Fact]
+    [TestMethod]
     public void Cookies_from_other_origin_not_visible()
     {
         var (runtimeA, _, jarShared) = BuildEnv("https://a.example.com/");

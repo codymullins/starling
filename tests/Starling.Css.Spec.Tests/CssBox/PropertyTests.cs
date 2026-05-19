@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssBox;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-box-4/">CSS Box Model Module Level 4</see>.
 /// </summary>
+[TestClass]
 [Spec("css-box", "https://drafts.csswg.org/css-box-4/")]
 public sealed class PropertyTests
 {

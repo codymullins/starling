@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Css.Cascade;
 using Starling.Html;
 using Starling.Layout.Box;
-using Xunit;
-
 namespace Starling.Layout.Tests;
 
 /// <summary>
@@ -12,6 +10,7 @@ namespace Starling.Layout.Tests;
 /// this. Don't check pixel-perfect dimensions; just that the controls are
 /// non-degenerate and that user-supplied labels/values land in the box tree.
 /// </summary>
+[TestClass]
 public sealed class FormControlLayoutTests
 {
     private static LayoutEngine NewEngine() => new(new StyleEngine());
@@ -19,7 +18,7 @@ public sealed class FormControlLayoutTests
     private static BlockBox Layout(string html, Size viewport)
         => NewEngine().LayoutDocument(HtmlParser.Parse(html), viewport);
 
-    [Fact]
+    [TestMethod]
     public void Text_input_with_no_attributes_has_visible_width_and_height()
     {
         var root = Layout("<body><input type=\"text\"></body>", new Size(800, 600));
@@ -30,7 +29,7 @@ public sealed class FormControlLayoutTests
         input.Frame.Height.Should().BeGreaterThan(10);
     }
 
-    [Fact]
+    [TestMethod]
     public void Larger_size_attribute_widens_the_input()
     {
         var rootDefault = Layout("<body><input type=\"text\"></body>", new Size(2000, 600));
@@ -41,7 +40,7 @@ public sealed class FormControlLayoutTests
         bigInput.Frame.Width.Should().BeGreaterThan(defaultInput.Frame.Width * 1.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Text_input_with_value_renders_the_value_as_content()
     {
         var root = Layout("<body><input type=\"text\" value=\"hello\"></body>", new Size(800, 600));
@@ -50,7 +49,7 @@ public sealed class FormControlLayoutTests
         text.Should().Contain("hello");
     }
 
-    [Fact]
+    [TestMethod]
     public void Text_input_with_placeholder_renders_the_placeholder_when_no_value()
     {
         var root = Layout(
@@ -61,7 +60,7 @@ public sealed class FormControlLayoutTests
         text.Should().Contain("search");
     }
 
-    [Fact]
+    [TestMethod]
     public void Submit_input_with_value_renders_the_value_as_label()
     {
         var root = Layout("<body><input type=\"submit\" value=\"Go\"></body>", new Size(800, 600));
@@ -73,7 +72,7 @@ public sealed class FormControlLayoutTests
         input.Frame.Height.Should().BeGreaterThan(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Button_element_renders_its_child_text_as_label()
     {
         var root = Layout("<body><button>Click</button></body>", new Size(800, 600));
@@ -84,7 +83,7 @@ public sealed class FormControlLayoutTests
         button.Frame.Height.Should().BeGreaterThan(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Submit_input_without_value_renders_default_submit_label()
     {
         var root = Layout("<body><input type=\"submit\"></body>", new Size(800, 600));
@@ -94,7 +93,7 @@ public sealed class FormControlLayoutTests
         text.Should().Contain("Submit");
     }
 
-    [Fact]
+    [TestMethod]
     public void Googlelike_form_lays_out_all_three_controls_visibly()
     {
         // Mirrors the legacy Google homepage shape: one text input + two submits.

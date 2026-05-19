@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Css.Cascade;
 using Starling.Html;
 using Starling.Layout.Box;
-using Xunit;
-
 namespace Starling.Layout.Tests;
 
 /// <summary>
@@ -14,6 +12,7 @@ namespace Starling.Layout.Tests;
 /// table-cell-wrapped forms (Google's homepage) contain block children render
 /// nothing for those children.
 /// </summary>
+[TestClass]
 public sealed class InlineBlockBlockChildrenTests
 {
     private static LayoutEngine NewEngine() => new(new StyleEngine());
@@ -21,7 +20,7 @@ public sealed class InlineBlockBlockChildrenTests
     private static BlockBox Layout(string html, Size viewport)
         => NewEngine().LayoutDocument(HtmlParser.Parse(html), viewport);
 
-    [Fact]
+    [TestMethod]
     public void Block_child_inside_inline_block_lays_out_and_inline_block_has_height()
     {
         // The inline-block <span> wraps a block <div> and an inline <span>.
@@ -49,7 +48,7 @@ public sealed class InlineBlockBlockChildrenTests
         allText.Should().Contain(s => s.Contains("inline sibling"));
     }
 
-    [Fact]
+    [TestMethod]
     public void Google_table_cell_lays_out_input_above_submit_button()
     {
         // Mirrors Google's homepage cell shape: a <td> (UA: inline-block)
@@ -82,7 +81,7 @@ public sealed class InlineBlockBlockChildrenTests
             "the text input should sit above the submit button inside the cell");
     }
 
-    [Fact]
+    [TestMethod]
     public void Inline_block_with_only_text_still_uses_text_only_path()
     {
         // Regression guard: a pure-text inline-block must still size by its
@@ -100,7 +99,7 @@ public sealed class InlineBlockBlockChildrenTests
         text.Should().Contain(s => s.Contains("hello"));
     }
 
-    [Fact]
+    [TestMethod]
     public void Inline_block_with_inline_block_child_renders_the_child()
     {
         // No block children — but an inline-block child. The text-only path
@@ -126,7 +125,7 @@ public sealed class InlineBlockBlockChildrenTests
         inner.Frame.Height.Should().BeGreaterThan(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Inline_block_shrinks_to_max_content_width_not_available_width()
     {
         // The outer inline-block contains an inline-block sized to 100px.
@@ -157,7 +156,7 @@ public sealed class InlineBlockBlockChildrenTests
             "SIBLING must sit on the same line as the outer inline-block");
     }
 
-    [Fact]
+    [TestMethod]
     public void Google_form_shape_keeps_cells_horizontal()
     {
         // Two <td>s: the first wraps an inline-block <div> with an <input>;
@@ -190,7 +189,7 @@ public sealed class InlineBlockBlockChildrenTests
         input.Frame.Height.Should().BeGreaterThan(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Inline_block_with_block_child_shrinks_to_block_childs_content_max_content()
     {
         // The outer inline-block holds a single block child <div> with the
@@ -227,7 +226,7 @@ public sealed class InlineBlockBlockChildrenTests
             "SIBLING must not wrap to a second line below the inline-block");
     }
 
-    [Fact]
+    [TestMethod]
     public void Two_inline_blocks_each_with_block_child_fit_on_one_line_when_narrow()
     {
         // Two adjacent inline-blocks, each holding a block child with three

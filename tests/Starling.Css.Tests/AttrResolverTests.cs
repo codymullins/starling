@@ -1,12 +1,12 @@
 using FluentAssertions;
 using Starling.Css.Values;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("css-values-5", "https://www.w3.org/TR/css-values-5/")]
 
+[TestClass]
 public class AttrResolverTests
 {
     private static Func<string, string?> Map(params (string Key, string Value)[] pairs)
@@ -15,7 +15,7 @@ public class AttrResolverTests
         return name => dict.TryGetValue(name, out var v) ? v : null;
     }
 
-    [Fact]
+    [TestMethod]
     public void Attr_default_type_is_string()
     {
         var attr = new CssAttrReference("data-name", null, null);
@@ -23,7 +23,7 @@ public class AttrResolverTests
         r.Should().BeOfType<CssString>().Which.Value.Should().Be("hello world");
     }
 
-    [Fact]
+    [TestMethod]
     public void Attr_explicit_string_type()
     {
         var attr = new CssAttrReference("alt", "string", null);
@@ -31,7 +31,7 @@ public class AttrResolverTests
         r.Should().BeOfType<CssString>().Which.Value.Should().Be("logo");
     }
 
-    [Fact]
+    [TestMethod]
     public void Attr_with_px_unit_returns_length()
     {
         var attr = new CssAttrReference("data-width", "px", null);
@@ -42,7 +42,7 @@ public class AttrResolverTests
         len.Unit.Should().Be(CssLengthUnit.Px);
     }
 
-    [Fact]
+    [TestMethod]
     public void Attr_with_em_unit_returns_em_length()
     {
         var attr = new CssAttrReference("data-size", "em", null);
@@ -53,7 +53,7 @@ public class AttrResolverTests
         len.Unit.Should().Be(CssLengthUnit.Em);
     }
 
-    [Fact]
+    [TestMethod]
     public void Attr_with_percentage()
     {
         var attr = new CssAttrReference("data-opacity", "%", null);
@@ -61,7 +61,7 @@ public class AttrResolverTests
         r.Should().BeOfType<CssPercentage>().Which.Value.Should().Be(75);
     }
 
-    [Fact]
+    [TestMethod]
     public void Attr_with_number_type()
     {
         var attr = new CssAttrReference("data-count", "number", null);
@@ -69,7 +69,7 @@ public class AttrResolverTests
         r.Should().BeOfType<CssNumber>().Which.Value.Should().Be(42.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Attr_with_integer_type()
     {
         var attr = new CssAttrReference("data-id", "integer", null);
@@ -77,7 +77,7 @@ public class AttrResolverTests
         r.Should().BeOfType<CssNumber>().Which.Value.Should().Be(42);
     }
 
-    [Fact]
+    [TestMethod]
     public void Attr_integer_rejects_non_integer()
     {
         var fallback = new CssNumber(0);
@@ -86,7 +86,7 @@ public class AttrResolverTests
         r.Should().BeSameAs(fallback);
     }
 
-    [Fact]
+    [TestMethod]
     public void Attr_with_angle_type()
     {
         var attr = new CssAttrReference("data-rot", "deg", null);
@@ -97,7 +97,7 @@ public class AttrResolverTests
         angle.Unit.Should().Be(CssAngleUnit.Degrees);
     }
 
-    [Fact]
+    [TestMethod]
     public void Attr_with_time_type()
     {
         var attr = new CssAttrReference("data-delay", "ms", null);
@@ -108,7 +108,7 @@ public class AttrResolverTests
         t.Unit.Should().Be(CssTimeUnit.Milliseconds);
     }
 
-    [Fact]
+    [TestMethod]
     public void Attr_with_color_named()
     {
         var attr = new CssAttrReference("data-color", "color", null);
@@ -120,7 +120,7 @@ public class AttrResolverTests
         c.B.Should().Be(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Attr_with_color_hex()
     {
         var attr = new CssAttrReference("data-color", "color", null);
@@ -130,7 +130,7 @@ public class AttrResolverTests
         c.G.Should().Be(255);
     }
 
-    [Fact]
+    [TestMethod]
     public void Attr_color_invalid_uses_fallback()
     {
         var fallback = new CssKeyword("black");
@@ -139,7 +139,7 @@ public class AttrResolverTests
         r.Should().BeSameAs(fallback);
     }
 
-    [Fact]
+    [TestMethod]
     public void Attr_missing_attribute_uses_fallback()
     {
         var fallback = new CssLength(100, CssLengthUnit.Px);
@@ -148,7 +148,7 @@ public class AttrResolverTests
         r.Should().BeSameAs(fallback);
     }
 
-    [Fact]
+    [TestMethod]
     public void Attr_missing_attribute_no_fallback_returns_null()
     {
         var attr = new CssAttrReference("data-width", "px", null);
@@ -156,7 +156,7 @@ public class AttrResolverTests
         r.Should().BeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Attr_url_type()
     {
         var attr = new CssAttrReference("href", "url", null);
@@ -164,7 +164,7 @@ public class AttrResolverTests
         r.Should().BeOfType<CssUrl>().Which.Value.Should().Be("https://example.com");
     }
 
-    [Fact]
+    [TestMethod]
     public void Attr_unparseable_number_uses_fallback()
     {
         var fallback = new CssNumber(0);
@@ -173,7 +173,7 @@ public class AttrResolverTests
         r.Should().BeSameAs(fallback);
     }
 
-    [Fact]
+    [TestMethod]
     public void Attr_unknown_type_falls_back_to_string()
     {
         var attr = new CssAttrReference("data-x", "weird-type", null);
@@ -181,7 +181,7 @@ public class AttrResolverTests
         r.Should().BeOfType<CssString>().Which.Value.Should().Be("value");
     }
 
-    [Fact]
+    [TestMethod]
     public void Coerce_directly_works_without_lookup()
     {
         var r = AttrResolver.Coerce("12.5", "px");

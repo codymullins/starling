@@ -1,12 +1,11 @@
 using FluentAssertions;
 using Starling.Html.Tokenizer;
-using Xunit;
-
 namespace Starling.Html.Tests.Tokenizer;
 
+[TestClass]
 public class DataStateTests
 {
-    [Fact]
+    [TestMethod]
     public void Empty_input_emits_only_eof()
     {
         var t = new HtmlTokenizer();
@@ -15,7 +14,7 @@ public class DataStateTests
         Drain(t).Should().ContainSingle().Which.Should().Be(EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Plain_ascii_emits_character_tokens_then_eof()
     {
         var t = new HtmlTokenizer();
@@ -29,7 +28,7 @@ public class DataStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Crlf_collapses_to_lf_character()
     {
         var t = new HtmlTokenizer();
@@ -43,7 +42,7 @@ public class DataStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Null_in_data_state_emits_literal_zero_and_reports_parse_error()
     {
         // §13.2.5.1: Data state emits NULL verbatim as a character token.
@@ -63,7 +62,7 @@ public class DataStateTests
             .Which.code.Should().Be(HtmlParseError.UnexpectedNullCharacter);
     }
 
-    [Fact]
+    [TestMethod]
     public void Chunked_feed_produces_same_tokens_as_whole_input()
     {
         var whole = TokenizeWhole("hello, world.");
@@ -72,7 +71,7 @@ public class DataStateTests
         chunked.Should().Equal(whole);
     }
 
-    [Fact]
+    [TestMethod]
     public void Eof_token_is_sticky()
     {
         // Once EOF is emitted, further ReadToken calls keep returning null
@@ -88,7 +87,7 @@ public class DataStateTests
         t.ReadToken().Should().BeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Read_token_returns_null_when_blocked_on_more_input()
     {
         var t = new HtmlTokenizer();

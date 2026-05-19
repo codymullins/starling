@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.Selectors5;
 /// <summary>
 /// Selector conformance for <see href="https://drafts.csswg.org/selectors-5/">Selectors Level 5</see>.
 /// </summary>
+[TestClass]
 [Spec("selectors-5", "https://drafts.csswg.org/selectors-5/")]
 public sealed class SelectorTests
 {

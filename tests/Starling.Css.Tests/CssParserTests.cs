@@ -1,16 +1,16 @@
 using FluentAssertions;
 using Starling.Css.Parser;
 using Starling.Css.Tokenizer;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("css-syntax-3", "https://www.w3.org/TR/css-syntax-3/")]
 
+[TestClass]
 public sealed class CssParserTests
 {
-    [Fact]
+    [TestMethod]
     public void Parses_style_rule_declarations()
     {
         var sheet = CssParser.ParseStyleSheet("""
@@ -30,7 +30,7 @@ public sealed class CssParserTests
             .Should().ContainInOrder(CssTokenType.Dimension, CssTokenType.Dimension);
     }
 
-    [Fact]
+    [TestMethod]
     public void Parses_at_rules_with_nested_rules()
     {
         var sheet = CssParser.ParseStyleSheet("""
@@ -45,7 +45,7 @@ public sealed class CssParserTests
             .Which.Declarations.Should().ContainSingle(d => d.Name == "display");
     }
 
-    [Fact]
+    [TestMethod]
     public void Parses_font_face_as_declaration_block()
     {
         var sheet = CssParser.ParseStyleSheet("""
@@ -61,7 +61,7 @@ public sealed class CssParserTests
             .Which.Token.Type.Should().Be(CssTokenType.Url);
     }
 
-    [Fact]
+    [TestMethod]
     public void Tolerates_whitespace_between_property_name_and_colon()
     {
         var sheet = CssParser.ParseStyleSheet("p { width   :  10px ; }");
@@ -72,7 +72,7 @@ public sealed class CssParserTests
             .ContainSingle(v => v.Token.Type == CssTokenType.Dimension && v.Token.Unit == "px");
     }
 
-    [Fact]
+    [TestMethod]
     public void Recovers_from_malformed_declaration_and_continues()
     {
         var sheet = CssParser.ParseStyleSheet("p { ???; color: red; }");
@@ -82,7 +82,7 @@ public sealed class CssParserTests
         rule.Declarations[0].Name.Should().Be("color");
     }
 
-    [Fact]
+    [TestMethod]
     public void At_rule_with_only_prelude_and_semicolon_has_no_block()
     {
         var sheet = CssParser.ParseStyleSheet("@import url(a.css);");
@@ -95,7 +95,7 @@ public sealed class CssParserTests
             .Should().ContainSingle(v => v.Token.Type == CssTokenType.Url);
     }
 
-    [Fact]
+    [TestMethod]
     public void Cdo_and_cdc_are_skipped_at_top_level()
     {
         var sheet = CssParser.ParseStyleSheet("<!-- p { color: red; } -->");
@@ -104,7 +104,7 @@ public sealed class CssParserTests
             .Which.Declarations.Should().ContainSingle(d => d.Name == "color");
     }
 
-    [Fact]
+    [TestMethod]
     public void Parses_multiple_top_level_rules()
     {
         var sheet = CssParser.ParseStyleSheet("""
@@ -118,7 +118,7 @@ public sealed class CssParserTests
             .Should().ContainInOrder("red", "green", "blue");
     }
 
-    [Fact]
+    [TestMethod]
     public void Function_component_value_is_captured_as_CssFunction()
     {
         var sheet = CssParser.ParseStyleSheet("p { width: calc(100% - 16px); }");
@@ -130,7 +130,7 @@ public sealed class CssParserTests
             .Should().ContainInOrder(CssTokenType.Percentage, CssTokenType.Delim, CssTokenType.Dimension);
     }
 
-    [Fact]
+    [TestMethod]
     public void Custom_property_declarations_are_captured_with_dashed_name()
     {
         // --x should be tokenized as Ident("--x") and parsed as a declaration like any other.
@@ -141,7 +141,7 @@ public sealed class CssParserTests
         rule.Declarations.Last().Value.OfType<CssFunction>().Should().ContainSingle(f => f.Name == "var");
     }
 
-    [Fact]
+    [TestMethod]
     public void Unterminated_block_does_not_throw()
     {
         var act = () => CssParser.ParseStyleSheet("p { color: red");
@@ -149,7 +149,7 @@ public sealed class CssParserTests
         act.Should().NotThrow();
     }
 
-    [Fact]
+    [TestMethod]
     public void Important_flag_set_only_when_immediately_followed_by_important_ident()
     {
         var sheet = CssParser.ParseStyleSheet("p { a: 1 !nope; b: 2 !important }");
@@ -159,7 +159,7 @@ public sealed class CssParserTests
         rule.Declarations.Single(d => d.Name == "b").Important.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Style_sheet_source_is_preserved()
     {
         const string Source = "p { color: red; }";

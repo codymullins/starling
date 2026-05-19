@@ -2,17 +2,16 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Runtime;
 
+[TestClass]
 public class JsNewThisTests
 {
-    [Fact]
+    [TestMethod]
     public void This_at_script_top_level_is_undefined()
         => Eval("this;").IsUndefined.Should().BeTrue();
 
-    [Fact]
+    [TestMethod]
     public void This_inside_plain_function_call_is_undefined()
     {
         Eval(@"
@@ -21,7 +20,7 @@ public class JsNewThisTests
         ").AsString.Should().Be("undefined");
     }
 
-    [Fact]
+    [TestMethod]
     public void Constructor_binds_this_to_a_fresh_object()
     {
         // Without an explicit return, new returns the freshly-allocated `this`.
@@ -33,7 +32,7 @@ public class JsNewThisTests
         r.AsNumber.Should().Be(7);
     }
 
-    [Fact]
+    [TestMethod]
     public void Constructor_returns_this_when_body_has_no_return()
     {
         var r = Eval(@"
@@ -44,7 +43,7 @@ public class JsNewThisTests
         r.AsObject.Get("tag").AsString.Should().Be("created");
     }
 
-    [Fact]
+    [TestMethod]
     public void Constructor_with_explicit_object_return_uses_that_object()
     {
         var r = Eval(@"
@@ -58,7 +57,7 @@ public class JsNewThisTests
         r.AsNumber.Should().Be(42);
     }
 
-    [Fact]
+    [TestMethod]
     public void Constructor_with_explicit_non_object_return_uses_this()
     {
         // §13.3.5.1: if the return value isn't an object, ignore it and
@@ -71,7 +70,7 @@ public class JsNewThisTests
         r.AsString.Should().Be("yes");
     }
 
-    [Fact]
+    [TestMethod]
     public void Multi_arg_constructor()
     {
         var r = Eval(@"
@@ -84,7 +83,7 @@ public class JsNewThisTests
         r.AsNumber.Should().Be(255 + 128 + 64 + 200);
     }
 
-    [Fact]
+    [TestMethod]
     public void This_field_read_via_dot_works_after_assignment()
     {
         Eval(@"
@@ -97,14 +96,14 @@ public class JsNewThisTests
         ").AsNumber.Should().Be(11);
     }
 
-    [Fact]
+    [TestMethod]
     public void Calling_non_constructor_with_new_throws()
     {
         var act = () => Eval("new 5();");
         act.Should().Throw<JsThrow>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Computed_property_via_this_bracket_syntax()
     {
         Eval(@"

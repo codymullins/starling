@@ -1,6 +1,4 @@
 using FluentAssertions;
-using Xunit;
-
 namespace Starling.Url.Tests;
 
 /// <summary>
@@ -9,9 +7,10 @@ namespace Starling.Url.Tests;
 /// inlines a number of icons this way, and we depend on this decoder to
 /// keep them visible.
 /// </summary>
+[TestClass]
 public sealed class DataUrlTests
 {
-    [Fact]
+    [TestMethod]
     public void Decodes_base64_png_payload()
     {
         // 1x1 transparent PNG.
@@ -28,7 +27,7 @@ public sealed class DataUrlTests
         payload.Bytes.Should().StartWith(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A });
     }
 
-    [Fact]
+    [TestMethod]
     public void Decodes_percent_encoded_text_payload()
     {
         const string src = "data:text/plain,Hello%20World%21";
@@ -41,7 +40,7 @@ public sealed class DataUrlTests
         System.Text.Encoding.ASCII.GetString(payload.Bytes).Should().Be("Hello World!");
     }
 
-    [Fact]
+    [TestMethod]
     public void Empty_mediatype_defaults_to_text_plain()
     {
         var parsed = UrlParser.Parse("data:,abc");
@@ -51,7 +50,7 @@ public sealed class DataUrlTests
         System.Text.Encoding.ASCII.GetString(payload.Bytes).Should().Be("abc");
     }
 
-    [Fact]
+    [TestMethod]
     public void Rejects_non_data_scheme()
     {
         var parsed = UrlParser.Parse("https://example.com/img.png");
@@ -59,7 +58,7 @@ public sealed class DataUrlTests
         DataUrl.TryDecode(parsed.Value, out _).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Rejects_malformed_data_url_with_no_comma()
     {
         var parsed = UrlParser.Parse("data:image/png");
@@ -67,7 +66,7 @@ public sealed class DataUrlTests
         DataUrl.TryDecode(parsed.Value, out _).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Rejects_malformed_base64_payload()
     {
         // `!` is not a base64 character.
@@ -76,7 +75,7 @@ public sealed class DataUrlTests
         DataUrl.TryDecode(parsed.Value, out _).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Real_google_homepage_thumbnail_decodes_successfully()
     {
         // Verbatim from `curl https://www.google.com/` — a placeholder

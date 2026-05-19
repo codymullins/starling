@@ -1,10 +1,8 @@
 using FluentAssertions;
 using Starling.Css.Cascade;
-using Starling.Gui;
 using Starling.Html;
 using Starling.Layout;
 using Starling.Layout.Box;
-using Xunit;
 using LayoutBox = Starling.Layout.Box.Box;
 
 namespace Starling.Gui.Tests;
@@ -15,6 +13,7 @@ namespace Starling.Gui.Tests;
 /// anchor, and the selection painter must receive fragments that cover the
 /// gaps so the highlight does not appear striped.
 /// </summary>
+[TestClass]
 public sealed class BoxHitTesterTests
 {
     private static BlockBox Layout(string html, Size viewport)
@@ -25,7 +24,7 @@ public sealed class BoxHitTesterTests
     /// words on the same line; this is the precondition the hit-tester and
     /// selection painter rely on.
     /// </summary>
-    [Fact]
+    [TestMethod]
     public void Inter_word_space_is_emitted_as_a_text_fragment()
     {
         var root = Layout("<body><p>hello world</p></body>", new Size(800, 600));
@@ -36,7 +35,7 @@ public sealed class BoxHitTesterTests
         space.Width.Should().BeGreaterThan(0, "the space fragment must have a positive advance");
     }
 
-    [Fact]
+    [TestMethod]
     public void CollectFragments_includes_inter_word_whitespace()
     {
         var root = Layout("<body><p>hello world</p></body>", new Size(800, 600));
@@ -48,7 +47,7 @@ public sealed class BoxHitTesterTests
             "the selection painter needs the space fragment so its highlight rectangle is contiguous between words");
     }
 
-    [Fact]
+    [TestMethod]
     public void CollectFragments_emits_space_fragment_between_neighbouring_words()
     {
         // Wide viewport keeps "hello world" on a single line; the gap
@@ -66,7 +65,7 @@ public sealed class BoxHitTesterTests
         (space.X + space.Width).Should().BeApproximately(world.X, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void HitTest_inside_word_inside_link_returns_anchor()
     {
         // Baseline: clicking on a word of a link has always worked. Asserts
@@ -83,7 +82,7 @@ public sealed class BoxHitTesterTests
         hit.LinkAnchor!.LocalName.Should().Be("a");
     }
 
-    [Fact]
+    [TestMethod]
     public void HitTest_on_inter_word_space_inside_link_returns_anchor()
     {
         // Regression: previously the hit-tester skipped whitespace
@@ -100,7 +99,7 @@ public sealed class BoxHitTesterTests
         hit.LinkAnchor!.LocalName.Should().Be("a");
     }
 
-    [Fact]
+    [TestMethod]
     public void ResolveCursor_on_inter_word_space_inside_link_is_pointer()
     {
         // Regression: with the whitespace skip in place, hovering the gap
@@ -115,7 +114,7 @@ public sealed class BoxHitTesterTests
         BoxHitTester.ResolveCursor(hit).Should().Be("pointer");
     }
 
-    [Fact]
+    [TestMethod]
     public void HitTest_on_inter_word_space_outside_link_still_hits_text()
     {
         // Outside a link, clicking the gap should still register as a

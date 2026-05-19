@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Intrinsics;
 
 /// <summary>
@@ -19,9 +17,10 @@ namespace Starling.Js.Tests.Intrinsics;
 /// bracketed indices so the assertions keep working once <c>JsArray</c>
 /// arrives.
 /// </remarks>
+[TestClass]
 public class ObjectTests
 {
-    [Fact]
+    [TestMethod]
     public void Object_is_registered_on_global_with_prototype_slot()
     {
         var rt = new JsRuntime();
@@ -33,7 +32,7 @@ public class ObjectTests
         rt.Realm.ObjectConstructor.Should().BeSameAs(Object.AsObject);
     }
 
-    [Fact]
+    [TestMethod]
     public void Object_keys_returns_own_enumerable_string_keys_in_insertion_order()
     {
         var r = Eval(@"
@@ -44,7 +43,7 @@ public class ObjectTests
         r.AsString.Should().Be("3:a,b,c");
     }
 
-    [Fact]
+    [TestMethod]
     public void Object_values_returns_own_enumerable_values_in_insertion_order()
     {
         var r = Eval(@"
@@ -55,7 +54,7 @@ public class ObjectTests
         r.AsString.Should().Be("2:10,20");
     }
 
-    [Fact]
+    [TestMethod]
     public void Object_entries_pairs_keys_and_values()
     {
         var r = Eval(@"
@@ -66,7 +65,7 @@ public class ObjectTests
         r.AsString.Should().Be("2:a=1,b=2");
     }
 
-    [Fact]
+    [TestMethod]
     public void Object_assign_copies_in_source_order_with_later_overriding()
     {
         var r = Eval(@"
@@ -76,7 +75,7 @@ public class ObjectTests
         r.AsString.Should().Be("3,2");
     }
 
-    [Fact]
+    [TestMethod]
     public void Object_create_with_null_prototype_returns_object_with_no_proto()
     {
         var rt = new JsRuntime();
@@ -88,7 +87,7 @@ public class ObjectTests
         result.AsObject.Prototype.Should().BeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Object_create_with_prototype_links_chain()
     {
         var rt = new JsRuntime();
@@ -106,7 +105,7 @@ public class ObjectTests
         result.AsObject.HasOwn("greet").Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Object_defineProperty_with_writable_false_blocks_assignment()
     {
         // Note: assignment to a non-writable property currently silently no-ops
@@ -121,7 +120,7 @@ public class ObjectTests
         r.AsNumber.Should().Be(5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Object_freeze_then_isFrozen_is_true_and_writes_rejected()
     {
         var r = Eval(@"
@@ -133,7 +132,7 @@ public class ObjectTests
         r.AsString.Should().Be("true,1");
     }
 
-    [Fact]
+    [TestMethod]
     public void Object_seal_prevents_adds_but_allows_writes_to_existing_slots()
     {
         var r = Eval(@"
@@ -146,7 +145,7 @@ public class ObjectTests
         r.AsString.Should().Be("true,99,undefined");
     }
 
-    [Fact]
+    [TestMethod]
     public void Object_preventExtensions_makes_isExtensible_false()
     {
         var r = Eval(@"
@@ -157,7 +156,7 @@ public class ObjectTests
         r.AsBool.Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Object_is_treats_NaN_as_equal_and_signed_zero_as_distinct()
     {
         Eval("Object.is(NaN, NaN);").AsBool.Should().BeTrue();
@@ -166,7 +165,7 @@ public class ObjectTests
         Eval("Object.is(1, 2);").AsBool.Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Object_hasOwn_is_true_for_own_props_and_false_for_inherited()
     {
         var r = Eval(@"
@@ -178,7 +177,7 @@ public class ObjectTests
         r.AsString.Should().Be("true,false,false");
     }
 
-    [Fact]
+    [TestMethod]
     public void hasOwnProperty_inherited_via_Object_prototype_chain()
     {
         var r = Eval(@"
@@ -188,7 +187,7 @@ public class ObjectTests
         r.AsString.Should().Be("true,false");
     }
 
-    [Fact]
+    [TestMethod]
     public void getOwnPropertyDescriptor_returns_data_descriptor_with_flags()
     {
         var r = Eval(@"
@@ -199,7 +198,7 @@ public class ObjectTests
         r.AsString.Should().Be("42,true,true,true");
     }
 
-    [Fact]
+    [TestMethod]
     public void getOwnPropertyDescriptor_returns_undefined_for_missing_key()
     {
         var r = Eval(@"
@@ -210,7 +209,7 @@ public class ObjectTests
         r.AsString.Should().Be("undefined");
     }
 
-    [Fact]
+    [TestMethod]
     public void getPrototypeOf_returns_Object_prototype_for_literal()
     {
         var rt = new JsRuntime();
@@ -222,7 +221,7 @@ public class ObjectTests
         result.AsObject.Should().BeSameAs(rt.Realm.ObjectPrototype);
     }
 
-    [Fact]
+    [TestMethod]
     public void setPrototypeOf_re_links_chain()
     {
         var r = Eval(@"
@@ -234,7 +233,7 @@ public class ObjectTests
         r.AsNumber.Should().Be(99);
     }
 
-    [Fact]
+    [TestMethod]
     public void getOwnPropertyNames_includes_non_enumerable_keys()
     {
         // for/while loops aren't compiled yet (wp:M3-03). Probe length and
@@ -250,7 +249,7 @@ public class ObjectTests
         r.AsString.Should().Be("2:hidden,visible");
     }
 
-    [Fact]
+    [TestMethod]
     public void getOwnPropertySymbols_returns_empty_array_like()
     {
         var r = Eval(@"
@@ -260,14 +259,14 @@ public class ObjectTests
         r.AsNumber.Should().Be(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Object_toString_returns_object_Object_for_plain_object()
     {
         var r = Eval("({}).toString();");
         r.AsString.Should().Be("[object Object]");
     }
 
-    [Fact]
+    [TestMethod]
     public void propertyIsEnumerable_respects_descriptor_flag()
     {
         var r = Eval(@"
@@ -279,7 +278,7 @@ public class ObjectTests
         r.AsString.Should().Be("true,false,false");
     }
 
-    [Fact]
+    [TestMethod]
     public void isPrototypeOf_walks_chain()
     {
         var r = Eval(@"

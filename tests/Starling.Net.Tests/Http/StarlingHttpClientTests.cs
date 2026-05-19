@@ -3,14 +3,14 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using FluentAssertions;
-using Xunit;
 using StarlingUrlParser = global::Starling.Url.UrlParser;
 
 namespace Starling.Net.Tests.Http;
 
+[TestClass]
 public class StarlingHttpClientTests
 {
-    [Fact]
+    [TestMethod]
     public async Task End_to_end_GET_against_a_local_HTTP_server_returns_200()
     {
         var body = Encoding.UTF8.GetBytes("<!doctype html><html><body>hello starling</body></html>");
@@ -24,7 +24,7 @@ public class StarlingHttpClientTests
 
         using var client = new StarlingHttpClient();
         var url = StarlingUrlParser.Parse($"http://localhost:{server.Port}/test?x=1").Value;
-        var result = await client.GetAsync(url, TestContext.Current.CancellationToken);
+        var result = await client.GetAsync(url, CancellationToken.None);
 
         result.IsOk.Should().BeTrue($"got {(result.IsOk ? "Ok" : result.Error.ToString())}");
         var resp = result.Value;
@@ -33,7 +33,7 @@ public class StarlingHttpClientTests
         Encoding.UTF8.GetString(resp.Body.Span).Should().Be(Encoding.UTF8.GetString(body));
     }
 
-    [Fact]
+    [TestMethod]
     public async Task End_to_end_GET_decodes_gzip_response()
     {
         var payload = Encoding.UTF8.GetBytes("<!doctype html><body>compressed body content</body>");
@@ -58,13 +58,13 @@ public class StarlingHttpClientTests
 
         using var client = new StarlingHttpClient();
         var result = await client.GetAsync(
-            $"http://localhost:{server.Port}/", TestContext.Current.CancellationToken);
+            $"http://localhost:{server.Port}/", CancellationToken.None);
 
         result.IsOk.Should().BeTrue();
         result.Value.Body.ToArray().Should().Equal(payload);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task End_to_end_GET_decodes_chunked_response()
     {
         using var server = await StubHttpServer.StartAsync(_ =>
@@ -83,17 +83,17 @@ public class StarlingHttpClientTests
 
         using var client = new StarlingHttpClient();
         var result = await client.GetAsync(
-            $"http://localhost:{server.Port}/", TestContext.Current.CancellationToken);
+            $"http://localhost:{server.Port}/", CancellationToken.None);
         result.IsOk.Should().BeTrue();
         Encoding.UTF8.GetString(result.Value.Body.Span).Should().Be("hello world!");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Returns_UnsupportedScheme_for_file_url()
     {
         using var client = new StarlingHttpClient();
         var url = StarlingUrlParser.Parse("file:///tmp/foo.html").Value;
-        var result = await client.GetAsync(url, TestContext.Current.CancellationToken);
+        var result = await client.GetAsync(url, CancellationToken.None);
         result.IsErr.Should().BeTrue();
         result.Error.Should().Be(NetworkError.UnsupportedScheme);
     }

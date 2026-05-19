@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssNesting;
 /// <summary>
 /// Selector conformance for <see href="https://drafts.csswg.org/css-nesting-1/">CSS Nesting Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-nesting", "https://drafts.csswg.org/css-nesting-1/")]
 public sealed class SelectorTests
 {

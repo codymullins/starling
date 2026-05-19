@@ -1,11 +1,10 @@
 using FluentAssertions;
-using Xunit;
-
 namespace Starling.Loop.Tests;
 
+[TestClass]
 public sealed class WebEventLoopTests
 {
-    [Fact]
+    [TestMethod]
     public void Microtasks_run_before_due_timers()
     {
         var loop = new WebEventLoop();
@@ -19,7 +18,7 @@ public sealed class WebEventLoopTests
         log.Should().Equal("microtask", "timer");
     }
 
-    [Fact]
+    [TestMethod]
     public void Timers_wait_until_time_advances_and_can_be_cleared()
     {
         var loop = new WebEventLoop();

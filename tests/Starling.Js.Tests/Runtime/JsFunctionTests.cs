@@ -2,13 +2,12 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Runtime;
 
+[TestClass]
 public class JsFunctionTests
 {
-    [Fact]
+    [TestMethod]
     public void Function_declaration_without_call_returns_undefined()
     {
         // Declaring a function without invoking it leaves nothing on the
@@ -16,16 +15,16 @@ public class JsFunctionTests
         Eval("function f() { return 1; }").IsUndefined.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Function_call_returns_value()
         => Eval("function f() { return 42; } f();").AsNumber.Should().Be(42);
 
-    [Fact]
+    [TestMethod]
     public void Function_with_two_parameters()
         => Eval("function add(a, b) { return a + b; } add(2, 3);")
             .AsNumber.Should().Be(5);
 
-    [Fact]
+    [TestMethod]
     public void Function_with_locals()
         => Eval(@"
             function poly(x) {
@@ -36,17 +35,17 @@ public class JsFunctionTests
             poly(3);
         ").AsNumber.Should().Be(36); // 9 + 27
 
-    [Fact]
+    [TestMethod]
     public void Bare_return_yields_undefined()
         => Eval("function f() { return; } f();")
             .IsUndefined.Should().BeTrue();
 
-    [Fact]
+    [TestMethod]
     public void Implicit_return_undefined()
         => Eval("function f() {} f();")
             .IsUndefined.Should().BeTrue();
 
-    [Fact]
+    [TestMethod]
     public void Recursive_factorial()
         => Eval(@"
             function fact(n) {
@@ -56,7 +55,7 @@ public class JsFunctionTests
             fact(5);
         ").AsNumber.Should().Be(120);
 
-    [Fact]
+    [TestMethod]
     public void Recursive_fibonacci()
         => Eval(@"
             function fib(n) {
@@ -66,7 +65,7 @@ public class JsFunctionTests
             fib(10);
         ").AsNumber.Should().Be(55);
 
-    [Fact]
+    [TestMethod]
     public void Function_hoisting_call_before_declaration_works()
     {
         // function declarations are hoisted, so calling them before their
@@ -78,7 +77,7 @@ public class JsFunctionTests
         ").AsNumber.Should().Be(8);
     }
 
-    [Fact]
+    [TestMethod]
     public void Nested_function_calls()
         => Eval(@"
             function inc(x) { return x + 1; }
@@ -86,7 +85,7 @@ public class JsFunctionTests
             double(inc(4));
         ").AsNumber.Should().Be(10);
 
-    [Fact]
+    [TestMethod]
     public void Function_value_stored_in_variable_is_callable()
         => Eval(@"
             function f(x) { return x + 100; }
@@ -94,7 +93,7 @@ public class JsFunctionTests
             g(5);
         ").AsNumber.Should().Be(105);
 
-    [Fact]
+    [TestMethod]
     public void Extra_args_ignored_missing_params_undefined()
     {
         // f(a, b) called as f(1) — b is undefined.
@@ -110,7 +109,7 @@ public class JsFunctionTests
         ").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Function_can_call_host_native()
     {
         var runtime = new JsRuntime();
@@ -127,7 +126,7 @@ public class JsFunctionTests
         captured.Should().Equal(10.0, 20.0, 30.0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Calling_non_function_throws()
     {
         var act = () => Eval("var x = 42; x();");

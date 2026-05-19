@@ -63,7 +63,7 @@ public sealed class StyleEngine
     /// <summary>Provider that resolves real font glyph metrics (x-height, cap-height,
     /// '0' advance, ideographic advance) for the cascaded font. Defaults to a
     /// heuristic implementation that derives metrics from <c>font-size</c>. A
-    /// real shaping-aware backend (Skia, etc.) should replace this.</summary>
+    /// real shaping-aware backend should replace this.</summary>
     public IFontMetricsProvider FontMetrics { get; set; } = new HeuristicFontMetricsProvider();
 
     /// <summary>Optional lookup invoked when resolving <c>cq*</c> units. The engine

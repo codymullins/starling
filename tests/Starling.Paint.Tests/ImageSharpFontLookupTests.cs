@@ -1,8 +1,6 @@
 using FluentAssertions;
 using SixLabors.Fonts;
 using Starling.Layout.Text;
-using Xunit;
-
 namespace Starling.Paint.Tests;
 
 /// <summary>
@@ -13,12 +11,13 @@ namespace Starling.Paint.Tests;
 /// now loads system fonts and expands CSS generics so Bold/Italic faces
 /// resolve to real fonts on macOS (and other supported platforms).
 /// </summary>
+[TestClass]
 public sealed class ImageSharpFontLookupTests
 {
     private const float Size = 16f;
 
     /// <summary>Bundled OpenSans-Regular guarantees the collection is never empty.</summary>
-    [Fact]
+    [TestMethod]
     public void Collection_loads_at_least_the_bundled_family()
     {
         var collection = ImageSharpFontLookup.LoadCollection();
@@ -36,11 +35,10 @@ public sealed class ImageSharpFontLookupTests
     /// lookup from consulting system fonts fails the test rather than
     /// skipping it.
     /// </summary>
-    [Fact]
+    [TestMethod]
     public void Generic_sans_serif_resolves_to_a_system_family_when_available()
     {
-        Assert.SkipUnless(HostHasInstalledSansSerif(),
-            "no major system sans-serif installed on this host; nothing to assert");
+        if (!(HostHasInstalledSansSerif())) { Assert.Inconclusive("no major system sans-serif installed on this host; nothing to assert"); return; }
 
         var collection = ImageSharpFontLookup.LoadCollection();
         var spec = new FontSpec(["sans-serif"], bold: false, italic: false);
@@ -58,11 +56,10 @@ public sealed class ImageSharpFontLookupTests
     /// Bold face was registered. Verifies that a Bold request lands on a
     /// real Bold face (whichever family resolves on this host).
     /// </summary>
-    [Fact]
+    [TestMethod]
     public void Bold_request_resolves_to_a_bold_face_when_one_exists()
     {
-        Assert.SkipUnless(HostHasInstalledFontStyle(FontStyle.Bold),
-            "no system family with a Bold face on this host; can't verify Bold selection");
+        if (!(HostHasInstalledFontStyle(FontStyle.Bold))) { Assert.Inconclusive("no system family with a Bold face on this host; can't verify Bold selection"); return; }
 
         var collection = ImageSharpFontLookup.LoadCollection();
         var spec = new FontSpec(["sans-serif"], bold: true, italic: false);
@@ -73,11 +70,10 @@ public sealed class ImageSharpFontLookupTests
     }
 
     /// <summary>Same regression, italic variant.</summary>
-    [Fact]
+    [TestMethod]
     public void Italic_request_resolves_to_an_italic_face_when_one_exists()
     {
-        Assert.SkipUnless(HostHasInstalledFontStyle(FontStyle.Italic),
-            "no system family with an Italic face on this host; can't verify Italic selection");
+        if (!(HostHasInstalledFontStyle(FontStyle.Italic))) { Assert.Inconclusive("no system family with an Italic face on this host; can't verify Italic selection"); return; }
 
         var collection = ImageSharpFontLookup.LoadCollection();
         var spec = new FontSpec(["sans-serif"], bold: false, italic: true);
@@ -92,7 +88,7 @@ public sealed class ImageSharpFontLookupTests
     /// OpenSans rather than throwing — keeps obscure or platform-specific
     /// families from blowing up the renderer.
     /// </summary>
-    [Fact]
+    [TestMethod]
     public void Unknown_family_falls_back_to_bundled_open_sans()
     {
         var collection = ImageSharpFontLookup.LoadCollection();
@@ -112,11 +108,10 @@ public sealed class ImageSharpFontLookupTests
     /// fix, both renders measured to the same width because both resolved to
     /// OpenSans Regular.
     /// </summary>
-    [Fact]
+    [TestMethod]
     public void Bold_and_regular_measure_different_widths()
     {
-        Assert.SkipUnless(HostHasInstalledFontStyle(FontStyle.Bold),
-            "no system Bold face on this host; can't compare Regular vs Bold metrics");
+        if (!(HostHasInstalledFontStyle(FontStyle.Bold))) { Assert.Inconclusive("no system Bold face on this host; can't compare Regular vs Bold metrics"); return; }
 
         var collection = ImageSharpFontLookup.LoadCollection();
         var regularSpec = new FontSpec(["sans-serif"], bold: false, italic: false);
@@ -184,7 +179,7 @@ public sealed class ImageSharpFontLookupTests
     /// reports, which SixLabors.Fonts uses verbatim during
     /// <c>FontCollection.Add</c>).
     /// </summary>
-    [Fact]
+    [TestMethod]
     public void Registered_web_font_bytes_appear_in_loaded_collection()
     {
         var asm = typeof(ImageSharpFontLookup).Assembly;
@@ -210,7 +205,7 @@ public sealed class ImageSharpFontLookupTests
     /// loader — important because tests, the standalone text measurer, and
     /// any caller without document context all pass <c>null</c>.
     /// </summary>
-    [Fact]
+    [TestMethod]
     public void Null_registry_matches_no_registry_overload()
     {
         var withNull = ImageSharpFontLookup.LoadCollection(webFonts: null);

@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssColorAdjust;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-color-adjust-1/">CSS Color Adjustment Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-color-adjust", "https://drafts.csswg.org/css-color-adjust-1/")]
 public sealed class PropertyTests
 {

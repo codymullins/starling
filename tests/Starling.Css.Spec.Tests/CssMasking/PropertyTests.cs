@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssMasking;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-masking-1/">CSS Masking Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-masking", "https://drafts.csswg.org/css-masking-1/")]
 public sealed class PropertyTests
 {

@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Intrinsics;
 
 /// <summary>End-to-end coverage for <c>FinalizationRegistry</c> (B4-6).</summary>
@@ -14,9 +12,10 @@ namespace Starling.Js.Tests.Intrinsics;
 /// covered indirectly via the API surface here; the actual reclamation
 /// behavior needs a dedicated test fixture that can pin the GC schedule.
 /// </remarks>
+[TestClass]
 public class FinalizationRegistryTests
 {
-    [Fact]
+    [TestMethod]
     public void FinalizationRegistry_constructor_wired()
     {
         var rt = new JsRuntime();
@@ -24,7 +23,7 @@ public class FinalizationRegistryTests
         rt.Realm.FinalizationRegistryConstructor.Should().NotBeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Constructing_with_non_callable_throws_TypeError()
     {
         Action act = () => Eval("new FinalizationRegistry({});");
@@ -32,7 +31,7 @@ public class FinalizationRegistryTests
             .Which.Value.AsObject.Get("name").AsString.Should().Be("TypeError");
     }
 
-    [Fact]
+    [TestMethod]
     public void Constructing_with_no_args_throws_TypeError()
     {
         Action act = () => Eval("new FinalizationRegistry();");
@@ -40,7 +39,7 @@ public class FinalizationRegistryTests
             .Which.Value.AsObject.Get("name").AsString.Should().Be("TypeError");
     }
 
-    [Fact]
+    [TestMethod]
     public void Register_with_primitive_target_throws_TypeError()
     {
         Action act = () => Eval(@"
@@ -50,7 +49,7 @@ public class FinalizationRegistryTests
             .Which.Value.AsObject.Get("name").AsString.Should().Be("TypeError");
     }
 
-    [Fact]
+    [TestMethod]
     public void Register_target_equal_to_heldValue_throws_TypeError()
     {
         Action act = () => Eval(@"
@@ -61,7 +60,7 @@ public class FinalizationRegistryTests
             .Which.Value.AsObject.Get("name").AsString.Should().Be("TypeError");
     }
 
-    [Fact]
+    [TestMethod]
     public void Register_returns_undefined_on_success()
     {
         Eval(@"
@@ -70,7 +69,7 @@ public class FinalizationRegistryTests
             typeof fr.register(o, 'held');").AsString.Should().Be("undefined");
     }
 
-    [Fact]
+    [TestMethod]
     public void Register_with_unregister_token_then_unregister_returns_true()
     {
         Eval(@"
@@ -81,7 +80,7 @@ public class FinalizationRegistryTests
             fr.unregister(token);").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Unregister_with_unknown_token_returns_false()
     {
         Eval(@"
@@ -89,7 +88,7 @@ public class FinalizationRegistryTests
             fr.unregister({});").AsBool.Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Unregister_with_primitive_token_throws_TypeError()
     {
         Action act = () => Eval(@"
@@ -99,7 +98,7 @@ public class FinalizationRegistryTests
             .Which.Value.AsObject.Get("name").AsString.Should().Be("TypeError");
     }
 
-    [Fact]
+    [TestMethod]
     public void ToStringTag_property_is_FinalizationRegistry()
     {
         // Object.prototype.toString doesn't yet consult @@toStringTag (B3-1
@@ -109,7 +108,7 @@ public class FinalizationRegistryTests
             fr[Symbol.toStringTag];").AsString.Should().Be("FinalizationRegistry");
     }
 
-    [Fact]
+    [TestMethod]
     public void Register_on_wrong_receiver_throws_TypeError()
     {
         Action act = () => Eval("FinalizationRegistry.prototype.register.call({}, {}, 'h');");

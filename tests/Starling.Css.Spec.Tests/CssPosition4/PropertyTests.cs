@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssPosition4;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-position-4/">CSS Positioned Layout Module Level 4</see>.
 /// </summary>
+[TestClass]
 [Spec("css-position-4", "https://drafts.csswg.org/css-position-4/")]
 public sealed class PropertyTests
 {

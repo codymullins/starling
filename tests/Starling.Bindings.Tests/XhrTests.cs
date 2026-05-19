@@ -1,15 +1,14 @@
 using System.Text;
 using FluentAssertions;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Bindings.Tests;
 
 /// <summary>B5-3 XHR tests. Shares <see cref="LocalServer"/> fixture with
 /// FetchTests.</summary>
+[TestClass]
 public sealed class XhrTests
 {
-    [Fact]
+    [TestMethod]
     public async Task Xhr_get_round_trip_via_onreadystatechange()
     {
         await using var server = await LocalServer.Start(ctx =>
@@ -30,7 +29,7 @@ public sealed class XhrTests
         env.Runtime.GetGlobal("body").AsString.Should().Be("hello");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Xhr_exposes_status_and_headers()
     {
         await using var server = await LocalServer.Start(ctx =>
@@ -57,7 +56,7 @@ public sealed class XhrTests
         env.Runtime.GetGlobal("all").AsString.Should().Contain("X-Token: abc");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Xhr_abort_fires_abort_event_and_sets_readyState_done()
     {
         var hold = new TaskCompletionSource();
@@ -81,7 +80,7 @@ public sealed class XhrTests
         env.Runtime.GetGlobal("finalState").AsNumber.Should().Be(4);
     }
 
-    [Fact]
+    [TestMethod]
     public void Xhr_constants_present_on_constructor_and_instance()
     {
         var env = FetchTests.NewEnv("http://127.0.0.1/");
@@ -93,12 +92,12 @@ public sealed class XhrTests
         env.Runtime.GetGlobal("id").AsNumber.Should().Be(4);
     }
 
-    [Fact]
+    [TestMethod]
     public void Xhr_sync_open_throws()
     {
         var env = FetchTests.NewEnv("http://127.0.0.1/");
         // try/catch isn't compiled yet (wp:M3-03) — assert at the host level.
-        var ex = Assert.Throws<JsThrow>(() => FetchTests.Eval(env.Runtime, @"
+        var ex = Assert.ThrowsExactly<JsThrow>(() => FetchTests.Eval(env.Runtime, @"
             var x = new XMLHttpRequest();
             x.open('GET', '/foo', false);
         "));

@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssGrid3;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-grid-3/">CSS Grid Layout Module Level 3</see>.
 /// </summary>
+[TestClass]
 [Spec("css-grid-3", "https://drafts.csswg.org/css-grid-3/")]
 public sealed class PropertyTests
 {

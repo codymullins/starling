@@ -2,12 +2,12 @@ using System.Text;
 using FluentAssertions;
 using Starling.Net.Http;
 using Starling.Net.Http.H1;
-using Xunit;
 using StarlingUrl = global::Starling.Url.Url;
 using StarlingUrlParser = global::Starling.Url.UrlParser;
 
 namespace Starling.Net.Tests.Http;
 
+[TestClass]
 public class H1RequestWriterTests
 {
     private static StarlingUrl ParseUrl(string s)
@@ -17,7 +17,7 @@ public class H1RequestWriterTests
         return r.Value;
     }
 
-    [Fact]
+    [TestMethod]
     public void Writes_request_line_with_origin_form_path()
     {
         var req = HttpRequest.Get(ParseUrl("https://example.com/foo/bar?x=1"));
@@ -29,7 +29,7 @@ public class H1RequestWriterTests
         text.Should().StartWith("GET /foo/bar?x=1 HTTP/1.1\r\n");
     }
 
-    [Fact]
+    [TestMethod]
     public void Defaults_path_to_slash_when_url_path_is_empty()
     {
         var req = HttpRequest.Get(ParseUrl("https://example.com"));
@@ -39,7 +39,7 @@ public class H1RequestWriterTests
         text.Should().StartWith("GET / HTTP/1.1\r\n");
     }
 
-    [Fact]
+    [TestMethod]
     public void Adds_default_headers_when_missing()
     {
         var req = HttpRequest.Get(ParseUrl("https://example.com/"));
@@ -55,7 +55,7 @@ public class H1RequestWriterTests
         text.Should().EndWith("\r\n\r\n");
     }
 
-    [Fact]
+    [TestMethod]
     public void Includes_explicit_port_in_host_header_when_not_default()
     {
         var req = HttpRequest.Get(ParseUrl("http://example.com:8080/"));
@@ -65,7 +65,7 @@ public class H1RequestWriterTests
         text.Should().Contain("Host: example.com:8080\r\n");
     }
 
-    [Fact]
+    [TestMethod]
     public void Omits_default_port_in_host_header()
     {
         var req = HttpRequest.Get(ParseUrl("https://example.com:443/"));
@@ -76,7 +76,7 @@ public class H1RequestWriterTests
         text.Should().NotContain(":443");
     }
 
-    [Fact]
+    [TestMethod]
     public void User_provided_headers_override_defaults()
     {
         var headers = new HttpHeaders();
@@ -94,7 +94,7 @@ public class H1RequestWriterTests
         text.Should().NotContain("Starling/0.1");
     }
 
-    [Fact]
+    [TestMethod]
     public void Adds_content_length_when_body_present_and_caller_did_not_specify()
     {
         var url = ParseUrl("https://example.com/post");
@@ -107,7 +107,7 @@ public class H1RequestWriterTests
         text.Should().Contain($"Content-Length: {body.Length}\r\n");
     }
 
-    [Fact]
+    [TestMethod]
     public void Omits_content_length_when_caller_specified_transfer_encoding()
     {
         var url = ParseUrl("https://example.com/post");
@@ -123,7 +123,7 @@ public class H1RequestWriterTests
         text.Should().Contain("Transfer-Encoding: chunked\r\n");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task WriteAsync_emits_header_block_then_body()
     {
         var url = ParseUrl("https://example.com/api");
@@ -134,7 +134,7 @@ public class H1RequestWriterTests
         var req = new HttpRequest("POST", url, headers, body);
 
         using var ms = new MemoryStream();
-        await new H1RequestWriter().WriteAsync(req, ms, TestContext.Current.CancellationToken);
+        await new H1RequestWriter().WriteAsync(req, ms, CancellationToken.None);
 
         var text = Encoding.UTF8.GetString(ms.ToArray());
 
@@ -144,7 +144,7 @@ public class H1RequestWriterTests
         text.Should().EndWith("\r\n\r\n{}");
     }
 
-    [Fact]
+    [TestMethod]
     public void Sends_query_string_when_present()
     {
         var req = HttpRequest.Get(ParseUrl("https://example.com/search?q=hello+world&n=10"));

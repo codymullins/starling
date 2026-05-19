@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssContain;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-contain-2/">CSS Containment Module Level 2</see>.
 /// </summary>
+[TestClass]
 [Spec("css-contain", "https://drafts.csswg.org/css-contain-2/")]
 public sealed class PropertyTests
 {

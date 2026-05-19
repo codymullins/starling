@@ -1,24 +1,23 @@
 using FluentAssertions;
 using Starling.Js.Lex;
-using Xunit;
-
 namespace Starling.Js.Tests.Lex;
 
+[TestClass]
 public class JsLexerTests
 {
     // ----- Whitespace / EOF -----------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Empty_source_yields_only_eof()
         => Kinds("").Should().Equal(JsTokenKind.EndOfFile);
 
-    [Fact]
+    [TestMethod]
     public void Pure_whitespace_skipped()
         => Kinds("   \t  \n  ").Should().Equal(JsTokenKind.EndOfFile);
 
     // ----- Identifier / keyword -------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Bare_identifier()
     {
         var t = First("foo");
@@ -26,13 +25,13 @@ public class JsLexerTests
         t.Lexeme.Should().Be("foo");
     }
 
-    [Fact]
+    [TestMethod]
     public void Identifier_with_dollar_and_underscore_chars()
     {
         First("_$x123").Lexeme.Should().Be("_$x123");
     }
 
-    [Fact]
+    [TestMethod]
     public void Keywords_get_their_dedicated_kinds()
     {
         Kinds("var let const if else return function class").Should().Equal(
@@ -47,7 +46,7 @@ public class JsLexerTests
             JsTokenKind.EndOfFile);
     }
 
-    [Fact]
+    [TestMethod]
     public void Boolean_and_null_literals_are_their_own_kinds()
     {
         var toks = Tokens("true false null");
@@ -60,7 +59,7 @@ public class JsLexerTests
 
     // ----- Numeric literal ------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Integer_literal_decoded_as_double()
     {
         var t = First("42");
@@ -68,43 +67,43 @@ public class JsLexerTests
         t.Value.Should().Be(42.0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Float_literal_decoded()
     {
         First("3.14").Value.Should().Be(3.14);
     }
 
-    [Fact]
+    [TestMethod]
     public void Exponent_literal()
     {
         First("1.5e10").Value.Should().Be(1.5e10);
     }
 
-    [Fact]
+    [TestMethod]
     public void Negative_exponent()
     {
         First("2e-3").Value.Should().Be(0.002);
     }
 
-    [Fact]
+    [TestMethod]
     public void Hex_literal()
     {
         First("0xFF").Value.Should().Be(255.0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Binary_literal()
     {
         First("0b1010").Value.Should().Be(10.0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Octal_literal()
     {
         First("0o17").Value.Should().Be(15.0);
     }
 
-    [Fact]
+    [TestMethod]
     public void BigInt_literal()
     {
         var t = First("12345n");
@@ -112,7 +111,7 @@ public class JsLexerTests
         t.Value.Should().Be("12345");
     }
 
-    [Fact]
+    [TestMethod]
     public void BigInt_hex_literal()
     {
         var t = First("0xFFn");
@@ -122,7 +121,7 @@ public class JsLexerTests
 
     // ----- String literal -------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Double_quoted_string()
     {
         var t = First("\"hello\"");
@@ -130,38 +129,38 @@ public class JsLexerTests
         t.Value.Should().Be("hello");
     }
 
-    [Fact]
+    [TestMethod]
     public void Single_quoted_string()
     {
         First("'world'").Value.Should().Be("world");
     }
 
-    [Fact]
+    [TestMethod]
     public void String_escapes_n_t_quote_backslash()
     {
         First("\"a\\n\\t\\\"\\\\b\"").Value.Should().Be("a\n\t\"\\b");
     }
 
-    [Fact]
+    [TestMethod]
     public void Hex_escape_x41_is_A()
     {
         First("\"\\x41\"").Value.Should().Be("A");
     }
 
-    [Fact]
+    [TestMethod]
     public void Unicode_escape_u0041_is_A()
     {
         First("\"\\u0041\"").Value.Should().Be("A");
     }
 
-    [Fact]
+    [TestMethod]
     public void Unicode_escape_braces_for_supplementary_planes()
     {
         // U+1F600 — grinning face emoji
         First("\"\\u{1F600}\"").Value.Should().Be("😀");
     }
 
-    [Fact]
+    [TestMethod]
     public void Unterminated_string_reports_error()
     {
         var sink = new RecordingSink();
@@ -173,17 +172,17 @@ public class JsLexerTests
 
     // ----- Comments -------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Line_comment_skipped()
         => Kinds("// a comment\n42").Should().Equal(
             JsTokenKind.NumericLiteral, JsTokenKind.EndOfFile);
 
-    [Fact]
+    [TestMethod]
     public void Block_comment_skipped()
         => Kinds("/* one\nline */ 42").Should().Equal(
             JsTokenKind.NumericLiteral, JsTokenKind.EndOfFile);
 
-    [Fact]
+    [TestMethod]
     public void Unterminated_block_comment_reports_error()
     {
         var sink = new RecordingSink();
@@ -194,7 +193,7 @@ public class JsLexerTests
 
     // ----- Punctuators ----------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Single_char_punctuators()
     {
         Kinds("(){}[];,.+-*%/").Should().Equal(
@@ -207,7 +206,7 @@ public class JsLexerTests
             JsTokenKind.EndOfFile);
     }
 
-    [Fact]
+    [TestMethod]
     public void Compound_assignment_operators()
     {
         Kinds("+= -= *= **= /= %= &&= ||= ??=").Should().Equal(
@@ -218,7 +217,7 @@ public class JsLexerTests
             JsTokenKind.EndOfFile);
     }
 
-    [Fact]
+    [TestMethod]
     public void Three_way_equality_operators()
     {
         Kinds("== != === !==").Should().Equal(
@@ -227,7 +226,7 @@ public class JsLexerTests
             JsTokenKind.EndOfFile);
     }
 
-    [Fact]
+    [TestMethod]
     public void Bit_shift_operators_including_zerofill()
     {
         Kinds("<< >> >>> <<= >>= >>>=").Should().Equal(
@@ -236,7 +235,7 @@ public class JsLexerTests
             JsTokenKind.EndOfFile);
     }
 
-    [Fact]
+    [TestMethod]
     public void Optional_chaining_and_nullish_coalescing()
     {
         Kinds("a?.b ?? c").Should().Equal(
@@ -245,7 +244,7 @@ public class JsLexerTests
             JsTokenKind.EndOfFile);
     }
 
-    [Fact]
+    [TestMethod]
     public void Arrow_and_spread()
     {
         Kinds("(a) => [...b]").Should().Equal(
@@ -258,7 +257,7 @@ public class JsLexerTests
 
     // ----- Position tracking ----------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Token_positions_track_lines_and_columns()
     {
         var t = Tokens("x\n  y");
@@ -267,7 +266,7 @@ public class JsLexerTests
         t[1].Start.Should().Be(new JsPosition(2, 3, 4));
     }
 
-    [Fact]
+    [TestMethod]
     public void Newlines_between_tokens_mark_PrecededByLineTerminator()
     {
         var t = Tokens("a\nb");
@@ -277,7 +276,7 @@ public class JsLexerTests
 
     // ----- Round-trip on a real-ish snippet -------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Realistic_snippet_tokenizes_cleanly()
     {
         var src = "function add(a, b) { return a + b; }";
@@ -294,7 +293,7 @@ public class JsLexerTests
 
     // ----- Peek -----------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Peek_does_not_consume()
     {
         var l = new JsLexer("a b");

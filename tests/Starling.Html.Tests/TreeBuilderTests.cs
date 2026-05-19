@@ -1,7 +1,5 @@
 using FluentAssertions;
 using Starling.Dom;
-using Xunit;
-
 namespace Starling.Html.Tests;
 
 /// <summary>
@@ -9,9 +7,10 @@ namespace Starling.Html.Tests;
 /// transitions and implicit element creation that the simplified
 /// TokenizingHtmlParser couldn't model.
 /// </summary>
+[TestClass]
 public sealed class TreeBuilderTests
 {
-    [Fact]
+    [TestMethod]
     public void Implicit_html_head_body_are_created_for_bare_input()
     {
         var doc = HtmlParser.Parse("<p>hi</p>");
@@ -25,21 +24,21 @@ public sealed class TreeBuilderTests
         p.TextContent.Should().Be("hi");
     }
 
-    [Fact]
+    [TestMethod]
     public void Doctype_html5_does_not_trigger_quirks()
     {
         var doc = HtmlParser.Parse("<!doctype html><body>x</body>");
         doc.Mode.Should().Be(QuirksMode.NoQuirks);
     }
 
-    [Fact]
+    [TestMethod]
     public void Missing_doctype_triggers_quirks_mode()
     {
         var doc = HtmlParser.Parse("<html><body>x</body></html>");
         doc.Mode.Should().Be(QuirksMode.Quirks);
     }
 
-    [Fact]
+    [TestMethod]
     public void Implicitly_closes_open_paragraph_when_block_starts()
     {
         var doc = HtmlParser.Parse("<p>one<p>two");
@@ -50,7 +49,7 @@ public sealed class TreeBuilderTests
         paragraphs[1].TextContent.Should().Be("two");
     }
 
-    [Fact]
+    [TestMethod]
     public void Heading_inside_heading_closes_outer()
     {
         var doc = HtmlParser.Parse("<h1>a<h2>b</h2>");
@@ -65,7 +64,7 @@ public sealed class TreeBuilderTests
         headings[1].TextContent.Should().Be("b");
     }
 
-    [Fact]
+    [TestMethod]
     public void List_items_implicitly_close_each_other()
     {
         var doc = HtmlParser.Parse("<ul><li>one<li>two<li>three</ul>");
@@ -75,7 +74,7 @@ public sealed class TreeBuilderTests
         items.Select(li => li.TextContent.Trim()).Should().ContainInOrder("one", "two", "three");
     }
 
-    [Fact]
+    [TestMethod]
     public void Title_text_lives_in_head_and_is_not_parsed_as_html()
     {
         var doc = HtmlParser.Parse("<title>1 < 2 & 3</title>");
@@ -83,7 +82,7 @@ public sealed class TreeBuilderTests
         title.TextContent.Should().Be("1 < 2 & 3");
     }
 
-    [Fact]
+    [TestMethod]
     public void Style_content_is_raw_text_and_lives_in_head()
     {
         var doc = HtmlParser.Parse("<style>p { color: red; }</style><body>x</body>");
@@ -92,7 +91,7 @@ public sealed class TreeBuilderTests
         doc.Body!.TextContent.Should().Be("x");
     }
 
-    [Fact]
+    [TestMethod]
     public void Body_attributes_merge_into_existing_body()
     {
         var doc = HtmlParser.Parse("<body class=outer><body class=inner data-x=y>x</body>");
@@ -101,7 +100,7 @@ public sealed class TreeBuilderTests
         body.GetAttribute("data-x").Should().Be("y");
     }
 
-    [Fact]
+    [TestMethod]
     public void Trailing_text_after_close_body_returns_to_body()
     {
         var doc = HtmlParser.Parse("<body>before</body>after");
@@ -109,14 +108,14 @@ public sealed class TreeBuilderTests
         doc.Body.TextContent.Should().Contain("after");
     }
 
-    [Fact]
+    [TestMethod]
     public void Mismatched_end_tags_do_not_explode()
     {
         var act = () => HtmlParser.Parse("<div><span></div></span>");
         act.Should().NotThrow();
     }
 
-    [Fact]
+    [TestMethod]
     public void Self_closing_marker_on_unknown_element_pops_immediately()
     {
         var doc = HtmlParser.Parse("<body><x-self/><p>after</p></body>");
@@ -127,7 +126,7 @@ public sealed class TreeBuilderTests
             .FirstChild.Should().BeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Stray_comment_at_top_level_attaches_to_document()
     {
         var doc = HtmlParser.Parse("<!--c1--><!doctype html><html><!--c2--><body>x</body></html><!--c3-->");
@@ -135,7 +134,7 @@ public sealed class TreeBuilderTests
         doc.Descendants().OfType<Comment>().Select(c => c.Data).Should().Contain(["c2", "c3"]);
     }
 
-    [Fact]
+    [TestMethod]
     public void Text_before_html_open_is_treated_as_body_content()
     {
         var doc = HtmlParser.Parse("hello<p>world</p>");
@@ -144,7 +143,7 @@ public sealed class TreeBuilderTests
         doc.Body.TextContent.Should().Contain("world");
     }
 
-    [Fact]
+    [TestMethod]
     public void Script_content_is_raw_text_and_following_body_content_resumes()
     {
         var doc = HtmlParser.Parse("<script>if (a < b) { c(); }</script><body>after</body>");
@@ -154,7 +153,7 @@ public sealed class TreeBuilderTests
         doc.Body!.TextContent.Should().Be("after");
     }
 
-    [Fact]
+    [TestMethod]
     public void Head_content_after_head_is_reprocessed_into_head()
     {
         var doc = HtmlParser.Parse("<!doctype html><html><head></head><style>.x{color:red}</style><body>x</body></html>");
@@ -163,7 +162,7 @@ public sealed class TreeBuilderTests
         doc.Body!.Descendants().OfType<Element>().Should().NotContain(e => e.LocalName == "style");
     }
 
-    [Fact]
+    [TestMethod]
     public void Void_elements_do_not_swallow_following_text()
     {
         var doc = HtmlParser.Parse("<body>before<img src=x>after<br>tail</body>");
@@ -173,7 +172,7 @@ public sealed class TreeBuilderTests
             .Should().ContainInOrder("img", "br");
     }
 
-    [Fact]
+    [TestMethod]
     public void Definition_items_implicitly_close_each_other()
     {
         var doc = HtmlParser.Parse("<dl><dt>term<dd>definition<dt>next</dl>");
@@ -183,7 +182,7 @@ public sealed class TreeBuilderTests
             .Should().ContainInOrder("dt:term", "dd:definition", "dt:next");
     }
 
-    [Fact]
+    [TestMethod]
     public void Nested_button_start_tag_closes_previous_button()
     {
         var doc = HtmlParser.Parse("<body><button>one<button>two</button></body>");
@@ -197,7 +196,7 @@ public sealed class TreeBuilderTests
         buttons[1].ParentNode.Should().BeSameAs(doc.Body);
     }
 
-    [Fact]
+    [TestMethod]
     public void Simple_table_structure_is_preserved_for_static_pages()
     {
         var doc = HtmlParser.Parse("<body><table><tbody><tr><td>A</td><td>B</td></tr></tbody></table></body>");

@@ -2,10 +2,9 @@ using FluentAssertions;
 using Starling.Css.Parser;
 using Starling.Css.Properties;
 using Starling.Css.Values;
-using Xunit;
-
 namespace Starling.Css.Tests;
 
+[TestClass]
 public sealed class TransformPropertyTests
 {
     private static List<PropertyDeclaration> Expand(string css)
@@ -15,7 +14,7 @@ public sealed class TransformPropertyTests
         return rule.Declarations.SelectMany(PropertyRegistry.Parse).ToList();
     }
 
-    [Fact]
+    [TestMethod]
     public void Transform_with_single_function_parses_as_function_value()
     {
         var decls = Expand("transform: translate(10px, 20px);");
@@ -27,7 +26,7 @@ public sealed class TransformPropertyTests
         fn.Arguments.Should().HaveCount(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void Transform_with_function_list_parses_as_value_list()
     {
         var decls = Expand("transform: translate(10px, 20px) rotate(45deg);");
@@ -42,7 +41,7 @@ public sealed class TransformPropertyTests
         ((CssFunctionValue)list.Values[1]).Name.Should().Be("rotate");
     }
 
-    [Fact]
+    [TestMethod]
     public void Transform_origin_parses_as_value_list()
     {
         var decls = Expand("transform-origin: 50% 50%;");
@@ -51,7 +50,7 @@ public sealed class TransformPropertyTests
         decls.Single().Value.Should().BeOfType<CssValueList>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Translate_property_parses_lengths()
     {
         var decls = Expand("translate: 10px 20px;");
@@ -60,7 +59,7 @@ public sealed class TransformPropertyTests
         value.Should().BeOfType<CssValueList>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Rotate_property_parses_angle()
     {
         var decls = Expand("rotate: 45deg;");
@@ -69,7 +68,7 @@ public sealed class TransformPropertyTests
         decls.Single().Value.Should().BeOfType<CssAngle>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Filter_with_blur_function()
     {
         var decls = Expand("filter: blur(4px);");
@@ -79,7 +78,7 @@ public sealed class TransformPropertyTests
         ((CssFunctionValue)value).Name.Should().Be("blur");
     }
 
-    [Fact]
+    [TestMethod]
     public void Clip_path_with_inset_function()
     {
         var decls = Expand("clip-path: inset(10px);");

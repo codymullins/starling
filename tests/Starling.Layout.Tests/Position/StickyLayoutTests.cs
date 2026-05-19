@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Css.Cascade;
 using Starling.Html;
 using Starling.Layout.Position;
-using Xunit;
-
 namespace Starling.Layout.Tests.Position;
 
 /// <summary>
@@ -14,6 +12,7 @@ namespace Starling.Layout.Tests.Position;
 /// defining behaviour of sticky in real browsers) is documented as
 /// future work and not exercised here.
 /// </summary>
+[TestClass]
 public sealed class StickyLayoutTests
 {
     private static PositionedProps StickyWith(
@@ -30,7 +29,7 @@ public sealed class StickyLayoutTests
             null);
 
     // ---- 1. top:10 with natural y=0 → shifts down to y=10. -----------
-    [Fact]
+    [TestMethod]
     public void Sticky_with_top_inset_shifts_element_down_when_natural_y_is_above_threshold()
     {
         var cb = new Rect(0, 0, 200, 200);
@@ -43,7 +42,7 @@ public sealed class StickyLayoutTests
     }
 
     // ---- 2. top:10 with natural y already > 10 → no shift. ----------
-    [Fact]
+    [TestMethod]
     public void Sticky_with_top_inset_does_not_shift_when_natural_position_already_satisfies_it()
     {
         var cb = new Rect(0, 0, 200, 200);
@@ -54,7 +53,7 @@ public sealed class StickyLayoutTests
 
     // ---- 3. top:100, CB (0,0,100,80), 20px-tall, natural y=0 → ------
     //         wants y=100 but CB bottom is 80 → clamp: bottom=80, top=60.
-    [Fact]
+    [TestMethod]
     public void Sticky_with_top_exceeding_containing_block_clamps_so_box_stays_inside_cb()
     {
         var cb = new Rect(0, 0, 100, 80);
@@ -68,7 +67,7 @@ public sealed class StickyLayoutTests
 
     // ---- 4. bottom:10 with element near CB bottom → bottom can't ----
     //         exceed cb.Bottom - 10.
-    [Fact]
+    [TestMethod]
     public void Sticky_with_bottom_inset_pulls_element_up_when_its_bottom_would_exceed_threshold()
     {
         var cb = new Rect(0, 0, 200, 100);
@@ -82,7 +81,7 @@ public sealed class StickyLayoutTests
 
     // ---- 5. Combined top:5, bottom:5, box fits in band → natural ----
     //         position respected.
-    [Fact]
+    [TestMethod]
     public void Sticky_with_top_and_bottom_insets_respects_natural_position_when_inside_band()
     {
         var cb = new Rect(0, 0, 200, 200);
@@ -96,7 +95,7 @@ public sealed class StickyLayoutTests
 
     // ---- 6. Sticky doesn't take element out of flow → siblings ------
     //         position as if it were `relative`. (Integration test.)
-    [Fact]
+    [TestMethod]
     public void Sticky_element_stays_in_flow_so_next_sibling_follows_its_natural_position()
     {
         var engine = new LayoutEngine(new StyleEngine());
@@ -118,7 +117,7 @@ public sealed class StickyLayoutTests
     }
 
     // ---- 7. position:sticky with no insets set → natural position. --
-    [Fact]
+    [TestMethod]
     public void Sticky_with_no_insets_set_returns_natural_frame_unchanged()
     {
         var cb = new Rect(0, 0, 200, 200);
@@ -131,7 +130,7 @@ public sealed class StickyLayoutTests
     }
 
     // ---- 8. left:20 with natural x=0 → shifts to x=20. --------------
-    [Fact]
+    [TestMethod]
     public void Sticky_with_left_inset_shifts_element_right_when_natural_x_is_left_of_threshold()
     {
         var cb = new Rect(0, 0, 200, 200);
@@ -143,7 +142,7 @@ public sealed class StickyLayoutTests
 
     // ---- 9. right:10 with element near CB right → right edge -------
     //         = cb.Right - 10.
-    [Fact]
+    [TestMethod]
     public void Sticky_with_right_inset_pulls_element_left_when_its_right_would_exceed_threshold()
     {
         var cb = new Rect(0, 0, 200, 100);

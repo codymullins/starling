@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssLinkParams;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-link-params-1/">CSS Linked Parameters Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-link-params", "https://drafts.csswg.org/css-link-params-1/")]
 public sealed class PropertyTests
 {

@@ -3,8 +3,6 @@ using Starling.Dom;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Bindings.Tests;
 
 /// <summary>
@@ -12,9 +10,10 @@ namespace Starling.Bindings.Tests;
 /// wired (see IntersectionObserverBinding's file-level TODO); these tests
 /// assert only the constructable / observable / disconnectable shape.
 /// </summary>
+[TestClass]
 public sealed class IntersectionObserverTests
 {
-    [Fact]
+    [TestMethod]
     public void Constructor_is_installed_globally_with_correct_name()
     {
         var (runtime, _) = BuildEnv();
@@ -24,7 +23,7 @@ public sealed class IntersectionObserverTests
             .AsString.Should().Be("IntersectionObserver");
     }
 
-    [Fact]
+    [TestMethod]
     public void Constructor_requires_callable_argument()
     {
         var (runtime, _) = BuildEnv();
@@ -39,7 +38,7 @@ public sealed class IntersectionObserverTests
         """).AsString.Should().Be("TypeError");
     }
 
-    [Fact]
+    [TestMethod]
     public void Constructor_accepts_callback_and_default_options()
     {
         var (runtime, _) = BuildEnv();
@@ -49,7 +48,7 @@ public sealed class IntersectionObserverTests
         """).AsString.Should().Be("IntersectionObserver/0px 0px 0px 0px/1");
     }
 
-    [Fact]
+    [TestMethod]
     public void Threshold_out_of_range_throws_range_error()
     {
         var (runtime, _) = BuildEnv();
@@ -59,7 +58,7 @@ public sealed class IntersectionObserverTests
         """).AsString.Should().Be("RangeError");
     }
 
-    [Fact]
+    [TestMethod]
     public void Observe_requires_element_target()
     {
         var (runtime, _) = BuildEnv();
@@ -70,7 +69,7 @@ public sealed class IntersectionObserverTests
         """).AsString.Should().Be("TypeError");
     }
 
-    [Fact]
+    [TestMethod]
     public void Observe_and_unobserve_succeed()
     {
         var (runtime, _) = BuildEnv();
@@ -86,7 +85,7 @@ public sealed class IntersectionObserverTests
         """).AsString.Should().Be("ok");
     }
 
-    [Fact]
+    [TestMethod]
     public void Take_records_returns_empty_array()
     {
         var (runtime, _) = BuildEnv();
@@ -97,7 +96,7 @@ public sealed class IntersectionObserverTests
         """).AsString.Should().Be("ok");
     }
 
-    [Fact]
+    [TestMethod]
     public void Threshold_array_is_parsed_and_exposed()
     {
         var (runtime, _) = BuildEnv();

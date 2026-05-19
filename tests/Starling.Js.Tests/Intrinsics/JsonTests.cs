@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Intrinsics;
 
 /// <summary>
@@ -15,45 +13,46 @@ namespace Starling.Js.Tests.Intrinsics;
 /// yet compile array literals — that lands with B2-4). Each test runs a
 /// fresh runtime so the JSON global is installed without contamination.
 /// </remarks>
+[TestClass]
 public class JsonTests
 {
     // ============================================================
     // JSON.parse — primitives and shapes
     // ============================================================
 
-    [Fact]
+    [TestMethod]
     public void Parse_null_primitive()
     {
         var v = Eval("JSON.parse('null');");
         v.IsNull.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Parse_true_primitive()
     {
         Eval("JSON.parse('true');").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Parse_number_primitive()
     {
         Eval("JSON.parse('42');").AsNumber.Should().Be(42);
     }
 
-    [Fact]
+    [TestMethod]
     public void Parse_string_primitive()
     {
         Eval("JSON.parse('\"hi\"');").AsString.Should().Be("hi");
     }
 
-    [Fact]
+    [TestMethod]
     public void Parse_negative_and_exponent_numbers()
     {
         Eval("JSON.parse('-3.5');").AsNumber.Should().Be(-3.5);
         Eval("JSON.parse('1e3');").AsNumber.Should().Be(1000);
     }
 
-    [Fact]
+    [TestMethod]
     public void Parse_escape_sequences()
     {
         // JS source: JSON.parse('"\n\tA"')  — the JS string literal
@@ -63,7 +62,7 @@ public class JsonTests
         Eval("JSON.parse('\"\\\\n\\\\t\\\\u0041\"');").AsString.Should().Be("\n\tA");
     }
 
-    [Fact]
+    [TestMethod]
     public void Parse_object_with_nested_array()
     {
         // Round-trip through stringify since we can't yet index arrays via
@@ -72,7 +71,7 @@ public class JsonTests
             .AsString.Should().Be("{\"a\":[1,2,{\"b\":true}]}");
     }
 
-    [Fact]
+    [TestMethod]
     public void Parse_array_indexable_and_has_length()
     {
         Eval("var a = JSON.parse('[10,20,30]'); a.length;").AsNumber.Should().Be(3);
@@ -83,14 +82,14 @@ public class JsonTests
     // JSON.parse — invalid grammar throws SyntaxError
     // ============================================================
 
-    [Theory]
-    [InlineData("'{\"a\":1,}'")]      // trailing comma in object
-    [InlineData("'[1,2,]'")]           // trailing comma in array
-    [InlineData("'{a:1}'")]            // unquoted key
-    [InlineData("\"'single'\"")]      // single-quoted strings rejected
-    [InlineData("'undefined'")]
-    [InlineData("'NaN'")]
-    [InlineData("'.5'")]               // bare-fraction number
+    [TestMethod]
+    [DataRow("'{\"a\":1,}'")]      // trailing comma in object
+    [DataRow("'[1,2,]'")]           // trailing comma in array
+    [DataRow("'{a:1}'")]            // unquoted key
+    [DataRow("\"'single'\"")]      // single-quoted strings rejected
+    [DataRow("'undefined'")]
+    [DataRow("'NaN'")]
+    [DataRow("'.5'")]               // bare-fraction number
     public void Parse_invalid_throws_syntax_error(string src)
     {
         var action = () => Eval($"JSON.parse({src});");
@@ -101,7 +100,7 @@ public class JsonTests
     // JSON.parse — reviver
     // ============================================================
 
-    [Fact]
+    [TestMethod]
     public void Parse_reviver_multiplies_numbers()
     {
         var s = Eval(@"
@@ -111,7 +110,7 @@ public class JsonTests
         s.AsString.Should().Be("[10,20,30]");
     }
 
-    [Fact]
+    [TestMethod]
     public void Parse_reviver_returning_undefined_drops_key()
     {
         var s = Eval(@"
@@ -125,14 +124,14 @@ public class JsonTests
     // JSON.stringify — primitives, objects, arrays
     // ============================================================
 
-    [Fact]
+    [TestMethod]
     public void Stringify_flat_object()
     {
         Eval("JSON.stringify({a:1, b:\"x\", c:true, d:null});")
             .AsString.Should().Be("{\"a\":1,\"b\":\"x\",\"c\":true,\"d\":null}");
     }
 
-    [Fact]
+    [TestMethod]
     public void Stringify_nan_and_infinity_become_null()
     {
         Eval("JSON.stringify(NaN);").AsString.Should().Be("null");
@@ -140,14 +139,14 @@ public class JsonTests
         Eval("JSON.stringify(-Infinity);").AsString.Should().Be("null");
     }
 
-    [Fact]
+    [TestMethod]
     public void Stringify_undefined_in_object_is_omitted()
     {
         Eval("JSON.stringify({a:1, b:undefined, c:3});")
             .AsString.Should().Be("{\"a\":1,\"c\":3}");
     }
 
-    [Fact]
+    [TestMethod]
     public void Stringify_undefined_in_array_becomes_null()
     {
         // Build an array with an undefined slot through JSON.parse + mutation.
@@ -161,14 +160,14 @@ public class JsonTests
         s.AsString.Should().Be("[1,null,3]");
     }
 
-    [Fact]
+    [TestMethod]
     public void Stringify_function_value_omitted_from_object()
     {
         Eval("JSON.stringify({a:1, f: function(){}, b:2});")
             .AsString.Should().Be("{\"a\":1,\"b\":2}");
     }
 
-    [Fact]
+    [TestMethod]
     public void Stringify_function_in_array_becomes_null()
     {
         var s = Eval(@"
@@ -180,14 +179,14 @@ public class JsonTests
         s.AsString.Should().Be("[null,7]");
     }
 
-    [Fact]
+    [TestMethod]
     public void Stringify_honors_toJSON()
     {
         Eval("JSON.stringify({ toJSON: function() { return 'custom'; } });")
             .AsString.Should().Be("\"custom\"");
     }
 
-    [Fact]
+    [TestMethod]
     public void Stringify_cycle_throws_type_error()
     {
         var action = () => Eval("var a = {}; a.self = a; JSON.stringify(a);");
@@ -198,7 +197,7 @@ public class JsonTests
     // JSON.stringify — replacer + space
     // ============================================================
 
-    [Fact]
+    [TestMethod]
     public void Stringify_replacer_array_keeps_allowed_keys_only()
     {
         // The replacer "array" comes through JSON.parse so it's a JsonArray.
@@ -206,28 +205,28 @@ public class JsonTests
             .AsString.Should().Be("{\"a\":1,\"c\":3}");
     }
 
-    [Fact]
+    [TestMethod]
     public void Stringify_replacer_function_drops_key()
     {
         Eval("JSON.stringify({a:1, b:2}, function(k, v) { return k === 'a' ? undefined : v; });")
             .AsString.Should().Be("{\"b\":2}");
     }
 
-    [Fact]
+    [TestMethod]
     public void Stringify_indent_number_pretty_prints_object()
     {
         Eval("JSON.stringify({a:1}, null, 2);")
             .AsString.Should().Be("{\n  \"a\": 1\n}");
     }
 
-    [Fact]
+    [TestMethod]
     public void Stringify_indent_string_pretty_prints_array()
     {
         Eval("JSON.stringify(JSON.parse('[1,2]'), null, '\t');")
             .AsString.Should().Be("[\n\t1,\n\t2\n]");
     }
 
-    [Fact]
+    [TestMethod]
     public void Stringify_nested_indent_levels_grow()
     {
         // Nested object inside object — indent grows by one gap per level.

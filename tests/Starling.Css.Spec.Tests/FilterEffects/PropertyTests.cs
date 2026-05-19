@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.FilterEffects;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/filter-effects-1/">Filter Effects Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("filter-effects", "https://drafts.csswg.org/filter-effects-1/")]
 public sealed class PropertyTests
 {

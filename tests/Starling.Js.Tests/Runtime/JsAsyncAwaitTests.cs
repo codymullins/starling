@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Runtime;
 
 /// <summary>
@@ -11,9 +9,10 @@ namespace Starling.Js.Tests.Runtime;
 /// Promise immediately and runs the body on a worker thread; each await
 /// re-suspends until the awaited promise settles.
 /// </summary>
+[TestClass]
 public class JsAsyncAwaitTests
 {
-    [Fact]
+    [TestMethod]
     public void Async_function_returns_a_promise_resolving_to_body_value()
     {
         var (runtime, r) = Eval(@"
@@ -23,7 +22,7 @@ public class JsAsyncAwaitTests
         runtime.GetGlobal("r").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Await_resolves_to_promise_value()
     {
         var (runtime, _) = Eval(@"
@@ -33,7 +32,7 @@ public class JsAsyncAwaitTests
         runtime.GetGlobal("r").AsNumber.Should().Be(42);
     }
 
-    [Fact]
+    [TestMethod]
     public void Sequential_awaits_add_correctly()
     {
         var (runtime, _) = Eval(@"
@@ -47,7 +46,7 @@ public class JsAsyncAwaitTests
         runtime.GetGlobal("r").AsNumber.Should().Be(3);
     }
 
-    [Fact]
+    [TestMethod]
     public void Awaited_rejection_is_catchable()
     {
         var (runtime, _) = Eval(@"
@@ -60,7 +59,7 @@ public class JsAsyncAwaitTests
         runtime.GetGlobal("r").AsString.Should().Be("caught bad");
     }
 
-    [Fact]
+    [TestMethod]
     public void Async_function_that_throws_yields_rejected_promise()
     {
         var (runtime, _) = Eval(@"
@@ -70,7 +69,7 @@ public class JsAsyncAwaitTests
         runtime.GetGlobal("r").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Async_arrow_returns_promise()
     {
         var (runtime, _) = Eval(@"
@@ -80,7 +79,7 @@ public class JsAsyncAwaitTests
         runtime.GetGlobal("r").AsNumber.Should().Be(5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Async_arrow_with_concise_body_returns_promise()
     {
         var (runtime, _) = Eval(@"
@@ -90,7 +89,7 @@ public class JsAsyncAwaitTests
         runtime.GetGlobal("r").AsNumber.Should().Be(11);
     }
 
-    [Fact]
+    [TestMethod]
     public void Async_generator_yields_promises()
     {
         // Async generator stub — minimal: .next() returns a Promise of

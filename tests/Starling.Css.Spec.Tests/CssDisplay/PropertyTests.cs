@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssDisplay;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-display-4/">CSS Display Module Level 4</see>.
 /// </summary>
+[TestClass]
 [Spec("css-display", "https://drafts.csswg.org/css-display-4/")]
 public sealed class PropertyTests
 {

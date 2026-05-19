@@ -5,13 +5,13 @@ using Starling.Css.Parser;
 using Starling.Css.Properties;
 using Starling.Css.Values;
 using Starling.Dom;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("css-animations-1", "https://www.w3.org/TR/css-animations-1/")]
 
+[TestClass]
 public sealed class AnimationShorthandMultiLayerTests
 {
     private static List<PropertyDeclaration> ParseShorthand(string source)
@@ -24,7 +24,7 @@ public sealed class AnimationShorthandMultiLayerTests
     private static CssValue ValueOf(List<PropertyDeclaration> decls, PropertyId id)
         => decls.First(d => d.Id == id).Value;
 
-    [Fact]
+    [TestMethod]
     public void Single_layer_round_trips_through_longhands()
     {
         var decls = ParseShorthand("fade 1s linear infinite");
@@ -35,7 +35,7 @@ public sealed class AnimationShorthandMultiLayerTests
         ((CssKeyword)ValueOf(decls, PropertyId.AnimationIterationCount)).Name.Should().Be("infinite");
     }
 
-    [Fact]
+    [TestMethod]
     public void Two_layers_produce_parallel_value_lists()
     {
         var decls = ParseShorthand("a 1s, b 2s linear infinite");
@@ -53,7 +53,7 @@ public sealed class AnimationShorthandMultiLayerTests
         ((CssKeyword)timings.Values[1]).Name.Should().Be("linear");
     }
 
-    [Fact]
+    [TestMethod]
     public void BuildDeclarations_zips_with_cycle_on_short_lists()
     {
         var style = ComputeStyle(
@@ -68,7 +68,7 @@ public sealed class AnimationShorthandMultiLayerTests
         built[2].DurationMs.Should().Be(1000); // cycled
     }
 
-    [Fact]
+    [TestMethod]
     public void BuildDeclarations_skips_name_none_layers()
     {
         var style = ComputeStyle("animation-name: a, none, b");
@@ -76,7 +76,7 @@ public sealed class AnimationShorthandMultiLayerTests
         built.Select(b => b.Name).Should().Equal("a", "b");
     }
 
-    [Fact]
+    [TestMethod]
     public void BuildDeclarations_parses_iteration_infinite_and_keywords()
     {
         var style = ComputeStyle(
@@ -90,7 +90,7 @@ public sealed class AnimationShorthandMultiLayerTests
         d.PlayState.Should().Be(AnimationPlayState.Paused);
     }
 
-    [Fact]
+    [TestMethod]
     public void Two_durations_in_one_layer_map_to_duration_and_delay()
     {
         var decls = ParseShorthand("fade 1s 250ms");

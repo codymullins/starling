@@ -4,7 +4,6 @@ using Starling.Css.Values;
 using Starling.Dom;
 using Starling.Html;
 using Starling.Paint.DisplayList;
-using Xunit;
 using PaintList = Starling.Paint.DisplayList.DisplayList;
 
 namespace Starling.Paint.Tests;
@@ -16,9 +15,10 @@ namespace Starling.Paint.Tests;
 /// translucent tint overlay (the M2-era MAUI approach) or trigger a full
 /// re-layout per pointer move.
 /// </summary>
+[TestClass]
 public sealed class HoverDisplayListTests
 {
-    [Fact]
+    [TestMethod]
     public void Hover_style_override_replaces_text_color_in_display_list()
     {
         const string Html =
@@ -64,7 +64,7 @@ public sealed class HoverDisplayListTests
             "the hover override must replace, not duplicate, the layout-time color");
     }
 
-    [Fact]
+    [TestMethod]
     public void Null_override_falls_through_to_layout_time_styles()
     {
         // Regression guard: when callers pass null override, the builder must

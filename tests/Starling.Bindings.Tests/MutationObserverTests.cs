@@ -3,8 +3,6 @@ using Starling.Dom;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Bindings.Tests;
 
 /// <summary>
@@ -13,9 +11,10 @@ namespace Starling.Bindings.Tests;
 /// tests only assert the constructable / observable / disconnectable shape.
 /// They do NOT assert that mutation records actually fire.
 /// </summary>
+[TestClass]
 public sealed class MutationObserverTests
 {
-    [Fact]
+    [TestMethod]
     public void Constructor_is_installed_globally_with_correct_name()
     {
         var (runtime, _) = BuildEnv();
@@ -25,7 +24,7 @@ public sealed class MutationObserverTests
             .AsString.Should().Be("MutationObserver");
     }
 
-    [Fact]
+    [TestMethod]
     public void Constructor_requires_callable_argument()
     {
         var (runtime, _) = BuildEnv();
@@ -40,7 +39,7 @@ public sealed class MutationObserverTests
         """).AsString.Should().Be("TypeError");
     }
 
-    [Fact]
+    [TestMethod]
     public void Constructor_accepts_callback_and_instance_has_correct_constructor_name()
     {
         var (runtime, _) = BuildEnv();
@@ -50,7 +49,7 @@ public sealed class MutationObserverTests
         """).AsString.Should().Be("MutationObserver");
     }
 
-    [Fact]
+    [TestMethod]
     public void Observe_with_empty_options_throws_type_error()
     {
         var (runtime, _) = BuildEnv();
@@ -61,7 +60,7 @@ public sealed class MutationObserverTests
         """).AsString.Should().Be("TypeError");
     }
 
-    [Fact]
+    [TestMethod]
     public void Observe_with_child_list_true_succeeds()
     {
         var (runtime, _) = BuildEnv();
@@ -72,7 +71,7 @@ public sealed class MutationObserverTests
         """).AsString.Should().Be("ok");
     }
 
-    [Fact]
+    [TestMethod]
     public void Observe_with_attribute_filter_validates_array()
     {
         var (runtime, _) = BuildEnv();
@@ -83,7 +82,7 @@ public sealed class MutationObserverTests
         """).AsString.Should().Be("ok");
     }
 
-    [Fact]
+    [TestMethod]
     public void Observe_requires_node_target()
     {
         var (runtime, _) = BuildEnv();
@@ -94,7 +93,7 @@ public sealed class MutationObserverTests
         """).AsString.Should().Be("TypeError");
     }
 
-    [Fact]
+    [TestMethod]
     public void Disconnect_is_callable_and_idempotent()
     {
         var (runtime, _) = BuildEnv();
@@ -107,7 +106,7 @@ public sealed class MutationObserverTests
         """).AsString.Should().Be("ok");
     }
 
-    [Fact]
+    [TestMethod]
     public void Take_records_returns_array_and_is_empty_on_fresh_observer()
     {
         var (runtime, _) = BuildEnv();

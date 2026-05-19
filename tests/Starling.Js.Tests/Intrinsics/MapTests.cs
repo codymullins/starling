@@ -2,14 +2,13 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Intrinsics;
 
 /// <summary>End-to-end coverage for <c>Map</c> (B3-3).</summary>
+[TestClass]
 public class MapTests
 {
-    [Fact]
+    [TestMethod]
     public void Empty_map_has_size_zero_and_constructor_wired()
     {
         var rt = new JsRuntime();
@@ -20,7 +19,7 @@ public class MapTests
         Eval("new Map().size;").AsNumber.Should().Be(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Map_from_iterable_of_entries()
     {
         Eval("new Map([[1,'a'],[2,'b']]).get(1);").AsString.Should().Be("a");
@@ -28,13 +27,13 @@ public class MapTests
         Eval("new Map([[1,'a'],[2,'b']]).size;").AsNumber.Should().Be(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void Set_returns_the_map_and_chains()
     {
         Eval("new Map().set('a', 1).set('b', 2).size;").AsNumber.Should().Be(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void Has_delete_clear_work()
     {
         var src = @"
@@ -50,7 +49,7 @@ public class MapTests
         Eval(src).AsString.Should().Be("true,false,false,1,0");
     }
 
-    [Fact]
+    [TestMethod]
     public void Insertion_order_preserved_for_keys()
     {
         var r = Eval(@"
@@ -66,7 +65,7 @@ public class MapTests
         r.AsString.Should().Be("2,1,done");
     }
 
-    [Fact]
+    [TestMethod]
     public void NaN_keys_collapse_to_one_entry()
     {
         var r = Eval(@"
@@ -77,7 +76,7 @@ public class MapTests
         r.AsString.Should().Be("1:2");
     }
 
-    [Fact]
+    [TestMethod]
     public void Plus_zero_and_minus_zero_are_the_same_key()
     {
         var r = Eval(@"
@@ -88,7 +87,7 @@ public class MapTests
         r.AsString.Should().Be("1:m");
     }
 
-    [Fact]
+    [TestMethod]
     public void ForEach_invokes_callback_with_value_key_map()
     {
         var r = Eval(@"
@@ -100,7 +99,7 @@ public class MapTests
         r.AsString.Should().Be("a=1;b=2;");
     }
 
-    [Fact]
+    [TestMethod]
     public void For_of_over_entries_yields_pairs()
     {
         var r = Eval(@"
@@ -112,7 +111,7 @@ public class MapTests
         r.AsString.Should().Be("a=1;b=2;");
     }
 
-    [Fact]
+    [TestMethod]
     public void For_of_over_map_uses_entries_via_symbol_iterator()
     {
         var r = Eval(@"

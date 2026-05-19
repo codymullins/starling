@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Runtime;
 
 /// <summary>
@@ -12,9 +10,10 @@ namespace Starling.Js.Tests.Runtime;
 /// (normal, throw, return) so the VM's try-frame stack stays honest on
 /// real bundles.
 /// </summary>
+[TestClass]
 public class JsTryCatchTests
 {
-    [Fact]
+    [TestMethod]
     public void Catch_user_throw_with_typeerror_object()
     {
         Eval(@"
@@ -24,7 +23,7 @@ public class JsTryCatchTests
         ").AsString.Should().Be("TypeError");
     }
 
-    [Fact]
+    [TestMethod]
     public void Catch_primitive_throw_value_is_preserved()
     {
         Eval(@"
@@ -34,7 +33,7 @@ public class JsTryCatchTests
         ").AsString.Should().Be("hello");
     }
 
-    [Fact]
+    [TestMethod]
     public void Catch_caught_intrinsic_typeerror_explicit_throw()
     {
         // Direct test that an explicitly-thrown TypeError flows through
@@ -46,7 +45,7 @@ public class JsTryCatchTests
         ").AsString.Should().Be("TypeError/bad");
     }
 
-    [Fact]
+    [TestMethod]
     public void Rethrow_from_inner_catch_is_caught_by_outer_handler()
     {
         Eval(@"
@@ -58,7 +57,7 @@ public class JsTryCatchTests
         ").AsNumber.Should().Be(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void Finally_runs_on_normal_completion()
     {
         Eval(@"
@@ -68,7 +67,7 @@ public class JsTryCatchTests
         ").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Finally_runs_after_throw_plus_catch()
     {
         Eval(@"
@@ -78,7 +77,7 @@ public class JsTryCatchTests
         ").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Finally_runs_when_no_handler_and_throw_propagates_to_outer_catch()
     {
         Eval(@"
@@ -91,7 +90,7 @@ public class JsTryCatchTests
         ").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Optional_catch_binding_omits_parameter()
     {
         Eval(@"
@@ -101,7 +100,7 @@ public class JsTryCatchTests
         ").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Return_inside_try_with_finally_runs_finally_then_returns_value()
     {
         Eval(@"
@@ -112,7 +111,7 @@ public class JsTryCatchTests
         ").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Finally_return_overrides_try_return()
     {
         // §14.15.8 — abrupt completion in the finalizer replaces the
@@ -123,7 +122,7 @@ public class JsTryCatchTests
         ").AsNumber.Should().Be(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void Inner_catch_fires_for_inner_throw_not_outer()
     {
         Eval(@"
@@ -135,7 +134,7 @@ public class JsTryCatchTests
         ").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Outer_catch_fires_when_inner_block_has_no_handler()
     {
         Eval(@"
@@ -147,7 +146,7 @@ public class JsTryCatchTests
         ").AsString.Should().Be("x");
     }
 
-    [Fact]
+    [TestMethod]
     public void Catch_param_is_not_visible_after_block_exits()
     {
         Eval(@"
@@ -156,7 +155,7 @@ public class JsTryCatchTests
         ").AsString.Should().Be("undefined");
     }
 
-    [Fact]
+    [TestMethod]
     public void Catch_runs_with_clean_eval_stack_after_partial_expression()
     {
         // Inner function throws partway through `1 + ...`; the partially-
@@ -169,7 +168,7 @@ public class JsTryCatchTests
         ").AsNumber.Should().Be(99);
     }
 
-    [Fact]
+    [TestMethod]
     public void Finally_runs_when_try_body_completes_normally_without_handler()
     {
         Eval(@"
@@ -179,7 +178,7 @@ public class JsTryCatchTests
         ").AsNumber.Should().Be(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void Finally_throw_overrides_try_value()
     {
         Eval(@"

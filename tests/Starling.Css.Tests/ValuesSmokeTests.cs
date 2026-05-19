@@ -1,11 +1,10 @@
 using FluentAssertions;
 using Starling.Css.Parser;
 using Starling.Css.Values;
-using Xunit;
-
 namespace Starling.Css.Tests;
 
 /// <summary>End-to-end smoke checks for the Values lane done-criteria.</summary>
+[TestClass]
 public sealed class ValuesSmokeTests
 {
     private static CssValue ParseSingle(string source)
@@ -15,7 +14,7 @@ public sealed class ValuesSmokeTests
         return CssValueParser.Parse(rule.Declarations.Single().Value);
     }
 
-    [Fact]
+    [TestMethod]
     public void Calc_100vh_minus_80px_round_trips_as_inspectable_calc_tree()
     {
         var v = ParseSingle("calc(100vh - 80px)");
@@ -24,7 +23,7 @@ public sealed class ValuesSmokeTests
             .Which.Op.Should().Be(CalcOperator.Subtract);
     }
 
-    [Fact]
+    [TestMethod]
     public void Oklch_70_15_50_round_trips_as_oklch_color()
     {
         var c = (CssColor)ParseSingle("oklch(0.7 0.15 50)");
@@ -34,7 +33,7 @@ public sealed class ValuesSmokeTests
         c.C3.Should().BeApproximately(50.0, 1e-6);
     }
 
-    [Fact]
+    [TestMethod]
     public void Color_mix_in_oklch_red_blue_yields_inspectable_color()
     {
         var c = (CssColor)ParseSingle("color-mix(in oklch, red, blue)");
@@ -43,14 +42,14 @@ public sealed class ValuesSmokeTests
         (c.R + c.G + c.B).Should().BeGreaterThan(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Clamp_with_calc_expression_inside()
     {
         var v = ParseSingle("clamp(1rem, 2vw + 1rem, 3rem)");
         v.Should().BeOfType<CssCalc>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Env_value_recognized_with_fallback()
     {
         var v = ParseSingle("env(safe-area-inset-top, 0px)");
@@ -59,7 +58,7 @@ public sealed class ValuesSmokeTests
         env.Fallback.Should().BeOfType<CssLength>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Attr_value_with_name_only()
     {
         var v = ParseSingle("attr(data-foo)");
@@ -69,7 +68,7 @@ public sealed class ValuesSmokeTests
         attr.Fallback.Should().BeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Attr_value_with_type_and_fallback()
     {
         var v = ParseSingle("attr(data-count number, 0)");

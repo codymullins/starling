@@ -1,16 +1,16 @@
 using FluentAssertions;
 using Starling.Css.Selectors;
 using Starling.Dom;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("css-pseudo-4", "https://www.w3.org/TR/css-pseudo-4/")]
 
+[TestClass]
 public sealed class PseudoElementTests
 {
-    [Fact]
+    [TestMethod]
     public void Double_colon_before_parses_and_carries_kind()
     {
         var selector = SelectorParser.ParseSelectorList("p::before").Selectors.Single();
@@ -20,7 +20,7 @@ public sealed class PseudoElementTests
         selector.TargetPseudoElement.Should().Be(PseudoElement.Before);
     }
 
-    [Fact]
+    [TestMethod]
     public void Legacy_single_colon_pseudo_elements_become_pseudo_element()
     {
         var selector = SelectorParser.ParseSelectorList("p:before").Selectors.Single();
@@ -28,7 +28,7 @@ public sealed class PseudoElementTests
         simples[1].Should().BeOfType<PseudoElementSelector>().Which.Kind.Should().Be(PseudoElement.Before);
     }
 
-    [Fact]
+    [TestMethod]
     public void Pseudo_element_matches_on_element_with_pseudo_filter()
     {
         var doc = new Document();
@@ -45,7 +45,7 @@ public sealed class PseudoElementTests
         result.Pseudo.Should().Be(PseudoElement.Before);
     }
 
-    [Fact]
+    [TestMethod]
     public void Rule_without_pseudo_element_does_not_match_with_pseudo_context()
     {
         var doc = new Document();
@@ -57,7 +57,7 @@ public sealed class PseudoElementTests
             new SelectorMatchContext { PseudoElement = PseudoElement.Before }).Matched.Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Pseudo_element_must_be_last_simple_selector()
     {
         // ::before.foo is illegal because .foo follows the pseudo-element.
@@ -65,16 +65,16 @@ public sealed class PseudoElementTests
         act.Should().Throw<FormatException>();
     }
 
-    [Theory]
-    [InlineData("::marker", PseudoElement.Marker)]
-    [InlineData("::placeholder", PseudoElement.Placeholder)]
-    [InlineData("::first-line", PseudoElement.FirstLine)]
-    [InlineData("::first-letter", PseudoElement.FirstLetter)]
-    [InlineData("::selection", PseudoElement.Selection)]
-    [InlineData("::backdrop", PseudoElement.Backdrop)]
-    [InlineData("::file-selector-button", PseudoElement.FileSelectorButton)]
-    [InlineData("::details-content", PseudoElement.DetailsContent)]
-    [InlineData("::cue", PseudoElement.Cue)]
+    [TestMethod]
+    [DataRow("::marker", PseudoElement.Marker)]
+    [DataRow("::placeholder", PseudoElement.Placeholder)]
+    [DataRow("::first-line", PseudoElement.FirstLine)]
+    [DataRow("::first-letter", PseudoElement.FirstLetter)]
+    [DataRow("::selection", PseudoElement.Selection)]
+    [DataRow("::backdrop", PseudoElement.Backdrop)]
+    [DataRow("::file-selector-button", PseudoElement.FileSelectorButton)]
+    [DataRow("::details-content", PseudoElement.DetailsContent)]
+    [DataRow("::cue", PseudoElement.Cue)]
     public void Recognized_pseudo_elements_have_expected_kind(string source, PseudoElement expected)
     {
         var selector = SelectorParser.ParseSelectorList($"div{source}").Selectors.Single();

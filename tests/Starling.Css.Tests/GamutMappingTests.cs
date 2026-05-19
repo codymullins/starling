@@ -1,13 +1,13 @@
 using FluentAssertions;
 using Starling.Css.Parser;
 using Starling.Css.Values;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("css-color-4", "https://www.w3.org/TR/css-color-4/")]
 
+[TestClass]
 public class GamutMappingTests
 {
     private static CssColor ParseColor(string text)
@@ -18,7 +18,7 @@ public class GamutMappingTests
         return (CssColor)CssValueParser.Parse(decl.Value);
     }
 
-    [Fact]
+    [TestMethod]
     public void Srgb_in_gamut_passes_through_unchanged()
     {
         // pure sRGB red as oklch components → in-gamut after conversion
@@ -28,7 +28,7 @@ public class GamutMappingTests
         b.Should().BeApproximately(0.0, 0.001);
     }
 
-    [Fact]
+    [TestMethod]
     public void Srgb_grey_passes_through_unchanged()
     {
         var (r, g, b) = GamutMapper.MapToSrgb(ColorSpace.Srgb, 0.5, 0.5, 0.5);
@@ -37,7 +37,7 @@ public class GamutMappingTests
         b.Should().BeApproximately(0.5, 0.001);
     }
 
-    [Fact]
+    [TestMethod]
     public void DisplayP3_red_is_out_of_sRGB_gamut_and_gets_mapped()
     {
         // color(display-p3 1 0 0) is brighter/more saturated than sRGB red.
@@ -50,7 +50,7 @@ public class GamutMappingTests
         srgb.B.Should().BeLessThan(50);
     }
 
-    [Fact]
+    [TestMethod]
     public void Oklch_excessive_chroma_is_chroma_reduced()
     {
         // oklch(0.7 0.4 30) — chroma 0.4 is far beyond sRGB gamut for this hue.
@@ -62,7 +62,7 @@ public class GamutMappingTests
         (srgb.G > 0 || srgb.B > 0).Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Oklch_max_lightness_returns_white()
     {
         var (r, g, b) = GamutMapper.MapToSrgb(ColorSpace.Oklch, 1.0, 0.4, 30.0);
@@ -72,7 +72,7 @@ public class GamutMappingTests
         b.Should().BeApproximately(1.0, 0.01);
     }
 
-    [Fact]
+    [TestMethod]
     public void Oklch_zero_lightness_returns_black()
     {
         var (r, g, b) = GamutMapper.MapToSrgb(ColorSpace.Oklch, 0.0, 0.2, 30.0);
@@ -81,7 +81,7 @@ public class GamutMappingTests
         b.Should().BeApproximately(0.0, 0.01);
     }
 
-    [Fact]
+    [TestMethod]
     public void Mapped_color_preserves_hue_better_than_naive_clamp()
     {
         // oklch(0.6 0.3 250) → out-of-gamut blue. Mapped to sRGB, hue should
@@ -93,7 +93,7 @@ public class GamutMappingTests
         srgb.B.Should().BeGreaterThan(srgb.G);
     }
 
-    [Fact]
+    [TestMethod]
     public void Rec2020_pure_red_is_mapped_to_valid_sRGB()
     {
         var c = ParseColor("color(rec2020 1 0 0)");

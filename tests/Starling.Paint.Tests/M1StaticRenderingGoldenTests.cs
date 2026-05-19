@@ -1,39 +1,39 @@
 using FluentAssertions;
 using Starling.Html;
-using Xunit;
 using LayoutSize = Starling.Layout.Size;
 
 namespace Starling.Paint.Tests;
 
-[Trait("Category", "GoldenImage")]
+[TestClass]
+[TestCategory("GoldenImage")]
 public sealed class M1StaticRenderingGoldenTests
 {
-    public static TheoryData<GoldenCase> Cases => new()
+    public static IEnumerable<object[]> Cases()
     {
-        Case("hello paragraph", "<body><p>Hello, world.</p></body>", minNonWhite: 40),
-        Case("two paragraphs", "<body><p>First paragraph.</p><p>Second paragraph.</p></body>", minNonWhite: 80),
-        Case("heading plus paragraph", "<body><h1>Title</h1><p>Intro text.</p></body>", minNonWhite: 80),
-        Case("unordered list", "<body><ul><li>One</li><li>Two</li></ul></body>", minNonWhite: 40),
-        Case("nested block backgrounds", "<body><div style=\"background-color:#ff0000;width:90px;height:60px\"><div style=\"background-color:#0000ff;width:30px;height:20px\"></div></div></body>", requiredColors: [ColorCount.Red, ColorCount.Blue]),
-        Case("style element background", "<head><style>.box{background-color:#008000;width:80px;height:40px}</style></head><body><div class=box>box</div></body>", requiredColors: [ColorCount.Green]),
-        Case("inline style beats author style", "<head><style>.box{background-color:#ff0000;width:80px;height:40px}</style></head><body><div class=box style=\"background-color:#0000ff;width:80px;height:40px\">box</div></body>", requiredColors: [ColorCount.Blue]),
-        Case("display none removes subtree", "<body><div style=\"display:none;background-color:#ff0000;width:80px;height:40px\">hidden</div><div style=\"background-color:#008000;width:80px;height:40px\">shown</div></body>", requiredColors: [ColorCount.Green], forbiddenColors: [ColorCount.Red]),
-        Case("padding leaves colored panel", "<body><div style=\"background-color:#ff0000;padding:10px;width:80px;height:40px\">pad</div></body>", requiredColors: [ColorCount.Red]),
-        Case("border shorthand paints border", "<body><div style=\"border:5px solid #0000ff;width:80px;height:40px\">border</div></body>", requiredColors: [ColorCount.Blue]),
-        Case("explicit dimensions", "<body><div style=\"background-color:#008000;width:120px;height:25px\"></div></body>", requiredColors: [ColorCount.Green]),
-        Case("wrapped text", "<body><p>one two three four five six seven eight nine ten eleven twelve</p></body>", width: 120, minNonWhite: 80),
-        Case("centered text", "<body><p style=\"text-align:center;width:180px\">centered line</p></body>", minNonWhite: 60),
-        Case("right aligned text", "<body><p style=\"text-align:right;width:180px\">right line</p></body>", minNonWhite: 50),
-        Case("font color", "<body><p style=\"color:#0000ff\">blue words</p></body>", minNonWhite: 30),
-        Case("large font", "<body><p style=\"font-size:28px\">large words</p></body>", minNonWhite: 100),
-        Case("block margin stack", "<body><div style=\"background-color:#ff0000;width:60px;height:20px;margin-bottom:20px\"></div><div style=\"background-color:#0000ff;width:60px;height:20px;margin-top:20px\"></div></body>", requiredColors: [ColorCount.Red, ColorCount.Blue]),
-        Case("display contents keeps descendants", "<body><div style=\"display:contents\"><p style=\"background-color:#008000;width:80px;height:30px\">inner</p></div></body>", requiredColors: [ColorCount.Green]),
-        Case("section article nesting", "<body><section style=\"background-color:#ff0000;width:100px;height:80px\"><article style=\"background-color:#0000ff;width:50px;height:30px\">article</article></section></body>", requiredColors: [ColorCount.Red, ColorCount.Blue]),
-        Case("doctype document", "<!doctype html><html><head><title>x</title></head><body><main><h2>Static page</h2><p>rendered by Starling</p></main></body></html>", minNonWhite: 100),
-    };
+        yield return [Case("hello paragraph", "<body><p>Hello, world.</p></body>", minNonWhite: 40)];
+        yield return [Case("two paragraphs", "<body><p>First paragraph.</p><p>Second paragraph.</p></body>", minNonWhite: 80)];
+        yield return [Case("heading plus paragraph", "<body><h1>Title</h1><p>Intro text.</p></body>", minNonWhite: 80)];
+        yield return [Case("unordered list", "<body><ul><li>One</li><li>Two</li></ul></body>", minNonWhite: 40)];
+        yield return [Case("nested block backgrounds", "<body><div style=\"background-color:#ff0000;width:90px;height:60px\"><div style=\"background-color:#0000ff;width:30px;height:20px\"></div></div></body>", requiredColors: [ColorCount.Red, ColorCount.Blue])];
+        yield return [Case("style element background", "<head><style>.box{background-color:#008000;width:80px;height:40px}</style></head><body><div class=box>box</div></body>", requiredColors: [ColorCount.Green])];
+        yield return [Case("inline style beats author style", "<head><style>.box{background-color:#ff0000;width:80px;height:40px}</style></head><body><div class=box style=\"background-color:#0000ff;width:80px;height:40px\">box</div></body>", requiredColors: [ColorCount.Blue])];
+        yield return [Case("display none removes subtree", "<body><div style=\"display:none;background-color:#ff0000;width:80px;height:40px\">hidden</div><div style=\"background-color:#008000;width:80px;height:40px\">shown</div></body>", requiredColors: [ColorCount.Green], forbiddenColors: [ColorCount.Red])];
+        yield return [Case("padding leaves colored panel", "<body><div style=\"background-color:#ff0000;padding:10px;width:80px;height:40px\">pad</div></body>", requiredColors: [ColorCount.Red])];
+        yield return [Case("border shorthand paints border", "<body><div style=\"border:5px solid #0000ff;width:80px;height:40px\">border</div></body>", requiredColors: [ColorCount.Blue])];
+        yield return [Case("explicit dimensions", "<body><div style=\"background-color:#008000;width:120px;height:25px\"></div></body>", requiredColors: [ColorCount.Green])];
+        yield return [Case("wrapped text", "<body><p>one two three four five six seven eight nine ten eleven twelve</p></body>", width: 120, minNonWhite: 80)];
+        yield return [Case("centered text", "<body><p style=\"text-align:center;width:180px\">centered line</p></body>", minNonWhite: 60)];
+        yield return [Case("right aligned text", "<body><p style=\"text-align:right;width:180px\">right line</p></body>", minNonWhite: 50)];
+        yield return [Case("font color", "<body><p style=\"color:#0000ff\">blue words</p></body>", minNonWhite: 30)];
+        yield return [Case("large font", "<body><p style=\"font-size:28px\">large words</p></body>", minNonWhite: 100)];
+        yield return [Case("block margin stack", "<body><div style=\"background-color:#ff0000;width:60px;height:20px;margin-bottom:20px\"></div><div style=\"background-color:#0000ff;width:60px;height:20px;margin-top:20px\"></div></body>", requiredColors: [ColorCount.Red, ColorCount.Blue])];
+        yield return [Case("display contents keeps descendants", "<body><div style=\"display:contents\"><p style=\"background-color:#008000;width:80px;height:30px\">inner</p></div></body>", requiredColors: [ColorCount.Green])];
+        yield return [Case("section article nesting", "<body><section style=\"background-color:#ff0000;width:100px;height:80px\"><article style=\"background-color:#0000ff;width:50px;height:30px\">article</article></section></body>", requiredColors: [ColorCount.Red, ColorCount.Blue])];
+        yield return [Case("doctype document", "<!doctype html><html><head><title>x</title></head><body><main><h2>Static page</h2><p>rendered by Starling</p></main></body></html>", minNonWhite: 100)];
+    }
 
-    [Theory]
-    [MemberData(nameof(Cases))]
+    [TestMethod]
+    [DynamicData(nameof(Cases))]
     public void Static_html_css_case_renders_expected_pixels(GoldenCase testCase)
     {
         var painter = new Painter();

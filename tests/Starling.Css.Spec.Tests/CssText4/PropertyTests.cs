@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssText4;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-text-4/">CSS Text Module Level 4</see>.
 /// </summary>
+[TestClass]
 [Spec("css-text-4", "https://drafts.csswg.org/css-text-4/")]
 public sealed class PropertyTests
 {

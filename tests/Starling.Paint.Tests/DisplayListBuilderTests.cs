@@ -4,10 +4,9 @@ using Starling.Html;
 using Starling.Layout;
 using Starling.Layout.Text;
 using Starling.Paint.DisplayList;
-using Xunit;
-
 namespace Starling.Paint.Tests;
 
+[TestClass]
 public sealed class DisplayListBuilderTests
 {
     private static Starling.Paint.DisplayList.DisplayList BuildList(string html, Size viewport)
@@ -19,7 +18,7 @@ public sealed class DisplayListBuilderTests
         return new DisplayListBuilder().Build(root);
     }
 
-    [Fact]
+    [TestMethod]
     public void Plain_text_produces_at_least_one_draw_text_item()
     {
         var dl = BuildList("<body><p>hello</p></body>", new Size(800, 600));
@@ -28,7 +27,7 @@ public sealed class DisplayListBuilderTests
         dl.Items.OfType<DrawText>().First().Text.Should().Be("hello");
     }
 
-    [Fact]
+    [TestMethod]
     public void Background_color_appears_as_fill_rect()
     {
         var dl = BuildList(
@@ -39,7 +38,7 @@ public sealed class DisplayListBuilderTests
             .Should().Contain(r => r.Color.R == 255 && r.Color.G == 0 && r.Color.B == 0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Wrapped_text_produces_multiple_draw_text_items_on_different_lines()
     {
         var dl = BuildList(
@@ -50,14 +49,14 @@ public sealed class DisplayListBuilderTests
         lines.Should().HaveCountGreaterThan(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Empty_document_yields_no_text_items()
     {
         var dl = BuildList("<body></body>", new Size(400, 300));
         dl.Items.OfType<DrawText>().Should().BeEmpty();
     }
 
-    [Fact]
+    [TestMethod]
     public void Font_family_list_is_carried_onto_draw_text()
     {
         // The font-family value parser preserves case for ident family names
@@ -70,7 +69,7 @@ public sealed class DisplayListBuilderTests
         text.FontFamilies.Should().Equal("Helvetica Neue", "Helvetica", "sans-serif");
     }
 
-    [Fact]
+    [TestMethod]
     public void Multi_word_unquoted_family_is_joined_with_spaces()
     {
         var dl = BuildList(
@@ -81,7 +80,7 @@ public sealed class DisplayListBuilderTests
         text.FontFamilies.Should().Equal("Open Sans");
     }
 
-    [Fact]
+    [TestMethod]
     public void Bold_weight_marks_draw_text_bold()
     {
         var dl = BuildList(
@@ -91,7 +90,7 @@ public sealed class DisplayListBuilderTests
         dl.Items.OfType<DrawText>().Should().OnlyContain(t => t.Bold);
     }
 
-    [Fact]
+    [TestMethod]
     public void Italic_style_marks_draw_text_italic()
     {
         var dl = BuildList(
@@ -101,7 +100,7 @@ public sealed class DisplayListBuilderTests
         dl.Items.OfType<DrawText>().Should().Contain(t => t.Italic);
     }
 
-    [Fact]
+    [TestMethod]
     public void Underlined_link_emits_text_and_underline_fill()
     {
         var dl = BuildList("<body><a href=\"/next\">go next</a></body>", new Size(400, 300));

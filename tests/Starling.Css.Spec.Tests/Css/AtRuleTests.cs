@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.Css;
 /// <summary>
 /// At-rule conformance for <see href="https://drafts.csswg.org/css2/">Cascading Style Sheets (CSS) Level 2</see>.
 /// </summary>
+[TestClass]
 [Spec("CSS", "https://drafts.csswg.org/css2/")]
 public sealed class AtRuleTests
 {

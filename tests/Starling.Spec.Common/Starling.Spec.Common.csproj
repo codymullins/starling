@@ -3,6 +3,6 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="MSTest.TestFramework" />
   </ItemGroup>
 </Project>

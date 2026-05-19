@@ -5,13 +5,12 @@ using Starling.Css.Properties;
 using Starling.Css.Selectors;
 using Starling.Css.Values;
 using Starling.Dom;
-using Xunit;
-
 namespace Starling.Css.Tests;
 
+[TestClass]
 public sealed class StyleEngineTests
 {
-    [Fact]
+    [TestMethod]
     public void Computes_cascaded_values_by_origin_specificity_and_order()
     {
         var doc = new Document();
@@ -34,7 +33,7 @@ public sealed class StyleEngineTests
         style.GetPropertyValue("color").Should().Be("rgb(0, 0, 255)");
     }
 
-    [Fact]
+    [TestMethod]
     public void Inline_style_overrides_author_rules_but_not_important_author_rules()
     {
         var doc = new Document();
@@ -50,7 +49,7 @@ public sealed class StyleEngineTests
         style.GetColor(PropertyId.BackgroundColor).Should().Be(new CssColor(0, 51, 102));
     }
 
-    [Fact]
+    [TestMethod]
     public void Important_user_styles_override_important_author_styles()
     {
         var doc = new Document();
@@ -65,7 +64,7 @@ public sealed class StyleEngineTests
         style.GetColor(PropertyId.Color).Should().Be(new CssColor(255, 0, 0));
     }
 
-    [Fact]
+    [TestMethod]
     public void Inherits_values_and_resolves_custom_properties()
     {
         var doc = new Document();
@@ -86,7 +85,7 @@ public sealed class StyleEngineTests
         style.GetLength(PropertyId.MarginLeft).Should().Be(new CssLength(12, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void User_agent_stylesheet_supplies_block_defaults()
     {
         var doc = new Document();
@@ -100,7 +99,7 @@ public sealed class StyleEngineTests
         style.GetLength(PropertyId.MarginTop).Should().Be(new CssLength(16, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Var_in_shorthand_resolves_via_pending_substitution()
     {
         // CSS Variables L1 §3.7. Authored as a shorthand whose sole component
@@ -121,7 +120,7 @@ public sealed class StyleEngineTests
         style.GetColor(PropertyId.BackgroundColor).Should().Be(new CssColor(0x0f, 0x11, 0x17));
     }
 
-    [Fact]
+    [TestMethod]
     public void Var_in_shorthand_resets_other_longhands_to_initial()
     {
         // CSS Variables L1 §3.7 — using var() in a shorthand still resets every
@@ -143,7 +142,7 @@ public sealed class StyleEngineTests
         style.Get(PropertyId.BackgroundImage).Should().Be(new CssKeyword("none"));
     }
 
-    [Fact]
+    [TestMethod]
     public void Var_with_multi_component_value_splices_into_shorthand()
     {
         // §3.7 substitution operates on tokens, so a multi-component custom
@@ -166,7 +165,7 @@ public sealed class StyleEngineTests
         style.GetColor(PropertyId.BorderTopColor).Should().Be(new CssColor(255, 0, 0));
     }
 
-    [Fact]
+    [TestMethod]
     public void Var_fallback_used_when_custom_property_undefined_in_shorthand()
     {
         // §3.7 with a fallback: `background: var(--missing, #abcdef)` — when
@@ -183,7 +182,7 @@ public sealed class StyleEngineTests
         style.GetColor(PropertyId.BackgroundColor).Should().Be(new CssColor(0xab, 0xcd, 0xef));
     }
 
-    [Fact]
+    [TestMethod]
     public void Hover_match_context_recascades_styles_for_link_state()
     {
         var doc = new Document();

@@ -1,9 +1,8 @@
 using FluentAssertions;
 using Starling.Dom.Events;
-using Xunit;
-
 namespace Starling.Dom.Tests;
 
+[TestClass]
 public sealed class DomEventTests
 {
     private static (Document doc, Element html, Element body, Element div, Element target) BuildTree()
@@ -20,7 +19,7 @@ public sealed class DomEventTests
         return (doc, html, body, div, target);
     }
 
-    [Fact]
+    [TestMethod]
     public void Dispatch_invokes_capture_then_target_then_bubble_in_order()
     {
         var (doc, html, body, div, target) = BuildTree();
@@ -44,7 +43,7 @@ public sealed class DomEventTests
             "div-bubble", "body-bubble", "html-bubble", "doc-bubble");
     }
 
-    [Fact]
+    [TestMethod]
     public void Event_without_bubbles_skips_bubble_phase()
     {
         var (doc, _, body, div, target) = BuildTree();
@@ -59,7 +58,7 @@ public sealed class DomEventTests
         log.Should().Equal("target");
     }
 
-    [Fact]
+    [TestMethod]
     public void StopPropagation_halts_subsequent_ancestors()
     {
         var (doc, _, body, div, target) = BuildTree();
@@ -78,7 +77,7 @@ public sealed class DomEventTests
         log.Should().Equal("target", "div-bubble");
     }
 
-    [Fact]
+    [TestMethod]
     public void StopImmediatePropagation_halts_remaining_listeners_on_same_target()
     {
         var (doc, _, _, _, target) = BuildTree();
@@ -96,7 +95,7 @@ public sealed class DomEventTests
         log.Should().Equal("first");
     }
 
-    [Fact]
+    [TestMethod]
     public void Once_option_removes_listener_after_first_invocation()
     {
         var (doc, _, _, _, target) = BuildTree();
@@ -110,7 +109,7 @@ public sealed class DomEventTests
         count.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void RemoveEventListener_takes_effect_for_subsequent_dispatches()
     {
         var (doc, _, _, _, target) = BuildTree();
@@ -125,7 +124,7 @@ public sealed class DomEventTests
         count.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Duplicate_add_with_same_capture_flag_is_a_no_op()
     {
         var (doc, _, _, _, target) = BuildTree();
@@ -140,7 +139,7 @@ public sealed class DomEventTests
         count.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Capture_and_bubble_registrations_with_same_callback_are_distinct()
     {
         var (doc, _, _, div, target) = BuildTree();
@@ -155,7 +154,7 @@ public sealed class DomEventTests
         log.Should().Equal("CapturingPhase", "BubblingPhase");
     }
 
-    [Fact]
+    [TestMethod]
     public void PreventDefault_only_works_on_cancelable_events()
     {
         var (doc, _, _, _, target) = BuildTree();
@@ -172,7 +171,7 @@ public sealed class DomEventTests
         cancelable.DefaultPrevented.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Target_and_currentTarget_track_phase_correctly()
     {
         var (doc, _, body, div, target) = BuildTree();
@@ -195,7 +194,7 @@ public sealed class DomEventTests
         capturedTargets[2].Current.Should().BeSameAs(div);
     }
 
-    [Fact]
+    [TestMethod]
     public void Listener_exception_does_not_break_dispatch()
     {
         var (doc, _, _, _, target) = BuildTree();
@@ -209,7 +208,7 @@ public sealed class DomEventTests
         reached.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Custom_event_carries_detail_payload()
     {
         var (doc, _, _, _, target) = BuildTree();
@@ -221,7 +220,7 @@ public sealed class DomEventTests
         captured.Should().Be(42);
     }
 
-    [Fact]
+    [TestMethod]
     public void MouseEvent_keeps_coordinate_and_modifier_state()
     {
         var (doc, _, _, _, target) = BuildTree();
@@ -239,7 +238,7 @@ public sealed class DomEventTests
         captured.ShiftKey.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Redispatching_in_flight_event_throws_inside_listener()
     {
         // Spec: dispatching an event whose dispatch flag is set throws

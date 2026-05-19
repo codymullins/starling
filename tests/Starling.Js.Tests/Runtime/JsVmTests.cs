@@ -2,70 +2,69 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Runtime;
 
+[TestClass]
 public class JsVmTests
 {
     // ----- Primitive evaluation -------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Numeric_literal_evaluates_to_itself()
         => Eval("42;").AsNumber.Should().Be(42);
 
-    [Fact]
+    [TestMethod]
     public void Arithmetic_addition()
         => Eval("1 + 2;").AsNumber.Should().Be(3);
 
-    [Fact]
+    [TestMethod]
     public void Arithmetic_full_precedence()
         => Eval("1 + 2 * 3;").AsNumber.Should().Be(7);
 
-    [Fact]
+    [TestMethod]
     public void Subtraction_and_division()
     {
         Eval("10 - 3;").AsNumber.Should().Be(7);
         Eval("10 / 4;").AsNumber.Should().Be(2.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Modulo()
         => Eval("10 % 3;").AsNumber.Should().Be(1);
 
-    [Fact]
+    [TestMethod]
     public void Exponentiation_right_associative()
         => Eval("2 ** 3 ** 2;").AsNumber.Should().Be(512); // 2 ^ (3^2) = 2^9
 
-    [Fact]
+    [TestMethod]
     public void Unary_minus()
         => Eval("-(3 + 4);").AsNumber.Should().Be(-7);
 
-    [Fact]
+    [TestMethod]
     public void String_concat()
         => Eval("'hello, ' + 'world';").AsString.Should().Be("hello, world");
 
-    [Fact]
+    [TestMethod]
     public void String_plus_number_concatenates()
         => Eval("'x=' + 42;").AsString.Should().Be("x=42");
 
     // ----- Comparison -----------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Strict_equality()
     {
         JsValue.ToBoolean(Eval("1 === 1;")).Should().BeTrue();
         JsValue.ToBoolean(Eval("1 === '1';")).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Abstract_equality_coerces()
     {
         JsValue.ToBoolean(Eval("1 == '1';")).Should().BeTrue();
         JsValue.ToBoolean(Eval("null == undefined;")).Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Less_than_and_greater_than()
     {
         JsValue.ToBoolean(Eval("2 < 3;")).Should().BeTrue();
@@ -73,7 +72,7 @@ public class JsVmTests
         JsValue.ToBoolean(Eval("3 <= 3;")).Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void NaN_compares_unordered()
     {
         JsValue.ToBoolean(Eval("(0/0) < 1;")).Should().BeFalse();
@@ -82,22 +81,22 @@ public class JsVmTests
 
     // ----- Logical / typeof -----------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Logical_and_short_circuits()
         => Eval("0 && 'never';").AsNumber.Should().Be(0);
 
-    [Fact]
+    [TestMethod]
     public void Logical_or_short_circuits()
         => Eval("'first' || 'never';").AsString.Should().Be("first");
 
-    [Fact]
+    [TestMethod]
     public void Nullish_coalescing()
     {
         Eval("null ?? 'fallback';").AsString.Should().Be("fallback");
         Eval("0 ?? 'never';").AsNumber.Should().Be(0); // 0 is not nullish
     }
 
-    [Fact]
+    [TestMethod]
     public void Typeof_each_kind()
     {
         Eval("typeof 1;").AsString.Should().Be("number");
@@ -109,23 +108,23 @@ public class JsVmTests
 
     // ----- Variables ------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Var_declaration_and_reference()
         => Eval("var x = 7; x;").AsNumber.Should().Be(7);
 
-    [Fact]
+    [TestMethod]
     public void Let_declaration_default_undefined()
         => Eval("let x; x;").IsUndefined.Should().BeTrue();
 
-    [Fact]
+    [TestMethod]
     public void Assignment_propagates_value()
         => Eval("var x = 1; x = x + 10;").AsNumber.Should().Be(11);
 
-    [Fact]
+    [TestMethod]
     public void Compound_assignment()
         => Eval("var x = 5; x *= 3;").AsNumber.Should().Be(15);
 
-    [Fact]
+    [TestMethod]
     public void Postfix_increment_yields_old_value_pops_pop()
     {
         // The expression value of `x++` is the original; x is updated.
@@ -141,14 +140,14 @@ public class JsVmTests
 
     // ----- Control flow ---------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void If_else_chooses_branch()
     {
         Eval("var r = 0; if (true) r = 1; else r = 2; r;").AsNumber.Should().Be(1);
         Eval("var r = 0; if (false) r = 1; else r = 2; r;").AsNumber.Should().Be(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void While_loop_sums_values()
     {
         // Sum 1..10
@@ -163,13 +162,13 @@ public class JsVmTests
         v.AsNumber.Should().Be(55);
     }
 
-    [Fact]
+    [TestMethod]
     public void Conditional_expression()
         => Eval("var x = 5; x > 0 ? 'pos' : 'neg';").AsString.Should().Be("pos");
 
     // ----- Globals + host functions ---------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Host_function_callable_from_JS()
     {
         var runtime = new JsRuntime();
@@ -180,7 +179,7 @@ public class JsVmTests
         captured.Should().ContainSingle().Which.AsNumber.Should().Be(3);
     }
 
-    [Fact]
+    [TestMethod]
     public void Multiple_host_args_pass_in_order()
     {
         var runtime = new JsRuntime();
@@ -196,7 +195,7 @@ public class JsVmTests
         captured[2].AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Member_access_on_global_object()
     {
         var runtime = new JsRuntime();
@@ -211,7 +210,7 @@ public class JsVmTests
 
     // ----- Bitwise + Coercion ---------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Bitwise_ops()
     {
         Eval("0xF | 0x1;").AsNumber.Should().Be(15);
@@ -220,7 +219,7 @@ public class JsVmTests
         Eval("~0;").AsNumber.Should().Be(-1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Shift_operators()
     {
         Eval("1 << 4;").AsNumber.Should().Be(16);
@@ -230,7 +229,7 @@ public class JsVmTests
 
     // ----- Smoke test: real-ish algorithm ---------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Fibonacci_iterative()
     {
         // Compute fib(10) = 55 with a while loop.
@@ -251,7 +250,7 @@ public class JsVmTests
 
     // ----- Throw ----------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Uncaught_throw_surfaces_as_JsThrow()
     {
         var act = () => Eval("throw 'boom';");

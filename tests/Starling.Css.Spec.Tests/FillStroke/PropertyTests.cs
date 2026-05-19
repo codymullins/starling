@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.FillStroke;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/fill-stroke-3/">CSS Fill and Stroke Module Level 3</see>.
 /// </summary>
+[TestClass]
 [Spec("fill-stroke", "https://drafts.csswg.org/fill-stroke-3/")]
 public sealed class PropertyTests
 {

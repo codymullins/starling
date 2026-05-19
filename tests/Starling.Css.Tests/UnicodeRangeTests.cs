@@ -1,13 +1,12 @@
 using FluentAssertions;
 using Starling.Css.FontFace;
 using Starling.Css.Parser;
-using Xunit;
-
 namespace Starling.Css.Tests;
 
+[TestClass]
 public sealed class UnicodeRangeTests
 {
-    [Fact]
+    [TestMethod]
     public void Parses_range_with_wildcards()
     {
         // U+4?? expands to U+400..U+4FF — Cyrillic block.
@@ -26,7 +25,7 @@ public sealed class UnicodeRangeTests
         rule.UnicodeRange.Contains(0x500).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Parses_range_list()
     {
         var sheet = CssParser.ParseStyleSheet("""
@@ -44,14 +43,14 @@ public sealed class UnicodeRangeTests
         r.Contains(0x1F601).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void CoversAll_handles_surrogate_pairs()
     {
         var range = new UnicodeRangeSet(new[] { (0, 0x10FFFF) });
         range.CoversAll("Hello 😀").Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Disjoint_ranges_are_kept_disjoint()
     {
         var range = new UnicodeRangeSet(new[] { (0, 0x7F), (0x2000, 0x20FF) });

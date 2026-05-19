@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssAnchorPosition;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-anchor-position-1/">CSS Anchor Positioning Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-anchor-position", "https://drafts.csswg.org/css-anchor-position-1/")]
 public sealed class PropertyTests
 {

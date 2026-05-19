@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssOverflow;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-overflow-3/">CSS Overflow Module Level 3</see>.
 /// </summary>
+[TestClass]
 [Spec("css-overflow", "https://drafts.csswg.org/css-overflow-3/")]
 public sealed class PropertyTests
 {

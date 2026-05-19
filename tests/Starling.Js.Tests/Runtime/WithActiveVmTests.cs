@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Runtime;
 
 /// <summary>
@@ -17,9 +15,10 @@ namespace Starling.Js.Tests.Runtime;
 ///   <c>ActiveVm</c> via the helper's try/finally.</item>
 /// </list>
 /// </summary>
+[TestClass]
 public class WithActiveVmTests
 {
-    [Fact]
+    [TestMethod]
     public void WithActiveVm_publishes_and_restores_ActiveVm()
     {
         var runtime = new JsRuntime();
@@ -38,7 +37,7 @@ public class WithActiveVmTests
         realm.ActiveVm.Should().BeNull("WithActiveVm must restore the previous null on exit");
     }
 
-    [Fact]
+    [TestMethod]
     public void WithActiveVm_nested_calls_preserve_outer_vm_on_exit()
     {
         var runtime = new JsRuntime();
@@ -66,7 +65,7 @@ public class WithActiveVmTests
         realm.ActiveVm.Should().BeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void WithActiveVm_restores_previous_vm_when_body_throws()
     {
         var runtime = new JsRuntime();
@@ -84,7 +83,7 @@ public class WithActiveVmTests
         realm.ActiveVm.Should().BeNull("the finally block must restore the prior ActiveVm");
     }
 
-    [Fact]
+    [TestMethod]
     public void WithActiveVm_drains_microtasks_after_body()
     {
         var runtime = new JsRuntime();
@@ -99,7 +98,7 @@ public class WithActiveVmTests
         fired.Should().BeTrue("WithActiveVm must drain queued microtasks before returning");
     }
 
-    [Fact]
+    [TestMethod]
     public void WithActiveVm_preserves_existing_ActiveVm_inside_script_frame()
     {
         var runtime = new JsRuntime();

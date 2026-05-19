@@ -2,15 +2,14 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Intrinsics;
 
 /// <summary>End-to-end coverage for <c>Set</c> + ES2025 set-theoretic
 /// operations (B3-3).</summary>
+[TestClass]
 public class SetTests
 {
-    [Fact]
+    [TestMethod]
     public void Set_constructor_wired_and_iterable_init()
     {
         var rt = new JsRuntime();
@@ -21,13 +20,13 @@ public class SetTests
         Eval("new Set([1,1,2,2,3]).size;").AsNumber.Should().Be(3);
     }
 
-    [Fact]
+    [TestMethod]
     public void Add_returns_set_and_chains()
     {
         Eval("new Set().add(1).add(2).add(3).size;").AsNumber.Should().Be(3);
     }
 
-    [Fact]
+    [TestMethod]
     public void Has_delete_clear()
     {
         var r = Eval(@"
@@ -41,7 +40,7 @@ public class SetTests
         r.AsString.Should().Be("true,false,false,2,0");
     }
 
-    [Fact]
+    [TestMethod]
     public void For_of_yields_values_in_insertion_order()
     {
         var r = Eval(@"
@@ -53,7 +52,7 @@ public class SetTests
         r.AsString.Should().Be("abc");
     }
 
-    [Fact]
+    [TestMethod]
     public void Entries_returns_pair_of_value_value()
     {
         var r = Eval(@"
@@ -64,7 +63,7 @@ public class SetTests
         r.AsString.Should().Be("1:1");
     }
 
-    [Fact]
+    [TestMethod]
     public void Union_combines_unique_values()
     {
         var r = Eval(@"
@@ -75,7 +74,7 @@ public class SetTests
         r.AsString.Should().Be("5:true,true");
     }
 
-    [Fact]
+    [TestMethod]
     public void Intersection_keeps_only_shared()
     {
         var r = Eval(@"
@@ -86,7 +85,7 @@ public class SetTests
         r.AsString.Should().Be("2:true,true,false");
     }
 
-    [Fact]
+    [TestMethod]
     public void Difference_excludes_other_members()
     {
         var r = Eval(@"
@@ -97,7 +96,7 @@ public class SetTests
         r.AsString.Should().Be("1:true,false");
     }
 
-    [Fact]
+    [TestMethod]
     public void SymmetricDifference_excludes_shared_keeps_unique()
     {
         var r = Eval(@"
@@ -108,21 +107,21 @@ public class SetTests
         r.AsString.Should().Be("4:true,false,true");
     }
 
-    [Fact]
+    [TestMethod]
     public void IsSubsetOf_returns_correct_boolean()
     {
         Eval("new Set([1,2]).isSubsetOf(new Set([1,2,3]));").AsBool.Should().BeTrue();
         Eval("new Set([1,4]).isSubsetOf(new Set([1,2,3]));").AsBool.Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void IsSupersetOf_returns_correct_boolean()
     {
         Eval("new Set([1,2,3]).isSupersetOf(new Set([1,2]));").AsBool.Should().BeTrue();
         Eval("new Set([1,2]).isSupersetOf(new Set([1,2,3]));").AsBool.Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void IsDisjointFrom_returns_correct_boolean()
     {
         Eval("new Set([1,2]).isDisjointFrom(new Set([3,4]));").AsBool.Should().BeTrue();

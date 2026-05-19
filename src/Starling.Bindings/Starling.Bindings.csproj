@@ -6,7 +6,6 @@
     <ProjectReference Include="..\Starling.Common\Starling.Common.csproj" />
     <ProjectReference Include="..\Starling.Dom\Starling.Dom.csproj" />
     <ProjectReference Include="..\Starling.Js\Starling.Js.csproj" />
-    <ProjectReference Include="..\Starling.Loop\Starling.Loop.csproj" />
     <ProjectReference Include="..\Starling.Net\Starling.Net.csproj" />
     <ProjectReference Include="..\Starling.Url\Starling.Url.csproj" />
   </ItemGroup>

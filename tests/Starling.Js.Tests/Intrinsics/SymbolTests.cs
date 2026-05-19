@@ -2,14 +2,13 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Intrinsics;
 
 /// <summary>End-to-end coverage for ECMA-262 §20.4 Symbol primitives and intrinsics.</summary>
+[TestClass]
 public class SymbolTests
 {
-    [Fact]
+    [TestMethod]
     public void Factory_creates_unique_symbol_primitives_with_descriptions()
     {
         Eval("Symbol('x') === Symbol('x');").AsBool.Should().BeFalse();
@@ -20,7 +19,7 @@ public class SymbolTests
         Eval("var s = Symbol('x'); s.valueOf() === s;").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Description_accessor_returns_description_or_undefined()
     {
         Eval("Symbol('hello').description;").AsString.Should().Be("hello");
@@ -28,7 +27,7 @@ public class SymbolTests
         Eval("Symbol().description;").IsUndefined.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Global_registry_round_trips_registered_symbols()
     {
         Eval("Symbol['for']('x') === Symbol['for']('x');").AsBool.Should().BeTrue();
@@ -38,7 +37,7 @@ public class SymbolTests
         Eval("Symbol['for'](123).description;").AsString.Should().Be("123");
     }
 
-    [Fact]
+    [TestMethod]
     public void String_conversion_and_constructor_rules_match_symbol_spec()
     {
         Eval("var s = Symbol('x'); String(s);").AsString.Should().Be("Symbol(x)");
@@ -48,7 +47,7 @@ public class SymbolTests
         construct.Should().Throw<JsThrow>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Symbols_work_as_non_enumerated_property_keys()
     {
         var r = Eval(@"
@@ -63,7 +62,7 @@ public class SymbolTests
         r.AsString.Should().Be("42,true,true,1,true,1,visible");
     }
 
-    [Fact]
+    [TestMethod]
     public void Symbol_keys_flow_through_object_descriptor_apis()
     {
         var r = Eval(@"
@@ -77,7 +76,7 @@ public class SymbolTests
         r.AsString.Should().Be("99,false,false,true");
     }
 
-    [Fact]
+    [TestMethod]
     public void Well_known_symbols_are_defined_distinct_and_stable()
     {
         Eval("typeof Symbol.iterator;").AsString.Should().Be("symbol");
@@ -119,7 +118,7 @@ public class SymbolTests
         distinct.AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void ToPrimitive_well_known_symbol_is_consulted_before_string_or_valueOf()
     {
         var r = Eval(@"

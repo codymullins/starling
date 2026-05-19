@@ -2,17 +2,16 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Intrinsics;
 
 /// <summary>
 /// End-to-end coverage for the ES2024 String constructor and String.prototype
 /// surface installed by <c>StringCtor.Install</c>.
 /// </summary>
+[TestClass]
 public class StringTests
 {
-    [Fact]
+    [TestMethod]
     public void Constructor_call_and_construct_coerce_values()
     {
         Eval("String();").AsString.Should().Be(string.Empty);
@@ -24,7 +23,7 @@ public class StringTests
         Eval("var s = new String('abc'); s[1];").AsString.Should().Be("b");
     }
 
-    [Fact]
+    [TestMethod]
     public void Static_fromCharCode_and_fromCodePoint_handle_code_units_and_scalars()
     {
         Eval("String.fromCharCode(65, 66, 67);").AsString.Should().Be("ABC");
@@ -34,14 +33,14 @@ public class StringTests
         Eval("String.fromCodePoint();").AsString.Should().Be(string.Empty);
     }
 
-    [Fact]
+    [TestMethod]
     public void Static_raw_interleaves_raw_segments_and_substitutions()
     {
         Eval("String.raw({ raw: { '0': 'a', '1': 'c', length: 2 } }, 'b');").AsString.Should().Be("abc");
         Eval("String.raw({ raw: { '0': 'x', length: 1 } });").AsString.Should().Be("x");
     }
 
-    [Fact]
+    [TestMethod]
     public void Code_unit_and_code_point_accessors_cover_edges()
     {
         Eval("'abc'.at(1);").AsString.Should().Be("b");
@@ -55,7 +54,7 @@ public class StringTests
         Eval("'😀'.codePointAt(2);").IsUndefined.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Search_and_position_methods_use_string_patterns()
     {
         Eval("'hello'.includes('ell');").AsBool.Should().BeTrue();
@@ -70,7 +69,7 @@ public class StringTests
         Eval("'banana'.lastIndexOf('na', 3);").AsNumber.Should().Be(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void Slicing_and_substring_methods_clamp_and_swap_indices()
     {
         Eval("'abcdef'.slice(1, 4);").AsString.Should().Be("bcd");
@@ -80,7 +79,7 @@ public class StringTests
         Eval("'abcdef'.substring(-2, 2);").AsString.Should().Be("ab");
     }
 
-    [Fact]
+    [TestMethod]
     public void Concatenation_padding_repeat_and_case_mapping_work()
     {
         Eval("'a'.concat('b', 3);").AsString.Should().Be("ab3");
@@ -94,7 +93,7 @@ public class StringTests
         Eval("'AbC'.toLocaleUpperCase();").AsString.Should().Be("ABC");
     }
 
-    [Fact]
+    [TestMethod]
     public void Trimming_normalization_and_locale_compare_are_invariant()
     {
         Eval("'  hi  '.trim();").AsString.Should().Be("hi");
@@ -106,7 +105,7 @@ public class StringTests
         Eval("'a'.localeCompare('a');").AsNumber.Should().Be(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Replace_and_replaceAll_support_string_patterns_and_substitutions()
     {
         Eval("'banana'.replace('na', 'NA');").AsString.Should().Be("baNAna");
@@ -116,7 +115,7 @@ public class StringTests
         Eval("'ab'.replaceAll('', '.');").AsString.Should().Be(".a.b.");
     }
 
-    [Fact]
+    [TestMethod]
     public void Split_supports_string_separators_limits_and_empty_separator()
     {
         Eval("var a = 'a,b,c'.split(','); a[0] + a[1] + a[2] + a.length;").AsString.Should().Be("abc3");

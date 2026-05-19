@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Intrinsics;
 
 /// <summary>
@@ -13,9 +11,10 @@ namespace Starling.Js.Tests.Intrinsics;
 /// (2) <c>call</c>/<c>apply</c>/<c>bind</c>/<c>toString</c> are installed on
 /// the prototype.
 /// </summary>
+[TestClass]
 public class FunctionTests
 {
-    [Fact]
+    [TestMethod]
     public void Function_is_registered_on_global_and_has_prototype_slot()
     {
         var rt = new JsRuntime();
@@ -27,28 +26,28 @@ public class FunctionTests
         rt.Realm.FunctionConstructor.Should().BeSameAs(Function.AsObject);
     }
 
-    [Fact]
+    [TestMethod]
     public void User_function_has_length_equal_to_declared_arity()
     {
         var r = Run("function f(a, b, c) {} f.length;");
         r.AsNumber.Should().Be(3);
     }
 
-    [Fact]
+    [TestMethod]
     public void User_function_has_name_equal_to_declaration()
     {
         var r = Run("function f(a, b, c) {} f.name;");
         r.AsString.Should().Be("f");
     }
 
-    [Fact]
+    [TestMethod]
     public void Anonymous_function_expression_has_empty_name()
     {
         var r = Run("var g = function() {}; g.name;");
         r.AsString.Should().Be("");
     }
 
-    [Fact]
+    [TestMethod]
     public void Function_prototype_call_rebinds_this()
     {
         var r = Run(@"
@@ -58,7 +57,7 @@ public class FunctionTests
         r.AsNumber.Should().Be(5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Function_prototype_apply_forwards_array_like_arguments()
     {
         var r = Run(@"
@@ -68,7 +67,7 @@ public class FunctionTests
         r.AsNumber.Should().Be(5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Function_prototype_apply_with_null_args_treats_as_empty()
     {
         var r = Run(@"
@@ -78,7 +77,7 @@ public class FunctionTests
         r.AsNumber.Should().Be(7);
     }
 
-    [Fact]
+    [TestMethod]
     public void Function_prototype_apply_with_undefined_args_treats_as_empty()
     {
         var r = Run(@"
@@ -88,7 +87,7 @@ public class FunctionTests
         r.AsNumber.Should().Be(9);
     }
 
-    [Fact]
+    [TestMethod]
     public void Function_prototype_bind_prepends_args_and_rebinds_this()
     {
         var r = Run(@"
@@ -99,7 +98,7 @@ public class FunctionTests
         r.AsNumber.Should().Be(6);
     }
 
-    [Fact]
+    [TestMethod]
     public void Bound_function_inherits_bind_so_chain_works()
     {
         // Prototype chain proof: every bound function must itself respond
@@ -111,7 +110,7 @@ public class FunctionTests
         r.AsString.Should().Be("function");
     }
 
-    [Fact]
+    [TestMethod]
     public void Bound_this_is_sticky_on_first_bind_per_spec()
     {
         // Spec 10.4.1.3 — once a function is bound, further .bind calls
@@ -125,7 +124,7 @@ public class FunctionTests
         r.AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Object_getPrototypeOf_user_function_is_Function_prototype()
     {
         var rt = new JsRuntime();
@@ -137,7 +136,7 @@ public class FunctionTests
         result.AsObject.Prototype.Should().BeSameAs(rt.Realm.FunctionPrototype);
     }
 
-    [Fact]
+    [TestMethod]
     public void New_target_prototype_is_constructor_prototype_slot()
     {
         var rt = new JsRuntime();
@@ -158,7 +157,7 @@ public class FunctionTests
         Fproto.Get("constructor").AsObject.Should().BeSameAs(F.AsObject);
     }
 
-    [Fact]
+    [TestMethod]
     public void Function_prototype_call_self_application_works()
     {
         // Function.prototype.call.call(fn, thisArg) — the canonical
@@ -171,7 +170,7 @@ public class FunctionTests
         r.AsString.Should().Be("hello");
     }
 
-    [Fact]
+    [TestMethod]
     public void Function_prototype_toString_native_function_yields_native_code_marker()
     {
         // Function.prototype.call is itself a realm-aware native function,
@@ -180,7 +179,7 @@ public class FunctionTests
         r.AsString.Should().Contain("[native code]");
     }
 
-    [Fact]
+    [TestMethod]
     public void Function_prototype_toString_user_function_yields_function_name_shape()
     {
         var r = Run(@"
@@ -192,7 +191,7 @@ public class FunctionTests
         r.AsString.Should().StartWith("function greet(");
     }
 
-    [Fact]
+    [TestMethod]
     public void Function_constructor_throws_TypeError_for_dynamic_compilation()
     {
         // Dynamic source compilation is deferred to B-9999. The constructor

@@ -5,13 +5,12 @@ using System.Threading.Channels;
 using FluentAssertions;
 using Starling.Net.Dns;
 using Starling.Net.Tcp;
-using Xunit;
-
 namespace Starling.Net.Tests.Tcp;
 
+[TestClass]
 public class TcpDialerTests
 {
-    [Fact]
+    [TestMethod]
     public void TcpEndpoint_validates_port_range()
     {
         var act1 = () => TcpEndpoint.For("a", 0);
@@ -20,21 +19,21 @@ public class TcpDialerTests
         act2.Should().Throw<ArgumentOutOfRangeException>();
     }
 
-    [Fact]
+    [TestMethod]
     public void TcpEndpoint_rejects_empty_hostname()
     {
         var act = () => TcpEndpoint.For("  ", 80);
         act.Should().Throw<ArgumentException>();
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Direct_dial_round_trips_bytes_through_a_local_listener()
     {
         using var listener = new EchoListener();
         var resolver = new DnsResolver(new NoopTransport());
         var dialer = new TcpDialer(resolver) { ConnectTimeout = TimeSpan.FromSeconds(2) };
 
-        var ct = TestContext.Current.CancellationToken;
+        var ct = CancellationToken.None;
         var dialResult = await dialer.DialDirectAsync(
             listener.LocalEndpoint,
             TcpEndpoint.For("localhost", listener.LocalEndpoint.Port),
@@ -60,7 +59,7 @@ public class TcpDialerTests
         Encoding.UTF8.GetString(buf, 0, total).Should().Be("hello, starling tcp\n");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Connect_to_unbound_port_returns_ConnectFailed()
     {
         // 127.0.0.1 with a very-likely-unbound port; if a system listener
@@ -68,7 +67,7 @@ public class TcpDialerTests
         // that the result type is well-formed.
         var resolver = new DnsResolver(new NoopTransport());
         var dialer = new TcpDialer(resolver) { ConnectTimeout = TimeSpan.FromMilliseconds(500) };
-        var ct = TestContext.Current.CancellationToken;
+        var ct = CancellationToken.None;
         var r = await dialer.DialDirectAsync(
             new IPEndPoint(IPAddress.Loopback, 1),
             TcpEndpoint.For("localhost", 1), ct);
@@ -76,12 +75,12 @@ public class TcpDialerTests
         r.Error.Should().Be(TcpError.ConnectFailed);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Connection_disposes_cleanly()
     {
         using var listener = new EchoListener();
         var dialer = new TcpDialer(new DnsResolver(new NoopTransport()));
-        var ct = TestContext.Current.CancellationToken;
+        var ct = CancellationToken.None;
         var dial = await dialer.DialDirectAsync(
             listener.LocalEndpoint, TcpEndpoint.For("localhost", listener.LocalEndpoint.Port), ct);
 
@@ -91,12 +90,12 @@ public class TcpDialerTests
         await conn.DisposeAsync();
     }
 
-    [Fact]
+    [TestMethod]
     public async Task DisposeAsync_completes_synchronously_when_called_from_synchronization_context()
     {
         using var listener = new EchoListener();
         using var client = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-        await client.ConnectAsync(listener.LocalEndpoint, TestContext.Current.CancellationToken);
+        await client.ConnectAsync(listener.LocalEndpoint, CancellationToken.None);
 
         var conn = new SocketTcpConnection(
             client,
@@ -120,19 +119,19 @@ public class TcpDialerTests
         if (!completedSynchronously)
         {
             await context.DrainAsync();
-            await disposeTask.WaitAsync(TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken);
+            await disposeTask.WaitAsync(TimeSpan.FromSeconds(1), CancellationToken.None);
         }
 
         completedSynchronously.Should().BeTrue(
             "synchronous dispose paths must not post continuations back to UI synchronization contexts");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Read_returns_zero_when_peer_closes()
     {
         using var listener = new EchoListener(closeAfterFirstByte: true);
         var dialer = new TcpDialer(new DnsResolver(new NoopTransport()));
-        var ct = TestContext.Current.CancellationToken;
+        var ct = CancellationToken.None;
         var dial = await dialer.DialDirectAsync(
             listener.LocalEndpoint, TcpEndpoint.For("localhost", listener.LocalEndpoint.Port), ct);
         await using var conn = dial.Value;

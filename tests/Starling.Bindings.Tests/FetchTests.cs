@@ -6,17 +6,16 @@ using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
 using Starling.Net;
-using Xunit;
-
 namespace Starling.Bindings.Tests;
 
 /// <summary>
 /// B5-3 fetch tests. Spins up a local <see cref="HttpListener"/> per test so
 /// the live <see cref="StarlingHttpClient"/> path is exercised end-to-end.
 /// </summary>
+[TestClass]
 public sealed class FetchTests
 {
-    [Fact]
+    [TestMethod]
     public async Task Fetch_text_resolves_with_body_string()
     {
         await using var server = await LocalServer.Start(ctx =>
@@ -34,7 +33,7 @@ public sealed class FetchTests
         env.Runtime.GetGlobal("result").AsString.Should().Be("hello");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Fetch_status_codes_round_trip()
     {
         await using var server = await LocalServer.Start(ctx =>
@@ -63,7 +62,7 @@ public sealed class FetchTests
         env.Runtime.GetGlobal("s3").AsNumber.Should().Be(500);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Fetch_json_parses_body()
     {
         await using var server = await LocalServer.Start(ctx =>
@@ -82,7 +81,7 @@ public sealed class FetchTests
         env.Runtime.GetGlobal("a").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Fetch_response_header_can_be_read()
     {
         await using var server = await LocalServer.Start(ctx =>
@@ -99,7 +98,7 @@ public sealed class FetchTests
         env.Runtime.GetGlobal("v").AsString.Should().Be("yes");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Fetch_post_sends_method_headers_and_body()
     {
         string? method = null;
@@ -125,7 +124,7 @@ public sealed class FetchTests
         body.Should().Be("ping");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Fetch_bad_url_rejects_with_TypeError()
     {
         var env = NewEnv("http://127.0.0.1:1/");
@@ -140,7 +139,7 @@ public sealed class FetchTests
         env.Runtime.GetGlobal("err").AsString.Should().Contain("Failed to fetch");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Response_body_can_only_be_read_once()
     {
         await using var server = await LocalServer.Start(ctx =>
@@ -166,7 +165,7 @@ public sealed class FetchTests
         env.Runtime.GetGlobal("secondMsg").AsString.Should().Be("Body already consumed");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Response_clone_permits_second_read()
     {
         await using var server = await LocalServer.Start(ctx =>
@@ -191,7 +190,7 @@ public sealed class FetchTests
         env.Runtime.GetGlobal("b").AsString.Should().Be("twice");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task AbortController_aborts_in_flight_fetch()
     {
         // Server delays so the abort happens during the request.
@@ -217,7 +216,7 @@ public sealed class FetchTests
         env.Runtime.GetGlobal("errName").AsString.Should().Be("AbortError");
     }
 
-    [Fact]
+    [TestMethod]
     public void Headers_constructor_round_trips()
     {
         var env = NewEnv("http://localhost/");

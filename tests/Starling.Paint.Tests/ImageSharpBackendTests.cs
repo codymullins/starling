@@ -2,7 +2,6 @@ using FluentAssertions;
 using Starling.Common.Image;
 using Starling.Paint.Backend;
 using Starling.Paint.DisplayList;
-using Xunit;
 using LayoutRect = Starling.Layout.Rect;
 using LayoutSize = Starling.Layout.Size;
 using PaintList = Starling.Paint.DisplayList.DisplayList;
@@ -21,6 +20,7 @@ namespace Starling.Paint.Tests;
 /// args were corrected).</item>
 /// </list>
 /// </summary>
+[TestClass]
 public sealed class ImageSharpBackendTests
 {
     /// <summary>
@@ -29,7 +29,7 @@ public sealed class ImageSharpBackendTests
     /// crop outside the image bounds → empty source). The disposal regression
     /// threw <c>ObjectDisposedException</c> once the args were fixed.
     /// </summary>
-    [Fact]
+    [TestMethod]
     public void Draw_image_blits_pixels_into_destination_rect()
     {
         const int W = 40, H = 20;
@@ -67,7 +67,7 @@ public sealed class ImageSharpBackendTests
     /// regresses, the second draw (or both) will throw
     /// ObjectDisposedException from ImageBrushRenderer.
     /// </summary>
-    [Fact]
+    [TestMethod]
     public void Multiple_image_draws_survive_deferred_rasterization()
     {
         using var red = DecodedImage.CreatePooled(20, 20, span => Fill(span, 255, 0, 0, 255));
@@ -94,7 +94,7 @@ public sealed class ImageSharpBackendTests
     /// images missing entirely, so the destination rectangle would contain
     /// nothing but the white background.
     /// </summary>
-    [Fact]
+    [TestMethod]
     public void Image_destination_region_has_non_background_pixels()
     {
         using var green = DecodedImage.CreatePooled(50, 30, span => Fill(span, 0, 200, 0, 255));
@@ -118,7 +118,7 @@ public sealed class ImageSharpBackendTests
     /// the AppHost default (<c>STARLING_PAINT_BACKEND=imagesharp-gpu</c>)
     /// aborted Starling.Gui inside <c>wgpuDeviceCreateTexture</c>.
     /// </summary>
-    [Fact]
+    [TestMethod]
     public void Oversized_viewport_falls_back_to_cpu_instead_of_aborting()
     {
         var list = new PaintList();

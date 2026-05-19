@@ -4,6 +4,7 @@ namespace Starling.Css.Spec.Tests.CssBackgrounds3;
 /// <see href="https://www.w3.org/TR/css-backgrounds-3/#border-radius">CSS Backgrounds 3 §5</see>:
 /// <c>border-radius</c> and its longhands.
 /// </summary>
+[TestClass]
 [Spec("css-backgrounds-3", "https://www.w3.org/TR/css-backgrounds-3/", section: "5")]
 public sealed class BorderRadiusTests
 {

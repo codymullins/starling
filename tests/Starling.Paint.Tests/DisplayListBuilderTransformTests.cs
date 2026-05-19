@@ -4,10 +4,9 @@ using Starling.Html;
 using Starling.Layout;
 using Starling.Layout.Text;
 using Starling.Paint.DisplayList;
-using Xunit;
-
 namespace Starling.Paint.Tests;
 
+[TestClass]
 public sealed class DisplayListBuilderTransformTests
 {
     private static Starling.Paint.DisplayList.DisplayList Build(string html)
@@ -19,7 +18,7 @@ public sealed class DisplayListBuilderTransformTests
         return new DisplayListBuilder().Build(root);
     }
 
-    [Fact]
+    [TestMethod]
     public void Boxes_without_transform_emit_no_transform_bracket()
     {
         var dl = Build("<body><div style=\"background-color:#ff0000;width:100px;height:100px\">x</div></body>");
@@ -27,7 +26,7 @@ public sealed class DisplayListBuilderTransformTests
         dl.Items.OfType<PopTransform>().Should().BeEmpty();
     }
 
-    [Fact]
+    [TestMethod]
     public void Translate_transform_emits_balanced_push_pop_with_translation()
     {
         var dl = Build("<body><div style=\"background-color:#ff0000;width:100px;height:100px;transform:translate(50px,20px)\">x</div></body>");
@@ -46,7 +45,7 @@ public sealed class DisplayListBuilderTransformTests
         first.Matrix.F.Should().BeApproximately(20, 0.001);
     }
 
-    [Fact]
+    [TestMethod]
     public void Rotate_transform_bakes_centre_origin_into_matrix()
     {
         // 90deg rotation around centre of a 100x100 box: a point at (0,0) in

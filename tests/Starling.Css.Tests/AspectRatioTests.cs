@@ -2,13 +2,13 @@ using FluentAssertions;
 using Starling.Css.Parser;
 using Starling.Css.Properties;
 using Starling.Css.Values;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("css-sizing-4", "https://www.w3.org/TR/css-sizing-4/")]
 
+[TestClass]
 public sealed class AspectRatioTests
 {
     private static List<PropertyDeclaration> Expand(string css)
@@ -18,7 +18,7 @@ public sealed class AspectRatioTests
         return rule.Declarations.SelectMany(PropertyRegistry.Parse).ToList();
     }
 
-    [Fact]
+    [TestMethod]
     public void Aspect_ratio_slash_separated_pair_parses_as_value_list()
     {
         var decls = Expand("aspect-ratio: 16 / 9;");
@@ -31,7 +31,7 @@ public sealed class AspectRatioTests
         list.Values[2].Should().Be(new CssNumber(9));
     }
 
-    [Fact]
+    [TestMethod]
     public void Aspect_ratio_auto_keyword()
     {
         var decls = Expand("aspect-ratio: auto;");
@@ -39,7 +39,7 @@ public sealed class AspectRatioTests
         decls.Single(d => d.Id == PropertyId.AspectRatio).Value.Should().Be(new CssKeyword("auto"));
     }
 
-    [Fact]
+    [TestMethod]
     public void Aspect_ratio_single_number()
     {
         var decls = Expand("aspect-ratio: 1.5;");
@@ -47,7 +47,7 @@ public sealed class AspectRatioTests
         decls.Single(d => d.Id == PropertyId.AspectRatio).Value.Should().Be(new CssNumber(1.5));
     }
 
-    [Fact]
+    [TestMethod]
     public void Object_fit_keyword_round_trips()
     {
         var decls = Expand("object-fit: cover;");
@@ -56,7 +56,7 @@ public sealed class AspectRatioTests
         decls.Single().Value.Should().Be(new CssKeyword("cover"));
     }
 
-    [Fact]
+    [TestMethod]
     public void Object_position_value_list()
     {
         var decls = Expand("object-position: 50% 25%;");

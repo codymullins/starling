@@ -40,15 +40,12 @@ namespace Starling.Paint.Backend;
 /// caller-supplied (pre-shaped) glyph run — all text APIs route through the
 /// internal text renderer, which re-shapes via SixLabors.Fonts.
 /// So the backend ignores <c>DrawText.Shaped</c> and re-shapes via
-/// <see cref="RichTextOptions"/>. Goldens between Skia and ImageSharp will
-/// diverge in glyph positioning at sub-pixel resolution; cross-backend tests
-/// must compare via SSIM rather than pixel identity.
+/// <see cref="RichTextOptions"/>.
 /// </para>
 /// <para>
-/// Fonts: <see cref="FontResolver"/> only exposes Skia handles, not raw bytes.
-/// To avoid changing the resolver, the backend loads every <c>*.ttf</c>/<c>*.otf</c>
-/// embedded resource on <c>Starling.Paint.dll</c> into a private
-/// <see cref="FontCollection"/> once at construction. Family lookup walks the
+/// Fonts: the backend loads every <c>*.ttf</c>/<c>*.otf</c> embedded resource
+/// on <c>Starling.Paint.dll</c> into a private <see cref="FontCollection"/>
+/// once at construction. Family lookup walks the
 /// <see cref="FontSpec.Families"/> list against that collection and falls back
 /// to the first registered family (the bundled OpenSans) when nothing matches.
 /// </para>
@@ -170,7 +167,8 @@ internal sealed class ImageSharpBackend : IPaintBackend
     // offscreen surface on the shared process device and exposes the same
     // DrawingCanvas the CPU path uses, so Apply(canvas, item, scale) below is
     // shared verbatim. The starting canvas is cleared to opaque white via a
-    // full-bounds Fill so the white-background invariant matches Skia.
+    // full-bounds Fill to preserve the white-background invariant the CPU
+    // path establishes.
     private RenderedBitmap RenderWebGpu(PaintList list, int width, int height, float scale)
     {
         // Probe the WebGPU environment before constructing a render target so a
@@ -191,7 +189,7 @@ internal sealed class ImageSharpBackend : IPaintBackend
                 "(check runtimes/<rid>/native/libwgpu_native.{dylib,so} in the app bundle), " +
                 "no compatible GPU adapter is visible to the process, or a sandbox blocks " +
                 "Metal/Vulkan/D3D12 access. Fall back to STARLING_PAINT_BACKEND=imagesharp " +
-                "(CPU) or =skia.");
+                "to use the pure-CPU rasterizer.");
 
         WebGPURenderTarget target;
         using (_diag.Span("paint", "raster.context_init"))

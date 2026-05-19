@@ -28,9 +28,9 @@ internal static class BitmapBridge
         using (var fb = bitmap.Lock())
         {
             // RenderedBitmap rows are stride = Width*4 (no padding). Avalonia's
-            // FrameBuffer can report a wider RowBytes (Skia aligns to 4 anyway,
-            // but be defensive in case a future backend pads). Copy row-by-row
-            // when strides differ, single Marshal.Copy when they match.
+            // FrameBuffer can report a wider RowBytes if it pads — copy
+            // row-by-row when strides differ, single Marshal.Copy when they
+            // match.
             var srcStride = source.Width * 4;
             if (fb.RowBytes == srcStride)
             {

@@ -2,13 +2,13 @@ using FluentAssertions;
 using Starling.Css.Parser;
 using Starling.Css.Properties;
 using Starling.Css.Values;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("css-flexbox-1", "https://www.w3.org/TR/css-flexbox-1/")]
 
+[TestClass]
 public sealed class FlexPropertyTests
 {
     private static List<PropertyDeclaration> Expand(string css)
@@ -18,7 +18,7 @@ public sealed class FlexPropertyTests
         return rule.Declarations.SelectMany(PropertyRegistry.Parse).ToList();
     }
 
-    [Fact]
+    [TestMethod]
     public void Flex_shorthand_expands_to_grow_shrink_basis()
     {
         var decls = Expand("flex: 1 1 auto;");
@@ -29,7 +29,7 @@ public sealed class FlexPropertyTests
         decls.Single(d => d.Id == PropertyId.FlexBasis).Value.Should().Be(new CssKeyword("auto"));
     }
 
-    [Fact]
+    [TestMethod]
     public void Flex_none_expands_to_zero_zero_auto()
     {
         var decls = Expand("flex: none;");
@@ -39,7 +39,7 @@ public sealed class FlexPropertyTests
         decls.Single(d => d.Id == PropertyId.FlexBasis).Value.Should().Be(new CssKeyword("auto"));
     }
 
-    [Fact]
+    [TestMethod]
     public void Flex_auto_expands_to_one_one_auto()
     {
         var decls = Expand("flex: auto;");
@@ -49,7 +49,7 @@ public sealed class FlexPropertyTests
         decls.Single(d => d.Id == PropertyId.FlexBasis).Value.Should().Be(new CssKeyword("auto"));
     }
 
-    [Fact]
+    [TestMethod]
     public void Flex_single_number_sets_grow_and_zero_basis()
     {
         var decls = Expand("flex: 2;");
@@ -58,7 +58,7 @@ public sealed class FlexPropertyTests
         decls.Single(d => d.Id == PropertyId.FlexBasis).Value.Should().Be(new CssLength(0, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Flex_with_basis_length_assigns_basis()
     {
         var decls = Expand("flex: 0 1 200px;");
@@ -68,7 +68,7 @@ public sealed class FlexPropertyTests
         decls.Single(d => d.Id == PropertyId.FlexBasis).Value.Should().Be(new CssLength(200, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Flex_direction_parses_keywords()
     {
         var decls = Expand("flex-direction: row-reverse;");
@@ -77,7 +77,7 @@ public sealed class FlexPropertyTests
         decls.Single().Value.Should().Be(new CssKeyword("row-reverse"));
     }
 
-    [Fact]
+    [TestMethod]
     public void Flex_flow_shorthand_splits_direction_and_wrap()
     {
         var decls = Expand("flex-flow: column wrap;");
@@ -86,7 +86,7 @@ public sealed class FlexPropertyTests
         decls.Single(d => d.Id == PropertyId.FlexWrap).Value.Should().Be(new CssKeyword("wrap"));
     }
 
-    [Fact]
+    [TestMethod]
     public void Gap_shorthand_sets_row_and_column_gap()
     {
         var decls = Expand("gap: 8px 16px;");
@@ -95,7 +95,7 @@ public sealed class FlexPropertyTests
         decls.Single(d => d.Id == PropertyId.ColumnGap).Value.Should().Be(new CssLength(16, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Gap_single_value_copies_to_both()
     {
         var decls = Expand("gap: 12px;");
@@ -104,7 +104,7 @@ public sealed class FlexPropertyTests
         decls.Single(d => d.Id == PropertyId.ColumnGap).Value.Should().Be(new CssLength(12, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Place_items_shorthand_expands_align_and_justify()
     {
         var decls = Expand("place-items: center start;");
@@ -113,7 +113,7 @@ public sealed class FlexPropertyTests
         decls.Single(d => d.Id == PropertyId.JustifyItems).Value.Should().Be(new CssKeyword("start"));
     }
 
-    [Fact]
+    [TestMethod]
     public void Order_parses_as_number()
     {
         var decls = Expand("order: -1;");

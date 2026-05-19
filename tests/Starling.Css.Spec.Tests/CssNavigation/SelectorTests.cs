@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssNavigation;
 /// <summary>
 /// Selector conformance for <see href="https://drafts.csswg.org/css-navigation-1/">CSS Route Matching</see>.
 /// </summary>
+[TestClass]
 [Spec("css-navigation", "https://drafts.csswg.org/css-navigation-1/")]
 public sealed class SelectorTests
 {

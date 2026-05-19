@@ -42,10 +42,12 @@
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http"            Version="1.15.1" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime"         Version="1.15.1" />
 
-    <!-- Tests + bench -->
-    <PackageVersion Include="xunit.v3"                     Version="1.0.0" />
-    <PackageVersion Include="xunit.runner.visualstudio"    Version="3.0.0" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk"       Version="17.13.0" />
+    <!-- Tests + bench. Tests use MSTest on Microsoft Testing Platform (MTP);
+         each test csproj sets EnableMSTestRunner + OutputType=Exe via
+         Directory.Build.props so it produces a runnable MTP host. No
+         Microsoft.NET.Test.Sdk reference is needed under MTP. -->
+    <PackageVersion Include="MSTest"                       Version="4.2.3" />
+    <PackageVersion Include="MSTest.TestFramework"         Version="4.2.3" />
     <PackageVersion Include="FluentAssertions"             Version="6.12.2" />
     <PackageVersion Include="BenchmarkDotNet"              Version="0.14.0" />
 

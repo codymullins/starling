@@ -1,11 +1,8 @@
 using FluentAssertions;
 using Starling.Css.Cascade;
-using Starling.Gui;
 using Starling.Html;
 using Starling.Layout;
 using Starling.Layout.Box;
-using Xunit;
-
 namespace Starling.Gui.Tests;
 
 /// <summary>
@@ -14,6 +11,7 @@ namespace Starling.Gui.Tests;
 /// real layout to keep the test data honest about glyph positions, line
 /// breaks, and whitespace fragments.
 /// </summary>
+[TestClass]
 public sealed class SelectionModelTests
 {
     private static BlockBox Layout(string html, Size viewport)
@@ -24,7 +22,7 @@ public sealed class SelectionModelTests
 
     // ---- CaretFromPoint ----------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void CaretFromPoint_at_fragment_start_returns_offset_zero()
     {
         var placed = Place("<body><p>hello world</p></body>", new Size(800, 600));
@@ -36,7 +34,7 @@ public sealed class SelectionModelTests
         caret.CharOffset.Should().Be(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void CaretFromPoint_past_fragment_end_returns_text_length()
     {
         var placed = Place("<body><p>hello world</p></body>", new Size(800, 600));
@@ -57,7 +55,7 @@ public sealed class SelectionModelTests
         }
     }
 
-    [Fact]
+    [TestMethod]
     public void CaretFromPoint_in_middle_of_word_lands_between_characters()
     {
         var placed = Place("<body><p>hello world</p></body>", new Size(800, 600));
@@ -71,7 +69,7 @@ public sealed class SelectionModelTests
         caret.CharOffset.Should().BeInRange(1, 4);
     }
 
-    [Fact]
+    [TestMethod]
     public void CaretFromPoint_off_the_text_line_clamps_to_a_caret_on_that_line()
     {
         var placed = Place("<body><p>hello world</p></body>", new Size(800, 600));
@@ -88,7 +86,7 @@ public sealed class SelectionModelTests
 
     // ---- Order -------------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Order_swaps_carets_when_the_end_is_before_the_start()
     {
         var a = new SelectionModel.Caret(2, 3);
@@ -100,7 +98,7 @@ public sealed class SelectionModelTests
         range.End.Should().Be(a);
     }
 
-    [Fact]
+    [TestMethod]
     public void Order_handles_same_fragment_swap()
     {
         var a = new SelectionModel.Caret(1, 4);
@@ -114,7 +112,7 @@ public sealed class SelectionModelTests
 
     // ---- RectsFor: sub-fragment slicing -----------------------------------
 
-    [Fact]
+    [TestMethod]
     public void RectsFor_sub_range_within_a_single_fragment_produces_one_sliced_rect()
     {
         var placed = Place("<body><p>hello world</p></body>", new Size(800, 600));
@@ -138,7 +136,7 @@ public sealed class SelectionModelTests
         r.Height.Should().Be(hello.Height);
     }
 
-    [Fact]
+    [TestMethod]
     public void RectsFor_sub_range_widths_sum_to_full_fragment_when_split_in_two()
     {
         var placed = Place("<body><p>hello world</p></body>", new Size(800, 600));
@@ -161,7 +159,7 @@ public sealed class SelectionModelTests
         (right[0].X + right[0].Width).Should().BeApproximately(hello.X + hello.Width, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void RectsFor_range_across_three_fragments_produces_three_rects()
     {
         // hello / space / world — selection from middle of hello to middle
@@ -187,7 +185,7 @@ public sealed class SelectionModelTests
         rects[1].Width.Should().BeApproximately(space.Width, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void RectsFor_empty_range_produces_no_rects()
     {
         var placed = Place("<body><p>hello world</p></body>", new Size(800, 600));
@@ -199,7 +197,7 @@ public sealed class SelectionModelTests
 
     // ---- TextFor: substring across fragments ------------------------------
 
-    [Fact]
+    [TestMethod]
     public void TextFor_sub_range_within_a_single_fragment_returns_the_substring()
     {
         var placed = Place("<body><p>hello world</p></body>", new Size(800, 600));
@@ -212,7 +210,7 @@ public sealed class SelectionModelTests
         SelectionModel.TextFor(placed, range).Should().Be("ell");
     }
 
-    [Fact]
+    [TestMethod]
     public void TextFor_range_across_fragments_concatenates_substrings_including_whitespace()
     {
         // Selecting "llo wo" from "hello world" — start inside "hello",
@@ -228,7 +226,7 @@ public sealed class SelectionModelTests
         SelectionModel.TextFor(placed, range).Should().Be("llo wo");
     }
 
-    [Fact]
+    [TestMethod]
     public void TextFor_full_word_to_full_word_produces_exact_three_fragment_join()
     {
         var placed = Place("<body><p>hello world</p></body>", new Size(800, 600));
@@ -243,7 +241,7 @@ public sealed class SelectionModelTests
         SelectionModel.TextFor(placed, range).Should().Be("hello world");
     }
 
-    [Fact]
+    [TestMethod]
     public void TextFor_inserts_space_when_line_wrap_dropped_an_implicit_one()
     {
         // Very narrow viewport forces "hello world" to wrap; if the inline
@@ -265,7 +263,7 @@ public sealed class SelectionModelTests
         SelectionModel.TextFor(placed, range).Should().Be("hello world");
     }
 
-    [Fact]
+    [TestMethod]
     public void TextFor_empty_range_returns_empty_string()
     {
         var placed = Place("<body><p>hello world</p></body>", new Size(800, 600));
@@ -277,7 +275,7 @@ public sealed class SelectionModelTests
 
     // ---- End-to-end: round-trip through CaretFromPoint --------------------
 
-    [Fact]
+    [TestMethod]
     public void CaretFromPoint_round_trip_selects_a_sub_word_substring()
     {
         // Drive the model end-to-end: drag from the left edge of one
@@ -316,7 +314,7 @@ public sealed class SelectionModelTests
     private static BoxHitTester.PlacedFragment SyntheticFragment(string text, double width)
         => new(X: 0, Y: 0, Width: width, Height: 20, Text: text, Shaped: null);
 
-    [Fact]
+    [TestMethod]
     public void CaretFromPoint_in_emoji_surrogate_returns_grapheme_boundary()
     {
         // "😀" is one cluster spanning a surrogate pair (2 UTF-16 units).
@@ -333,7 +331,7 @@ public sealed class SelectionModelTests
         }
     }
 
-    [Fact]
+    [TestMethod]
     public void CaretFromPoint_in_combining_mark_returns_grapheme_boundary()
     {
         // "éo" — 'e' + combining acute (forms é) + 'o'. Three UTF-16
@@ -350,7 +348,7 @@ public sealed class SelectionModelTests
         }
     }
 
-    [Fact]
+    [TestMethod]
     public void CaretFromPoint_in_zwj_family_treats_sequence_as_one_cluster()
     {
         // "👨‍👩‍👧" — three person emoji glued by zero-width
@@ -368,7 +366,7 @@ public sealed class SelectionModelTests
         }
     }
 
-    [Fact]
+    [TestMethod]
     public void CaretFromPoint_in_regional_indicator_flag_treats_pair_as_one_cluster()
     {
         // Two regional-indicator code points form one flag cluster.
@@ -383,7 +381,7 @@ public sealed class SelectionModelTests
         }
     }
 
-    [Fact]
+    [TestMethod]
     public void CaretFromPoint_in_variation_selector_does_not_split_base()
     {
         // U+2764 ❤ + U+FE0F (VS-16) presents as a red heart emoji. VS-16
@@ -400,7 +398,7 @@ public sealed class SelectionModelTests
         }
     }
 
-    [Fact]
+    [TestMethod]
     public void CaretFromPoint_in_skin_tone_modifier_keeps_emoji_intact()
     {
         // 👋🏽 = waving hand + medium skin tone modifier. Four UTF-16 units,
@@ -416,7 +414,7 @@ public sealed class SelectionModelTests
         }
     }
 
-    [Fact]
+    [TestMethod]
     public void CaretFromPoint_in_mixed_ascii_and_emoji_places_caret_at_each_cluster_boundary()
     {
         // "hi 😀 yo" — eight UTF-16 units, seven clusters
@@ -436,7 +434,7 @@ public sealed class SelectionModelTests
         }
     }
 
-    [Fact]
+    [TestMethod]
     public void RectsFor_through_emoji_slices_on_grapheme_boundaries()
     {
         // Range covering just the emoji cluster of "hi 😀 yo": offsets
@@ -456,7 +454,7 @@ public sealed class SelectionModelTests
         rects[0].Width.Should().BeApproximately(10, 0.001);
     }
 
-    [Fact]
+    [TestMethod]
     public void TextFor_across_emoji_returns_well_formed_substring()
     {
         // "hi 😀 yo" range (0,1) → (0,5) → "i 😀". Exactly four UTF-16

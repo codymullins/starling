@@ -23,7 +23,6 @@
     <ProjectReference Include="..\Starling.Css\Starling.Css.csproj" />
     <ProjectReference Include="..\Starling.Layout\Starling.Layout.csproj" />
     <ProjectReference Include="..\Starling.Paint\Starling.Paint.csproj" />
-    <ProjectReference Include="..\Starling.Loop\Starling.Loop.csproj" />
     <ProjectReference Include="..\Starling.Bindings\Starling.Bindings.csproj" />
     <ProjectReference Include="..\Starling.Js\Starling.Js.csproj" />
   </ItemGroup>

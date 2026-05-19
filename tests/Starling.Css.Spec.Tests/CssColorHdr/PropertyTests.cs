@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssColorHdr;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-color-hdr-1/">CSS Color HDR Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-color-hdr", "https://drafts.csswg.org/css-color-hdr-1/")]
 public sealed class PropertyTests
 {

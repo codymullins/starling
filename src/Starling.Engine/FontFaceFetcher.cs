@@ -105,8 +105,8 @@ internal sealed class FontFaceFetcher : IDisposable
         // We unwrap WOFF / WOFF2 in FontFaceRegistry.TryAdd (Brotli is in
         // System.IO.Compression). WOFF2 files using the glyf/loca transform
         // still fail — declare a TTF/OTF fallback in your src list if your
-        // visitor base needs the modern format. SVG fonts are skipped: they
-        // are obsolete and Skia doesn't take them.
+        // visitor base needs the modern format. SVG fonts are skipped — the
+        // format is obsolete and the rasterizer can't consume them.
         if (string.IsNullOrEmpty(format)) return true;
         var f = format.Trim().ToLowerInvariant();
         return f is "truetype" or "opentype" or "ttf" or "otf" or "woff" or "woff2";

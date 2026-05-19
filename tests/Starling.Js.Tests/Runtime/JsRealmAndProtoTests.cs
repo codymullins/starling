@@ -1,16 +1,15 @@
 using FluentAssertions;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Runtime;
 
 /// <summary>
 /// Pins the B0 runtime foundations: prototype-chain Get, property descriptors,
 /// JsRealm slot wiring, AbstractOperations.Call/Construct dispatch.
 /// </summary>
+[TestClass]
 public class JsRealmAndProtoTests
 {
-    [Fact]
+    [TestMethod]
     public void JsObject_Get_walks_the_prototype_chain()
     {
         var proto = new JsObject();
@@ -22,7 +21,7 @@ public class JsRealmAndProtoTests
         obj.HasOwn("inherited").Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void JsObject_Set_creates_own_property_even_when_proto_has_one()
     {
         var proto = new JsObject();
@@ -36,7 +35,7 @@ public class JsRealmAndProtoTests
         obj.HasOwn("k").Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Non_writable_descriptor_rejects_Set()
     {
         var obj = new JsObject();
@@ -48,7 +47,7 @@ public class JsRealmAndProtoTests
         obj.Get("readonly").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Delete_rejects_non_configurable_property()
     {
         var obj = new JsObject();
@@ -59,7 +58,7 @@ public class JsRealmAndProtoTests
         obj.HasOwn("locked").Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void SetPrototypeOf_rejects_cycle()
     {
         var a = new JsObject();
@@ -68,7 +67,7 @@ public class JsRealmAndProtoTests
         a.SetPrototypeOf(b).Should().BeFalse(); // would form a -> b -> a cycle.
     }
 
-    [Fact]
+    [TestMethod]
     public void EnumerableKeys_filters_non_enumerable_slots()
     {
         var obj = new JsObject();
@@ -81,7 +80,7 @@ public class JsRealmAndProtoTests
 
     // ------------------------------------------------------------------ Realm
 
-    [Fact]
+    [TestMethod]
     public void Realm_pre_wires_prototype_chains()
     {
         var realm = new JsRealm();
@@ -92,7 +91,7 @@ public class JsRealmAndProtoTests
         realm.ErrorPrototype.Prototype.Should().BeSameAs(realm.ObjectPrototype);
     }
 
-    [Fact]
+    [TestMethod]
     public void NewError_attaches_message_slot()
     {
         var realm = new JsRealm();
@@ -104,7 +103,7 @@ public class JsRealmAndProtoTests
 
     // ------------------------------------------------------------ AbstractOps
 
-    [Fact]
+    [TestMethod]
     public void AbstractOperations_IsCallable_recognizes_natives_and_bound()
     {
         var realm = new JsRealm();
@@ -118,7 +117,7 @@ public class JsRealmAndProtoTests
         AbstractOperations.IsCallable(JsValue.Object(new JsObject())).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void AbstractOperations_Call_dispatches_to_native()
     {
         JsValue captured = JsValue.Undefined;
@@ -134,7 +133,7 @@ public class JsRealmAndProtoTests
         captured.AsString.Should().Be("hi");
     }
 
-    [Fact]
+    [TestMethod]
     public void AbstractOperations_Construct_on_native_invokes_with_new_target_as_this()
     {
         JsValue thisSeen = JsValue.Undefined;
@@ -150,7 +149,7 @@ public class JsRealmAndProtoTests
         thisSeen.AsObject.Should().BeSameAs(nat);
     }
 
-    [Fact]
+    [TestMethod]
     public void Non_constructable_native_rejected_by_Construct()
     {
         var nat = new JsNativeFunction("notCtor", _ => JsValue.Undefined); // legacy ctor → isConstructor=false
@@ -158,7 +157,7 @@ public class JsRealmAndProtoTests
         act.Should().Throw<JsThrow>();
     }
 
-    [Fact]
+    [TestMethod]
     public void SameValue_treats_NaN_as_equal_and_distinguishes_signed_zero()
     {
         AbstractOperations.SameValue(JsValue.Number(double.NaN), JsValue.Number(double.NaN)).Should().BeTrue();

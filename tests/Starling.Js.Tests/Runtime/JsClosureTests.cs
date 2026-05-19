@@ -2,17 +2,16 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Runtime;
 
 /// <summary>
 /// Closure capture tests. Inner functions read and write enclosing-scope
 /// locals via Cell-based upvalues (live binding semantics).
 /// </summary>
+[TestClass]
 public class JsClosureTests
 {
-    [Fact]
+    [TestMethod]
     public void MakeAdder_returns_a_function_that_remembers_n()
     {
         var r = Eval(@"
@@ -25,7 +24,7 @@ public class JsClosureTests
         r.AsNumber.Should().Be(8);
     }
 
-    [Fact]
+    [TestMethod]
     public void Closure_captures_param_at_definition_time()
     {
         // Each call to makeAdder produces an independent closure with
@@ -41,7 +40,7 @@ public class JsClosureTests
         r.AsNumber.Should().Be(17);
     }
 
-    [Fact]
+    [TestMethod]
     public void Closure_captures_local_var()
     {
         var r = Eval(@"
@@ -54,7 +53,7 @@ public class JsClosureTests
         r.AsString.Should().Be("hello, world");
     }
 
-    [Fact]
+    [TestMethod]
     public void Function_expression_assigned_to_var_captures_outer_var()
     {
         // Function-expression form is what works in this slice; nested
@@ -72,7 +71,7 @@ public class JsClosureTests
         r.AsNumber.Should().Be(7);
     }
 
-    [Fact]
+    [TestMethod]
     public void Sibling_closures_do_not_share_captured_state()
     {
         // Snapshot semantics: each call to make() captures a fresh
@@ -89,7 +88,7 @@ public class JsClosureTests
         r.AsNumber.Should().Be(123);
     }
 
-    [Fact]
+    [TestMethod]
     public void Chained_capture_skipping_intermediate_function()
     {
         // The middle function doesn't reference n itself, but the
@@ -107,7 +106,7 @@ public class JsClosureTests
         r.AsNumber.Should().Be(42);
     }
 
-    [Fact]
+    [TestMethod]
     public void Curry_two_levels_of_capture()
     {
         var r = Eval(@"
@@ -121,7 +120,7 @@ public class JsClosureTests
         r.AsNumber.Should().Be(321);
     }
 
-    [Fact]
+    [TestMethod]
     public void Closure_observes_later_local_reassignment()
     {
         // Closures use Cell-based upvalues (live binding semantics); a
@@ -139,7 +138,7 @@ public class JsClosureTests
         r.AsNumber.Should().Be(999);
     }
 
-    [Fact]
+    [TestMethod]
     public void Closure_value_captured_per_call_not_shared_across_calls()
     {
         // Two activations of the same outer function must yield two

@@ -2,8 +2,6 @@ using FluentAssertions;
 using SixLabors.ImageSharp;
 using Starling.Common.Diagnostics;
 using Starling.Engine;
-using Xunit;
-
 namespace Starling.E2E;
 
 /// <summary>
@@ -12,10 +10,11 @@ namespace Starling.E2E;
 /// <c>Category=GoldenImage</c> so CI runs it via the dedicated step in
 /// <c>.github/workflows/ci.yml</c>.
 /// </summary>
-[Trait("Category", "GoldenImage")]
+[TestClass]
+[TestCategory("GoldenImage")]
 public class RenderE2ETests
 {
-    [Fact]
+    [TestMethod]
     public void Render_hello_html_fixture()
     {
         var repoRoot = LocateRepoRoot();
@@ -46,16 +45,16 @@ public class RenderE2ETests
     }
 
     /// <summary>
-    /// Walk up from the test binary until we find <c>Starling.sln</c>. Avoids
+    /// Walk up from the test binary until we find <c>Starling.slnx</c>. Avoids
     /// hard-coding the repo path so CI on win/mac/linux all work.
     /// </summary>
     private static string LocateRepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Starling.sln")))
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Starling.slnx")))
             dir = dir.Parent;
         if (dir is null)
-            throw new InvalidOperationException("Could not locate Starling.sln walking up from the test binary.");
+            throw new InvalidOperationException("Could not locate Starling.slnx walking up from the test binary.");
         return dir.FullName;
     }
 }

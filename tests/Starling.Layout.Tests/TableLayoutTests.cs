@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Css.Cascade;
 using Starling.Html;
 using Starling.Layout.Box;
-using Xunit;
-
 namespace Starling.Layout.Tests;
 
 /// <summary>
@@ -12,6 +10,7 @@ namespace Starling.Layout.Tests;
 /// stop-gap until a real CSS table formatting context lands; once that
 /// exists, these tests should be replaced with proper table-layout tests.
 /// </summary>
+[TestClass]
 public sealed class TableLayoutTests
 {
     private static LayoutEngine NewEngine() => new(new StyleEngine());
@@ -19,7 +18,7 @@ public sealed class TableLayoutTests
     private static BlockBox Layout(string html, Size viewport)
         => NewEngine().LayoutDocument(HtmlParser.Parse(html), viewport);
 
-    [Fact]
+    [TestMethod]
     public void Cells_in_a_single_row_flow_horizontally()
     {
         var root = Layout(
@@ -39,7 +38,7 @@ public sealed class TableLayoutTests
         cells[1].Frame.X.Should().BeLessThan(cells[2].Frame.X);
     }
 
-    [Fact]
+    [TestMethod]
     public void Rows_stack_vertically()
     {
         var root = Layout(
@@ -64,7 +63,7 @@ public sealed class TableLayoutTests
         secondAbs.Should().BeGreaterThan(firstAbs);
     }
 
-    [Fact]
+    [TestMethod]
     public void Table_is_block_level_and_stacks_after_siblings()
     {
         // A <div> followed by a <table> followed by a <div>: the table should

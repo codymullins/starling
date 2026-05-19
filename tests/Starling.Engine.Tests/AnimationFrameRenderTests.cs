@@ -1,7 +1,5 @@
 using FluentAssertions;
 using SixLabors.ImageSharp;
-using Xunit;
-
 namespace Starling.Engine.Tests;
 
 /// <summary>
@@ -14,9 +12,10 @@ namespace Starling.Engine.Tests;
 /// cheaper to maintain than a recorded bitmap but sufficient to prove the
 /// rAF → cascade → paint plumbing is wired end-to-end.
 /// </summary>
+[TestClass]
 public class AnimationFrameRenderTests
 {
-    [Fact]
+    [TestMethod]
     public async Task RenderFrame_samples_keyframe_animation_at_different_times()
     {
         // A 1s linear opacity fade from 0 → 1 driven by @keyframes. At t=0
@@ -37,7 +36,7 @@ public class AnimationFrameRenderTests
             var laid = await engine.LayoutPageAsync(
                 "file://" + fixture.Replace('\\', '/'),
                 new RenderOptions(new Size(300, 300), FontSize: 16f),
-                TestContext.Current.CancellationToken);
+                CancellationToken.None);
 
             laid.IsOk.Should().BeTrue(laid.IsErr ? laid.Error.Message : "");
             using var page = laid.Value;
@@ -62,7 +61,7 @@ public class AnimationFrameRenderTests
         }
     }
 
-    [Fact]
+    [TestMethod]
     public async Task RenderFrame_with_no_animation_is_deterministic()
     {
         // Sanity check the other side: a static page repainted at two
@@ -79,7 +78,7 @@ public class AnimationFrameRenderTests
             var laid = await engine.LayoutPageAsync(
                 "file://" + fixture.Replace('\\', '/'),
                 new RenderOptions(new Size(200, 200), FontSize: 16f),
-                TestContext.Current.CancellationToken);
+                CancellationToken.None);
 
             laid.IsOk.Should().BeTrue(laid.IsErr ? laid.Error.Message : "");
             using var page = laid.Value;

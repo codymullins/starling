@@ -1,7 +1,4 @@
 using FluentAssertions;
-using Starling.Gui;
-using Xunit;
-
 namespace Starling.Gui.Tests;
 
 /// <summary>
@@ -12,9 +9,10 @@ namespace Starling.Gui.Tests;
 /// <c>file://</c> URL and bypassing the page's base. These tests pin the
 /// WHATWG resolution path so that regression cannot return.
 /// </summary>
+[TestClass]
 public sealed class LinkResolverTests
 {
-    [Fact]
+    [TestMethod]
     public void Absolute_path_href_resolves_against_https_base()
     {
         // The exact failure mode the user reported: clicking
@@ -27,10 +25,10 @@ public sealed class LinkResolverTests
         resolved.Should().Be("https://www.mcmaster.com/products/power-transmission/");
     }
 
-    [Theory]
-    [InlineData("/products/x", "https://www.mcmaster.com/")]
-    [InlineData("/a/b", "https://example.com/")]
-    [InlineData("/", "https://example.com/page")]
+    [TestMethod]
+    [DataRow("/products/x", "https://www.mcmaster.com/")]
+    [DataRow("/a/b", "https://example.com/")]
+    [DataRow("/", "https://example.com/page")]
     public void Absolute_path_hrefs_never_resolve_to_file_scheme(string href, string baseUrl)
     {
         var resolved = LinkResolver.Resolve(href, baseUrl);
@@ -39,7 +37,7 @@ public sealed class LinkResolverTests
         resolved.Should().NotStartWith("file:");
     }
 
-    [Fact]
+    [TestMethod]
     public void Absolute_path_href_replaces_base_path()
     {
         // The base path /old/page must be discarded when the href is
@@ -55,7 +53,7 @@ public sealed class LinkResolverTests
         resolved.Should().NotContain("/old/");
     }
 
-    [Fact]
+    [TestMethod]
     public void Absolute_https_href_is_passed_through()
     {
         var resolved = LinkResolver.Resolve(
@@ -65,7 +63,7 @@ public sealed class LinkResolverTests
         resolved.Should().Be("https://other.example/x");
     }
 
-    [Fact]
+    [TestMethod]
     public void Dot_relative_href_resolves_against_directory_base()
     {
         var resolved = LinkResolver.Resolve(
@@ -75,7 +73,7 @@ public sealed class LinkResolverTests
         resolved.Should().Be("https://example.com/a/b/foo/bar");
     }
 
-    [Fact]
+    [TestMethod]
     public void Parent_relative_href_pops_a_segment()
     {
         var resolved = LinkResolver.Resolve(
@@ -85,7 +83,7 @@ public sealed class LinkResolverTests
         resolved.Should().Be("https://example.com/a/sibling/page");
     }
 
-    [Fact]
+    [TestMethod]
     public void Query_only_href_replaces_base_query()
     {
         var resolved = LinkResolver.Resolve(
@@ -95,7 +93,7 @@ public sealed class LinkResolverTests
         resolved.Should().Be("https://example.com/search?page=2");
     }
 
-    [Fact]
+    [TestMethod]
     public void Absolute_href_resolves_without_a_base()
     {
         var resolved = LinkResolver.Resolve("https://example.com/x", baseUrl: null);
@@ -103,7 +101,7 @@ public sealed class LinkResolverTests
         resolved.Should().Be("https://example.com/x");
     }
 
-    [Fact]
+    [TestMethod]
     public void Relative_href_without_base_returns_null()
     {
         var resolved = LinkResolver.Resolve("/foo", baseUrl: null);
@@ -111,7 +109,7 @@ public sealed class LinkResolverTests
         resolved.Should().BeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Empty_base_string_is_treated_as_missing_base()
     {
         var resolved = LinkResolver.Resolve("https://example.com/x", baseUrl: "");

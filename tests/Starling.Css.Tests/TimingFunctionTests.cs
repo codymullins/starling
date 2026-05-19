@@ -1,13 +1,12 @@
 using FluentAssertions;
 using Starling.Css.Animations;
 using Starling.Css.Values;
-using Xunit;
-
 namespace Starling.Css.Tests;
 
+[TestClass]
 public sealed class TimingFunctionTests
 {
-    [Fact]
+    [TestMethod]
     public void Linear_is_identity()
     {
         TimingFunction.Linear.Evaluate(0).Should().Be(0);
@@ -15,7 +14,7 @@ public sealed class TimingFunctionTests
         TimingFunction.Linear.Evaluate(1).Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Cubic_bezier_endpoints_are_exact()
     {
         TimingFunction.Ease.Evaluate(0).Should().Be(0);
@@ -24,7 +23,7 @@ public sealed class TimingFunctionTests
         TimingFunction.EaseOut.Evaluate(1).Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Ease_is_monotonically_non_decreasing()
     {
         double prev = 0;
@@ -36,7 +35,7 @@ public sealed class TimingFunctionTests
         }
     }
 
-    [Fact]
+    [TestMethod]
     public void Ease_in_starts_slow()
     {
         // ease-in spec: cubic-bezier(0.42, 0, 1, 1). At t=0.5 the output
@@ -44,13 +43,13 @@ public sealed class TimingFunctionTests
         TimingFunction.EaseIn.Evaluate(0.5).Should().BeLessThan(0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Ease_out_starts_fast()
     {
         TimingFunction.EaseOut.Evaluate(0.5).Should().BeGreaterThan(0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Cubic_bezier_solves_x_within_tolerance()
     {
         var fn = new CubicBezierTimingFunction(0.25, 0.1, 0.25, 1.0);
@@ -66,7 +65,7 @@ public sealed class TimingFunctionTests
         }
     }
 
-    [Fact]
+    [TestMethod]
     public void Steps_jump_end_quantises_to_n_levels()
     {
         var s = new StepsTimingFunction(4, StepPosition.JumpEnd);
@@ -77,7 +76,7 @@ public sealed class TimingFunctionTests
         s.Evaluate(1.0).Should().Be(1.0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Steps_jump_start_outputs_first_level_at_zero()
     {
         var s = new StepsTimingFunction(4, StepPosition.JumpStart);
@@ -85,7 +84,7 @@ public sealed class TimingFunctionTests
         s.Evaluate(1.0).Should().Be(1.0);
     }
 
-    [Fact]
+    [TestMethod]
     public void FromCss_parses_keywords()
     {
         TimingFunction.FromCss(new CssKeyword("linear")).Should().Be(TimingFunction.Linear);
@@ -93,7 +92,7 @@ public sealed class TimingFunctionTests
         TimingFunction.FromCss(new CssKeyword("ease-in")).Should().Be(TimingFunction.EaseIn);
     }
 
-    [Fact]
+    [TestMethod]
     public void FromCss_parses_cubic_bezier()
     {
         var fn = TimingFunction.FromCss(new CssFunctionValue("cubic-bezier", new CssValue[]
@@ -104,7 +103,7 @@ public sealed class TimingFunctionTests
           .Which.Should().Be(new CubicBezierTimingFunction(0.1, 0.2, 0.3, 0.4));
     }
 
-    [Fact]
+    [TestMethod]
     public void FromCss_invalid_falls_back_to_ease()
     {
         TimingFunction.FromCss(new CssKeyword("nonsense")).Should().Be(TimingFunction.Ease);

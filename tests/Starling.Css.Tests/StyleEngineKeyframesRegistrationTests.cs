@@ -1,19 +1,19 @@
 using FluentAssertions;
 using Starling.Css.Cascade;
 using Starling.Css.Parser;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("css-animations-1", "https://www.w3.org/TR/css-animations-1/")]
 
+[TestClass]
 public sealed class StyleEngineKeyframesRegistrationTests
 {
     private static StyleSheet ParseSheet(string source)
         => new CssParser(source).ParseStyleSheet(StyleOrigin.Author);
 
-    [Fact]
+    [TestMethod]
     public void Adding_sheet_with_keyframes_registers_rule_by_name()
     {
         var engine = new StyleEngine(includeUserAgentStyleSheet: false);
@@ -25,7 +25,7 @@ public sealed class StyleEngineKeyframesRegistrationTests
         rule.Frames.Should().HaveCount(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void Sheets_without_keyframes_do_not_register_anything()
     {
         var engine = new StyleEngine(includeUserAgentStyleSheet: false);
@@ -33,7 +33,7 @@ public sealed class StyleEngineKeyframesRegistrationTests
         engine.AnimationEngine.HasKeyframes("anything").Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Removing_sheet_drops_keyframes_unique_to_it()
     {
         var engine = new StyleEngine(includeUserAgentStyleSheet: false);
@@ -45,7 +45,7 @@ public sealed class StyleEngineKeyframesRegistrationTests
         engine.AnimationEngine.HasKeyframes("spin").Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Removing_one_of_two_sheets_preserves_keyframes_in_remaining_sheet()
     {
         var engine = new StyleEngine(includeUserAgentStyleSheet: false);
@@ -60,7 +60,7 @@ public sealed class StyleEngineKeyframesRegistrationTests
         engine.AnimationEngine.HasKeyframes("b").Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Later_sheet_with_same_name_overrides_earlier_rule()
     {
         var engine = new StyleEngine(includeUserAgentStyleSheet: false);

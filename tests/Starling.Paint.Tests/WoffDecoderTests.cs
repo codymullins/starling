@@ -2,13 +2,12 @@ using System.Buffers.Binary;
 using System.IO.Compression;
 using FluentAssertions;
 using Starling.Paint.WebFonts;
-using Xunit;
-
 namespace Starling.Paint.Tests;
 
+[TestClass]
 public sealed class WoffDecoderTests
 {
-    [Fact]
+    [TestMethod]
     public void Detects_woff_magic_bytes()
     {
         WoffDecoder.IsWoff(new byte[] { 0x77, 0x4F, 0x46, 0x46 }).Should().BeTrue();
@@ -16,18 +15,19 @@ public sealed class WoffDecoderTests
         WoffDecoder.IsWoff(new byte[] { 0x00, 0x01 }).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Detects_woff2_magic_bytes()
     {
         Woff2Decoder.IsWoff2(new byte[] { 0x77, 0x4F, 0x46, 0x32 }).Should().BeTrue();
         Woff2Decoder.IsWoff2(new byte[] { 0x77, 0x4F, 0x46, 0x46 }).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Round_trips_a_synthetic_woff_to_sfnt()
     {
         // Build a tiny "SFNT" with two named tables (just placeholder bytes —
-        // we're testing the wrapping/unwrapping, not whether Skia accepts it).
+        // we're testing the wrapping/unwrapping, not whether a rasterizer
+        // accepts it).
         var tables = new (string Tag, byte[] Data)[]
         {
             ("head", Pad(Enumerable.Range(0, 54).Select(i => (byte)i).ToArray(), 4)),

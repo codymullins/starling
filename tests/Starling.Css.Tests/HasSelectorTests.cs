@@ -1,16 +1,16 @@
 using FluentAssertions;
 using Starling.Css.Selectors;
 using Starling.Dom;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("selectors-4", "https://www.w3.org/TR/selectors-4/")]
 
+[TestClass]
 public sealed class HasSelectorTests
 {
-    [Fact]
+    [TestMethod]
     public void Has_with_child_combinator_matches_when_direct_child_exists()
     {
         var doc = new Document();
@@ -23,7 +23,7 @@ public sealed class HasSelectorTests
         SelectorMatcher.Matches(selector, section).Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Has_with_child_combinator_does_not_match_when_only_descendant()
     {
         var doc = new Document();
@@ -42,7 +42,7 @@ public sealed class HasSelectorTests
         SelectorMatcher.Matches(descendant, section).Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Has_with_next_sibling_combinator_matches_following_sibling()
     {
         var doc = new Document();
@@ -58,7 +58,7 @@ public sealed class HasSelectorTests
         SelectorMatcher.Matches(selector, p).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Has_matches_descendant_class()
     {
         var doc = new Document();
@@ -72,7 +72,7 @@ public sealed class HasSelectorTests
         SelectorMatcher.Matches(selector, container).Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Has_returns_false_when_descendant_missing()
     {
         var doc = new Document();
@@ -83,7 +83,7 @@ public sealed class HasSelectorTests
         SelectorMatcher.Matches(selector, container).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Has_recursion_depth_is_bounded()
     {
         // Build a small chain :has(:has(...)) and ensure we don't stack-overflow.
@@ -102,7 +102,7 @@ public sealed class HasSelectorTests
         act.Should().NotThrow();
     }
 
-    [Fact]
+    [TestMethod]
     public void Has_argument_lists_are_disjunctive()
     {
         var doc = new Document();

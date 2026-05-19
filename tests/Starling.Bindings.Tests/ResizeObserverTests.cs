@@ -3,8 +3,6 @@ using Starling.Dom;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Bindings.Tests;
 
 /// <summary>
@@ -12,9 +10,10 @@ namespace Starling.Bindings.Tests;
 /// wired (see ResizeObserverBinding's file-level TODO); these tests assert
 /// only the constructable / observable / disconnectable shape.
 /// </summary>
+[TestClass]
 public sealed class ResizeObserverTests
 {
-    [Fact]
+    [TestMethod]
     public void Constructor_is_installed_globally_with_correct_name()
     {
         var (runtime, _) = BuildEnv();
@@ -24,7 +23,7 @@ public sealed class ResizeObserverTests
             .AsString.Should().Be("ResizeObserver");
     }
 
-    [Fact]
+    [TestMethod]
     public void Constructor_requires_callable_argument()
     {
         var (runtime, _) = BuildEnv();
@@ -39,7 +38,7 @@ public sealed class ResizeObserverTests
         """).AsString.Should().Be("TypeError");
     }
 
-    [Fact]
+    [TestMethod]
     public void Constructor_accepts_callback_and_instance_has_correct_constructor_name()
     {
         var (runtime, _) = BuildEnv();
@@ -49,7 +48,7 @@ public sealed class ResizeObserverTests
         """).AsString.Should().Be("ResizeObserver");
     }
 
-    [Fact]
+    [TestMethod]
     public void Observe_requires_element_target()
     {
         var (runtime, _) = BuildEnv();
@@ -60,7 +59,7 @@ public sealed class ResizeObserverTests
         """).AsString.Should().Be("TypeError");
     }
 
-    [Fact]
+    [TestMethod]
     public void Observe_with_valid_box_option_succeeds()
     {
         var (runtime, _) = BuildEnv();
@@ -75,7 +74,7 @@ public sealed class ResizeObserverTests
         """).AsString.Should().Be("ok");
     }
 
-    [Fact]
+    [TestMethod]
     public void Observe_with_invalid_box_option_throws()
     {
         var (runtime, _) = BuildEnv();
@@ -88,7 +87,7 @@ public sealed class ResizeObserverTests
         """).AsString.Should().Be("TypeError");
     }
 
-    [Fact]
+    [TestMethod]
     public void Unobserve_and_disconnect_are_idempotent()
     {
         var (runtime, _) = BuildEnv();

@@ -3,7 +3,6 @@ using Starling.Css.Animations;
 using Starling.Css.Properties;
 using Starling.Css.Values;
 using Starling.Dom;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
@@ -16,6 +15,7 @@ namespace Starling.Css.Tests;
 ///
 /// References: https://www.w3.org/TR/css-animations-1/ §3, §4.
 /// </summary>
+[TestClass]
 [Spec("css-animations-1", "https://www.w3.org/TR/css-animations-1/")]
 public sealed class AnimationEngineSpecTests
 {
@@ -40,7 +40,7 @@ public sealed class AnimationEngineSpecTests
     // CSS Animations 1 §3.6 — "A negative value for animation-delay causes
     // the animation to begin immediately, but causes it to appear to have
     // begun execution at the specified offset."
-    [Fact]
+    [TestMethod]
     public void Negative_delay_jumps_into_animation_immediately()
     {
         var engine = new AnimationEngine();
@@ -58,7 +58,7 @@ public sealed class AnimationEngineSpecTests
     }
 
     // CSS Animations 1 §3.4 — fill-mode: both = backwards + forwards.
-    [Fact]
+    [TestMethod]
     public void Fill_mode_both_holds_initial_during_delay_and_final_after_end()
     {
         var engine = new AnimationEngine();
@@ -88,7 +88,7 @@ public sealed class AnimationEngineSpecTests
     // (1.0) instead of the partial-iteration sample (0.5). Skipped
     // pending a fix; remove the Skip when the engine is corrected. See
     // WPT: css/css-animations/animation-iteration-count-fractional-001.
-    [Fact]
+    [TestMethod]
     public void Fractional_iteration_count_samples_inside_last_iteration()
     {
         var engine = new AnimationEngine();
@@ -105,10 +105,12 @@ public sealed class AnimationEngineSpecTests
             .Should().BeApproximately(0.4, 1e-6);
     }
 
-    [Fact(Skip = "Engine bug: fill-mode forwards snaps to natural end " +
+    [Ignore("Engine bug: fill-mode forwards snaps to natural end " +
         "instead of holding the partial-iteration sample for fractional " +
         "iteration-count. CSS Animations 1 §3.4 / WPT animation-iteration-" +
         "count-fractional-001.")]
+
+    [TestMethod]
     public void Fractional_iteration_count_forwards_holds_partial_offset()
     {
         var engine = new AnimationEngine();
@@ -126,7 +128,7 @@ public sealed class AnimationEngineSpecTests
 
     // CSS Animations 1 §3.5 — infinite iteration count never enters
     // a terminal state.
-    [Fact]
+    [TestMethod]
     public void Infinite_iteration_count_continues_indefinitely()
     {
         var engine = new AnimationEngine();
@@ -146,7 +148,7 @@ public sealed class AnimationEngineSpecTests
 
     // CSS Animations 1 §3.7 — alternate-reverse starts in the reverse
     // direction and alternates each iteration.
-    [Fact]
+    [TestMethod]
     public void Alternate_reverse_starts_at_end_value_then_flips()
     {
         var engine = new AnimationEngine();
@@ -184,7 +186,7 @@ public sealed class AnimationEngineSpecTests
 
     // CSS Animations 1 §3 — "If multiple @keyframes rules have the same
     // name, the last one in document order wins."
-    [Fact]
+    [TestMethod]
     public void Re_registering_keyframes_with_same_name_replaces_previous()
     {
         var engine = new AnimationEngine();
@@ -206,7 +208,7 @@ public sealed class AnimationEngineSpecTests
     // CSS Animations 1 §4.2 — re-cascading the same animation-name on an
     // element does NOT restart the animation; it continues from its
     // current StartMs.
-    [Fact]
+    [TestMethod]
     public void Re_cascade_with_same_name_preserves_start_time()
     {
         var engine = new AnimationEngine();
@@ -235,7 +237,7 @@ public sealed class AnimationEngineSpecTests
     // CSS Animations 1 §3 — animation-name: none disables animation
     // (well-formed cascade input should be filtered before reaching the
     // engine, but the engine must defensively ignore it).
-    [Fact]
+    [TestMethod]
     public void Declaration_with_name_none_is_ignored()
     {
         var engine = new AnimationEngine();

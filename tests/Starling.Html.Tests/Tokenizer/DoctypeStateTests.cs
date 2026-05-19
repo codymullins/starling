@@ -1,13 +1,12 @@
 using FluentAssertions;
 using Starling.Html.Tokenizer;
-using Xunit;
-
 namespace Starling.Html.Tests.Tokenizer;
 
 /// <summary>Doctype cluster — wp:M1-01f.</summary>
+[TestClass]
 public class DoctypeStateTests
 {
-    [Fact]
+    [TestMethod]
     public void Bare_html_doctype()
     {
         Tokenize("<!DOCTYPE html>").Should().Equal(
@@ -15,7 +14,7 @@ public class DoctypeStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Doctype_name_is_lowercased()
     {
         Tokenize("<!DOCTYPE HTML>").Should().Equal(
@@ -23,7 +22,7 @@ public class DoctypeStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Lowercase_doctype_keyword_also_works()
     {
         Tokenize("<!doctype html>").Should().Equal(
@@ -31,7 +30,7 @@ public class DoctypeStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Public_identifier_double_quoted()
     {
         Tokenize("<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\">").Should().Equal(
@@ -39,7 +38,7 @@ public class DoctypeStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Public_identifier_single_quoted()
     {
         Tokenize("<!DOCTYPE html PUBLIC '-//foo//'>").Should().Equal(
@@ -47,7 +46,7 @@ public class DoctypeStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Public_and_system_identifiers()
     {
         Tokenize(
@@ -61,7 +60,7 @@ public class DoctypeStateTests
                 EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void System_only_identifier()
     {
         Tokenize("<!DOCTYPE html SYSTEM \"about:legacy-compat\">").Should().Equal(
@@ -69,7 +68,7 @@ public class DoctypeStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Missing_name_forces_quirks()
     {
         var sink = new RecordingSink();
@@ -84,7 +83,7 @@ public class DoctypeStateTests
             .Which.code.Should().Be(HtmlParseError.MissingDoctypeName);
     }
 
-    [Fact]
+    [TestMethod]
     public void Missing_whitespace_before_name_is_a_parse_error_but_continues()
     {
         // <!DOCTYPEhtml> — no space between DOCTYPE and html.
@@ -100,7 +99,7 @@ public class DoctypeStateTests
             .Which.code.Should().Be(HtmlParseError.MissingWhitespaceBeforeDoctypeName);
     }
 
-    [Fact]
+    [TestMethod]
     public void Eof_in_doctype_forces_quirks()
     {
         var sink = new RecordingSink();
@@ -115,7 +114,7 @@ public class DoctypeStateTests
             .Which.code.Should().Be(HtmlParseError.EofInDoctype);
     }
 
-    [Fact]
+    [TestMethod]
     public void Garbage_after_name_drops_into_bogus_doctype()
     {
         // <!DOCTYPE html FOO> — anything after the name that isn't PUBLIC/
@@ -132,7 +131,7 @@ public class DoctypeStateTests
             .Which.code.Should().Be(HtmlParseError.InvalidCharacterSequenceAfterDoctypeName);
     }
 
-    [Fact]
+    [TestMethod]
     public void Doctype_followed_by_more_html()
     {
         Tokenize("<!DOCTYPE html><html>").Should().Equal(

@@ -1,31 +1,33 @@
-using Xunit.v3;
 
 namespace Starling.Spec;
 
 /// <summary>
 /// Tags a test (class or method) with the CSS/web specification it covers.
-/// Adds xUnit traits <c>Spec</c>, <c>SpecUrl</c>, and (optionally) <c>Section</c>
-/// so the suite can be filtered (<c>dotnet test --filter "Spec=css-color-5"</c>)
-/// and so the SpecGen reporter can build coverage tables.
+/// Inherits <see cref="TestCategoryBaseAttribute"/> so the categories
+/// <c>Spec:{id}</c> and (optionally) <c>Section:{section}</c> are picked up by
+/// the MSTest runner — filter via <c>dotnet test --filter "TestCategory~Spec:css-color-5"</c>
+/// and the SpecGen reporter can build coverage tables from them.
 /// </summary>
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = true)]
-public sealed class SpecAttribute(string id, string url, string? section = null) : Attribute, ITraitAttribute
+public sealed class SpecAttribute : TestCategoryBaseAttribute
 {
-    public string Id { get; } = id;
-    public string Url { get; } = url;
-    public string? Section { get; } = section;
-
-    public IReadOnlyCollection<KeyValuePair<string, string>> GetTraits()
+    public SpecAttribute(string id, string url, string? section = null)
     {
-        var traits = new List<KeyValuePair<string, string>>(3)
+        Id = id;
+        Url = url;
+        Section = section;
+
+        var categories = new List<string>(2) { $"Spec:{id}" };
+        if (!string.IsNullOrEmpty(section))
         {
-            new("Spec", Id),
-            new("SpecUrl", Url),
-        };
-        if (!string.IsNullOrEmpty(Section))
-        {
-            traits.Add(new("Section", Section));
+            categories.Add($"Section:{section}");
         }
-        return traits;
+        TestCategories = categories;
     }
+
+    public string Id { get; }
+    public string Url { get; }
+    public string? Section { get; }
+
+    public override IList<string> TestCategories { get; }
 }

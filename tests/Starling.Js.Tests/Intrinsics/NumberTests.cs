@@ -2,13 +2,12 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Intrinsics;
 
+[TestClass]
 public class NumberTests
 {
-    [Fact]
+    [TestMethod]
     public void Number_constructor_coerces_and_boxes()
     {
         Eval("Number('');").AsNumber.Should().Be(0);
@@ -21,7 +20,7 @@ public class NumberTests
         Eval("Number.prototype.valueOf.callMe;").IsUndefined.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Number_constants_are_registered()
     {
         Eval("Number.MAX_SAFE_INTEGER;").AsNumber.Should().Be(9007199254740991d);
@@ -34,7 +33,7 @@ public class NumberTests
         Eval("Number.EPSILON;").AsNumber.Should().Be(Math.Pow(2, -52));
     }
 
-    [Fact]
+    [TestMethod]
     public void Number_statics_classify_without_global_coercion()
     {
         Eval("Number.isFinite(3);").AsBool.Should().BeTrue();
@@ -48,7 +47,7 @@ public class NumberTests
         Eval("Number.isSafeInteger(9007199254740992);").AsBool.Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Number_parse_methods_match_globals()
     {
         Eval("Number.parseInt('0x10');").AsNumber.Should().Be(16);
@@ -61,7 +60,7 @@ public class NumberTests
         double.IsNaN(Eval("Number.parseFloat('abc');").AsNumber).Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Number_prototype_formats_values()
     {
         Eval("(255).toString(16);").AsString.Should().Be("ff");
@@ -74,7 +73,7 @@ public class NumberTests
         Eval("(42).valueOf();").AsNumber.Should().Be(42);
     }
 
-    [Fact]
+    [TestMethod]
     public void Number_methods_throw_on_invalid_receivers_and_ranges()
     {
         Action badReceiver = () => Eval("Number.prototype.valueOf();");

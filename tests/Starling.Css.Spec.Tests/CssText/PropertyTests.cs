@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssText;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-text-3/">CSS Text Module Level 3</see>.
 /// </summary>
+[TestClass]
 [Spec("css-text", "https://drafts.csswg.org/css-text-3/")]
 public sealed class PropertyTests
 {

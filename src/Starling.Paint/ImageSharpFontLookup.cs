@@ -7,9 +7,8 @@ namespace Starling.Paint;
 /// Shared font lookup for the ImageSharp backend and text measurer. Walks the
 /// CSS <c>font-family</c> list (expanding generic keywords) against a font
 /// collection that bundles both the embedded fonts in <c>Starling.Paint.dll</c>
-/// and the host's installed system fonts. Mirrors how <see cref="FontResolver"/>
-/// finds typefaces for Skia, so paragraph widths and bold/italic faces match
-/// across the two backends.
+/// and the host's installed system fonts, so paragraph widths and bold/italic
+/// faces line up between layout and raster.
 /// </summary>
 internal static class ImageSharpFontLookup
 {

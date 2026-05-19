@@ -7,12 +7,7 @@
        (wp:M5-skia-removal). No conditional compilation symbols are needed —
        the test source includes the ImageSharp tests unconditionally. -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="xunit.v3" />
-    <PackageReference Include="xunit.runner.visualstudio">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
+    <PackageReference Include="MSTest" />
     <PackageReference Include="FluentAssertions" />
   </ItemGroup>
   <ItemGroup>

@@ -12,6 +12,7 @@ namespace Starling.Css.Spec.Tests.CssFlexbox;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-flexbox-2/">CSS Flexible Box Layout Module Level 2</see>.
 /// </summary>
+[TestClass]
 [Spec("css-flexbox", "https://drafts.csswg.org/css-flexbox-2/")]
 public sealed class PropertyTests
 {

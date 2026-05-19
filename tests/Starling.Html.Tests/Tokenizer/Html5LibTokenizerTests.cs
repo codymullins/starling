@@ -1,14 +1,13 @@
 using System.Text.Json;
 using FluentAssertions;
 using Starling.Html.Tokenizer;
-using Xunit;
-
 namespace Starling.Html.Tests.Tokenizer;
 
+[TestClass]
 public class Html5LibTokenizerTests
 {
-    [Theory]
-    [MemberData(nameof(Cases))]
+    [TestMethod]
+    [DynamicData(nameof(Cases))]
     public void Tokenizer_matches_html5lib_expected_tokens(Html5LibCase testCase)
     {
         var tokenizer = new HtmlTokenizer();

@@ -28,7 +28,6 @@
   <Project Path="src/Starling.Html/Starling.Html.csproj" />
   <Project Path="src/Starling.Js/Starling.Js.csproj" />
   <Project Path="src/Starling.Layout/Starling.Layout.csproj" />
-  <Project Path="src/Starling.Loop/Starling.Loop.csproj" />
   <Project Path="src/Starling.Net/Starling.Net.csproj" />
   <Project Path="src/Starling.Paint/Starling.Paint.csproj" />
   <Project Path="src/Starling.Url/Starling.Url.csproj" />
@@ -43,7 +42,6 @@
   <Project Path="tests/Starling.Html.Tests/Starling.Html.Tests.csproj" />
   <Project Path="tests/Starling.Js.Tests/Starling.Js.Tests.csproj" />
   <Project Path="tests/Starling.Layout.Tests/Starling.Layout.Tests.csproj" />
-  <Project Path="tests/Starling.Loop.Tests/Starling.Loop.Tests.csproj" />
   <Project Path="tests/Starling.Net.Tests/Starling.Net.Tests.csproj" />
   <Project Path="tests/Starling.Paint.Tests/Starling.Paint.Tests.csproj" />
   <Project Path="tests/Starling.Url.Tests/Starling.Url.Tests.csproj" />

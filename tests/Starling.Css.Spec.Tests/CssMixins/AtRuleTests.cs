@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssMixins;
 /// <summary>
 /// At-rule conformance for <see href="https://drafts.csswg.org/css-mixins-1/">CSS Custom Functions and Mixins Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-mixins", "https://drafts.csswg.org/css-mixins-1/")]
 public sealed class AtRuleTests
 {

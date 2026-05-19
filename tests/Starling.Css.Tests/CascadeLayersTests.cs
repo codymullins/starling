@@ -4,16 +4,16 @@ using Starling.Css.Parser;
 using Starling.Css.Properties;
 using Starling.Css.Values;
 using Starling.Dom;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("css-cascade-5", "https://www.w3.org/TR/css-cascade-5/")]
 
+[TestClass]
 public sealed class CascadeLayersTests
 {
-    [Fact]
+    [TestMethod]
     public void Unlayered_styles_beat_layered_styles_for_non_important()
     {
         var doc = new Document();
@@ -28,7 +28,7 @@ public sealed class CascadeLayersTests
         engine.Compute(p).GetColor(PropertyId.Color).Should().Be(new CssColor(0, 0, 255));
     }
 
-    [Fact]
+    [TestMethod]
     public void Layer_order_is_declaration_order()
     {
         var doc = new Document();
@@ -45,7 +45,7 @@ public sealed class CascadeLayersTests
         engine.Compute(p).GetColor(PropertyId.Color).Should().Be(new CssColor(255, 0, 0));
     }
 
-    [Fact]
+    [TestMethod]
     public void Important_inverts_layer_order()
     {
         var doc = new Document();
@@ -62,7 +62,7 @@ public sealed class CascadeLayersTests
         engine.Compute(p).GetColor(PropertyId.Color).Should().Be(new CssColor(0, 0, 255));
     }
 
-    [Fact]
+    [TestMethod]
     public void Important_layered_beats_important_unlayered()
     {
         // CSS Cascade 5: among !important, layered styles win over unlayered.
@@ -78,7 +78,7 @@ public sealed class CascadeLayersTests
         engine.Compute(p).GetColor(PropertyId.Color).Should().Be(new CssColor(255, 0, 0));
     }
 
-    [Fact]
+    [TestMethod]
     public void Nested_layer_names_resolve_to_dotted_paths()
     {
         var doc = new Document();
@@ -93,7 +93,7 @@ public sealed class CascadeLayersTests
             .ContainKey("reset.tailwind");
     }
 
-    [Fact]
+    [TestMethod]
     public void Statement_form_pre_registers_layer_order()
     {
         var doc = new Document();

@@ -1,12 +1,11 @@
 using FluentAssertions;
 using Starling.Html.Tokenizer;
-using Xunit;
-
 namespace Starling.Html.Tests.Tokenizer;
 
+[TestClass]
 public class ScriptStateTests
 {
-    [Fact]
+    [TestMethod]
     public void ScriptData_passes_text_through_and_closes_on_matching_end_tag()
     {
         var t = new HtmlTokenizer();
@@ -23,7 +22,7 @@ public class ScriptStateTests
         tokens[^1].Should().Be(EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void ScriptData_close_tag_only_appropriate_when_name_matches_start()
     {
         var t = new HtmlTokenizer();
@@ -39,7 +38,7 @@ public class ScriptStateTests
         tokens[^1].Should().Be(EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void ScriptData_escaped_end_tag_can_close_script()
     {
         var t = new HtmlTokenizer();
@@ -55,7 +54,7 @@ public class ScriptStateTests
         tokens[^1].Should().Be(EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void ScriptData_double_escaped_script_end_tag_is_text_until_escape_ends()
     {
         var t = new HtmlTokenizer();
@@ -71,7 +70,7 @@ public class ScriptStateTests
         tokens[^1].Should().Be(EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void ScriptData_null_maps_to_replacement_character_with_parse_error()
     {
         var sink = new RecordingSink();
@@ -90,7 +89,7 @@ public class ScriptStateTests
             .Which.code.Should().Be(HtmlParseError.UnexpectedNullCharacter);
     }
 
-    [Fact]
+    [TestMethod]
     public void ScriptData_eof_in_escaped_text_reports_script_comment_like_error()
     {
         var sink = new RecordingSink();

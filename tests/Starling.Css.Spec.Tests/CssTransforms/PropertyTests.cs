@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssTransforms;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-transforms-1/">CSS Transforms Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-transforms", "https://drafts.csswg.org/css-transforms-1/")]
 public sealed class PropertyTests
 {

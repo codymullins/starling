@@ -1,15 +1,15 @@
 using FluentAssertions;
 using Starling.Css.Selectors;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("selectors-4", "https://www.w3.org/TR/selectors-4/")]
 
+[TestClass]
 public sealed class SelectorParserTests
 {
-    [Fact]
+    [TestMethod]
     public void Parses_compound_selector_with_id_class_attribute_and_pseudo()
     {
         var selector = SelectorParser.ParseSelectorList("article#main.card[data-kind='promo']:first-child")
@@ -28,7 +28,7 @@ public sealed class SelectorParserTests
         selector.Specificity.Should().Be(new Specificity(1, 3, 1));
     }
 
-    [Fact]
+    [TestMethod]
     public void Preserves_descendant_and_explicit_combinators()
     {
         var selector = SelectorParser.ParseSelectorList("main > article.card p + a")
@@ -41,7 +41,7 @@ public sealed class SelectorParserTests
             SelectorCombinator.NextSibling);
     }
 
-    [Fact]
+    [TestMethod]
     public void Where_has_zero_specificity_and_is_uses_argument_specificity()
     {
         var where = SelectorParser.ParseSelectorList(":where(#hero)").Selectors.Single();
@@ -51,7 +51,7 @@ public sealed class SelectorParserTests
         isSelector.Specificity.Should().Be(new Specificity(1, 0, 0));
     }
 
-    [Fact]
+    [TestMethod]
     public void Pseudo_class_is_allowed_after_pseudo_element()
     {
         // ::-webkit-scrollbar-thumb:window-inactive — real selector encountered on mcmaster.com.
@@ -66,7 +66,7 @@ public sealed class SelectorParserTests
             .Which.Name.Should().Be("window-inactive");
     }
 
-    [Fact]
+    [TestMethod]
     public void Pseudo_element_target_is_recognized_with_trailing_pseudo_class()
     {
         // ::before:hover must still be treated as a pseudo-element-targeting rule for the cascade,
@@ -75,7 +75,7 @@ public sealed class SelectorParserTests
         selector.TargetPseudoElement.Should().Be(PseudoElement.Before);
     }
 
-    [Fact]
+    [TestMethod]
     public void Class_after_pseudo_element_is_rejected()
     {
         Action act = () => SelectorParser.ParseSelectorList("::before.foo");

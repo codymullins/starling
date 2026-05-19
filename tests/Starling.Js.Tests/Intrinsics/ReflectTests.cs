@@ -2,20 +2,19 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Intrinsics;
 
 /// <summary>End-to-end coverage for ECMA-262 §28.1 Reflect namespace.</summary>
+[TestClass]
 public class ReflectTests
 {
-    [Fact]
+    [TestMethod]
     public void Reflect_get_reads_property()
     {
         Eval("Reflect.get({a: 1}, 'a');").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Reflect_set_writes_property_and_returns_true()
     {
         Eval(@"
@@ -25,14 +24,14 @@ public class ReflectTests
         ").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Reflect_has_mirrors_in_operator()
     {
         Eval("Reflect.has({a: 1}, 'a');").AsBool.Should().BeTrue();
         Eval("Reflect.has({}, 'a');").AsBool.Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Reflect_deleteProperty_removes_property()
     {
         Eval(@"
@@ -42,14 +41,14 @@ public class ReflectTests
         ").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Reflect_getOwnPropertyDescriptor_returns_descriptor_or_undefined()
     {
         Eval("Reflect.getOwnPropertyDescriptor({a: 1}, 'a').value;").AsNumber.Should().Be(1);
         Eval("Reflect.getOwnPropertyDescriptor({}, 'missing');").IsUndefined.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Reflect_defineProperty_returns_boolean()
     {
         Eval(@"
@@ -63,7 +62,7 @@ public class ReflectTests
         ").AsNumber.Should().Be(7);
     }
 
-    [Fact]
+    [TestMethod]
     public void Reflect_getPrototypeOf_and_setPrototypeOf_work()
     {
         Eval("Reflect.getPrototypeOf({}) === Object.prototype;").AsBool.Should().BeTrue();
@@ -74,7 +73,7 @@ public class ReflectTests
         ").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Reflect_isExtensible_and_preventExtensions()
     {
         Eval("Reflect.isExtensible({});").AsBool.Should().BeTrue();
@@ -85,7 +84,7 @@ public class ReflectTests
         ").AsBool.Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Reflect_ownKeys_returns_a_real_array()
     {
         Eval("Array.isArray(Reflect.ownKeys({a: 1, b: 2}));").AsBool.Should().BeTrue();
@@ -95,7 +94,7 @@ public class ReflectTests
         ").AsString.Should().Be("2:a,b");
     }
 
-    [Fact]
+    [TestMethod]
     public void Reflect_apply_uses_explicit_thisArg_and_args()
     {
         Eval(@"
@@ -104,7 +103,7 @@ public class ReflectTests
         ").AsNumber.Should().Be(15);
     }
 
-    [Fact]
+    [TestMethod]
     public void Reflect_construct_invokes_constructor_with_arg_list()
     {
         Eval(@"
@@ -113,7 +112,7 @@ public class ReflectTests
         ").AsNumber.Should().Be(5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Reflect_apply_throws_on_non_callable_target()
     {
         Action act = () => Eval("Reflect.apply({}, null, []);");

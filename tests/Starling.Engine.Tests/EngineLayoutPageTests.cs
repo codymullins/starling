@@ -1,8 +1,6 @@
 using FluentAssertions;
 using SixLabors.ImageSharp;
 using Starling.Layout.Box;
-using Xunit;
-
 namespace Starling.Engine.Tests;
 
 /// <summary>
@@ -10,9 +8,10 @@ namespace Starling.Engine.Tests;
 /// without rasterization, returning a <see cref="LaidOutPage"/> with positions
 /// callers can walk to emit native views, hit-test taps, and drive Cmd-F.
 /// </summary>
+[TestClass]
 public class EngineLayoutPageTests
 {
-    [Fact]
+    [TestMethod]
     public async Task LayoutPageAsync_returns_box_tree_for_file_url()
     {
         var fixture = Path.Combine(Path.GetTempPath(), $"starling-layout-{Guid.NewGuid():N}.html");
@@ -26,7 +25,7 @@ public class EngineLayoutPageTests
             var result = await engine.LayoutPageAsync(
                 "file://" + fixture.Replace('\\', '/'),
                 new RenderOptions(new Size(800, 600), FontSize: 16f),
-                TestContext.Current.CancellationToken);
+                CancellationToken.None);
 
             result.IsOk.Should().BeTrue(result.IsErr ? result.Error.Message : "");
             using var page = result.Value;
@@ -49,7 +48,7 @@ public class EngineLayoutPageTests
         }
     }
 
-    [Fact]
+    [TestMethod]
     public async Task LayoutPageAsync_disposes_idempotently()
     {
         var fixture = Path.Combine(Path.GetTempPath(), $"starling-layout-{Guid.NewGuid():N}.html");
@@ -60,7 +59,7 @@ public class EngineLayoutPageTests
             var result = await engine.LayoutPageAsync(
                 "file://" + fixture.Replace('\\', '/'),
                 new RenderOptions(new Size(200, 200)),
-                TestContext.Current.CancellationToken);
+                CancellationToken.None);
 
             result.IsOk.Should().BeTrue();
             var page = result.Value;

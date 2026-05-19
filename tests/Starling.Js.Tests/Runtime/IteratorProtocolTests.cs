@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Runtime;
 
 /// <summary>
@@ -11,13 +9,14 @@ namespace Starling.Js.Tests.Runtime;
 /// <c>for…of</c> retargeted to <c>@@iterator</c>, spread in array literals
 /// and call expressions, and <c>Array.from</c> consuming iterables.
 /// </summary>
+[TestClass]
 public class IteratorProtocolTests
 {
     // ============================================================
     //                     Built-in iterators
     // ============================================================
 
-    [Fact]
+    [TestMethod]
     public void Array_at_symbol_iterator_returns_iterator_with_next()
     {
         var n = Eval(@"
@@ -34,7 +33,7 @@ public class IteratorProtocolTests
         n.AsString.Should().Be("10,false|20,false|30,false|undefined,true");
     }
 
-    [Fact]
+    [TestMethod]
     public void Array_values_is_iterable_via_iterator_returns_self()
     {
         var v = Eval(@"
@@ -44,7 +43,7 @@ public class IteratorProtocolTests
         v.AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Array_keys_walks_indexes()
     {
         var v = Eval(@"
@@ -57,7 +56,7 @@ public class IteratorProtocolTests
         v.AsString.Should().Be("0,1,2|3");
     }
 
-    [Fact]
+    [TestMethod]
     public void Array_entries_walks_key_value_pairs()
     {
         var v = Eval(@"
@@ -69,7 +68,7 @@ public class IteratorProtocolTests
         v.AsString.Should().Be("0:x,1:y");
     }
 
-    [Fact]
+    [TestMethod]
     public void Iterator_prototype_chain_carries_symbol_iterator()
     {
         // Walk one step up — ArrayIterator inherits from %IteratorPrototype%
@@ -85,13 +84,13 @@ public class IteratorProtocolTests
     //                          for…of
     // ============================================================
 
-    [Fact]
+    [TestMethod]
     public void ForOf_sums_array_values()
     {
         Eval("var s = 0; for (var x of [1,2,3]) s = s + x; s;").AsNumber.Should().Be(6);
     }
 
-    [Fact]
+    [TestMethod]
     public void ForOf_walks_string_by_code_point()
     {
         // "ab😀" is 4 UTF-16 code units but 3 code points.
@@ -103,7 +102,7 @@ public class IteratorProtocolTests
         v.AsString.Should().Be("3|a|b|😀");
     }
 
-    [Fact]
+    [TestMethod]
     public void ForOf_iterates_user_defined_iterable()
     {
         // Use a state object so the closure mutates a property (supported)
@@ -131,7 +130,7 @@ public class IteratorProtocolTests
         v.AsNumber.Should().Be(3);
     }
 
-    [Fact]
+    [TestMethod]
     public void ForOf_uses_array_iterator()
     {
         var v = Eval(@"
@@ -146,7 +145,7 @@ public class IteratorProtocolTests
     //                          Spread
     // ============================================================
 
-    [Fact]
+    [TestMethod]
     public void Spread_in_array_literal_with_trailing()
     {
         var v = Eval(@"
@@ -156,20 +155,20 @@ public class IteratorProtocolTests
         v.AsString.Should().Be("4:1,2,3,4");
     }
 
-    [Fact]
+    [TestMethod]
     public void Spread_in_call_args()
     {
         Eval("Math.max(...[1, 9, 3]);").AsNumber.Should().Be(9);
     }
 
-    [Fact]
+    [TestMethod]
     public void Spread_string_into_array_yields_code_points()
     {
         var v = Eval("var a = [...'ab']; a.length + ':' + a[0] + ',' + a[1];");
         v.AsString.Should().Be("2:a,b");
     }
 
-    [Fact]
+    [TestMethod]
     public void Spread_user_iterable_into_array()
     {
         var v = Eval(@"
@@ -191,7 +190,7 @@ public class IteratorProtocolTests
         v.AsString.Should().Be("3:1,2,3");
     }
 
-    [Fact]
+    [TestMethod]
     public void Spread_before_and_after_plain_args()
     {
         var v = Eval(@"
@@ -205,7 +204,7 @@ public class IteratorProtocolTests
     //                       Array.from
     // ============================================================
 
-    [Fact]
+    [TestMethod]
     public void ArrayFrom_string_yields_array_of_characters()
     {
         var v = Eval(@"
@@ -215,7 +214,7 @@ public class IteratorProtocolTests
         v.AsString.Should().Be("3:abc");
     }
 
-    [Fact]
+    [TestMethod]
     public void ArrayFrom_user_iterable()
     {
         var v = Eval(@"
@@ -237,7 +236,7 @@ public class IteratorProtocolTests
         v.AsString.Should().Be("2:x,y");
     }
 
-    [Fact]
+    [TestMethod]
     public void ArrayFrom_array_like_without_iterator()
     {
         var v = Eval(@"
@@ -247,7 +246,7 @@ public class IteratorProtocolTests
         v.AsString.Should().Be("3:abc");
     }
 
-    [Fact]
+    [TestMethod]
     public void ArrayFrom_with_map_fn()
     {
         var v = Eval(@"

@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssImages5;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-images-5/">CSS Images Module Level 5</see>.
 /// </summary>
+[TestClass]
 [Spec("css-images-5", "https://drafts.csswg.org/css-images-5/")]
 public sealed class PropertyTests
 {

@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Runtime;
 
 /// <summary>
@@ -13,9 +11,10 @@ namespace Starling.Js.Tests.Runtime;
 /// function vanished. These tests pin the live-binding semantics required
 /// by real-world JS (counters, event handlers, module patterns).
 /// </summary>
+[TestClass]
 public class JsClosureWriteBackTests
 {
-    [Fact]
+    [TestMethod]
     public void Inner_assignment_writes_back_to_outer_var()
     {
         Eval(@"
@@ -24,7 +23,7 @@ public class JsClosureWriteBackTests
         ").AsNumber.Should().Be(5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Counter_pattern_returns_increasing_values()
     {
         Eval(@"
@@ -34,7 +33,7 @@ public class JsClosureWriteBackTests
         ").AsNumber.Should().Be(3);
     }
 
-    [Fact]
+    [TestMethod]
     public void Multiple_writes_through_closure_accumulate()
     {
         Eval(@"
@@ -48,7 +47,7 @@ public class JsClosureWriteBackTests
         ").AsNumber.Should().Be(4);
     }
 
-    [Fact]
+    [TestMethod]
     public void Outer_observes_write_after_inner_call()
     {
         Eval(@"
@@ -57,7 +56,7 @@ public class JsClosureWriteBackTests
         ").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Reader_and_writer_closures_share_binding()
     {
         Eval(@"
@@ -75,7 +74,7 @@ public class JsClosureWriteBackTests
         ").AsNumber.Should().Be(10099);
     }
 
-    [Fact]
+    [TestMethod]
     public void Mutual_capture_reads_and_writes_same_cell()
     {
         Eval(@"
@@ -90,7 +89,7 @@ public class JsClosureWriteBackTests
         ").AsNumber.Should().Be(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void Inner_declaration_shadows_and_does_not_write_back()
     {
         Eval(@"
@@ -104,7 +103,7 @@ public class JsClosureWriteBackTests
         ").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Inner_shadow_value_returned_is_inner_value()
     {
         Eval(@"
@@ -117,7 +116,7 @@ public class JsClosureWriteBackTests
         ").AsNumber.Should().Be(99);
     }
 
-    [Fact]
+    [TestMethod]
     public void Nested_nested_closure_writes_through_to_outermost()
     {
         Eval(@"
@@ -134,7 +133,7 @@ public class JsClosureWriteBackTests
         ").AsNumber.Should().Be(5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Let_binding_inside_function_writes_back_through_arrow()
     {
         Eval(@"
@@ -148,7 +147,7 @@ public class JsClosureWriteBackTests
         ").AsNumber.Should().Be(14);
     }
 
-    [Fact]
+    [TestMethod]
     public void Captured_parameter_is_writable_through_closure()
     {
         Eval(@"
@@ -160,7 +159,7 @@ public class JsClosureWriteBackTests
         ").AsNumber.Should().Be(16);
     }
 
-    [Fact]
+    [TestMethod]
     public void Two_counters_have_independent_state()
     {
         Eval(@"
@@ -173,7 +172,7 @@ public class JsClosureWriteBackTests
         ").AsNumber.Should().Be(42);
     }
 
-    [Fact]
+    [TestMethod]
     public void Non_captured_local_still_works()
     {
         // Sanity: a function that does NOT capture anything should still
@@ -185,7 +184,7 @@ public class JsClosureWriteBackTests
         ").AsNumber.Should().Be(14);
     }
 
-    [Fact]
+    [TestMethod]
     public void Closure_over_loop_iteration_var_sees_live_value()
     {
         // The closure captures `total`, an outer var that gets mutated by
@@ -202,7 +201,7 @@ public class JsClosureWriteBackTests
         ").AsNumber.Should().Be(10);
     }
 
-    [Fact]
+    [TestMethod]
     public void Compound_assignment_to_upvalue_propagates()
     {
         Eval(@"
@@ -216,7 +215,7 @@ public class JsClosureWriteBackTests
         ").AsNumber.Should().Be(11);
     }
 
-    [Fact]
+    [TestMethod]
     public void Prefix_decrement_on_upvalue_propagates()
     {
         Eval(@"

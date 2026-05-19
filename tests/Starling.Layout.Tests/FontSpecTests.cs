@@ -4,34 +4,33 @@ using Starling.Css.Cascade;
 using Starling.Css.Parser;
 using Starling.Dom;
 using Starling.Layout.Text;
-using Xunit;
-
 namespace Starling.Layout.Tests;
 
+[TestClass]
 public sealed class FontSpecTests
 {
-    [Fact]
+    [TestMethod]
     public void Numeric_font_weight_drives_wght_variation()
     {
         var spec = SpecFromCss("body { font-family: Test; font-weight: 350; }");
         spec.Variations.Should().Contain(v => v.Tag == "wght" && v.Value == 350f);
     }
 
-    [Fact]
+    [TestMethod]
     public void Font_stretch_percentage_drives_wdth_variation()
     {
         var spec = SpecFromCss("body { font-family: Test; font-stretch: 80%; }");
         spec.Variations.Should().Contain(v => v.Tag == "wdth" && v.Value == 80f);
     }
 
-    [Fact]
+    [TestMethod]
     public void Font_stretch_keyword_maps_to_wdth()
     {
         var spec = SpecFromCss("body { font-family: Test; font-stretch: condensed; }");
         spec.Variations.Should().Contain(v => v.Tag == "wdth" && v.Value == 75f);
     }
 
-    [Fact]
+    [TestMethod]
     public void Explicit_variation_settings_override_derived_axes()
     {
         var spec = SpecFromCss(
@@ -40,7 +39,7 @@ public sealed class FontSpecTests
         spec.Variations.Should().Contain(v => v.Tag == "GRAD" && v.Value == 88f);
     }
 
-    [Fact]
+    [TestMethod]
     public void Specs_with_same_variations_are_equal()
     {
         var a = new FontSpec(["Foo"], false, false, new[] { new FontVariation("wght", 400) });
@@ -49,7 +48,7 @@ public sealed class FontSpecTests
         a.GetHashCode().Should().Be(b.GetHashCode());
     }
 
-    [Fact]
+    [TestMethod]
     public void Specs_with_different_variations_are_distinct()
     {
         var a = new FontSpec(["Foo"], false, false, new[] { new FontVariation("wght", 400) });

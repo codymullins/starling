@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssForms;
 /// <summary>
 /// Selector conformance for <see href="https://drafts.csswg.org/css-forms-1/">CSS Form Control Styling Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-forms", "https://drafts.csswg.org/css-forms-1/")]
 public sealed class SelectorTests
 {

@@ -1,6 +1,4 @@
 using FluentAssertions;
-using Xunit;
-
 namespace Starling.Codecs.Tests;
 
 /// <summary>
@@ -11,6 +9,7 @@ namespace Starling.Codecs.Tests;
 /// (or a CI runner missing the Linux codec libraries) skips cleanly rather
 /// than failing.
 /// </summary>
+[TestClass]
 public sealed class NativeImageDecoderTests
 {
     private static readonly string FixtureDir =
@@ -36,14 +35,14 @@ public sealed class NativeImageDecoderTests
 
     // --- failure paths (run on every OS) -----------------------------------
 
-    [Fact]
+    [TestMethod]
     public void EmptyBufferThrows()
     {
         var act = () => NativeImageDecoder.Decode(ReadOnlySpan<byte>.Empty);
         act.Should().Throw<ImageDecodeException>();
     }
 
-    [Fact]
+    [TestMethod]
     public void UnrecognisedBytesThrow()
     {
         byte[] garbage = [0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB];
@@ -52,7 +51,7 @@ public sealed class NativeImageDecoderTests
             .WithMessage("*Unrecognised image format*");
     }
 
-    [Fact]
+    [TestMethod]
     public void TruncatedPngThrows()
     {
         // Valid PNG signature so the sniffer accepts it, but no actual chunks —
@@ -62,7 +61,7 @@ public sealed class NativeImageDecoderTests
         act.Should().Throw<ImageDecodeException>();
     }
 
-    [Fact]
+    [TestMethod]
     public void SelectBackendReturnsABackendForThisOs()
     {
         // On every CI OS one of the three guards matches; assert no throw.
@@ -72,7 +71,7 @@ public sealed class NativeImageDecoderTests
 
     // --- PNG: dot.png is 4x4 with distinct corner pixels -------------------
 
-    [Fact]
+    [TestMethod]
     public void DecodesPngDimensions()
     {
         using var img = NativeImageDecoder.Decode(Fixture("dot.png"));
@@ -81,7 +80,7 @@ public sealed class NativeImageDecoderTests
         img.Pixels.Length.Should().Be(4 * 4 * 4);
     }
 
-    [Fact]
+    [TestMethod]
     public void DecodesPngCornerPixels()
     {
         using var img = NativeImageDecoder.Decode(Fixture("dot.png"));
@@ -102,7 +101,7 @@ public sealed class NativeImageDecoderTests
 
     // --- JPEG: swatch.jpg is 8x8 solid mid-gray ----------------------------
 
-    [Fact]
+    [TestMethod]
     public void DecodesJpegDimensions()
     {
         using var img = NativeImageDecoder.Decode(Fixture("swatch.jpg"));
@@ -111,7 +110,7 @@ public sealed class NativeImageDecoderTests
         img.Pixels.Length.Should().Be(8 * 8 * 4);
     }
 
-    [Fact]
+    [TestMethod]
     public void DecodesJpegPixelsNearGray()
     {
         using var img = NativeImageDecoder.Decode(Fixture("swatch.jpg"));
@@ -128,7 +127,7 @@ public sealed class NativeImageDecoderTests
 
     // --- WebP: tile.webp is 4x4 lossless solid orange ----------------------
 
-    [Fact]
+    [TestMethod]
     public void DecodesWebpDimensions()
     {
         using var img = NativeImageDecoder.Decode(Fixture("tile.webp"));
@@ -137,7 +136,7 @@ public sealed class NativeImageDecoderTests
         img.Pixels.Length.Should().Be(4 * 4 * 4);
     }
 
-    [Fact]
+    [TestMethod]
     public void DecodesWebpPixels()
     {
         using var img = NativeImageDecoder.Decode(Fixture("tile.webp"));

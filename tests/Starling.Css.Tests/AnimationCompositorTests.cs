@@ -4,13 +4,13 @@ using Starling.Css.Parser;
 using Starling.Css.Properties;
 using Starling.Css.Values;
 using Starling.Dom;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("web-animations-1", "https://www.w3.org/TR/web-animations-1/")]
 
+[TestClass]
 public sealed class AnimationCompositorTests
 {
     private static StyleEngine MakeEngine(string css)
@@ -33,7 +33,7 @@ public sealed class AnimationCompositorTests
         return div;
     }
 
-    [Fact]
+    [TestMethod]
     public void Transition_interpolates_opacity_change_over_time()
     {
         var engine = MakeEngine("""
@@ -65,7 +65,7 @@ public sealed class AnimationCompositorTests
         ((CssNumber)s4.Get(PropertyId.Opacity)).Value.Should().BeApproximately(0, 1e-6);
     }
 
-    [Fact]
+    [TestMethod]
     public void Animation_overrides_static_cascade_opacity()
     {
         var engine = MakeEngine("""
@@ -86,7 +86,7 @@ public sealed class AnimationCompositorTests
             .Should().BeApproximately(0.25, 1e-6);
     }
 
-    [Fact]
+    [TestMethod]
     public void Transition_wins_over_animation_on_same_property()
     {
         // CSS Animations 1 §3.2: transitions are layered above animations.
@@ -118,7 +118,7 @@ public sealed class AnimationCompositorTests
             .Should().BeApproximately(0.5, 1e-6);
     }
 
-    [Fact]
+    [TestMethod]
     public void Forget_clears_per_element_state()
     {
         var engine = MakeEngine("""
@@ -136,7 +136,7 @@ public sealed class AnimationCompositorTests
         engine.AnimationEngine.ActiveCount.Should().Be(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void No_animation_no_transition_passes_through_static_values()
     {
         var engine = MakeEngine("div { color: red }");

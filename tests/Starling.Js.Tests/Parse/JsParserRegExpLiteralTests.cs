@@ -3,8 +3,6 @@ using Starling.Js.Ast;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Parse;
 
 /// <summary>
@@ -13,11 +11,12 @@ namespace Starling.Js.Tests.Parse;
 /// parser consumes them as primary expressions and that the compiler + VM
 /// produce fresh JsRegExp instances per evaluation.
 /// </summary>
+[TestClass]
 public class JsParserRegExpLiteralTests
 {
     // ----- Parser: AST shape ----------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Bare_regex_literal_parses()
     {
         var rx = Parse("/foo/").Should().BeOfType<RegExpLiteral>().Subject;
@@ -25,7 +24,7 @@ public class JsParserRegExpLiteralTests
         rx.Flags.Should().Be(string.Empty);
     }
 
-    [Fact]
+    [TestMethod]
     public void Regex_literal_with_flags_parses()
     {
         var rx = Parse("/foo/gi").Should().BeOfType<RegExpLiteral>().Subject;
@@ -33,14 +32,14 @@ public class JsParserRegExpLiteralTests
         rx.Flags.Should().Be("gi");
     }
 
-    [Fact]
+    [TestMethod]
     public void Escaped_slash_inside_regex_does_not_terminate_it()
     {
         var rx = Parse(@"/a\/b/").Should().BeOfType<RegExpLiteral>().Subject;
         rx.Source.Should().Be(@"a\/b");
     }
 
-    [Fact]
+    [TestMethod]
     public void Empty_regex_non_capturing_alternation_parses()
     {
         // `/(?:)/` is the canonical way to write an empty regex in source
@@ -49,7 +48,7 @@ public class JsParserRegExpLiteralTests
         rx.Source.Should().Be("(?:)");
     }
 
-    [Fact]
+    [TestMethod]
     public void Division_with_numeric_left_operand_is_not_regex()
     {
         // After a NumericLiteral the parser is in multiplicative position,
@@ -61,19 +60,19 @@ public class JsParserRegExpLiteralTests
 
     // ----- Runtime: semantics ---------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Digit_global_regex_matches_via_test()
         => Eval(@"/\d+/g.test(""abc 123"");").AsBool.Should().BeTrue();
 
-    [Fact]
+    [TestMethod]
     public void Case_insensitive_flag_works()
         => Eval(@"/foo/i.test(""FOO"");").AsBool.Should().BeTrue();
 
-    [Fact]
+    [TestMethod]
     public void Exec_returns_capture_groups()
         => Eval(@"/(\d+)-(\d+)/.exec(""12-34"")[1];").AsString.Should().Be("12");
 
-    [Fact]
+    [TestMethod]
     public void Global_regex_advances_last_index_across_calls()
     {
         var src = @"
@@ -90,7 +89,7 @@ public class JsParserRegExpLiteralTests
         jsArr.Get("1").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Each_evaluation_of_regex_literal_yields_fresh_instance()
     {
         // Per 13.2.7.3 every evaluation of a RegExp literal creates a fresh
@@ -116,31 +115,31 @@ public class JsParserRegExpLiteralTests
 
     // ----- Position contexts ----------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Regex_as_var_initializer()
         => Eval(@"var x = /a/; x.test(""a"");").AsBool.Should().BeTrue();
 
-    [Fact]
+    [TestMethod]
     public void Regex_as_return_value()
         => Eval(@"function f() { return /a/; } f().test(""a"");").AsBool.Should().BeTrue();
 
-    [Fact]
+    [TestMethod]
     public void Regex_as_call_argument()
         => Eval(@"""abc"".match(/b/)[0];").AsString.Should().Be("b");
 
-    [Fact]
+    [TestMethod]
     public void Regex_inside_array_literal()
         => Eval(@"[/a/, /b/].length;").AsNumber.Should().Be(2);
 
-    [Fact]
+    [TestMethod]
     public void Regex_inside_object_literal()
         => Eval(@"({re: /x/}).re.test(""x"");").AsBool.Should().BeTrue();
 
-    [Fact]
+    [TestMethod]
     public void Regex_after_return_keyword()
         => Eval(@"function f() { return /xyz/; } f().source;").AsString.Should().Be("xyz");
 
-    [Fact]
+    [TestMethod]
     public void Regex_after_if_paren()
     {
         // `if (a) /foo/.test(...);` — regex appears at the start of the
@@ -155,7 +154,7 @@ public class JsParserRegExpLiteralTests
 
     // ----- Disambiguation -------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Chained_division_evaluates_left_to_right()
     {
         // `1 / 2 / 3` must remain division (== 1/6), NOT a regex literal
@@ -165,7 +164,7 @@ public class JsParserRegExpLiteralTests
 
     // ----- Errors ---------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Invalid_regex_throws_syntax_error_at_runtime()
     {
         // Unbalanced `(` surfaces from the runtime compile step the

@@ -11,6 +11,7 @@ namespace Starling.Css.Spec.Tests.Selectors;
 /// <summary>
 /// Selector conformance for <see href="https://drafts.csswg.org/selectors-4/">Selectors Level 4</see>.
 /// </summary>
+[TestClass]
 [Spec("selectors", "https://drafts.csswg.org/selectors-4/")]
 public sealed class SelectorTests
 {

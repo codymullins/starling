@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssLists;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-lists-3/">CSS Lists and Counters Module Level 3</see>.
 /// </summary>
+[TestClass]
 [Spec("css-lists", "https://drafts.csswg.org/css-lists-3/")]
 public sealed class PropertyTests
 {

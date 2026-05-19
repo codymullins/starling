@@ -1,12 +1,11 @@
 using FluentAssertions;
 using Starling.Net.Dns;
-using Xunit;
-
 namespace Starling.Net.Tests.Dns;
 
+[TestClass]
 public class DnsMessageTests
 {
-    [Fact]
+    [TestMethod]
     public void EncodeName_simple_hostname()
     {
         var bytes = DnsMessage.EncodeName("example.com");
@@ -17,26 +16,26 @@ public class DnsMessageTests
             0x00);
     }
 
-    [Fact]
+    [TestMethod]
     public void EncodeName_with_trailing_dot_is_same_as_without()
     {
         DnsMessage.EncodeName("example.com.").Should().Equal(DnsMessage.EncodeName("example.com"));
     }
 
-    [Fact]
+    [TestMethod]
     public void EncodeName_empty_emits_root_only()
     {
         DnsMessage.EncodeName("").Should().Equal((byte)0);
     }
 
-    [Fact]
+    [TestMethod]
     public void EncodeName_label_over_63_is_rejected()
     {
         var act = () => DnsMessage.EncodeName(new string('a', 64));
         act.Should().Throw<FormatException>();
     }
 
-    [Fact]
+    [TestMethod]
     public void BuildQuery_writes_expected_header()
     {
         var pkt = DnsMessage.BuildQuery(0xABCD, "example.com", DnsMessage.QType.A);
@@ -50,7 +49,7 @@ public class DnsMessageTests
         pkt[5].Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void DecodeName_roundtrips_simple_name()
     {
         var encoded = DnsMessage.EncodeName("a.b.c");
@@ -60,7 +59,7 @@ public class DnsMessageTests
         next.Should().Be(encoded.Length);
     }
 
-    [Fact]
+    [TestMethod]
     public void DecodeName_follows_compression_pointer()
     {
         // Build a packet that contains "example.com" at offset 12, and a
@@ -75,7 +74,7 @@ public class DnsMessageTests
         decoded.Should().Be("example.com");
     }
 
-    [Fact]
+    [TestMethod]
     public void Parse_response_with_one_A_answer()
     {
         // Build a tiny synthetic response: id, flags (QR=1, RA=1, RCODE=0),

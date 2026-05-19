@@ -1,10 +1,10 @@
 using FluentAssertions;
 using Starling.Net.Http.Cookies;
-using Xunit;
 using StarlingUrlParser = global::Starling.Url.UrlParser;
 
 namespace Starling.Net.Tests.Http;
 
+[TestClass]
 public class CookieJarTests
 {
     private static global::Starling.Url.Url Url(string s) => StarlingUrlParser.Parse(s).Value;
@@ -15,7 +15,7 @@ public class CookieJarTests
         return new CookieJar(PublicSuffixList.Default, () => t);
     }
 
-    [Fact]
+    [TestMethod]
     public void Round_trips_a_simple_host_only_cookie()
     {
         var jar = NewJar();
@@ -24,7 +24,7 @@ public class CookieJarTests
         jar.BuildCookieHeader(Url("https://example.com/")).Should().Be("session=abc");
     }
 
-    [Fact]
+    [TestMethod]
     public void Host_only_cookie_does_not_match_subdomain()
     {
         var jar = NewJar();
@@ -34,7 +34,7 @@ public class CookieJarTests
         jar.BuildCookieHeader(Url("https://www.example.com/")).Should().Be("");
     }
 
-    [Fact]
+    [TestMethod]
     public void Domain_attribute_extends_to_subdomains()
     {
         var jar = NewJar();
@@ -46,7 +46,7 @@ public class CookieJarTests
         jar.BuildCookieHeader(Url("https://deep.www.example.com/")).Should().Be("session=abc");
     }
 
-    [Fact]
+    [TestMethod]
     public void Cookie_for_unrelated_domain_is_rejected()
     {
         var jar = NewJar();
@@ -56,7 +56,7 @@ public class CookieJarTests
         jar.BuildCookieHeader(Url("https://other.com/")).Should().Be("");
     }
 
-    [Fact]
+    [TestMethod]
     public void Cookie_with_public_suffix_domain_is_rejected()
     {
         var jar = NewJar();
@@ -65,7 +65,7 @@ public class CookieJarTests
         n.Should().Be(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Secure_cookie_is_only_sent_on_https()
     {
         var jar = NewJar();
@@ -76,7 +76,7 @@ public class CookieJarTests
         jar.BuildCookieHeader(Url("http://example.com/")).Should().Be("");
     }
 
-    [Fact]
+    [TestMethod]
     public void Insecure_request_cannot_set_secure_cookie()
     {
         var jar = NewJar();
@@ -85,7 +85,7 @@ public class CookieJarTests
         n.Should().Be(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Path_match_is_prefix_with_slash_boundary()
     {
         var jar = NewJar();
@@ -99,7 +99,7 @@ public class CookieJarTests
         jar.BuildCookieHeader(Url("https://example.com/")).Should().Be("");
     }
 
-    [Fact]
+    [TestMethod]
     public void Default_path_uses_directory_of_request_url()
     {
         var jar = NewJar();
@@ -111,7 +111,7 @@ public class CookieJarTests
         jar.BuildCookieHeader(Url("https://example.com/")).Should().Be("");
     }
 
-    [Fact]
+    [TestMethod]
     public void Replacing_cookie_preserves_creation_time_but_updates_value()
     {
         var t1 = DateTimeOffset.Parse("2026-05-11T00:00:00Z");
@@ -127,7 +127,7 @@ public class CookieJarTests
         jar.Count.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Max_age_zero_or_negative_evicts_existing_cookie()
     {
         var jar = NewJar();
@@ -138,7 +138,7 @@ public class CookieJarTests
         jar.Count.Should().Be(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Expired_cookies_are_dropped_at_send_time()
     {
         var time = DateTimeOffset.Parse("2026-05-11T00:00:00Z");
@@ -151,7 +151,7 @@ public class CookieJarTests
         jar.BuildCookieHeader(Url("https://example.com/")).Should().Be("");
     }
 
-    [Fact]
+    [TestMethod]
     public void Multiple_cookies_are_sorted_longest_path_first()
     {
         var jar = NewJar();
@@ -162,7 +162,7 @@ public class CookieJarTests
         jar.BuildCookieHeader(Url("https://example.com/api/v1/users")).Should().Be("c=3; b=2; a=1");
     }
 
-    [Fact]
+    [TestMethod]
     public void SameSite_None_without_Secure_is_rejected()
     {
         var jar = NewJar();
@@ -171,7 +171,7 @@ public class CookieJarTests
         n.Should().Be(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Host_prefix_requires_secure_host_only_root_path()
     {
         var jar = NewJar();
@@ -189,7 +189,7 @@ public class CookieJarTests
             new[] { "__Host-bad3=x; Secure; Path=/; Domain=example.com" }).Should().Be(0);  // not host-only
     }
 
-    [Fact]
+    [TestMethod]
     public void Secure_prefix_requires_secure()
     {
         var jar = NewJar();
@@ -200,7 +200,7 @@ public class CookieJarTests
             new[] { "__Secure-x=bad" }).Should().Be(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Clear_removes_everything()
     {
         var jar = NewJar();
@@ -213,7 +213,7 @@ public class CookieJarTests
         jar.BuildCookieHeader(Url("https://example.com/")).Should().Be("");
     }
 
-    [Fact]
+    [TestMethod]
     public void Multivalued_set_cookie_headers_all_get_stored()
     {
         var jar = NewJar();

@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssPropertiesValuesApi;
 /// <summary>
 /// At-rule conformance for <see href="https://drafts.css-houdini.org/css-properties-values-api-1/">CSS Properties and Values API Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-properties-values-api", "https://drafts.css-houdini.org/css-properties-values-api-1/")]
 public sealed class AtRuleTests
 {

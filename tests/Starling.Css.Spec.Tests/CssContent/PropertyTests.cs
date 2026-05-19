@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssContent;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-content-3/">CSS Generated Content Module Level 3</see>.
 /// </summary>
+[TestClass]
 [Spec("css-content", "https://drafts.csswg.org/css-content-3/")]
 public sealed class PropertyTests
 {

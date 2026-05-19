@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.AnimationTriggers;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/animation-triggers-1/">Animation Triggers</see>.
 /// </summary>
+[TestClass]
 [Spec("animation-triggers", "https://drafts.csswg.org/animation-triggers-1/")]
 public sealed class PropertyTests
 {

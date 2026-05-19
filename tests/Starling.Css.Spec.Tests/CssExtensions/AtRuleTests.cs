@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssExtensions;
 /// <summary>
 /// At-rule conformance for <see href="https://drafts.csswg.org/css-extensions-1/">CSS Extensions Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-extensions", "https://drafts.csswg.org/css-extensions-1/")]
 public sealed class AtRuleTests
 {

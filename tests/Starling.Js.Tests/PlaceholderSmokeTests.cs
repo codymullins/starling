@@ -1,11 +1,10 @@
 using FluentAssertions;
-using Xunit;
-
 namespace Starling.Js.Tests;
 
+[TestClass]
 public class PlaceholderSmokeTests
 {
-    [Fact]
+    [TestMethod]
     public void Project_loads_and_xunit_runs()
     {
         // Reference the placeholder so the project reference isn't unused.

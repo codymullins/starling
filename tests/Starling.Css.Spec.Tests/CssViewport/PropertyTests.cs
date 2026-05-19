@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssViewport;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-viewport/">CSS Viewport Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-viewport", "https://drafts.csswg.org/css-viewport/")]
 public sealed class PropertyTests
 {

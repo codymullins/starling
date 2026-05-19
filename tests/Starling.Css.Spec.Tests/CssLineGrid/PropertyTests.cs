@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssLineGrid;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-line-grid-1/">CSS Line Grid Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-line-grid", "https://drafts.csswg.org/css-line-grid-1/")]
 public sealed class PropertyTests
 {

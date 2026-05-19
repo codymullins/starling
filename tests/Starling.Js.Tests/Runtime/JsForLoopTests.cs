@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Runtime;
 
 /// <summary>
@@ -14,27 +12,28 @@ namespace Starling.Js.Tests.Runtime;
 /// but a duplicate pin lives here so a regression in the loop frame stack
 /// surfaces immediately.
 /// </summary>
+[TestClass]
 public class JsForLoopTests
 {
     // -----------------------------------------------------------------------
     // ForStatement (B7-followup-b)
     // -----------------------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void For_basic_sum()
     {
         Eval("var s = 0; for (var i = 0; i < 5; i++) s += i; s")
             .AsNumber.Should().Be(10);
     }
 
-    [Fact]
+    [TestMethod]
     public void For_with_empty_init_test_update_runs_until_break()
     {
         Eval("var n = 0; for (;;) { n++; if (n >= 3) break } n")
             .AsNumber.Should().Be(3);
     }
 
-    [Fact]
+    [TestMethod]
     public void For_let_binding_collects_values()
     {
         Eval(@"
@@ -44,28 +43,28 @@ public class JsForLoopTests
         ").AsString.Should().Be("0,1,2");
     }
 
-    [Fact]
+    [TestMethod]
     public void For_init_only_assignment_to_existing_binding()
     {
         Eval("var i; for (i = 0; i < 3; i++); i")
             .AsNumber.Should().Be(3);
     }
 
-    [Fact]
+    [TestMethod]
     public void For_no_update_clause()
     {
         Eval("var i; for (i = 0; i < 3;) { i++ } i")
             .AsNumber.Should().Be(3);
     }
 
-    [Fact]
+    [TestMethod]
     public void For_no_test_clause_loops_until_break()
     {
         Eval("var s = 0; for (var i = 0;; i++) { if (i >= 4) break; s += i } s")
             .AsNumber.Should().Be(6);
     }
 
-    [Fact]
+    [TestMethod]
     public void For_inside_function_returns_accumulated_sum()
     {
         Eval(@"
@@ -78,7 +77,7 @@ public class JsForLoopTests
         ").AsNumber.Should().Be(6);
     }
 
-    [Fact]
+    [TestMethod]
     public void For_with_expression_init_evaluates_side_effects()
     {
         Eval(@"
@@ -92,35 +91,35 @@ public class JsForLoopTests
     // break / continue (B3-2-followup-a)
     // -----------------------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void For_break_exits_early()
     {
         Eval("var s = 0; for (var i = 0; i < 10; i++) { if (i === 3) break; s += i } s")
             .AsNumber.Should().Be(3);
     }
 
-    [Fact]
+    [TestMethod]
     public void For_continue_skips_iteration()
     {
         Eval("var s = 0; for (var i = 0; i < 5; i++) { if (i === 2) continue; s += i } s")
             .AsNumber.Should().Be(8);
     }
 
-    [Fact]
+    [TestMethod]
     public void While_break_exits()
     {
         Eval("var i = 0; while (true) { if (i === 5) break; i++ } i")
             .AsNumber.Should().Be(5);
     }
 
-    [Fact]
+    [TestMethod]
     public void While_continue_jumps_to_test()
     {
         Eval("var s = 0, i = 0; while (i < 5) { i++; if (i === 2) continue; s += i } s")
             .AsNumber.Should().Be(13);
     }
 
-    [Fact]
+    [TestMethod]
     public void Break_exits_only_inner_loop()
     {
         Eval(@"
@@ -134,7 +133,7 @@ public class JsForLoopTests
         ").AsNumber.Should().Be(3);
     }
 
-    [Fact]
+    [TestMethod]
     public void Continue_in_nested_for_skips_inner_only()
     {
         Eval(@"
@@ -148,7 +147,7 @@ public class JsForLoopTests
         ").AsNumber.Should().Be(6);
     }
 
-    [Fact]
+    [TestMethod]
     public void Break_inside_for_of_invokes_iterator_close()
     {
         // Drives the for…of cleanup path: a user iterable with a `return()`
@@ -172,7 +171,7 @@ public class JsForLoopTests
         ").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Continue_inside_for_of_skips_one_iteration()
     {
         Eval(@"
@@ -185,7 +184,7 @@ public class JsForLoopTests
         ").AsNumber.Should().Be(8);
     }
 
-    [Fact]
+    [TestMethod]
     public void Break_outside_any_loop_is_compile_error()
     {
         // The parser permits `break;` anywhere; the compiler raises the
@@ -201,28 +200,28 @@ public class JsForLoopTests
     // do…while
     // -----------------------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void DoWhile_increments_until_test_false()
     {
         Eval("var i = 0; do { i++ } while (i < 3); i")
             .AsNumber.Should().Be(3);
     }
 
-    [Fact]
+    [TestMethod]
     public void DoWhile_runs_at_least_once_even_when_test_false()
     {
         Eval("var ran = false; do { ran = true } while (false); ran")
             .AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void DoWhile_break_inside_body()
     {
         Eval("var i = 0; do { i++; if (i === 2) break } while (true); i")
             .AsNumber.Should().Be(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void DoWhile_continue_jumps_to_test()
     {
         // The continue must land at the test (not the loop top), so the
@@ -244,7 +243,7 @@ public class JsForLoopTests
     // for…in
     // -----------------------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void ForIn_iterates_own_enumerable_string_keys()
     {
         Eval(@"
@@ -254,7 +253,7 @@ public class JsForLoopTests
         ").AsString.Should().Be("a,b");
     }
 
-    [Fact]
+    [TestMethod]
     public void ForIn_iterates_inherited_enumerable_keys()
     {
         Eval(@"
@@ -269,7 +268,7 @@ public class JsForLoopTests
         ").AsString.Should().Be("x,y");
     }
 
-    [Fact]
+    [TestMethod]
     public void ForIn_skips_null_and_undefined()
     {
         Eval(@"
@@ -280,7 +279,7 @@ public class JsForLoopTests
         ").AsNumber.Should().Be(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void ForIn_snapshot_does_not_observe_mutation()
     {
         // §14.7.5.10: keys snapshotted at loop entry. Adding a new key
@@ -296,7 +295,7 @@ public class JsForLoopTests
         ").AsString.Should().Be("a,b");
     }
 
-    [Fact]
+    [TestMethod]
     public void ForIn_break_exits()
     {
         Eval(@"
@@ -309,7 +308,7 @@ public class JsForLoopTests
         ").AsString.Should().Be("a");
     }
 
-    [Fact]
+    [TestMethod]
     public void ForIn_array_iterates_indices_as_strings()
     {
         Eval(@"

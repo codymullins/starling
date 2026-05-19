@@ -1,12 +1,11 @@
 using FluentAssertions;
 using Starling.Html.Tokenizer;
-using Xunit;
-
 namespace Starling.Html.Tests.Tokenizer;
 
+[TestClass]
 public class TagStateTests
 {
-    [Fact]
+    [TestMethod]
     public void Bare_start_tag()
     {
         Tokenize("<a>").Should().Equal(
@@ -14,7 +13,7 @@ public class TagStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Bare_end_tag()
     {
         Tokenize("</a>").Should().Equal(
@@ -22,7 +21,7 @@ public class TagStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Self_closing_start_tag()
     {
         Tokenize("<br/>").Should().Equal(
@@ -30,7 +29,7 @@ public class TagStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Tag_name_is_lowercased()
     {
         Tokenize("<DIV>").Should().Equal(
@@ -38,7 +37,7 @@ public class TagStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Tag_around_text_data()
     {
         Tokenize("<p>hi</p>").Should().Equal(
@@ -49,7 +48,7 @@ public class TagStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Single_attribute_no_value()
     {
         Tokenize("<input checked>").Should().Equal(
@@ -57,7 +56,7 @@ public class TagStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Unquoted_attribute_value()
     {
         Tokenize("<a href=foo>").Should().Equal(
@@ -65,7 +64,7 @@ public class TagStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Double_quoted_attribute_value()
     {
         Tokenize("<a href=\"/path?x=1\">").Should().Equal(
@@ -73,7 +72,7 @@ public class TagStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Single_quoted_attribute_value()
     {
         Tokenize("<a href='/path'>").Should().Equal(
@@ -81,7 +80,7 @@ public class TagStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Attribute_name_is_lowercased()
     {
         Tokenize("<a HREF=\"x\">").Should().Equal(
@@ -89,7 +88,7 @@ public class TagStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Multiple_attributes()
     {
         Tokenize("<a href=\"x\" id='y' rel=z>").Should().Equal(
@@ -103,7 +102,7 @@ public class TagStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Duplicate_attribute_drops_second_and_reports_parse_error()
     {
         var sink = new RecordingSink();
@@ -119,7 +118,7 @@ public class TagStateTests
             .Which.code.Should().Be(HtmlParseError.DuplicateAttribute);
     }
 
-    [Fact]
+    [TestMethod]
     public void Self_closing_with_attributes()
     {
         Tokenize("<img src=\"a.png\" alt=\"hi\"/>").Should().Equal(
@@ -132,7 +131,7 @@ public class TagStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Empty_tag_starts_with_invalid_first_char()
     {
         // <> per spec is an invalid-first-character-of-tag-name parse error;
@@ -152,7 +151,7 @@ public class TagStateTests
             .Which.code.Should().Be(HtmlParseError.InvalidFirstCharacterOfTagName);
     }
 
-    [Fact]
+    [TestMethod]
     public void Missing_end_tag_name_parse_error()
     {
         // </> per §13.2.5.7
@@ -167,7 +166,7 @@ public class TagStateTests
             .Which.code.Should().Be(HtmlParseError.MissingEndTagName);
     }
 
-    [Fact]
+    [TestMethod]
     public void Eof_in_tag_name_drops_tag_and_reports_parse_error()
     {
         var sink = new RecordingSink();
@@ -181,7 +180,7 @@ public class TagStateTests
             .Which.code.Should().Be(HtmlParseError.EofInTag);
     }
 
-    [Fact]
+    [TestMethod]
     public void Eof_before_tag_name_emits_lt_then_eof()
     {
         var sink = new RecordingSink();
@@ -197,7 +196,7 @@ public class TagStateTests
             .Which.code.Should().Be(HtmlParseError.EofBeforeTagName);
     }
 
-    [Fact]
+    [TestMethod]
     public void Null_in_tag_name_maps_to_replacement_character()
     {
         var sink = new RecordingSink();
@@ -213,7 +212,7 @@ public class TagStateTests
             .Which.code.Should().Be(HtmlParseError.UnexpectedNullCharacter);
     }
 
-    [Fact]
+    [TestMethod]
     public void Missing_whitespace_between_attributes_reports_and_continues()
     {
         // Spec §13.2.5.39: <a x="1"y="2"> emits both attrs with a parse error.
@@ -235,7 +234,7 @@ public class TagStateTests
             .Which.code.Should().Be(HtmlParseError.MissingWhitespaceBetweenAttributes);
     }
 
-    [Fact]
+    [TestMethod]
     public void Missing_attribute_value_after_equals_then_gt()
     {
         // <a foo=> → missing-attribute-value, then emit tag with foo="".
@@ -252,7 +251,7 @@ public class TagStateTests
             .Which.code.Should().Be(HtmlParseError.MissingAttributeValue);
     }
 
-    [Fact]
+    [TestMethod]
     public void Chunked_input_across_tag_boundaries()
     {
         // Feed one char at a time; tokens must come out identical to a single

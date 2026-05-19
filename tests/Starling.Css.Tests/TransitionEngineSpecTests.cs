@@ -3,14 +3,13 @@ using Starling.Css.Animations;
 using Starling.Css.Properties;
 using Starling.Css.Values;
 using Starling.Dom;
-using Xunit;
-
 namespace Starling.Css.Tests;
 
 /// <summary>
 /// Additional CSS Transitions Level 1 conformance tests.
 /// Reference: https://www.w3.org/TR/css-transitions-1/ §3.
 /// </summary>
+[TestClass]
 public sealed class TransitionEngineSpecTests
 {
     private static Func<PropertyId, CssValue?> Props(
@@ -32,7 +31,7 @@ public sealed class TransitionEngineSpecTests
     // CSS Transitions 1 §3 — "If the combined duration is zero, no
     // transition is generated." A zero-duration change snaps to the new
     // value immediately without creating an active running transition.
-    [Fact]
+    [TestMethod]
     public void Zero_duration_with_zero_delay_does_not_create_running_transition()
     {
         var engine = new TransitionEngine();
@@ -50,7 +49,7 @@ public sealed class TransitionEngineSpecTests
     // CSS Transitions 1 §3 — transition-property: all should match every
     // animatable property (the default helper uses "all"; this verifies
     // multiple properties on the same element each start transitions).
-    [Fact]
+    [TestMethod]
     public void Property_all_starts_transitions_for_every_changed_property()
     {
         var engine = new TransitionEngine();
@@ -71,7 +70,7 @@ public sealed class TransitionEngineSpecTests
 
     // CSS Transitions 1 §3 — completing a transition emits exactly one
     // completion event and clears the active state.
-    [Fact]
+    [TestMethod]
     public void Completed_transition_reports_completion_once_and_clears_state()
     {
         var engine = new TransitionEngine();
@@ -89,7 +88,7 @@ public sealed class TransitionEngineSpecTests
 
     // CSS Transitions 1 §3 — after a transition completes, the next
     // value change starts a fresh transition (from the held final value).
-    [Fact]
+    [TestMethod]
     public void New_target_after_completion_starts_fresh_transition()
     {
         var engine = new TransitionEngine();

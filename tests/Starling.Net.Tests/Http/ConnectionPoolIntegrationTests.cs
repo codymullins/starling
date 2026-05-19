@@ -3,8 +3,6 @@ using System.Net.Sockets;
 using System.Text;
 using FluentAssertions;
 using Starling.Net.Http;
-using Xunit;
-
 namespace Starling.Net.Tests.Http;
 
 /// <summary>
@@ -13,9 +11,10 @@ namespace Starling.Net.Tests.Http;
 /// connection open for keep-alive responses, then asserts the second request
 /// reused the same socket (no new accept) or didn't (new accept).
 /// </summary>
+[TestClass]
 public class ConnectionPoolIntegrationTests
 {
-    [Fact]
+    [TestMethod]
     public async Task Second_same_origin_request_reuses_pooled_connection()
     {
         using var server = await KeepAliveStubServer.StartAsync(req =>
@@ -24,8 +23,8 @@ public class ConnectionPoolIntegrationTests
         using var client = new StarlingHttpClient();
         var url = $"http://localhost:{server.Port}/";
 
-        var r1 = await client.GetAsync(url, TestContext.Current.CancellationToken);
-        var r2 = await client.GetAsync(url, TestContext.Current.CancellationToken);
+        var r1 = await client.GetAsync(url, CancellationToken.None);
+        var r2 = await client.GetAsync(url, CancellationToken.None);
 
         r1.IsOk.Should().BeTrue();
         r2.IsOk.Should().BeTrue();
@@ -41,7 +40,7 @@ public class ConnectionPoolIntegrationTests
         client.ConnectionPool.IdleCountFor(origin).Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Different_origin_does_not_reuse_pooled_connection()
     {
         using var serverA = await KeepAliveStubServer.StartAsync(_ =>
@@ -52,9 +51,9 @@ public class ConnectionPoolIntegrationTests
         using var client = new StarlingHttpClient();
 
         var r1 = await client.GetAsync(
-            $"http://localhost:{serverA.Port}/", TestContext.Current.CancellationToken);
+            $"http://localhost:{serverA.Port}/", CancellationToken.None);
         var r2 = await client.GetAsync(
-            $"http://localhost:{serverB.Port}/", TestContext.Current.CancellationToken);
+            $"http://localhost:{serverB.Port}/", CancellationToken.None);
 
         r1.IsOk.Should().BeTrue();
         r2.IsOk.Should().BeTrue();
@@ -68,7 +67,7 @@ public class ConnectionPoolIntegrationTests
         client.ConnectionPool.IdleCountFor(originB).Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Connection_close_response_is_not_pooled()
     {
         using var server = await KeepAliveStubServer.StartAsync(_ =>
@@ -78,20 +77,20 @@ public class ConnectionPoolIntegrationTests
         var origin = OriginKey.Create("http", "localhost", server.Port);
 
         var r1 = await client.GetAsync(
-            $"http://localhost:{server.Port}/", TestContext.Current.CancellationToken);
+            $"http://localhost:{server.Port}/", CancellationToken.None);
         r1.IsOk.Should().BeTrue();
 
         client.ConnectionPool.IdleCountFor(origin).Should().Be(0,
             "Connection: close responses are never returned to the pool");
 
         var r2 = await client.GetAsync(
-            $"http://localhost:{server.Port}/", TestContext.Current.CancellationToken);
+            $"http://localhost:{server.Port}/", CancellationToken.None);
         r2.IsOk.Should().BeTrue();
 
         server.AcceptCount.Should().Be(2, "the second request must open a new connection");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Idle_timeout_evicts_pooled_connection_on_next_acquire()
     {
         using var server = await KeepAliveStubServer.StartAsync(_ =>
@@ -104,24 +103,24 @@ public class ConnectionPoolIntegrationTests
         var origin = OriginKey.Create("http", "localhost", server.Port);
 
         var r1 = await client.GetAsync(
-            $"http://localhost:{server.Port}/", TestContext.Current.CancellationToken);
+            $"http://localhost:{server.Port}/", CancellationToken.None);
         r1.IsOk.Should().BeTrue();
         pool.IdleCountFor(origin).Should().Be(1);
 
         // Age the idle entry past the timeout, then trigger drain. After that
         // a subsequent request must open a fresh socket.
-        await Task.Delay(150, TestContext.Current.CancellationToken);
+        await Task.Delay(150, CancellationToken.None);
         var drained = await pool.DrainExpiredAsync();
         drained.Should().Be(1, "the idle entry exceeded the configured idle timeout");
         pool.IdleCountFor(origin).Should().Be(0);
 
         var r2 = await client.GetAsync(
-            $"http://localhost:{server.Port}/", TestContext.Current.CancellationToken);
+            $"http://localhost:{server.Port}/", CancellationToken.None);
         r2.IsOk.Should().BeTrue();
         server.AcceptCount.Should().Be(2, "expired connection must not be reused");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Disposing_client_disposes_pooled_connections()
     {
         var server = await KeepAliveStubServer.StartAsync(_ =>
@@ -133,7 +132,7 @@ public class ConnectionPoolIntegrationTests
         try
         {
             var r1 = await client.GetAsync(
-                $"http://localhost:{server.Port}/", TestContext.Current.CancellationToken);
+                $"http://localhost:{server.Port}/", CancellationToken.None);
             r1.IsOk.Should().BeTrue();
             client.ConnectionPool.IdleCountFor(origin).Should().Be(1);
         }
@@ -147,7 +146,7 @@ public class ConnectionPoolIntegrationTests
         client.ConnectionPool.IdleCount.Should().Be(0);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Concurrent_same_origin_requests_open_separate_connections_then_pool_both()
     {
         // Two requests fired off in parallel against an empty pool must each
@@ -159,8 +158,8 @@ public class ConnectionPoolIntegrationTests
         using var client = new StarlingHttpClient();
         var url = $"http://localhost:{server.Port}/";
 
-        var t1 = client.GetAsync(url, TestContext.Current.CancellationToken);
-        var t2 = client.GetAsync(url, TestContext.Current.CancellationToken);
+        var t1 = client.GetAsync(url, CancellationToken.None);
+        var t2 = client.GetAsync(url, CancellationToken.None);
 
         var results = await Task.WhenAll(t1, t2);
         results[0].IsOk.Should().BeTrue();

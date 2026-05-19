@@ -3,10 +3,9 @@ using Starling.Css.Animations;
 using Starling.Css.Properties;
 using Starling.Css.Values;
 using Starling.Dom;
-using Xunit;
-
 namespace Starling.Css.Tests;
 
+[TestClass]
 public sealed class TransitionEngineTests
 {
     private static Func<PropertyId, CssValue?> Props(
@@ -25,7 +24,7 @@ public sealed class TransitionEngineTests
         };
     }
 
-    [Fact]
+    [TestMethod]
     public void First_value_does_not_fire_a_transition()
     {
         var engine = new TransitionEngine();
@@ -35,7 +34,7 @@ public sealed class TransitionEngineTests
         engine.GetEffective(el, PropertyId.Opacity).Should().Be(new CssNumber(1));
     }
 
-    [Fact]
+    [TestMethod]
     public void Changed_value_starts_a_transition_and_reaches_target_after_duration()
     {
         var engine = new TransitionEngine();
@@ -64,7 +63,7 @@ public sealed class TransitionEngineTests
             .Should().BeApproximately(1, 1e-6);
     }
 
-    [Fact]
+    [TestMethod]
     public void Delay_postpones_the_first_interpolated_sample()
     {
         var engine = new TransitionEngine();
@@ -88,7 +87,7 @@ public sealed class TransitionEngineTests
         engine.ActiveCount.Should().Be(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Property_not_in_transition_property_list_skips_animation()
     {
         var engine = new TransitionEngine();
@@ -102,7 +101,7 @@ public sealed class TransitionEngineTests
             .Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Transition_property_none_disables_animation_even_with_duration()
     {
         var engine = new TransitionEngine();
@@ -114,7 +113,7 @@ public sealed class TransitionEngineTests
         engine.ActiveCount.Should().Be(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Interrupted_transition_continues_from_current_sample()
     {
         var engine = new TransitionEngine();
@@ -137,7 +136,7 @@ public sealed class TransitionEngineTests
             .Should().BeApproximately(midway, 1e-6);
     }
 
-    [Fact]
+    [TestMethod]
     public void Forget_removes_all_state_for_an_element()
     {
         var engine = new TransitionEngine();

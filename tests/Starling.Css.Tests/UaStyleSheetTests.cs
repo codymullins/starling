@@ -3,8 +3,6 @@ using Starling.Css.Cascade;
 using Starling.Css.Properties;
 using Starling.Css.Values;
 using Starling.Dom;
-using Xunit;
-
 namespace Starling.Css.Tests;
 
 /// <summary>
@@ -14,9 +12,10 @@ namespace Starling.Css.Tests;
 /// so each test just sticks an element in a document, lets the engine compute
 /// the style, and asserts the UA defaults made it through.
 /// </summary>
+[TestClass]
 public sealed class UaStyleSheetTests
 {
-    [Fact]
+    [TestMethod]
     public void Center_element_gets_block_display_and_centered_text()
     {
         var doc = new Document();
@@ -32,7 +31,7 @@ public sealed class UaStyleSheetTests
         style.Get(PropertyId.TextAlign).Should().Be(new CssKeyword("center"));
     }
 
-    [Fact]
+    [TestMethod]
     public void Center_text_alignment_inherits_to_descendants()
     {
         // <center> works by inheritance: its text-align: center cascades into
@@ -48,7 +47,7 @@ public sealed class UaStyleSheetTests
         style.Get(PropertyId.TextAlign).Should().Be(new CssKeyword("center"));
     }
 
-    [Fact]
+    [TestMethod]
     public void Anchor_gets_blue_color_and_underline()
     {
         var doc = new Document();
@@ -66,7 +65,7 @@ public sealed class UaStyleSheetTests
         style.Get(PropertyId.TextDecorationLine).Should().Be(new CssKeyword("underline"));
     }
 
-    [Fact]
+    [TestMethod]
     public void Nobr_element_disables_wrapping()
     {
         var doc = new Document();
@@ -78,7 +77,7 @@ public sealed class UaStyleSheetTests
         style.Get(PropertyId.WhiteSpace).Should().Be(new CssKeyword("nowrap"));
     }
 
-    [Fact]
+    [TestMethod]
     public void Font_element_stays_inline()
     {
         var doc = new Document();
@@ -90,11 +89,11 @@ public sealed class UaStyleSheetTests
         style.Get(PropertyId.Display).Should().Be(new CssKeyword("inline"));
     }
 
-    [Theory]
-    [InlineData("tt")]
-    [InlineData("code")]
-    [InlineData("kbd")]
-    [InlineData("samp")]
+    [TestMethod]
+    [DataRow("tt")]
+    [DataRow("code")]
+    [DataRow("kbd")]
+    [DataRow("samp")]
     public void Monospace_legacy_tags_use_monospace_font(string tag)
     {
         var doc = new Document();

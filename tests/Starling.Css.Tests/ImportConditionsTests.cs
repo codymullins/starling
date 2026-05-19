@@ -1,13 +1,13 @@
 using FluentAssertions;
 using Starling.Css.Media;
 using Starling.Css.Parser;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("css-cascade-5", "https://www.w3.org/TR/css-cascade-5/")]
 
+[TestClass]
 public sealed class ImportConditionsTests
 {
     private static ImportRule ParseImport(string source)
@@ -18,7 +18,7 @@ public sealed class ImportConditionsTests
         return imp;
     }
 
-    [Fact]
+    [TestMethod]
     public void Captures_url_layer_supports_and_media_query()
     {
         var imp = ParseImport(
@@ -34,7 +34,7 @@ public sealed class ImportConditionsTests
             .Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Captures_url_via_url_function()
     {
         var imp = ParseImport("@import url(\"styles.css\");");
@@ -44,7 +44,7 @@ public sealed class ImportConditionsTests
         imp.SupportsCondition.Should().BeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Anonymous_layer_keyword_yields_empty_layer_name()
     {
         var imp = ParseImport("@import \"a.css\" layer;");
@@ -52,7 +52,7 @@ public sealed class ImportConditionsTests
         imp.LayerName.Should().Be(string.Empty);
     }
 
-    [Fact]
+    [TestMethod]
     public void Bare_import_without_conditions_parses()
     {
         var imp = ParseImport("@import url(a.css);");

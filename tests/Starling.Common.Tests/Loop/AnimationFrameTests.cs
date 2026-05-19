@@ -1,11 +1,10 @@
 using FluentAssertions;
-using Xunit;
-
 namespace Starling.Loop.Tests;
 
+[TestClass]
 public sealed class AnimationFrameTests
 {
-    [Fact]
+    [TestMethod]
     public void Raf_fires_once_on_next_frame_with_frame_timestamp()
     {
         var loop = new WebEventLoop();
@@ -22,7 +21,7 @@ public sealed class AnimationFrameTests
         fired.Should().Equal(16.0); // no re-fire
     }
 
-    [Fact]
+    [TestMethod]
     public void Nested_raf_schedules_for_next_frame_not_current()
     {
         var loop = new WebEventLoop();
@@ -41,7 +40,7 @@ public sealed class AnimationFrameTests
         fired.Should().Equal(16.0, 32.0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Cancel_before_fire_removes_callback()
     {
         var loop = new WebEventLoop();
@@ -55,7 +54,7 @@ public sealed class AnimationFrameTests
         fired.Should().Equal(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void All_callbacks_in_one_frame_see_same_timestamp()
     {
         var loop = new WebEventLoop();
@@ -69,7 +68,7 @@ public sealed class AnimationFrameTests
         stamps.Should().Equal(42.0, 42.0, 42.0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Run_frame_drains_due_timers_before_raf()
     {
         var loop = new WebEventLoop();
@@ -82,7 +81,7 @@ public sealed class AnimationFrameTests
         log.Should().Equal("timer", "raf");
     }
 
-    [Fact]
+    [TestMethod]
     public void Run_frame_microtasks_drain_between_raf_callbacks()
     {
         var loop = new WebEventLoop();
@@ -99,7 +98,7 @@ public sealed class AnimationFrameTests
         log.Should().Equal("raf1", "mt1", "raf2");
     }
 
-    [Fact]
+    [TestMethod]
     public void Run_frame_rejects_backwards_time()
     {
         var loop = new WebEventLoop();
@@ -108,7 +107,7 @@ public sealed class AnimationFrameTests
         act.Should().Throw<ArgumentOutOfRangeException>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Advance_by_now_fires_raf_callbacks()
     {
         // AdvanceBy is implemented in terms of RunFrame for back-compat,

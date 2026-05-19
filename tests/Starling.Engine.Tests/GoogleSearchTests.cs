@@ -9,8 +9,6 @@ using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
 using Starling.Net;
-using Xunit;
-
 namespace Starling.Engine.Tests;
 
 /// <summary>
@@ -43,6 +41,7 @@ namespace Starling.Engine.Tests;
 ///   for this task — see the handoff doc.</item>
 /// </list>
 /// </summary>
+[TestClass]
 public sealed class GoogleSearchTests
 {
     private const int ViewportWidth = 800;
@@ -53,7 +52,7 @@ public sealed class GoogleSearchTests
     // Offline-fixture-mode tests (always run)
     // -----------------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public async Task Google_home_renders_brand_and_nav()
     {
         var (homeHtml, _) = LoadFixtures();
@@ -67,7 +66,7 @@ public sealed class GoogleSearchTests
                 $"http://127.0.0.1:{server.Port}/",
                 new RenderOptions(new Size(ViewportWidth, ViewportHeight), DefaultFontSize),
                 output,
-                TestContext.Current.CancellationToken);
+                CancellationToken.None);
 
             result.IsOk.Should().BeTrue(
                 result.IsErr ? $"engine render failed: {result.Error.Message}" : "");
@@ -93,7 +92,7 @@ public sealed class GoogleSearchTests
         }
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Google_search_renders_result_list()
     {
         var (_, searchHtml) = LoadFixtures();
@@ -107,7 +106,7 @@ public sealed class GoogleSearchTests
                 $"http://127.0.0.1:{server.Port}/search?q=hello",
                 new RenderOptions(new Size(ViewportWidth, ViewportHeight), DefaultFontSize),
                 output,
-                TestContext.Current.CancellationToken);
+                CancellationToken.None);
 
             // If anything in the pipeline blew up, surface the precise error
             // (which is the whole point of B7 as a diagnostic).
@@ -149,7 +148,7 @@ public sealed class GoogleSearchTests
     /// drove it" rehearsal: if RenderAsync ever gains a JS-execution hook, the
     /// same script ought to surface this same content in <c>DisplayText</c>.
     /// </summary>
-    [Fact]
+    [TestMethod]
     public async Task Search_fetches_results_via_js_fetch_and_populates_dom()
     {
         await using var server = await JsFixtureServer.StartAsync();
@@ -206,7 +205,7 @@ public sealed class GoogleSearchTests
 
         if (runtime.GetGlobal("__err").IsString)
         {
-            throw new Xunit.Sdk.XunitException(
+            throw new AssertFailedException(
                 "JS error during fetch-driven search-result population: " +
                 runtime.GetGlobal("__err").AsString +
                 (errors.Count > 0 ? "\nconsole.error: " + string.Join(" | ", errors) : ""));
@@ -227,8 +226,8 @@ public sealed class GoogleSearchTests
     // Live-gated test (STARLING_ALLOW_NETWORK=1 to opt in)
     // -----------------------------------------------------------------
 
-    [Fact]
-    [Trait("Category", "NetworkLive")]
+    [TestMethod]
+    [TestCategory("NetworkLive")]
     public async Task Live_google_home_renders_offline_baseline_strings()
     {
         if (Environment.GetEnvironmentVariable("STARLING_ALLOW_NETWORK") != "1")
@@ -246,7 +245,7 @@ public sealed class GoogleSearchTests
                 "https://www.google.com/",
                 new RenderOptions(new Size(ViewportWidth, ViewportHeight), DefaultFontSize),
                 output,
-                TestContext.Current.CancellationToken);
+                CancellationToken.None);
 
             result.IsOk.Should().BeTrue(result.IsErr ? result.Error.Message : "");
 
@@ -267,19 +266,19 @@ public sealed class GoogleSearchTests
                 // offline runs track the upstream shape.
                 using var client = new StarlingHttpClient();
                 var url = global::Starling.Url.UrlParser.Parse("https://www.google.com/").Value;
-                var resp = await client.GetAsync(url, TestContext.Current.CancellationToken);
+                var resp = await client.GetAsync(url, CancellationToken.None);
                 if (resp.IsOk)
                 {
                     Directory.CreateDirectory(Path.GetDirectoryName(homeFixture)!);
-                    await File.WriteAllBytesAsync(homeFixture, resp.Value.Body.ToArray(), TestContext.Current.CancellationToken);
+                    await File.WriteAllBytesAsync(homeFixture, resp.Value.Body.ToArray(), CancellationToken.None);
                 }
 
                 var searchUrl = global::Starling.Url.UrlParser.Parse("https://www.google.com/search?q=hello").Value;
-                var searchResp = await client.GetAsync(searchUrl, TestContext.Current.CancellationToken);
+                var searchResp = await client.GetAsync(searchUrl, CancellationToken.None);
                 if (searchResp.IsOk)
                 {
                     Directory.CreateDirectory(Path.GetDirectoryName(searchFixture)!);
-                    await File.WriteAllBytesAsync(searchFixture, searchResp.Value.Body.ToArray(), TestContext.Current.CancellationToken);
+                    await File.WriteAllBytesAsync(searchFixture, searchResp.Value.Body.ToArray(), CancellationToken.None);
                 }
             }
         }
@@ -306,10 +305,10 @@ public sealed class GoogleSearchTests
     private static string LocateRepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Starling.sln")))
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Starling.slnx")))
             dir = dir.Parent;
         if (dir is null)
-            throw new InvalidOperationException("Could not locate Starling.sln walking up from the test binary.");
+            throw new InvalidOperationException("Could not locate Starling.slnx walking up from the test binary.");
         return dir.FullName;
     }
 

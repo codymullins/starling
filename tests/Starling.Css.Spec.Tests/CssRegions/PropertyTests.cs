@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssRegions;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-regions-1/">CSS Regions Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-regions", "https://drafts.csswg.org/css-regions-1/")]
 public sealed class PropertyTests
 {

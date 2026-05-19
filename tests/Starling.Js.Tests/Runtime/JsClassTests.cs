@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Runtime;
 
 /// <summary>
@@ -11,9 +9,10 @@ namespace Starling.Js.Tests.Runtime;
 /// expressions, <c>extends</c>/<c>super</c>, accessors, static members,
 /// private fields, and instance/static field initializers.
 /// </summary>
+[TestClass]
 public class JsClassTests
 {
-    [Fact]
+    [TestMethod]
     public void Bare_class_constructs_instance_whose_prototype_is_class_prototype()
     {
         Eval(@"
@@ -23,7 +22,7 @@ public class JsClassTests
         ").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Method_callable_on_instance()
     {
         Eval(@"
@@ -32,7 +31,7 @@ public class JsClassTests
         ").AsString.Should().Be("hi");
     }
 
-    [Fact]
+    [TestMethod]
     public void Constructor_assigns_to_this()
     {
         Eval(@"
@@ -41,7 +40,7 @@ public class JsClassTests
         ").AsNumber.Should().Be(5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Getter_returns_value()
     {
         Eval(@"
@@ -50,7 +49,7 @@ public class JsClassTests
         ").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Setter_writes_via_accessor()
     {
         Eval(@"
@@ -59,7 +58,7 @@ public class JsClassTests
         ").AsNumber.Should().Be(7);
     }
 
-    [Fact]
+    [TestMethod]
     public void Static_method_lives_on_constructor()
     {
         Eval(@"
@@ -68,7 +67,7 @@ public class JsClassTests
         ").AsNumber.Should().Be(42);
     }
 
-    [Fact]
+    [TestMethod]
     public void Extends_inherits_method_through_prototype_chain()
     {
         Eval(@"
@@ -78,7 +77,7 @@ public class JsClassTests
         ").AsString.Should().Be("a");
     }
 
-    [Fact]
+    [TestMethod]
     public void Super_method_calls_parent_method()
     {
         Eval(@"
@@ -88,7 +87,7 @@ public class JsClassTests
         ").AsString.Should().Be("ab");
     }
 
-    [Fact]
+    [TestMethod]
     public void Super_call_in_constructor_passes_args()
     {
         Eval(@"
@@ -98,7 +97,7 @@ public class JsClassTests
         ").AsNumber.Should().Be(7);
     }
 
-    [Fact]
+    [TestMethod]
     public void This_before_super_throws_reference_error()
     {
         var act = () => Eval(@"
@@ -109,7 +108,7 @@ public class JsClassTests
         act.Should().Throw<JsThrow>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Default_derived_constructor_forwards_args()
     {
         Eval(@"
@@ -119,7 +118,7 @@ public class JsClassTests
         ").AsNumber.Should().Be(5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Instance_field_with_literal()
     {
         Eval(@"
@@ -128,7 +127,7 @@ public class JsClassTests
         ").AsNumber.Should().Be(5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Field_initializer_can_reference_this()
     {
         Eval(@"
@@ -137,7 +136,7 @@ public class JsClassTests
         ").AsString.Should().Be("hi foo");
     }
 
-    [Fact]
+    [TestMethod]
     public void Static_field_lives_on_constructor()
     {
         Eval(@"
@@ -146,7 +145,7 @@ public class JsClassTests
         ").AsNumber.Should().Be(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Static_block_runs_at_class_evaluation_with_this_constructor()
     {
         Eval(@"
@@ -155,7 +154,7 @@ public class JsClassTests
         ").AsString.Should().Be("1,2");
     }
 
-    [Fact]
+    [TestMethod]
     public void Private_field_readable_via_accessor_inside_class()
     {
         Eval(@"
@@ -164,7 +163,7 @@ public class JsClassTests
         ").AsNumber.Should().Be(7);
     }
 
-    [Fact]
+    [TestMethod]
     public void Private_method_callable_only_inside_class()
     {
         Eval(@"
@@ -173,7 +172,7 @@ public class JsClassTests
         ").AsString.Should().Be("hi");
     }
 
-    [Fact]
+    [TestMethod]
     public void Static_private_field_accessed_via_class()
     {
         Eval(@"
@@ -185,7 +184,7 @@ public class JsClassTests
         ").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Class_expression_anonymous()
     {
         Eval(@"
@@ -194,7 +193,7 @@ public class JsClassTests
         ").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Static_method_inheritance_through_constructor_prototype_chain()
     {
         Eval(@"
@@ -204,7 +203,7 @@ public class JsClassTests
         ").AsNumber.Should().Be(42);
     }
 
-    [Fact]
+    [TestMethod]
     public void Class_expression_with_constructor_returns_instance()
     {
         Eval(@"

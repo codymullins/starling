@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssCascade6;
 /// <summary>
 /// At-rule conformance for <see href="https://drafts.csswg.org/css-cascade-6/">CSS Cascading and Inheritance Module Level 6</see>.
 /// </summary>
+[TestClass]
 [Spec("css-cascade-6", "https://drafts.csswg.org/css-cascade-6/")]
 public sealed class AtRuleTests
 {

@@ -3,8 +3,6 @@ using System.Text.Json;
 using FluentAssertions;
 using SixLabors.ImageSharp;
 using Starling.Common.Encoding;
-using Xunit;
-
 namespace Starling.Engine.Tests;
 
 /// <summary>
@@ -17,6 +15,7 @@ namespace Starling.Engine.Tests;
 /// expected string. The work-package gate is ≥ 95% pass on the
 /// supported label set.
 /// </summary>
+[TestClass]
 public class EngineEncodingTests
 {
     private static readonly string TestDataRoot =
@@ -35,7 +34,7 @@ public class EngineEncodingTests
         _ = new StarlingEngine();
     }
 
-    [Fact]
+    [TestMethod]
     public void WhatwgEncodingLabels_resolves_every_label_in_wpt_encodings_json()
     {
         var path = Path.Combine(TestDataRoot, "encodings.json");
@@ -64,7 +63,7 @@ public class EngineEncodingTests
             $"all WHATWG labels should resolve to canonical names ({misses.Count} failures)");
     }
 
-    [Fact]
+    [TestMethod]
     public void DecodeFixtures_pass_rate_meets_ninety_five_percent_gate()
     {
         var path = Path.Combine(TestDataRoot, "decode-fixtures.json");
@@ -102,7 +101,7 @@ public class EngineEncodingTests
             $"Failures:\n  - {string.Join("\n  - ", failures)}");
     }
 
-    [Fact]
+    [TestMethod]
     public void MetaCharset_windows_1252_decodes_0x92_as_right_single_quote()
     {
         // Mirrors the wp:M2-07d acceptance criterion: a page declaring
@@ -122,7 +121,7 @@ public class EngineEncodingTests
         decoded.Should().NotContain("?s working");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task RenderAsync_uses_windows_1252_for_smart_quote_meta_charset()
     {
         // End-to-end: stub HTTP serves a windows-1252 page with byte 0x92;
@@ -152,7 +151,7 @@ public class EngineEncodingTests
                 $"http://localhost:{server.Port}/win1252",
                 new RenderOptions(new Size(320, 180), 16f),
                 output,
-                TestContext.Current.CancellationToken);
+                CancellationToken.None);
 
             result.IsOk.Should().BeTrue(result.IsErr ? result.Error.Message : "");
             result.Value.DisplayText.Should().Be("smart’quote");

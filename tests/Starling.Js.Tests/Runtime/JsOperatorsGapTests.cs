@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Runtime;
 
 /// <summary>
@@ -20,38 +18,39 @@ namespace Starling.Js.Tests.Runtime;
 ///         assignment that evaluates the base + key exactly once.</item>
 /// </list>
 /// </summary>
+[TestClass]
 public class JsOperatorsGapTests
 {
     // -----------------------------------------------------------------
     //                          instanceof
     // -----------------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Instanceof_returns_true_for_own_constructor()
     {
         Eval("function F() {}; var f = new F(); f instanceof F").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Instanceof_returns_false_when_prototype_does_not_match()
     {
         Eval("function F() {}; function G() {}; var f = new F(); f instanceof G")
             .AsBool.Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Instanceof_walks_prototype_chain_for_class_extends()
     {
         Eval("class A {}; class B extends A {}; new B() instanceof A").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Instanceof_class_self_match()
     {
         Eval("class A {}; new A() instanceof A").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Instanceof_bound_function_unwraps_to_target()
     {
         // §10.4.6.4 OrdinaryHasInstance: when C is a bound function,
@@ -67,13 +66,13 @@ public class JsOperatorsGapTests
         ").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Instanceof_primitive_left_returns_false()
     {
         Eval("function F() {}; 5 instanceof F").AsBool.Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Instanceof_with_well_known_hasInstance_hook()
     {
         // Symbol.hasInstance trap — any matcher object can override the
@@ -84,7 +83,7 @@ public class JsOperatorsGapTests
         ").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Instanceof_with_well_known_hasInstance_returning_false()
     {
         Eval(@"
@@ -93,7 +92,7 @@ public class JsOperatorsGapTests
         ").AsBool.Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Instanceof_non_callable_rhs_throws_type_error()
     {
         // {} is not callable and has no @@hasInstance — TypeError.
@@ -101,20 +100,20 @@ public class JsOperatorsGapTests
         act.Should().Throw<JsThrow>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Instanceof_chain_through_Object()
     {
         Eval("({}) instanceof Object").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Instanceof_array_through_Array_and_Object()
     {
         Eval("[] instanceof Array").AsBool.Should().BeTrue();
         Eval("[] instanceof Object").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Instanceof_TypeError_chain()
     {
         Eval("new TypeError() instanceof Error").AsBool.Should().BeTrue();
@@ -125,26 +124,26 @@ public class JsOperatorsGapTests
     //                              in
     // -----------------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void In_returns_true_for_own_property()
     {
         Eval("'a' in {a: 1}").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void In_returns_false_for_missing_property()
     {
         Eval("'a' in {}").AsBool.Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void In_walks_prototype_chain()
     {
         // toString is inherited from Object.prototype.
         Eval("'toString' in {}").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void In_with_numeric_key_against_array()
     {
         // Array index lookup — string coercion for numeric keys.
@@ -152,7 +151,7 @@ public class JsOperatorsGapTests
         Eval("2 in [10, 20]").AsBool.Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void In_with_symbol_key()
     {
         Eval(@"
@@ -163,27 +162,27 @@ public class JsOperatorsGapTests
         ").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void In_throws_type_error_on_non_object_rhs()
     {
         var act = () => Eval("'a' in 5");
         act.Should().Throw<JsThrow>();
     }
 
-    [Fact]
+    [TestMethod]
     public void In_throws_type_error_on_null_rhs()
     {
         var act = () => Eval("'a' in null");
         act.Should().Throw<JsThrow>();
     }
 
-    [Fact]
+    [TestMethod]
     public void In_property_set_then_checked()
     {
         Eval("var o = {}; o.x = 1; 'x' in o").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void In_property_after_define_property()
     {
         // Non-enumerable own property is still "in".
@@ -198,25 +197,25 @@ public class JsOperatorsGapTests
     //                            delete
     // -----------------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Delete_property_removes_own_slot()
     {
         Eval("var o = {x: 1}; delete o.x; 'x' in o").AsBool.Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Delete_returns_true_on_successful_removal()
     {
         Eval("var o = {x: 1}; delete o.x").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Delete_missing_property_returns_true()
     {
         Eval("var o = {}; delete o.nonexistent").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Delete_non_configurable_returns_false()
     {
         Eval(@"
@@ -226,7 +225,7 @@ public class JsOperatorsGapTests
         ").AsBool.Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Delete_unqualified_identifier_returns_true()
     {
         // Per spec, a non-Reference (or unresolvable) delete returns true
@@ -234,13 +233,13 @@ public class JsOperatorsGapTests
         Eval("delete xyz123").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Delete_computed_property()
     {
         Eval("var o = {a: 1, b: 2}; var k = 'a'; delete o[k]; 'a' in o").AsBool.Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Delete_then_recheck_with_in()
     {
         Eval(@"
@@ -250,7 +249,7 @@ public class JsOperatorsGapTests
         ").AsNumber.Should().Be(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void Delete_literal_returns_true()
     {
         Eval("delete 5").AsBool.Should().BeTrue();
@@ -260,49 +259,49 @@ public class JsOperatorsGapTests
     //               compound assignment on properties
     // -----------------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Compound_plus_eq_on_property()
     {
         Eval("var o = {x: 1}; o.x += 5; o.x").AsNumber.Should().Be(6);
     }
 
-    [Fact]
+    [TestMethod]
     public void Compound_string_concat_on_property()
     {
         Eval("var o = {s: 'a'}; o.s += 'b'; o.s").AsString.Should().Be("ab");
     }
 
-    [Fact]
+    [TestMethod]
     public void Compound_minus_eq_on_property()
     {
         Eval("var o = {x: 10}; o.x -= 3; o.x").AsNumber.Should().Be(7);
     }
 
-    [Fact]
+    [TestMethod]
     public void Compound_mul_eq_on_property()
     {
         Eval("var o = {x: 4}; o.x *= 3; o.x").AsNumber.Should().Be(12);
     }
 
-    [Fact]
+    [TestMethod]
     public void Compound_div_eq_on_property()
     {
         Eval("var o = {x: 12}; o.x /= 4; o.x").AsNumber.Should().Be(3);
     }
 
-    [Fact]
+    [TestMethod]
     public void Compound_mod_eq_on_property()
     {
         Eval("var o = {x: 10}; o.x %= 3; o.x").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Compound_pow_eq_on_property()
     {
         Eval("var o = {x: 2}; o.x **= 3; o.x").AsNumber.Should().Be(8);
     }
 
-    [Fact]
+    [TestMethod]
     public void Compound_shift_eq_on_property()
     {
         Eval("var o = {x: 1}; o.x <<= 3; o.x").AsNumber.Should().Be(8);
@@ -310,7 +309,7 @@ public class JsOperatorsGapTests
         Eval("var o = {x: -1}; o.x >>>= 28; o.x").AsNumber.Should().Be(15);
     }
 
-    [Fact]
+    [TestMethod]
     public void Compound_bitwise_eq_on_property()
     {
         Eval("var o = {x: 6}; o.x &= 3; o.x").AsNumber.Should().Be(2);
@@ -318,13 +317,13 @@ public class JsOperatorsGapTests
         Eval("var o = {x: 6}; o.x ^= 3; o.x").AsNumber.Should().Be(5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Compound_on_computed_property()
     {
         Eval("var o = {x: 1}; var k = 'x'; o[k] += 5; o.x").AsNumber.Should().Be(6);
     }
 
-    [Fact]
+    [TestMethod]
     public void Compound_on_computed_property_evaluates_key_once()
     {
         // The computed key expression must be evaluated only once even
@@ -338,7 +337,7 @@ public class JsOperatorsGapTests
         ").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Compound_on_computed_property_writes_correct_slot()
     {
         Eval(@"
@@ -350,14 +349,14 @@ public class JsOperatorsGapTests
         ").AsNumber.Should().Be(15);
     }
 
-    [Fact]
+    [TestMethod]
     public void Compound_on_property_returns_new_value()
     {
         // Compound assignment is an expression — yields the new value.
         Eval("var o = {x: 1}; var r = (o.x += 5); r").AsNumber.Should().Be(6);
     }
 
-    [Fact]
+    [TestMethod]
     public void Compound_on_property_base_evaluated_once()
     {
         // The base expression should be evaluated exactly once.
@@ -371,7 +370,7 @@ public class JsOperatorsGapTests
         ").AsString.Should().Be("1,15");
     }
 
-    [Fact]
+    [TestMethod]
     public void Compound_on_property_with_method_base()
     {
         // Cross-check with a method-returned base: the same object instance

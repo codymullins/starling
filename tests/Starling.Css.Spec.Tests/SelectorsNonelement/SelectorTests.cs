@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.SelectorsNonelement;
 /// <summary>
 /// Selector conformance for <see href="https://drafts.csswg.org/selectors-nonelement-1/">Non-element Selectors Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("selectors-nonelement", "https://drafts.csswg.org/selectors-nonelement-1/")]
 public sealed class SelectorTests
 {

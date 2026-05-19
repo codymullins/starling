@@ -3,15 +3,15 @@ using Starling.Css.Values;
 using Starling.Html;
 using Starling.Paint.Backend;
 using Starling.Paint.DisplayList;
-using Xunit;
 using LayoutRect = Starling.Layout.Rect;
 using LayoutSize = Starling.Layout.Size;
 
 namespace Starling.Paint.Tests;
 
+[TestClass]
 public sealed class EndToEndRenderTests
 {
-    [Fact]
+    [TestMethod]
     public void Rendering_a_paragraph_produces_an_image_of_requested_size()
     {
         var painter = new Painter();
@@ -22,7 +22,7 @@ public sealed class EndToEndRenderTests
         image.Height.Should().Be(480);
     }
 
-    [Fact]
+    [TestMethod]
     public void Rendered_paragraph_leaves_visible_pixels()
     {
         var painter = new Painter();
@@ -32,7 +32,7 @@ public sealed class EndToEndRenderTests
         BitmapPixels.CountNonWhite(image).Should().BeGreaterThan(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Background_color_fills_pixels()
     {
         var painter = new Painter();
@@ -43,7 +43,7 @@ public sealed class EndToEndRenderTests
         BitmapPixels.CountExact(image, 0, 128, 0).Should().BeGreaterThan(100);
     }
 
-    [Fact]
+    [TestMethod]
     public void Different_font_families_produce_different_rasters()
     {
         // monospace and sans-serif have visibly different metrics — a string
@@ -64,7 +64,7 @@ public sealed class EndToEndRenderTests
             "rendering the same text with sans-serif and monospace should differ at the pixel level");
     }
 
-    [Fact]
+    [TestMethod]
     public void Backend_reuses_context_for_two_sequential_renders()
     {
         using var backend = new ImageSharpBackend(FontResolver.Default, webFonts: null);

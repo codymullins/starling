@@ -3,13 +3,13 @@ using Starling.Css.Animations;
 using Starling.Css.Properties;
 using Starling.Css.Values;
 using Starling.Dom;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("css-animations-1", "https://www.w3.org/TR/css-animations-1/")]
 
+[TestClass]
 public sealed class AnimationEngineTests
 {
     private static KeyframesRule SimpleFade()
@@ -31,7 +31,7 @@ public sealed class AnimationEngineTests
         => new(name, durationMs, delayMs, timing ?? TimingFunction.Linear,
             iterationCount, direction, fillMode, playState);
 
-    [Fact]
+    [TestMethod]
     public void Linear_progression_samples_through_intermediate_values()
     {
         var engine = new AnimationEngine();
@@ -55,7 +55,7 @@ public sealed class AnimationEngineTests
             .Should().BeApproximately(0.75, 1e-6);
     }
 
-    [Fact]
+    [TestMethod]
     public void Animation_without_fill_mode_returns_null_after_end()
     {
         var engine = new AnimationEngine();
@@ -70,7 +70,7 @@ public sealed class AnimationEngineTests
         engine.GetEffective(el, PropertyId.Opacity).Should().BeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Fill_mode_forwards_holds_final_value()
     {
         var engine = new AnimationEngine();
@@ -83,7 +83,7 @@ public sealed class AnimationEngineTests
             .Should().BeApproximately(1, 1e-6);
     }
 
-    [Fact]
+    [TestMethod]
     public void Fill_mode_backwards_holds_initial_value_during_delay()
     {
         var engine = new AnimationEngine();
@@ -96,7 +96,7 @@ public sealed class AnimationEngineTests
             .Should().BeApproximately(0, 1e-6);
     }
 
-    [Fact]
+    [TestMethod]
     public void Without_fill_backwards_no_value_during_delay()
     {
         var engine = new AnimationEngine();
@@ -107,7 +107,7 @@ public sealed class AnimationEngineTests
         engine.GetEffective(el, PropertyId.Opacity).Should().BeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Alternate_direction_flips_each_iteration()
     {
         var engine = new AnimationEngine();
@@ -131,7 +131,7 @@ public sealed class AnimationEngineTests
             .Should().BeApproximately(0.5, 1e-6);
     }
 
-    [Fact]
+    [TestMethod]
     public void Reverse_direction_starts_at_end_value()
     {
         var engine = new AnimationEngine();
@@ -147,7 +147,7 @@ public sealed class AnimationEngineTests
             .Should().BeApproximately(0.5, 1e-6);
     }
 
-    [Fact]
+    [TestMethod]
     public void Paused_play_state_freezes_sample()
     {
         var engine = new AnimationEngine();
@@ -169,7 +169,7 @@ public sealed class AnimationEngineTests
             .Should().BeApproximately(0.4, 1e-6);
     }
 
-    [Fact]
+    [TestMethod]
     public void Iteration_count_zero_or_negative_produces_no_output()
     {
         var engine = new AnimationEngine();
@@ -180,7 +180,7 @@ public sealed class AnimationEngineTests
         engine.GetEffective(el, PropertyId.Opacity).Should().BeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Unregistered_keyframes_name_produces_no_value()
     {
         var engine = new AnimationEngine();
@@ -190,7 +190,7 @@ public sealed class AnimationEngineTests
         engine.GetEffective(el, PropertyId.Opacity).Should().BeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Multi_layer_later_animation_overrides_earlier_for_same_property()
     {
         var engine = new AnimationEngine();
@@ -211,7 +211,7 @@ public sealed class AnimationEngineTests
             .Should().BeApproximately(0.2, 1e-6); // solid wins as later layer
     }
 
-    [Fact]
+    [TestMethod]
     public void Removed_animation_name_stops_sampling()
     {
         var engine = new AnimationEngine();
@@ -227,7 +227,7 @@ public sealed class AnimationEngineTests
         engine.ActiveCount.Should().Be(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Keyframe_without_property_falls_back_to_endpoints()
     {
         // The fade keyframe declares opacity at 0% and 100%; there is no

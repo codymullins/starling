@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Intrinsics;
 
 /// <summary>
@@ -12,11 +10,12 @@ namespace Starling.Js.Tests.Intrinsics;
 /// <c>RegisterGlobal</c>) to the realm-aware <see cref="JsNativeFunction"/>
 /// constructor so each method inherits from <c>Function.prototype</c>.
 /// </summary>
+[TestClass]
 public class IntrinsicChainTests
 {
     // ---------------------------------------------------------- Math chain
 
-    [Fact]
+    [TestMethod]
     public void Math_max_bound_inherits_Function_prototype()
     {
         var rt = new JsRuntime();
@@ -24,31 +23,31 @@ public class IntrinsicChainTests
         r.AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Math_max_bound_call_returns_largest()
     {
         Eval("Math.max.bind(null, 1, 2)();").AsNumber.Should().Be(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void Math_max_length_is_two()
     {
         Eval("Math.max.length;").AsNumber.Should().Be(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void Math_atan2_length_is_two()
     {
         Eval("Math.atan2.length;").AsNumber.Should().Be(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void Math_abs_length_is_one()
     {
         Eval("Math.abs.length;").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Math_pow_apply_threads_through_function_prototype()
     {
         Eval("Math.pow.apply(null, [2, 8]);").AsNumber.Should().Be(256);
@@ -56,25 +55,25 @@ public class IntrinsicChainTests
 
     // ---------------------------------------------------------- JSON chain
 
-    [Fact]
+    [TestMethod]
     public void JSON_stringify_call_is_callable()
     {
         Eval("typeof JSON.stringify.call;").AsString.Should().Be("function");
     }
 
-    [Fact]
+    [TestMethod]
     public void JSON_stringify_call_serializes_payload()
     {
         Eval("JSON.stringify.call(null, {a:1});").AsString.Should().Be("{\"a\":1}");
     }
 
-    [Fact]
+    [TestMethod]
     public void JSON_parse_length_is_two()
     {
         Eval("JSON.parse.length;").AsNumber.Should().Be(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void JSON_stringify_length_is_three()
     {
         Eval("JSON.stringify.length;").AsNumber.Should().Be(3);
@@ -82,13 +81,13 @@ public class IntrinsicChainTests
 
     // ---------------------------------------------------------- String chain
 
-    [Fact]
+    [TestMethod]
     public void String_prototype_trim_callable_via_call()
     {
         Eval("String.prototype.trim.call('  hi  ');").AsString.Should().Be("hi");
     }
 
-    [Fact]
+    [TestMethod]
     public void String_prototype_replace_bind_chain_is_callable()
     {
         Eval("typeof String.prototype.replace.bind;").AsString.Should().Be("function");
@@ -96,13 +95,13 @@ public class IntrinsicChainTests
 
     // ---------------------------------------------------------- Number chain
 
-    [Fact]
+    [TestMethod]
     public void Number_isInteger_bound_evaluates_arg()
     {
         Eval("Number.isInteger.bind(null)(3);").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Number_isInteger_length_is_one()
     {
         Eval("Number.isInteger.length;").AsNumber.Should().Be(1);
@@ -110,7 +109,7 @@ public class IntrinsicChainTests
 
     // ---------------------------------------------------------- Boolean chain
 
-    [Fact]
+    [TestMethod]
     public void Boolean_prototype_toString_callable_via_call()
     {
         Eval("typeof Boolean.prototype.toString.call;").AsString.Should().Be("function");
@@ -118,7 +117,7 @@ public class IntrinsicChainTests
 
     // ---------------------------------------------------------- console chain
 
-    [Fact]
+    [TestMethod]
     public void Console_log_apply_is_a_function()
     {
         Eval("typeof console.log.apply;").AsString.Should().Be("function");
@@ -126,19 +125,19 @@ public class IntrinsicChainTests
 
     // ---------------------------------------------------------- Globals chain
 
-    [Fact]
+    [TestMethod]
     public void Globals_parseInt_length_is_two()
     {
         Eval("parseInt.length;").AsNumber.Should().Be(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void Globals_parseFloat_length_is_one()
     {
         Eval("parseFloat.length;").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Globals_parseInt_bind_threads_through_function_prototype()
     {
         Eval("parseInt.bind(null, '42')();").AsNumber.Should().Be(42);
@@ -146,7 +145,7 @@ public class IntrinsicChainTests
 
     // ---------------------------------------------------------- RegisterGlobal
 
-    [Fact]
+    [TestMethod]
     public void RegisterGlobal_args_only_overload_returns_callable_chain()
     {
         var rt = new JsRuntime();
@@ -155,7 +154,7 @@ public class IntrinsicChainTests
         r.AsString.Should().Be("function");
     }
 
-    [Fact]
+    [TestMethod]
     public void RegisterGlobal_full_overload_returns_callable_chain()
     {
         var rt = new JsRuntime();
@@ -166,7 +165,7 @@ public class IntrinsicChainTests
         r.AsString.Should().Be("function");
     }
 
-    [Fact]
+    [TestMethod]
     public void RegisterGlobal_function_inherits_Function_prototype()
     {
         var rt = new JsRuntime();

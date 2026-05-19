@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssScrollAnchoring;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-scroll-anchoring-1/">CSS Scroll Anchoring Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-scroll-anchoring", "https://drafts.csswg.org/css-scroll-anchoring-1/")]
 public sealed class PropertyTests
 {

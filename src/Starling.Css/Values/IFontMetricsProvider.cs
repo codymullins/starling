@@ -30,8 +30,8 @@ public interface IFontMetricsProvider
 /// <item>'0' advance ≈ 0.50 × font-size (an English proportional approximation)</item>
 /// <item>ideographic advance ≈ 1.00 × font-size</item>
 /// </list>
-/// These are close enough for layout to round-trip; a real measurer (Skia) can
-/// replace the provider on the engine for higher fidelity.
+/// These are close enough for layout to round-trip; a real shaping-aware
+/// measurer can replace the provider on the engine for higher fidelity.
 /// </summary>
 public sealed class HeuristicFontMetricsProvider : IFontMetricsProvider
 {

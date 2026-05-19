@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssShadow;
 /// <summary>
 /// Selector conformance for <see href="https://drafts.csswg.org/css-shadow-1/">CSS Shadow Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-shadow", "https://drafts.csswg.org/css-shadow-1/")]
 public sealed class SelectorTests
 {

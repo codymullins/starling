@@ -1,16 +1,15 @@
 using System.Text;
 using FluentAssertions;
-using Xunit;
-
 namespace Starling.Net.Tests.Http;
 
 /// <summary>
 /// Live-network acceptance test for M2-05. Skipped by default. To run:
 /// <code>STARLING_LIVE_HTTP_TESTS=1 dotnet test</code>.
 /// </summary>
+[TestClass]
 public class LiveHttpsTests
 {
-    [Fact]
+    [TestMethod]
     public async Task GET_example_com_returns_200_and_HTML_body()
     {
         if (Environment.GetEnvironmentVariable("STARLING_LIVE_HTTP_TESTS") != "1")
@@ -22,7 +21,7 @@ public class LiveHttpsTests
             RequestTimeout = TimeSpan.FromSeconds(30),
         });
 
-        var result = await client.GetAsync("https://example.com/", TestContext.Current.CancellationToken);
+        var result = await client.GetAsync("https://example.com/", CancellationToken.None);
 
         result.IsOk.Should().BeTrue($"GET failed: {(result.IsOk ? "" : result.Error.ToString())}");
         var resp = result.Value;

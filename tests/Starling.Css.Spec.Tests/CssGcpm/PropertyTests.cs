@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssGcpm;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-gcpm-3/">CSS Generated Content for Paged Media Module Level 3</see>.
 /// </summary>
+[TestClass]
 [Spec("css-gcpm", "https://drafts.csswg.org/css-gcpm-3/")]
 public sealed class PropertyTests
 {

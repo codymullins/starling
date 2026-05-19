@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Runtime;
 
 /// <summary>
@@ -17,13 +15,14 @@ namespace Starling.Js.Tests.Runtime;
 ///     blocks before the body completes (and the finally's own completion
 ///     wins if it throws or returns a different value).
 /// </summary>
+[TestClass]
 public class JsGeneratorAdvancedTests
 {
     // -----------------------------------------------------------------
     //                   Task 1 — yield* protocol forwarding
     // -----------------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void YieldStar_iterates_array_iterable()
     {
         var r = Eval(@"
@@ -35,7 +34,7 @@ public class JsGeneratorAdvancedTests
         r.AsNumber.Should().Be(6);
     }
 
-    [Fact]
+    [TestMethod]
     public void YieldStar_inner_return_value_is_value_of_yield_star_expression()
     {
         var r = Eval(@"
@@ -50,7 +49,7 @@ public class JsGeneratorAdvancedTests
         r.AsString.Should().Be("a,after:boo|false,undefined|true");
     }
 
-    [Fact]
+    [TestMethod]
     public void YieldStar_forwards_next_value_into_inner_generator()
     {
         var r = Eval(@"
@@ -69,7 +68,7 @@ public class JsGeneratorAdvancedTests
         r.AsString.Should().Be("p1,p2:one,fin:two|true");
     }
 
-    [Fact]
+    [TestMethod]
     public void YieldStar_forwards_return_through_inner_finally()
     {
         var r = Eval(@"
@@ -86,7 +85,7 @@ public class JsGeneratorAdvancedTests
         r.AsString.Should().Be("yes|done|true");
     }
 
-    [Fact]
+    [TestMethod]
     public void YieldStar_forwards_throw_to_inner_catch()
     {
         var r = Eval(@"
@@ -102,7 +101,7 @@ public class JsGeneratorAdvancedTests
         r.AsString.Should().Be("caught err");
     }
 
-    [Fact]
+    [TestMethod]
     public void YieldStar_into_iterable_without_throw_raises_typeerror()
     {
         // Custom iterable without a throw method — .throw must fail.
@@ -124,7 +123,7 @@ public class JsGeneratorAdvancedTests
         r.AsString.Should().Be("TypeError");
     }
 
-    [Fact]
+    [TestMethod]
     public void YieldStar_into_iterable_without_return_propagates_return_after_close()
     {
         // No return() on the inner — yield*'s .return propagates the return
@@ -151,7 +150,7 @@ public class JsGeneratorAdvancedTests
     //                   Task 2 — Generator.return runs finally
     // -----------------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void GeneratorReturn_runs_enclosing_finally()
     {
         var r = Eval(@"
@@ -167,7 +166,7 @@ public class JsGeneratorAdvancedTests
         r.AsString.Should().Be("yes");
     }
 
-    [Fact]
+    [TestMethod]
     public void GeneratorReturn_value_propagates_when_finally_completes_normally()
     {
         var r = Eval(@"
@@ -180,7 +179,7 @@ public class JsGeneratorAdvancedTests
         r.AsString.Should().Be("hello|true");
     }
 
-    [Fact]
+    [TestMethod]
     public void GeneratorReturn_finally_throw_overrides_completion()
     {
         var r = Eval(@"
@@ -194,7 +193,7 @@ public class JsGeneratorAdvancedTests
         r.AsString.Should().Be("overridden");
     }
 
-    [Fact]
+    [TestMethod]
     public void GeneratorReturn_before_started_marks_done_with_value()
     {
         var r = Eval(@"
@@ -207,7 +206,7 @@ public class JsGeneratorAdvancedTests
         r.AsString.Should().Be("early|true,undefined|true");
     }
 
-    [Fact]
+    [TestMethod]
     public void GeneratorReturn_skips_remaining_yields()
     {
         var r = Eval(@"

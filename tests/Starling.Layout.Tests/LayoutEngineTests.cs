@@ -2,10 +2,9 @@ using FluentAssertions;
 using Starling.Css.Cascade;
 using Starling.Html;
 using Starling.Layout.Box;
-using Xunit;
-
 namespace Starling.Layout.Tests;
 
+[TestClass]
 public sealed class LayoutEngineTests
 {
     private static LayoutEngine NewEngine() => new(new StyleEngine());
@@ -13,14 +12,14 @@ public sealed class LayoutEngineTests
     private static BlockBox Layout(string html, Size viewport)
         => NewEngine().LayoutDocument(HtmlParser.Parse(html), viewport);
 
-    [Fact]
+    [TestMethod]
     public void Document_root_has_viewport_width()
     {
         var root = Layout("<body><p>x</p></body>", new Size(800, 600));
         root.Frame.Width.Should().Be(800);
     }
 
-    [Fact]
+    [TestMethod]
     public void Block_children_stack_vertically()
     {
         var root = Layout("""
@@ -38,7 +37,7 @@ public sealed class LayoutEngineTests
             divs[i].Frame.Y.Should().BeGreaterThan(divs[i - 1].Frame.Y);
     }
 
-    [Fact]
+    [TestMethod]
     public void Inline_text_runs_get_wrapped_into_anonymous_block()
     {
         var root = Layout("<body><p>some words here</p></body>", new Size(800, 600));
@@ -50,7 +49,7 @@ public sealed class LayoutEngineTests
         textBox.Fragments.Should().NotBeEmpty();
     }
 
-    [Fact]
+    [TestMethod]
     public void Text_wraps_when_a_line_overflows_the_container()
     {
         // Skinny viewport forces wrap.
@@ -64,7 +63,7 @@ public sealed class LayoutEngineTests
         fragments.Select(f => f.Y).Distinct().Count().Should().BeGreaterThan(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Wide_viewport_keeps_text_on_a_single_line()
     {
         var root = Layout("<body><p>tiny line</p></body>", new Size(2000, 600));
@@ -73,7 +72,7 @@ public sealed class LayoutEngineTests
         fragments.Select(f => f.Y).Distinct().Should().ContainSingle();
     }
 
-    [Fact]
+    [TestMethod]
     public void Display_none_excludes_subtree_from_box_tree()
     {
         var root = Layout(
@@ -86,7 +85,7 @@ public sealed class LayoutEngineTests
         divs[0].Element!.GetAttribute("style").Should().NotContain("none");
     }
 
-    [Fact]
+    [TestMethod]
     public void Display_contents_drops_the_box_but_keeps_descendants()
     {
         var root = Layout(
@@ -99,7 +98,7 @@ public sealed class LayoutEngineTests
         body.Children.OfType<BlockBox>().Should().NotContain(b => b.Element != null && b.Element.LocalName == "div");
     }
 
-    [Fact]
+    [TestMethod]
     public void Body_height_grows_to_contain_children()
     {
         var root = Layout(
@@ -110,7 +109,7 @@ public sealed class LayoutEngineTests
         body.Frame.Height.Should().BeGreaterThan(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Margin_auto_centers_block_with_explicit_width()
     {
         // body has 8px UA margin → body content width = 800 - 16 = 784
@@ -124,7 +123,7 @@ public sealed class LayoutEngineTests
         div.Frame.Width.Should().Be(200);
     }
 
-    [Fact]
+    [TestMethod]
     public void Margin_left_auto_right_aligns_block()
     {
         // body content width = 400 - 16 = 384; div is 100px wide
@@ -138,7 +137,7 @@ public sealed class LayoutEngineTests
         div.Frame.Width.Should().Be(100);
     }
 
-    [Fact]
+    [TestMethod]
     public void Margin_right_auto_left_aligns_block()
     {
         // margin-left: 0, margin-right: auto → div sticks to left edge of body
@@ -151,7 +150,7 @@ public sealed class LayoutEngineTests
         div.Frame.Width.Should().Be(100);
     }
 
-    [Fact]
+    [TestMethod]
     public void Margin_auto_with_auto_width_resolves_to_zero()
     {
         // When width is auto, auto margins resolve to 0, so the div should
@@ -166,7 +165,7 @@ public sealed class LayoutEngineTests
         div.Frame.Width.Should().BeApproximately(384, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Margin_auto_with_overflowing_width_clamps_to_left_edge()
     {
         // div is wider than container → slack is negative → both margins become 0.
@@ -187,7 +186,7 @@ public sealed class LayoutEngineTests
     // is an inline <svg aria-label="Google">, so without this fallback the
     // user sees a vanishing inline.
 
-    [Fact]
+    [TestMethod]
     public void Unresolved_img_with_alt_renders_alt_text()
     {
         var root = Layout(
@@ -196,7 +195,7 @@ public sealed class LayoutEngineTests
         AllText(root).Should().Contain("example image");
     }
 
-    [Fact]
+    [TestMethod]
     public void Unresolved_img_with_no_alt_falls_back_to_aria_label()
     {
         var root = Layout(
@@ -205,7 +204,7 @@ public sealed class LayoutEngineTests
         AllText(root).Should().Contain("logo");
     }
 
-    [Fact]
+    [TestMethod]
     public void Unresolved_img_with_empty_alt_renders_nothing()
     {
         var root = Layout(
@@ -214,7 +213,7 @@ public sealed class LayoutEngineTests
         AllText(root).Should().NotContain("missing");
     }
 
-    [Fact]
+    [TestMethod]
     public void Inline_svg_with_aria_label_renders_label_as_text()
     {
         var root = Layout(
@@ -223,7 +222,7 @@ public sealed class LayoutEngineTests
         AllText(root).Should().Contain("Google");
     }
 
-    [Fact]
+    [TestMethod]
     public void Inline_svg_with_no_aria_label_is_empty()
     {
         var root = Layout(

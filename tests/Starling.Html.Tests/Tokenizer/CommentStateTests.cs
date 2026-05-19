@@ -1,15 +1,14 @@
 using FluentAssertions;
 using Starling.Html.Tokenizer;
-using Xunit;
-
 namespace Starling.Html.Tests.Tokenizer;
 
 /// <summary>
 /// Comment + CDATA + BogusComment + MarkupDeclarationOpen — wp:M1-01e.
 /// </summary>
+[TestClass]
 public class CommentStateTests
 {
-    [Fact]
+    [TestMethod]
     public void Simple_comment()
     {
         Tokenize("<!--hello-->").Should().Equal(
@@ -17,7 +16,7 @@ public class CommentStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Empty_comment()
     {
         Tokenize("<!---->").Should().Equal(
@@ -25,7 +24,7 @@ public class CommentStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Comment_with_dashes_inside()
     {
         Tokenize("<!-- a -- b -->").Should().Equal(
@@ -33,7 +32,7 @@ public class CommentStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Comment_with_internal_lt_chars()
     {
         Tokenize("<!-- <p> -->").Should().Equal(
@@ -41,7 +40,7 @@ public class CommentStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Abrupt_closing_of_empty_comment_short()
     {
         // <!--> per §13.2.5.43 abrupt-closing-of-empty-comment
@@ -57,7 +56,7 @@ public class CommentStateTests
             .Which.code.Should().Be(HtmlParseError.AbruptClosingOfEmptyComment);
     }
 
-    [Fact]
+    [TestMethod]
     public void Abrupt_closing_of_empty_comment_long()
     {
         // <!---> per §13.2.5.44 (start-dash → abrupt)
@@ -73,7 +72,7 @@ public class CommentStateTests
             .Which.code.Should().Be(HtmlParseError.AbruptClosingOfEmptyComment);
     }
 
-    [Fact]
+    [TestMethod]
     public void Incorrectly_closed_comment()
     {
         // <!-- foo --!> per §13.2.5.52
@@ -89,7 +88,7 @@ public class CommentStateTests
             .Which.code.Should().Be(HtmlParseError.IncorrectlyClosedComment);
     }
 
-    [Fact]
+    [TestMethod]
     public void Incorrectly_opened_comment_falls_into_bogus()
     {
         // <!foo>  — not "--", "DOCTYPE", or "[CDATA[" → bogus comment with
@@ -107,7 +106,7 @@ public class CommentStateTests
             .Which.code.Should().Be(HtmlParseError.IncorrectlyOpenedComment);
     }
 
-    [Fact]
+    [TestMethod]
     public void Bogus_comment_from_question_mark_tag_open()
     {
         // <?foo>  — TagOpen sees '?', emits parse error, creates empty
@@ -124,7 +123,7 @@ public class CommentStateTests
             .Which.code.Should().Be(HtmlParseError.UnexpectedQuestionMarkInsteadOfTagName);
     }
 
-    [Fact]
+    [TestMethod]
     public void Cdata_in_html_content_becomes_bogus_comment()
     {
         // Without foreign content, <![CDATA[…]]> is a parse error and the
@@ -141,7 +140,7 @@ public class CommentStateTests
             .Which.code.Should().Be(HtmlParseError.CdataInHtmlContent);
     }
 
-    [Fact]
+    [TestMethod]
     public void Eof_inside_open_comment_emits_partial_comment_and_parse_error()
     {
         var sink = new RecordingSink();
@@ -156,7 +155,7 @@ public class CommentStateTests
             .Which.code.Should().Be(HtmlParseError.EofInComment);
     }
 
-    [Fact]
+    [TestMethod]
     public void Null_in_comment_maps_to_replacement_character()
     {
         var sink = new RecordingSink();

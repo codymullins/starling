@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssAlign;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-align-3/">CSS Box Alignment Module Level 3</see>.
 /// </summary>
+[TestClass]
 [Spec("css-align", "https://drafts.csswg.org/css-align-3/")]
 public sealed class PropertyTests
 {

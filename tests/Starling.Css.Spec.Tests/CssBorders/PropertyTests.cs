@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssBorders;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-borders-4/">CSS Borders and Box Decorations Module Level 4</see>.
 /// </summary>
+[TestClass]
 [Spec("css-borders", "https://drafts.csswg.org/css-borders-4/")]
 public sealed class PropertyTests
 {

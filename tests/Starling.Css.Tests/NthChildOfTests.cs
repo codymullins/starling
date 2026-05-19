@@ -1,16 +1,16 @@
 using FluentAssertions;
 using Starling.Css.Selectors;
 using Starling.Dom;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("selectors-4", "https://www.w3.org/TR/selectors-4/")]
 
+[TestClass]
 public sealed class NthChildOfTests
 {
-    [Fact]
+    [TestMethod]
     public void Parses_nth_child_of_selector_argument()
     {
         var selector = SelectorParser.ParseSelectorList(":nth-child(2n+1 of li.special)")
@@ -24,7 +24,7 @@ public sealed class NthChildOfTests
         arg.OfSelector!.Selectors.Should().HaveCount(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Matches_odd_indexed_li_special_among_siblings()
     {
         var doc = new Document();
@@ -47,7 +47,7 @@ public sealed class NthChildOfTests
         SelectorMatcher.Matches(selector, items[4]).Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Plain_nth_child_still_works_without_of_clause()
     {
         var doc = new Document();
@@ -64,7 +64,7 @@ public sealed class NthChildOfTests
         SelectorMatcher.Matches(SelectorParser.ParseSelectorList(":nth-child(2)"), a).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Nth_last_child_with_of_filter()
     {
         var doc = new Document();

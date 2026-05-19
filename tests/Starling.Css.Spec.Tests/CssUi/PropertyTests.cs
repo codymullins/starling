@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssUi;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-ui-4/">CSS Basic User Interface Module Level 4</see>.
 /// </summary>
+[TestClass]
 [Spec("css-ui", "https://drafts.csswg.org/css-ui-4/")]
 public sealed class PropertyTests
 {

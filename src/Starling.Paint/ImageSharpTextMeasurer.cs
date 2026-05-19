@@ -49,13 +49,9 @@ public sealed class ImageSharpTextMeasurer : ITextMeasurer, IDisposable
     /// expose OpenType glyph indices on its public surface
     /// (<c>FontMetrics.TryGetGlyphId</c> is internal; <c>GlyphMetrics</c>
     /// carries only the codepoint), so we can't populate
-    /// <see cref="ShapedGlyph.GlyphId"/> correctly. Emitting codepoints there
-    /// poisons the Skia backend's shaped-text fast path, which passes the
-    /// field straight to the rasterizer as a glyph index — Latin codepoints
-    /// then resolve to the value-Nth glyph in the font (often Greek or
-    /// Cyrillic). Falling back is the correct, terminal fix: Skia re-shapes
-    /// via its own font, and the ImageSharp backend re-renders by string
-    /// anyway.
+    /// <see cref="ShapedGlyph.GlyphId"/> correctly. The ImageSharp paint
+    /// backend re-renders by string anyway, so leaving the glyph array empty
+    /// is the correct signal — no caller currently consumes it.
     /// </summary>
     public ShapedRun Shape(string text, double fontSize, FontSpec spec)
         => new(Array.Empty<ShapedGlyph>(), MeasureWidth(text, fontSize, spec));
@@ -79,7 +75,7 @@ public sealed class ImageSharpTextMeasurer : ITextMeasurer, IDisposable
     // SixLabors.Fonts exposes ascender/descender/line-gap in font design units
     // on HorizontalMetrics; scale by (fontSize / UnitsPerEm) to get CSS px.
     // Descender is signed (negative below baseline in OpenType) — abs it so
-    // it composes additively with ascender, matching Skia's m.Descent.
+    // it composes additively with ascender.
     private static (double Ascent, double Descent, double Leading) ScaledMetrics(Font font)
     {
         var fm = font.FontMetrics;

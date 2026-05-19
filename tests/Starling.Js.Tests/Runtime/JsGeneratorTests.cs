@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Runtime;
 
 /// <summary>
@@ -11,9 +9,10 @@ namespace Starling.Js.Tests.Runtime;
 /// dispatcher loop in the VM consults the SuspendedFrame on each .next()
 /// to read the yielded value and resume.
 /// </summary>
+[TestClass]
 public class JsGeneratorTests
 {
-    [Fact]
+    [TestMethod]
     public void Basic_generator_yields_two_values_then_done()
     {
         var r = Eval(@"
@@ -27,7 +26,7 @@ public class JsGeneratorTests
         r.AsString.Should().Be("1|false,2|false,undefined|true");
     }
 
-    [Fact]
+    [TestMethod]
     public void Generator_next_with_value_is_yielded_back()
     {
         var r = Eval(@"
@@ -42,7 +41,7 @@ public class JsGeneratorTests
         r.AsString.Should().Be("got: hello");
     }
 
-    [Fact]
+    [TestMethod]
     public void Generator_return_value_appears_as_final_done_result()
     {
         var r = Eval(@"
@@ -53,7 +52,7 @@ public class JsGeneratorTests
         r.AsString.Should().Be("42|true");
     }
 
-    [Fact]
+    [TestMethod]
     public void Generator_for_of_iterates_yielded_values()
     {
         var r = Eval(@"
@@ -68,7 +67,7 @@ public class JsGeneratorTests
         r.AsNumber.Should().Be(6); // 0+1+2+3
     }
 
-    [Fact]
+    [TestMethod]
     public void Generator_is_its_own_iterator_via_symbol_iterator()
     {
         var r = Eval(@"
@@ -79,7 +78,7 @@ public class JsGeneratorTests
         r.AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Generator_throw_is_catchable_in_body()
     {
         var r = Eval(@"
@@ -93,7 +92,7 @@ public class JsGeneratorTests
         r.AsString.Should().Be("caught: boom");
     }
 
-    [Fact]
+    [TestMethod]
     public void Generator_done_after_explicit_return()
     {
         var r = Eval(@"
@@ -107,7 +106,7 @@ public class JsGeneratorTests
         r.AsString.Should().Be("1,fin/true,undefined/true");
     }
 
-    [Fact]
+    [TestMethod]
     public void Yield_star_delegates_to_inner_generator()
     {
         var r = Eval(@"

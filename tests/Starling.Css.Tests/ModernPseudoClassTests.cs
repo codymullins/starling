@@ -1,16 +1,16 @@
 using FluentAssertions;
 using Starling.Css.Selectors;
 using Starling.Dom;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("selectors-4", "https://www.w3.org/TR/selectors-4/")]
 
+[TestClass]
 public sealed class ModernPseudoClassTests
 {
-    [Fact]
+    [TestMethod]
     public void Dir_matches_rtl_when_element_has_dir_attribute()
     {
         var doc = new Document();
@@ -22,7 +22,7 @@ public sealed class ModernPseudoClassTests
         SelectorMatcher.Matches(SelectorParser.ParseSelectorList(":dir(ltr)"), div).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Any_link_matches_anchor_with_href()
     {
         var doc = new Document();
@@ -33,7 +33,7 @@ public sealed class ModernPseudoClassTests
         SelectorMatcher.Matches(SelectorParser.ParseSelectorList(":any-link"), a).Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Any_link_does_not_match_anchor_without_href()
     {
         var doc = new Document();
@@ -43,7 +43,7 @@ public sealed class ModernPseudoClassTests
         SelectorMatcher.Matches(SelectorParser.ParseSelectorList(":any-link"), a).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Link_matches_anchor_with_href_and_not_visited()
     {
         var doc = new Document();
@@ -54,7 +54,7 @@ public sealed class ModernPseudoClassTests
         SelectorMatcher.Matches(SelectorParser.ParseSelectorList(":link"), a).Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Visited_never_matches_by_default()
     {
         var doc = new Document();
@@ -65,7 +65,7 @@ public sealed class ModernPseudoClassTests
         SelectorMatcher.Matches(SelectorParser.ParseSelectorList(":visited"), a).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Scope_matches_scope_element_in_context()
     {
         var doc = new Document();
@@ -79,7 +79,7 @@ public sealed class ModernPseudoClassTests
         SelectorMatcher.Matches(SelectorParser.ParseSelectorList(":scope"), child, ctx).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Placeholder_shown_matches_input_with_placeholder_and_no_value()
     {
         var doc = new Document();
@@ -92,25 +92,25 @@ public sealed class ModernPseudoClassTests
         SelectorMatcher.Matches(SelectorParser.ParseSelectorList(":placeholder-shown"), input).Should().BeFalse();
     }
 
-    [Theory]
-    [InlineData(":fullscreen")]
-    [InlineData(":modal")]
-    [InlineData(":picture-in-picture")]
-    [InlineData(":user-valid")]
-    [InlineData(":user-invalid")]
-    [InlineData(":valid")]
-    [InlineData(":invalid")]
-    [InlineData(":in-range")]
-    [InlineData(":out-of-range")]
-    [InlineData(":blank")]
-    [InlineData(":autofill")]
+    [TestMethod]
+    [DataRow(":fullscreen")]
+    [DataRow(":modal")]
+    [DataRow(":picture-in-picture")]
+    [DataRow(":user-valid")]
+    [DataRow(":user-invalid")]
+    [DataRow(":valid")]
+    [DataRow(":invalid")]
+    [DataRow(":in-range")]
+    [DataRow(":out-of-range")]
+    [DataRow(":blank")]
+    [DataRow(":autofill")]
     public void Stubbed_pseudos_parse_without_throwing(string source)
     {
         var act = () => SelectorParser.ParseSelectorList(source);
         act.Should().NotThrow();
     }
 
-    [Fact]
+    [TestMethod]
     public void Defined_returns_true_for_built_in_elements()
     {
         var doc = new Document();
@@ -119,7 +119,7 @@ public sealed class ModernPseudoClassTests
         SelectorMatcher.Matches(SelectorParser.ParseSelectorList(":defined"), div).Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Required_and_optional_match_form_state()
     {
         var doc = new Document();
@@ -133,7 +133,7 @@ public sealed class ModernPseudoClassTests
         SelectorMatcher.Matches(SelectorParser.ParseSelectorList(":optional"), i2).Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Universal_selector_matches_any_element()
     {
         var doc = new Document();
@@ -142,7 +142,7 @@ public sealed class ModernPseudoClassTests
         SelectorMatcher.Matches(SelectorParser.ParseSelectorList("*"), p).Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Namespace_prefix_parses_without_throwing()
     {
         // We don't enforce namespace semantics in v1; just ensure these parse and match local name.

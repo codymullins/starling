@@ -1,16 +1,16 @@
 using FluentAssertions;
 using Starling.Css.Selectors;
 using Starling.Dom;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("selectors-4", "https://www.w3.org/TR/selectors-4/")]
 
+[TestClass]
 public sealed class SelectorMatcherTests
 {
-    [Fact]
+    [TestMethod]
     public void Matches_right_to_left_across_combinators()
     {
         var doc = new Document();
@@ -30,7 +30,7 @@ public sealed class SelectorMatcherTests
         SelectorMatcher.Matches(selector, p).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Matches_attribute_operators_and_structural_pseudos()
     {
         var doc = new Document();
@@ -47,7 +47,7 @@ public sealed class SelectorMatcherTests
         SelectorMatcher.Matches(SelectorParser.ParseSelectorList("span:only-child"), second).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Matches_is_where_not_and_lang()
     {
         var doc = new Document();

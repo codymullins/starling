@@ -4,6 +4,7 @@ namespace Starling.Css.Spec.Tests.CssBackgrounds3;
 /// <see href="https://www.w3.org/TR/css-backgrounds-3/#background">CSS Backgrounds 3 §3.4</see>:
 /// the <c>background</c> shorthand.
 /// </summary>
+[TestClass]
 [Spec("css-backgrounds-3", "https://www.w3.org/TR/css-backgrounds-3/", section: "3.4")]
 public sealed class BackgroundShorthandTests
 {

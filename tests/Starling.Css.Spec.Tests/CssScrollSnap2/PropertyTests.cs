@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssScrollSnap2;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-scroll-snap-2/">CSS Scroll Snap Module Level 2</see>.
 /// </summary>
+[TestClass]
 [Spec("css-scroll-snap-2", "https://drafts.csswg.org/css-scroll-snap-2/")]
 public sealed class PropertyTests
 {

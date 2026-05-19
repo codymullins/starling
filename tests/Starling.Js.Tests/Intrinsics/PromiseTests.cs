@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Intrinsics;
 
 /// <summary>
@@ -20,9 +18,10 @@ namespace Starling.Js.Tests.Intrinsics;
 /// <c>name='AggregateError'</c> + an <c>errors</c> array-like until the real
 /// constructor lands with B2-3.
 /// </remarks>
+[TestClass]
 public class PromiseTests
 {
-    [Fact]
+    [TestMethod]
     public void Promise_is_registered_on_global_with_prototype_slot()
     {
         var rt = new JsRuntime();
@@ -34,7 +33,7 @@ public class PromiseTests
         rt.Realm.PromiseConstructor.Should().BeSameAs(Promise.AsObject);
     }
 
-    [Fact]
+    [TestMethod]
     public void Promise_resolve_then_settles_after_drain()
     {
         var rt = Run(@"
@@ -44,7 +43,7 @@ public class PromiseTests
         rt.GetGlobal("result").AsNumber.Should().Be(42);
     }
 
-    [Fact]
+    [TestMethod]
     public void Multiple_then_handlers_fire_in_registration_order()
     {
         var rt = Run(@"
@@ -57,10 +56,10 @@ public class PromiseTests
         rt.GetGlobal("order").AsString.Should().Be("abc");
     }
 
-    [Fact]
+    [TestMethod]
     public void Promise_constructor_throws_on_non_callable_executor()
     {
-        var ex = Assert.Throws<JsThrow>(() =>
+        var ex = Assert.ThrowsExactly<JsThrow>(() =>
         {
             var rt = new JsRuntime();
             var program = new JsParser("new Promise(42);").ParseProgram();
@@ -71,7 +70,7 @@ public class PromiseTests
         ex.Value.AsObject.Get("message").AsString.Should().Contain("Promise resolver");
     }
 
-    [Fact]
+    [TestMethod]
     public void Executor_throw_causes_rejection_with_thrown_value()
     {
         var rt = Run(@"
@@ -82,7 +81,7 @@ public class PromiseTests
         rt.GetGlobal("reason").AsString.Should().Be("boom");
     }
 
-    [Fact]
+    [TestMethod]
     public void Then_chain_threads_values_through_each_step()
     {
         var rt = Run(@"
@@ -95,7 +94,7 @@ public class PromiseTests
         rt.GetGlobal("result").AsNumber.Should().Be(20);
     }
 
-    [Fact]
+    [TestMethod]
     public void Catch_recovers_a_rejected_chain_and_continues_fulfilled()
     {
         var rt = Run(@"
@@ -109,7 +108,7 @@ public class PromiseTests
         rt.GetGlobal("afterCatch").AsNumber.Should().Be(99);
     }
 
-    [Fact]
+    [TestMethod]
     public void Finally_runs_on_fulfillment_and_forwards_value()
     {
         var rt = Run(@"
@@ -123,7 +122,7 @@ public class PromiseTests
         rt.GetGlobal("value").AsNumber.Should().Be(7);
     }
 
-    [Fact]
+    [TestMethod]
     public void Finally_runs_on_rejection_and_forwards_reason()
     {
         var rt = Run(@"
@@ -137,7 +136,7 @@ public class PromiseTests
         rt.GetGlobal("reason").AsString.Should().Be("nope");
     }
 
-    [Fact]
+    [TestMethod]
     public void Finally_throw_rejects_the_outer_promise()
     {
         var rt = Run(@"
@@ -149,7 +148,7 @@ public class PromiseTests
         rt.GetGlobal("reason").AsString.Should().Be("finally-bad");
     }
 
-    [Fact]
+    [TestMethod]
     public void Promise_all_resolves_to_array_of_values_in_order()
     {
         var rt = Run(@"
@@ -160,7 +159,7 @@ public class PromiseTests
         rt.GetGlobal("r").AsString.Should().Be("1,2,3:3");
     }
 
-    [Fact]
+    [TestMethod]
     public void Promise_all_rejects_on_first_rejection()
     {
         var rt = Run(@"
@@ -171,7 +170,7 @@ public class PromiseTests
         rt.GetGlobal("reason").AsString.Should().Be("first-bad");
     }
 
-    [Fact]
+    [TestMethod]
     public void Promise_all_with_non_promise_values_lifts_them()
     {
         var rt = Run(@"
@@ -182,7 +181,7 @@ public class PromiseTests
         rt.GetGlobal("r").AsString.Should().Be("1,2,3");
     }
 
-    [Fact]
+    [TestMethod]
     public void Promise_allSettled_reports_per_entry_status()
     {
         var rt = Run(@"
@@ -195,7 +194,7 @@ public class PromiseTests
         rt.GetGlobal("r").AsString.Should().Be("fulfilled=1|rejected=bad");
     }
 
-    [Fact]
+    [TestMethod]
     public void Promise_race_settles_with_first_to_settle()
     {
         // Synchronously-settled promises run in registration order through
@@ -208,7 +207,7 @@ public class PromiseTests
         rt.GetGlobal("r").AsNumber.Should().Be(5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Promise_race_rejects_when_first_is_a_rejection()
     {
         var rt = Run(@"
@@ -219,7 +218,7 @@ public class PromiseTests
         rt.GetGlobal("reason").AsString.Should().Be("first");
     }
 
-    [Fact]
+    [TestMethod]
     public void Promise_any_returns_first_fulfillment()
     {
         var rt = Run(@"
@@ -230,7 +229,7 @@ public class PromiseTests
         rt.GetGlobal("r").AsNumber.Should().Be(42);
     }
 
-    [Fact]
+    [TestMethod]
     public void Promise_any_rejects_with_AggregateError_when_all_reject()
     {
         // Promise.any rejects with a real AggregateError instance built via
@@ -249,7 +248,7 @@ public class PromiseTests
         rt.GetGlobal("errs").AsString.Should().Be("a,b:2");
     }
 
-    [Fact]
+    [TestMethod]
     public void Promise_any_aggregate_error_is_real_AggregateError_instance()
     {
         var rt = Run(@"
@@ -268,7 +267,7 @@ public class PromiseTests
         rt.GetGlobal("msg").AsString.Should().Be("All promises were rejected");
     }
 
-    [Fact]
+    [TestMethod]
     public void Promise_any_aggregate_error_preserves_numeric_reasons()
     {
         var rt = Run(@"
@@ -287,7 +286,7 @@ public class PromiseTests
         rt.GetGlobal("len").AsNumber.Should().Be(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void Promise_withResolvers_exposes_capability_fields()
     {
         var rt = Run(@"
@@ -299,7 +298,7 @@ public class PromiseTests
         rt.GetGlobal("r").AsNumber.Should().Be(123);
     }
 
-    [Fact]
+    [TestMethod]
     public void Promise_withResolvers_reject_path_settles_correctly()
     {
         var rt = Run(@"
@@ -311,7 +310,7 @@ public class PromiseTests
         rt.GetGlobal("r").AsString.Should().Be("nope");
     }
 
-    [Fact]
+    [TestMethod]
     public void Thenable_interop_via_Promise_resolve()
     {
         // §27.2.4.7: Promise.resolve adopts thenables — invokes .then with
@@ -324,7 +323,7 @@ public class PromiseTests
         rt.GetGlobal("r").AsNumber.Should().Be(99);
     }
 
-    [Fact]
+    [TestMethod]
     public void Resolve_with_promise_returns_same_promise_identity()
     {
         // §27.2.4.7 step 1: Promise.resolve on an already-Promise returns it as-is.
@@ -338,7 +337,7 @@ public class PromiseTests
         rt.GetGlobal("same").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Microtask_runs_after_current_sync_frame()
     {
         // Resolving the promise synchronously must NOT settle .then handlers
@@ -352,7 +351,7 @@ public class PromiseTests
         rt.GetGlobal("trace").AsString.Should().Be("syncmicro");
     }
 
-    [Fact]
+    [TestMethod]
     public void Pending_promise_does_not_settle_without_resolve()
     {
         var rt = Run(@"
@@ -363,7 +362,7 @@ public class PromiseTests
         rt.GetGlobal("ran").AsNumber.Should().Be(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Resolving_with_self_rejects_with_TypeError()
     {
         var rt = Run(@"
@@ -377,7 +376,7 @@ public class PromiseTests
         reason.AsObject.Get("message").AsString.Should().Contain("Chaining cycle");
     }
 
-    [Fact]
+    [TestMethod]
     public void MicrotaskQueue_host_scheduler_takes_ownership()
     {
         // When a host scheduler is installed, in-process drain is a no-op
@@ -415,7 +414,7 @@ public class PromiseTests
         rt.GetGlobal("r").AsNumber.Should().Be(7);
     }
 
-    [Fact]
+    [TestMethod]
     public void Then_on_pending_promise_settles_after_external_resolve()
     {
         var rt = Run(@"

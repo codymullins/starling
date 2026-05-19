@@ -1,19 +1,18 @@
 using FluentAssertions;
 using Starling.Common.Image;
-using Xunit;
-
 namespace Starling.Common.Tests;
 
+[TestClass]
 public class SsimTests
 {
-    [Fact]
+    [TestMethod]
     public void Identical_images_score_one()
     {
         var (a, b) = MakePair(64, 64, fill: 128);
         Ssim.ComputeRgba(a, b, 64, 64).Should().BeApproximately(1.0, 1e-9);
     }
 
-    [Fact]
+    [TestMethod]
     public void Wholly_different_images_score_below_threshold()
     {
         var (black, _) = MakePair(32, 32, fill: 0);
@@ -22,7 +21,7 @@ public class SsimTests
         score.Should().BeLessThan(0.05);
     }
 
-    [Fact]
+    [TestMethod]
     public void Mostly_matching_images_score_above_threshold()
     {
         // Two 128x128 images, identical except for one differing 4x4 patch
@@ -49,7 +48,7 @@ public class SsimTests
         Ssim.ComputeRgba(a, b, w, h).Should().BeGreaterThan(0.99);
     }
 
-    [Fact]
+    [TestMethod]
     public void Alpha_differences_are_ignored()
     {
         const int w = 16;
@@ -60,7 +59,7 @@ public class SsimTests
         Ssim.ComputeRgba(a, b, w, h).Should().BeApproximately(1.0, 1e-9);
     }
 
-    [Fact]
+    [TestMethod]
     public void Throws_when_sizes_mismatch()
     {
         var (a, _) = MakePair(8, 8, fill: 0);

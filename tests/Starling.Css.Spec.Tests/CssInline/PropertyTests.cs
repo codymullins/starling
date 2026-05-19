@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssInline;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-inline-3/">CSS Inline Layout Module Level 3</see>.
 /// </summary>
+[TestClass]
 [Spec("css-inline", "https://drafts.csswg.org/css-inline-3/")]
 public sealed class PropertyTests
 {

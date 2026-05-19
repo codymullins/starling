@@ -1,15 +1,14 @@
 using FluentAssertions;
 using Starling.Net.Http;
-using Xunit;
-
 namespace Starling.Net.Tests.Http;
 
+[TestClass]
 public class ConnectionPoolTests
 {
     private static OriginKey Origin(string host = "example.test", int port = 443)
         => OriginKey.Create("https", host, port);
 
-    [Fact]
+    [TestMethod]
     public async Task TryAcquire_returns_the_same_transport_after_release()
     {
         var pool = new ConnectionPool();
@@ -24,7 +23,7 @@ public class ConnectionPoolTests
         fake.Disposed.Should().BeFalse("the transport was acquired by the caller, not discarded");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task TryAcquire_returns_null_when_pool_is_empty()
     {
         var pool = new ConnectionPool();
@@ -32,7 +31,7 @@ public class ConnectionPoolTests
         await pool.DisposeAsync();
     }
 
-    [Fact]
+    [TestMethod]
     public async Task TryAcquire_keys_on_origin_distinguishes_scheme_host_port()
     {
         var pool = new ConnectionPool();
@@ -58,7 +57,7 @@ public class ConnectionPoolTests
         await pool.DisposeAsync();
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Disposed_transport_is_not_returned_from_acquire()
     {
         var pool = new ConnectionPool();
@@ -72,7 +71,7 @@ public class ConnectionPoolTests
         fake.Disposed.Should().BeTrue("stale entries are discarded when encountered");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Releasing_a_closed_transport_does_not_pool_it()
     {
         var pool = new ConnectionPool();
@@ -86,7 +85,7 @@ public class ConnectionPoolTests
         fake.Disposed.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public async Task DrainExpired_disposes_entries_older_than_idle_timeout()
     {
         var pool = new ConnectionPool(maxPerOrigin: 6, idleTimeout: TimeSpan.FromMilliseconds(50));
@@ -96,7 +95,7 @@ public class ConnectionPoolTests
 
         await pool.ReleaseAsync(stale);
         // Make sure the second release is later than the first.
-        await Task.Delay(100, TestContext.Current.CancellationToken);
+        await Task.Delay(100, CancellationToken.None);
         await pool.ReleaseAsync(fresh);
 
         // Pretend "now" is 75ms after the stale entry but before fresh's expiry.
@@ -109,7 +108,7 @@ public class ConnectionPoolTests
         pool.IdleCount.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task DrainExpired_sync_overload_disposes_old_entries()
     {
         var pool = new ConnectionPool(maxPerOrigin: 4, idleTimeout: TimeSpan.FromHours(1));
@@ -124,7 +123,7 @@ public class ConnectionPoolTests
         entry.Disposed.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Pool_capacity_is_bounded_and_oldest_is_evicted()
     {
         var pool = new ConnectionPool(maxPerOrigin: 2, idleTimeout: TimeSpan.FromMinutes(5));
@@ -148,7 +147,7 @@ public class ConnectionPoolTests
         pool.TryAcquire(origin).Should().BeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public async Task DisposeAll_disposes_every_entry_across_origins()
     {
         var pool = new ConnectionPool();
@@ -167,7 +166,7 @@ public class ConnectionPoolTests
         c.Disposed.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Release_on_disposed_pool_closes_the_transport()
     {
         var pool = new ConnectionPool();
@@ -180,7 +179,7 @@ public class ConnectionPoolTests
         fake.Disposed.Should().BeTrue("disposed pools refuse new releases and clean up the transport");
     }
 
-    [Fact]
+    [TestMethod]
     public void Constructor_rejects_zero_capacity_or_non_positive_timeout()
     {
         Action zero = () => new ConnectionPool(0, TimeSpan.FromSeconds(1));
@@ -189,7 +188,7 @@ public class ConnectionPoolTests
         negative.Should().Throw<ArgumentOutOfRangeException>();
     }
 
-    [Fact]
+    [TestMethod]
     public void OriginKey_normalises_scheme_and_host_to_lowercase()
     {
         var a = OriginKey.Create("HTTPS", "Example.COM", 443);

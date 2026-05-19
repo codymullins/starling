@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssPage;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-page-3/">CSS Paged Media Module Level 3</see>.
 /// </summary>
+[TestClass]
 [Spec("css-page", "https://drafts.csswg.org/css-page-3/")]
 public sealed class PropertyTests
 {

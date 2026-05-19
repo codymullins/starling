@@ -11,6 +11,7 @@ namespace Starling.Css.Spec.Tests.CssColor;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-color-4/">CSS Color Module Level 4</see>.
 /// </summary>
+[TestClass]
 [Spec("css-color", "https://drafts.csswg.org/css-color-4/")]
 public sealed class PropertyTests
 {

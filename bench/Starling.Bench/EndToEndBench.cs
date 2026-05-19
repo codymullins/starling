@@ -10,8 +10,8 @@ namespace Starling.Bench;
 
 // Full HTML+CSS → DOM → cascade → layout → display list pipeline on the
 // vendored `nginx.org` snapshot (the same fixture the M2 golden gate uses).
-// Excludes the raster backend since Skia Graphite is osx-arm64 only today
-// and would make this bench machine-dependent. Use this as the holistic
+// Stops at the display list — raster timings vary by host (CPU/GPU) and
+// would make this bench machine-dependent. Use this as the holistic
 // regression signal; the per-stage benches localize the cause.
 [MemoryDiagnoser]
 public class EndToEndBench

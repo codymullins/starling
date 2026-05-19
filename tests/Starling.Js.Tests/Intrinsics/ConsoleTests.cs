@@ -2,13 +2,12 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Intrinsics;
 
+[TestClass]
 public class ConsoleTests
 {
-    [Fact]
+    [TestMethod]
     public void Console_is_registered_as_non_enumerable_global_with_builtin_methods()
     {
         var rt = new JsRuntime();
@@ -32,7 +31,7 @@ public class ConsoleTests
         }
     }
 
-    [Fact]
+    [TestMethod]
     public void Log_levels_route_to_sink_and_format_basic_arguments()
     {
         var capture = Run(@"
@@ -51,7 +50,7 @@ public class ConsoleTests
         capture[4].Should().Be((ConsoleLevel.Debug, "debug"));
     }
 
-    [Fact]
+    [TestMethod]
     public void Formatter_consumes_console_standard_substitutions()
     {
         var capture = Run(@"
@@ -63,7 +62,7 @@ public class ConsoleTests
         capture[0].Message.Should().Be("name=star n=3.25 i=4 f=1.5 pct=% obj={ a: 1 } json={ b: \"x\" } tail extra");
     }
 
-    [Fact]
+    [TestMethod]
     public void Objects_are_pretty_printed_for_log_dir_and_circular_references()
     {
         var capture = Run(@"
@@ -80,7 +79,7 @@ public class ConsoleTests
         capture[1].Message.Should().Contain("self: [Circular]");
     }
 
-    [Fact]
+    [TestMethod]
     public void Table_renders_object_rows_as_text_columns()
     {
         var capture = Run("console.table({ first: 1, second: 'two' });");
@@ -95,7 +94,7 @@ public class ConsoleTests
         capture[0].Message.Should().Contain("\"two\"");
     }
 
-    [Fact]
+    [TestMethod]
     public void Count_and_countReset_track_counts_per_label()
     {
         var capture = Run(@"
@@ -113,7 +112,7 @@ public class ConsoleTests
         capture[3].Should().Be((ConsoleLevel.Info, "apples: 1"));
     }
 
-    [Fact]
+    [TestMethod]
     public void Groups_indent_subsequent_output_and_groupEnd_restores_indent()
     {
         var capture = Run(@"
@@ -136,7 +135,7 @@ public class ConsoleTests
         capture[5].Should().Be((ConsoleLevel.Log, "after all"));
     }
 
-    [Fact]
+    [TestMethod]
     public void TimeEnd_emits_elapsed_milliseconds_for_label()
     {
         var capture = Run(@"
@@ -149,7 +148,7 @@ public class ConsoleTests
         capture[0].Message.Should().MatchRegex(@"^load: \d+(\.\d+)?ms$");
     }
 
-    [Fact]
+    [TestMethod]
     public void Assert_writes_only_when_condition_is_falsy()
     {
         var capture = Run(@"
@@ -161,7 +160,7 @@ public class ConsoleTests
         capture[0].Should().Be((ConsoleLevel.Error, "Assertion failed: bad thing"));
     }
 
-    [Fact]
+    [TestMethod]
     public void Trace_emits_label_and_placeholder_js_frame()
     {
         var capture = Run("console.trace('here', 7);");
@@ -171,7 +170,7 @@ public class ConsoleTests
         capture[0].Message.Should().Be("here 7\n  at <js>");
     }
 
-    [Fact]
+    [TestMethod]
     public void Clear_invokes_optional_host_hook()
     {
         var runtime = new JsRuntime();

@@ -22,7 +22,7 @@ var repoRoot = LocateRepoRoot();
 // WebGPU-accelerated rasterizer out of the box. The build-time gate
 // (EnableImageSharpDrawing3) auto-flips on in Directory.Build.props when a
 // Six Labors license is present, so this default is wired end-to-end. The
-// developer-set STARLING_PAINT_BACKEND below still wins (skia / imagesharp).
+// developer-set STARLING_PAINT_BACKEND below still wins (imagesharp / imagesharp-webgpu).
 //
 // MCP port: defaults to http://127.0.0.1:3078/mcp; the env var still wins
 // if the developer overrides it.

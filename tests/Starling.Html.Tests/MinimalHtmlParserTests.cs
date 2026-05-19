@@ -1,12 +1,11 @@
 using FluentAssertions;
 using Starling.Dom;
-using Xunit;
-
 namespace Starling.Html.Tests;
 
+[TestClass]
 public class MinimalHtmlParserTests
 {
-    [Fact]
+    [TestMethod]
     public void Parses_a_simple_doctype_html_head_body_tree()
     {
         const string Html = """
@@ -23,7 +22,7 @@ public class MinimalHtmlParserTests
         doc.Body.TextContent.Trim().Should().Be("Hello, world.");
     }
 
-    [Fact]
+    [TestMethod]
     public void Handles_void_elements_without_closing_tags()
     {
         var doc = HtmlParser.Parse("<body><br><p>a</p></body>");
@@ -35,7 +34,7 @@ public class MinimalHtmlParserTests
             .FirstChild.Should().BeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Parses_attributes_with_quotes_and_unquoted_values()
     {
         var doc = HtmlParser.Parse("""<body><a href="https://x.test" id=main>x</a></body>""");
@@ -44,7 +43,7 @@ public class MinimalHtmlParserTests
         a.GetAttribute("id").Should().Be("main");
     }
 
-    [Fact]
+    [TestMethod]
     public void Skips_comments_and_doctype()
     {
         var doc = HtmlParser.Parse("<!doctype html><!--ignore me--><body>kept</body>");

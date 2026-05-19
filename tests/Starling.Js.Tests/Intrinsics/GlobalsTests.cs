@@ -2,13 +2,12 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Intrinsics;
 
+[TestClass]
 public class GlobalsTests
 {
-    [Fact]
+    [TestMethod]
     public void Global_parseInt_handles_radix_and_prefix_edges()
     {
         Eval("parseInt('0x10');").AsNumber.Should().Be(16);
@@ -19,7 +18,7 @@ public class GlobalsTests
         double.IsNaN(Eval("parseInt('2', 2);").AsNumber).Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Global_parseFloat_scans_decimal_prefix()
     {
         Eval("parseFloat('  .5px');").AsNumber.Should().Be(0.5);
@@ -29,7 +28,7 @@ public class GlobalsTests
         double.IsNaN(Eval("parseFloat('nope');").AsNumber).Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Global_isNaN_and_isFinite_coerce_arguments()
     {
         Eval("isNaN(NaN);").AsBool.Should().BeTrue();
@@ -40,7 +39,7 @@ public class GlobalsTests
         Eval("isFinite('nope');").AsBool.Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void EncodeURI_preserves_reserved_but_component_encodes_them()
     {
         Eval("encodeURI('https://x.test/a b/c?x=1&y=2#h');").AsString.Should().Be("https://x.test/a%20b/c?x=1&y=2#h");
@@ -49,7 +48,7 @@ public class GlobalsTests
         Eval("encodeURI(';,/?:@&=+$#');").AsString.Should().Be(";,/?:@&=+$#");
     }
 
-    [Fact]
+    [TestMethod]
     public void DecodeURI_preserves_reserved_escapes_but_component_decodes_all()
     {
         Eval("decodeURIComponent('a%20b%2Fc%3F');").AsString.Should().Be("a b/c?");
@@ -58,7 +57,7 @@ public class GlobalsTests
         Eval("decodeURI('%3Fq%3D1%26x%3D2');").AsString.Should().Be("%3Fq%3D1%26x%3D2");
     }
 
-    [Fact]
+    [TestMethod]
     public void DecodeURI_rejects_malformed_percent_sequences()
     {
         Action lonePercent = () => Eval("decodeURIComponent('%');");

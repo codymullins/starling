@@ -2,7 +2,6 @@ using FluentAssertions;
 using Starling.Css.Parser;
 using Starling.Css.Properties;
 using Starling.Css.Values;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
@@ -12,6 +11,7 @@ namespace Starling.Css.Tests;
 /// -repeat. These are the inputs the sprite-sheet pattern that drives
 /// mcmaster.com (and most "icon grid" sites) depends on.
 /// </summary>
+[TestClass]
 [Spec("css-images-4", "https://www.w3.org/TR/css-images-4/")]
 public sealed class BackgroundImageTests
 {
@@ -22,7 +22,7 @@ public sealed class BackgroundImageTests
         return rule.Declarations.SelectMany(PropertyRegistry.Parse).ToList();
     }
 
-    [Fact]
+    [TestMethod]
     public void Background_image_url_becomes_css_url()
     {
         var decls = Expand("background-image: url(\"sprite.png\");");
@@ -31,7 +31,7 @@ public sealed class BackgroundImageTests
         value.Should().Be(new CssUrl("sprite.png"));
     }
 
-    [Fact]
+    [TestMethod]
     public void Background_image_none_keyword()
     {
         var decls = Expand("background-image: none;");
@@ -39,7 +39,7 @@ public sealed class BackgroundImageTests
         decls.Single(d => d.Id == PropertyId.BackgroundImage).Value.Should().Be(new CssKeyword("none"));
     }
 
-    [Fact]
+    [TestMethod]
     public void Background_position_single_length_resolves_to_x_offset()
     {
         // McMaster's sprite math: `background-position: -60px` is shorthand
@@ -57,7 +57,7 @@ public sealed class BackgroundImageTests
             value.Should().Be(new CssLength(-60, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Background_position_two_lengths()
     {
         var decls = Expand("background-position: -120px -60px;");
@@ -69,7 +69,7 @@ public sealed class BackgroundImageTests
         list.Values[^1].Should().Be(new CssLength(-60, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Background_size_keywords_contain_and_cover()
     {
         Expand("background-size: contain;")
@@ -81,7 +81,7 @@ public sealed class BackgroundImageTests
             .Should().Be(new CssKeyword("cover"));
     }
 
-    [Fact]
+    [TestMethod]
     public void Background_size_explicit_length()
     {
         var decls = Expand("background-size: 1320px;");
@@ -90,7 +90,7 @@ public sealed class BackgroundImageTests
         value.Should().Be(new CssLength(1320, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Background_repeat_no_repeat()
     {
         var decls = Expand("background-repeat: no-repeat;");
@@ -99,7 +99,7 @@ public sealed class BackgroundImageTests
             .Should().Be(new CssKeyword("no-repeat"));
     }
 
-    [Fact]
+    [TestMethod]
     public void Background_shorthand_carries_url_alongside_color()
     {
         // `background: url("x.png") #fff no-repeat center;` mixes image + color

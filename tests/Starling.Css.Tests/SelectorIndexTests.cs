@@ -1,16 +1,16 @@
 using FluentAssertions;
 using Starling.Css.Selectors;
 using Starling.Dom;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("selectors-4", "https://www.w3.org/TR/selectors-4/")]
 
+[TestClass]
 public sealed class SelectorIndexTests
 {
-    [Fact]
+    [TestMethod]
     public void Buckets_pseudo_element_rule_by_last_non_pseudo_compound()
     {
         var doc = new Document();
@@ -26,7 +26,7 @@ public sealed class SelectorIndexTests
         candidates.Single().PseudoElementTarget.Should().Be(PseudoElement.Before);
     }
 
-    [Fact]
+    [TestMethod]
     public void Buckets_id_class_and_tag_correctly()
     {
         var doc = new Document();

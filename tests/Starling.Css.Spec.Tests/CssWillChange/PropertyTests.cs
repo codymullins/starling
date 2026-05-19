@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssWillChange;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-will-change-1/">CSS Will Change Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-will-change", "https://drafts.csswg.org/css-will-change-1/")]
 public sealed class PropertyTests
 {

@@ -1,11 +1,10 @@
 using FluentAssertions;
-using Xunit;
-
 namespace Starling.Common.Tests;
 
+[TestClass]
 public class ResultTests
 {
-    [Fact]
+    [TestMethod]
     public void Ok_carries_value_and_reports_ok()
     {
         var r = Result<int, string>.Ok(42);
@@ -14,7 +13,7 @@ public class ResultTests
         r.Value.Should().Be(42);
     }
 
-    [Fact]
+    [TestMethod]
     public void Err_carries_error_and_reports_err()
     {
         var r = Result<int, string>.Err("nope");
@@ -22,7 +21,7 @@ public class ResultTests
         r.Error.Should().Be("nope");
     }
 
-    [Fact]
+    [TestMethod]
     public void Reading_Value_on_Err_throws()
     {
         var r = Result<int, string>.Err("nope");
@@ -30,7 +29,7 @@ public class ResultTests
         act.Should().Throw<InvalidOperationException>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Match_picks_correct_branch()
     {
         Result<int, string>.Ok(7).Match(v => v * 2, _ => -1).Should().Be(14);
@@ -38,9 +37,10 @@ public class ResultTests
     }
 }
 
+[TestClass]
 public class MaybeTests
 {
-    [Fact]
+    [TestMethod]
     public void Some_carries_value()
     {
         var m = Maybe<string>.Some("hi");
@@ -48,7 +48,7 @@ public class MaybeTests
         m.Value.Should().Be("hi");
     }
 
-    [Fact]
+    [TestMethod]
     public void None_has_no_value_and_throws_on_Value()
     {
         var m = Maybe<string>.None;
@@ -57,7 +57,7 @@ public class MaybeTests
         act.Should().Throw<InvalidOperationException>();
     }
 
-    [Fact]
+    [TestMethod]
     public void OrElse_returns_fallback_for_None()
     {
         Maybe<int>.None.OrElse(99).Should().Be(99);

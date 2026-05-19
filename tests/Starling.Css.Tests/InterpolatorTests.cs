@@ -2,16 +2,16 @@ using FluentAssertions;
 using Starling.Css.Animations;
 using Starling.Css.Properties;
 using Starling.Css.Values;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("web-animations-1", "https://www.w3.org/TR/web-animations-1/")]
 
+[TestClass]
 public sealed class InterpolatorTests
 {
-    [Fact]
+    [TestMethod]
     public void Numbers_lerp_linearly()
     {
         var result = (CssNumber)Interpolator.Interpolate(PropertyId.Opacity,
@@ -19,7 +19,7 @@ public sealed class InterpolatorTests
         result.Value.Should().BeApproximately(0.25, 1e-9);
     }
 
-    [Fact]
+    [TestMethod]
     public void Same_unit_lengths_lerp_directly()
     {
         var r = (CssLength)Interpolator.Interpolate(PropertyId.Width,
@@ -28,7 +28,7 @@ public sealed class InterpolatorTests
         r.Unit.Should().Be(CssLengthUnit.Px);
     }
 
-    [Fact]
+    [TestMethod]
     public void Cross_absolute_unit_lengths_lerp_in_px()
     {
         var r = (CssLength)Interpolator.Interpolate(PropertyId.Width,
@@ -38,7 +38,7 @@ public sealed class InterpolatorTests
         r.Value.Should().BeApproximately(48, 1e-6); // 1in = 96px, midpoint = 48px
     }
 
-    [Fact]
+    [TestMethod]
     public void Mismatched_value_kinds_fall_back_to_discrete()
     {
         var below = Interpolator.Interpolate(PropertyId.Width,
@@ -51,7 +51,7 @@ public sealed class InterpolatorTests
         above.Should().BeOfType<CssKeyword>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Color_lerps_in_premultiplied_srgb()
     {
         // red → blue midpoint should land near (128, 0, 128) once rounded.
@@ -63,7 +63,7 @@ public sealed class InterpolatorTests
         mid.A.Should().Be(255);
     }
 
-    [Fact]
+    [TestMethod]
     public void Color_fading_to_transparent_keeps_alpha_lerp()
     {
         var mid = (CssColor)Interpolator.Interpolate(PropertyId.Color,
@@ -72,7 +72,7 @@ public sealed class InterpolatorTests
         mid.A.Should().BeInRange(126, 130);
     }
 
-    [Fact]
+    [TestMethod]
     public void Transform_lerps_pairwise_when_function_signatures_match()
     {
         var from = new CssTransform(new CssTransformFunction[]
@@ -90,7 +90,7 @@ public sealed class InterpolatorTests
         translate.Y.Value.Should().BeApproximately(10, 1e-9);
     }
 
-    [Fact]
+    [TestMethod]
     public void Transform_with_mismatched_signatures_falls_back_to_matrix_lerp()
     {
         var from = new CssTransform(new CssTransformFunction[]
@@ -106,7 +106,7 @@ public sealed class InterpolatorTests
         mid.Functions[0].Should().BeOfType<CssMatrix>();
     }
 
-    [Fact]
+    [TestMethod]
     public void IsAnimatable_returns_true_for_opacity_and_color()
     {
         Interpolator.IsAnimatable(PropertyId.Opacity).Should().BeTrue();

@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssRoundDisplay;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-round-display-1/">CSS Round Display Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-round-display", "https://drafts.csswg.org/css-round-display-1/")]
 public sealed class PropertyTests
 {

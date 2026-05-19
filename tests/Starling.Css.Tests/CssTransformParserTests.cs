@@ -1,13 +1,13 @@
 using FluentAssertions;
 using Starling.Css.Parser;
 using Starling.Css.Values;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("css-transforms-2", "https://www.w3.org/TR/css-transforms-2/")]
 
+[TestClass]
 public sealed class CssTransformParserTests
 {
     private static CssValue ParseValue(string source)
@@ -19,7 +19,7 @@ public sealed class CssTransformParserTests
 
     private static CssTransform Parse(string source) => CssTransformParser.Parse(ParseValue(source));
 
-    [Fact]
+    [TestMethod]
     public void None_keyword_yields_empty_transform()
     {
         var t = Parse("none");
@@ -27,7 +27,7 @@ public sealed class CssTransformParserTests
         t.ToMatrix(100, 100).Should().Be(Matrix2D.Identity);
     }
 
-    [Fact]
+    [TestMethod]
     public void Translate_two_lengths()
     {
         var t = Parse("translate(10px, 20px)");
@@ -35,40 +35,40 @@ public sealed class CssTransformParserTests
         t.ToMatrix(0, 0).Should().Be(Matrix2D.Translate(10, 20));
     }
 
-    [Fact]
+    [TestMethod]
     public void Translate_single_arg_defaults_y_to_zero()
     {
         var t = Parse("translate(15px)");
         t.ToMatrix(0, 0).Should().Be(Matrix2D.Translate(15, 0));
     }
 
-    [Fact]
+    [TestMethod]
     public void TranslateX_TranslateY_independent_axes()
     {
         Parse("translateX(8px)").ToMatrix(0, 0).Should().Be(Matrix2D.Translate(8, 0));
         Parse("translateY(8px)").ToMatrix(0, 0).Should().Be(Matrix2D.Translate(0, 8));
     }
 
-    [Fact]
+    [TestMethod]
     public void Translate_percentages_resolve_against_reference_box()
     {
         var t = Parse("translate(50%, 25%)");
         t.ToMatrix(200, 80).Should().Be(Matrix2D.Translate(100, 20));
     }
 
-    [Fact]
+    [TestMethod]
     public void Scale_single_arg_applies_uniformly()
     {
         Parse("scale(2)").ToMatrix(0, 0).Should().Be(Matrix2D.Scale(2, 2));
     }
 
-    [Fact]
+    [TestMethod]
     public void Scale_two_args_applies_independently()
     {
         Parse("scale(2, 0.5)").ToMatrix(0, 0).Should().Be(Matrix2D.Scale(2, 0.5));
     }
 
-    [Fact]
+    [TestMethod]
     public void Rotate_accepts_deg_rad_turn()
     {
         Parse("rotate(90deg)").ToMatrix(0, 0).A.Should().BeApproximately(0, 1e-9);
@@ -76,7 +76,7 @@ public sealed class CssTransformParserTests
         Parse("rotate(3.14159rad)").ToMatrix(0, 0).A.Should().BeApproximately(-1, 1e-4);
     }
 
-    [Fact]
+    [TestMethod]
     public void Skew_one_arg_skews_only_x()
     {
         var m = Parse("skew(45deg)").ToMatrix(0, 0);
@@ -84,14 +84,14 @@ public sealed class CssTransformParserTests
         m.B.Should().Be(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Matrix_function_passes_six_components_through()
     {
         var t = Parse("matrix(1, 2, 3, 4, 5, 6)");
         t.ToMatrix(0, 0).Should().Be(new Matrix2D(1, 2, 3, 4, 5, 6));
     }
 
-    [Fact]
+    [TestMethod]
     public void Function_list_composes_left_to_right()
     {
         // translate then scale: translate is leftmost so it's the outer wrap.
@@ -102,7 +102,7 @@ public sealed class CssTransformParserTests
         y.Should().Be(28);
     }
 
-    [Fact]
+    [TestMethod]
     public void Three_d_variants_are_rejected_and_fall_back_to_none()
     {
         Parse("translate3d(1px, 2px, 3px)").IsNone.Should().BeTrue();
@@ -111,13 +111,13 @@ public sealed class CssTransformParserTests
         Parse("perspective(500px)").IsNone.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Unknown_function_in_list_invalidates_whole_value()
     {
         Parse("scale(2) bogus(1)").IsNone.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Wrong_arity_invalidates_function()
     {
         Parse("matrix(1, 2, 3)").IsNone.Should().BeTrue();

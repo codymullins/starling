@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Intrinsics;
 
 /// <summary>End-to-end coverage for <c>WeakRef</c> (B4-6).</summary>
@@ -16,9 +14,10 @@ namespace Starling.Js.Tests.Intrinsics;
 /// constructor + method surface and the "kept alive" pin while the target
 /// is reachable.
 /// </remarks>
+[TestClass]
 public class WeakRefTests
 {
-    [Fact]
+    [TestMethod]
     public void WeakRef_constructor_wired()
     {
         var rt = new JsRuntime();
@@ -26,7 +25,7 @@ public class WeakRefTests
         rt.Realm.WeakRefConstructor.Should().NotBeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Constructing_with_null_throws_TypeError()
     {
         Action act = () => Eval("new WeakRef(null);");
@@ -34,7 +33,7 @@ public class WeakRefTests
             .Which.Value.AsObject.Get("name").AsString.Should().Be("TypeError");
     }
 
-    [Fact]
+    [TestMethod]
     public void Constructing_with_primitive_throws_TypeError()
     {
         Action act = () => Eval("new WeakRef(42);");
@@ -42,7 +41,7 @@ public class WeakRefTests
             .Which.Value.AsObject.Get("name").AsString.Should().Be("TypeError");
     }
 
-    [Fact]
+    [TestMethod]
     public void Deref_returns_target_while_alive()
     {
         Eval(@"
@@ -51,7 +50,7 @@ public class WeakRefTests
             r.deref() === o;").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Repeated_deref_returns_same_object()
     {
         Eval(@"
@@ -60,7 +59,7 @@ public class WeakRefTests
             r.deref() === r.deref();").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Deref_on_wrong_receiver_throws_TypeError()
     {
         Action act = () => Eval("WeakRef.prototype.deref.call({});");
@@ -68,7 +67,7 @@ public class WeakRefTests
             .Which.Value.AsObject.Get("name").AsString.Should().Be("TypeError");
     }
 
-    [Fact]
+    [TestMethod]
     public void ToStringTag_property_is_WeakRef()
     {
         // Object.prototype.toString doesn't yet consult @@toStringTag (B3-1

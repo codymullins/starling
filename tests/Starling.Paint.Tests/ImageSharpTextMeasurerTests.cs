@@ -1,8 +1,6 @@
 using FluentAssertions;
 using SixLabors.Fonts;
 using Starling.Layout.Text;
-using Xunit;
-
 namespace Starling.Paint.Tests;
 
 /// <summary>
@@ -13,6 +11,7 @@ namespace Starling.Paint.Tests;
 /// shrink-to-fit pass and changed line-break points, causing visible width
 /// drift on pages like justinjackson.ca/words.html.
 /// </summary>
+[TestClass]
 public sealed class ImageSharpTextMeasurerTests
 {
     private const string Probe = "The quick brown fox jumps over the lazy dog";
@@ -24,11 +23,10 @@ public sealed class ImageSharpTextMeasurerTests
     /// to bundled-only OpenSans (no Bold face), Bold and Regular collapse to
     /// the same width.
     /// </summary>
-    [Fact]
+    [TestMethod]
     public void Bold_advance_differs_from_regular_advance()
     {
-        Assert.SkipUnless(HostHasInstalledFontStyle(FontStyle.Bold),
-            "no system Bold face on this host; can't differentiate Bold vs Regular");
+        if (!(HostHasInstalledFontStyle(FontStyle.Bold))) { Assert.Inconclusive("no system Bold face on this host; can't differentiate Bold vs Regular"); return; }
 
         using var measurer = new ImageSharpTextMeasurer();
         var regular = measurer.MeasureWidth(Probe, FontSize,
@@ -49,11 +47,10 @@ public sealed class ImageSharpTextMeasurerTests
     /// if the measurer drops back to OpenSans-only the two measurements
     /// become identical.
     /// </summary>
-    [Fact]
+    [TestMethod]
     public void System_sans_serif_measures_differently_than_bundled_open_sans()
     {
-        Assert.SkipUnless(HostHasInstalledSansSerif(),
-            "no system sans-serif on this host; nothing to compare against bundled OpenSans");
+        if (!(HostHasInstalledSansSerif())) { Assert.Inconclusive("no system sans-serif on this host; nothing to compare against bundled OpenSans"); return; }
 
         using var measurer = new ImageSharpTextMeasurer();
 
@@ -69,14 +66,14 @@ public sealed class ImageSharpTextMeasurerTests
             "CSS sans-serif must resolve to a system family on hosts that have one — the regression collapsed it back to bundled OpenSans");
     }
 
-    [Fact]
+    [TestMethod]
     public void Empty_string_measures_zero()
     {
         using var measurer = new ImageSharpTextMeasurer();
         measurer.MeasureWidth("", FontSize, FontSpec.Default).Should().Be(0d);
     }
 
-    [Fact]
+    [TestMethod]
     public void Line_height_is_positive_for_supported_specs()
     {
         using var measurer = new ImageSharpTextMeasurer();

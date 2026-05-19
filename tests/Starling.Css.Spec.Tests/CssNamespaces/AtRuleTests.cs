@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssNamespaces;
 /// <summary>
 /// At-rule conformance for <see href="https://drafts.csswg.org/css-namespaces-3/">CSS Namespaces Module Level 3</see>.
 /// </summary>
+[TestClass]
 [Spec("css-namespaces", "https://drafts.csswg.org/css-namespaces-3/")]
 public sealed class AtRuleTests
 {

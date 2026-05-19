@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssCounterStyles;
 /// <summary>
 /// At-rule conformance for <see href="https://drafts.csswg.org/css-counter-styles-3/">CSS Counter Styles Module Level 3</see>.
 /// </summary>
+[TestClass]
 [Spec("css-counter-styles", "https://drafts.csswg.org/css-counter-styles-3/")]
 public sealed class AtRuleTests
 {

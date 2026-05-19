@@ -1,62 +1,61 @@
 using System.Net;
 using FluentAssertions;
 using Starling.Net.Dns;
-using Xunit;
-
 namespace Starling.Net.Tests.Dns;
 
+[TestClass]
 public class DnsResolverTests
 {
-    [Fact]
+    [TestMethod]
     public async Task Localhost_short_circuits_to_loopback_addresses()
     {
         var resolver = new DnsResolver(new FailingTransport());
-        var ct = TestContext.Current.CancellationToken;
+        var ct = CancellationToken.None;
         var r = await resolver.ResolveAsync("localhost", ct);
         r.IsOk.Should().BeTrue();
         r.Value.Addresses.Should().Contain(IPAddress.Loopback);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Numeric_dotted_quad_passes_through_without_query()
     {
         var resolver = new DnsResolver(new FailingTransport());
-        var ct = TestContext.Current.CancellationToken;
+        var ct = CancellationToken.None;
         var r = await resolver.ResolveAsync("8.8.8.8", ct);
         r.IsOk.Should().BeTrue();
         r.Value.Addresses.Should().ContainSingle()
             .Which.Should().Be(IPAddress.Parse("8.8.8.8"));
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Empty_hostname_is_an_error()
     {
         var resolver = new DnsResolver(new FailingTransport());
-        var ct = TestContext.Current.CancellationToken;
+        var ct = CancellationToken.None;
         var r = await resolver.ResolveAsync("  ", ct);
         r.IsErr.Should().BeTrue();
         r.Error.Should().Be(DnsError.EmptyHostname);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Query_against_fake_transport_returns_parsed_address()
     {
         // FakeDnsTransport returns a canned response for example.com → 93.184.216.34.
         var transport = new FakeDnsTransport();
         var resolver = new DnsResolver(transport, new DnsCache(), () => 0x1234);
-        var ct = TestContext.Current.CancellationToken;
+        var ct = CancellationToken.None;
         var r = await resolver.ResolveAsync("example.com", ct);
         r.IsOk.Should().BeTrue();
         r.Value.Addresses.Should().Contain(IPAddress.Parse("93.184.216.34"));
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Cached_result_skips_transport()
     {
         var transport = new FakeDnsTransport();
         var cache = new DnsCache();
         var resolver = new DnsResolver(transport, cache, () => 0x1234);
-        var ct = TestContext.Current.CancellationToken;
+        var ct = CancellationToken.None;
 
         await resolver.ResolveAsync("example.com", ct);
         var firstCalls = transport.CallCount;
@@ -66,13 +65,13 @@ public class DnsResolverTests
             because: "cache should serve the second lookup");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task NoRecords_when_response_has_zero_answers()
     {
         // A response with NOERROR but ANCOUNT=0.
         var transport = new EmptyDnsTransport();
         var resolver = new DnsResolver(transport, new DnsCache(), () => 0xABCD);
-        var ct = TestContext.Current.CancellationToken;
+        var ct = CancellationToken.None;
         var r = await resolver.ResolveAsync("nowhere.example", ct);
         r.IsErr.Should().BeTrue();
         r.Error.Should().Be(DnsError.NoRecords);
@@ -82,7 +81,7 @@ public class DnsResolverTests
     // Cache unit tests
     // -----------------------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Cache_returns_cached_within_ttl_and_evicts_after()
     {
         var fakeNow = new MutableClock(DateTimeOffset.UtcNow);
@@ -98,7 +97,7 @@ public class DnsResolverTests
         cache.TryGet("example.com", out _).Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Cache_evicts_oldest_when_over_capacity()
     {
         var cache = new DnsCache(maxEntries: 2);
@@ -112,7 +111,7 @@ public class DnsResolverTests
         cache.TryGet("c", out _).Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Cache_recent_access_bumps_LRU_order()
     {
         var cache = new DnsCache(maxEntries: 2);

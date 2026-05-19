@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssConditional5;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-conditional-5/">CSS Conditional Rules Module Level 5</see>.
 /// </summary>
+[TestClass]
 [Spec("css-conditional-5", "https://drafts.csswg.org/css-conditional-5/")]
 public sealed class PropertyTests
 {

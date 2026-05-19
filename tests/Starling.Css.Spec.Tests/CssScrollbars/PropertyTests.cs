@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssScrollbars;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-scrollbars-1/">CSS Scrollbars Styling Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-scrollbars", "https://drafts.csswg.org/css-scrollbars-1/")]
 public sealed class PropertyTests
 {

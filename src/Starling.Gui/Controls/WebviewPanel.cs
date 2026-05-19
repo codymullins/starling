@@ -172,8 +172,8 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     }
 
     /// <summary>
-    /// Renders <paramref name="page"/> through the Skia pipeline and shows the
-    /// resulting bitmap. The image's pixel dimensions equal the document size;
+    /// Renders <paramref name="page"/> through the paint pipeline and shows
+    /// the resulting bitmap. The image's pixel dimensions equal the document size;
     /// the ScrollViewer scrolls anything taller than the viewport.
     /// </summary>
     public void ShowPage(LaidOutPage page)

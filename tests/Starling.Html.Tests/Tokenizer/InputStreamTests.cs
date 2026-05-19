@@ -1,12 +1,11 @@
 using FluentAssertions;
 using Starling.Html.InputStream;
-using Xunit;
-
 namespace Starling.Html.Tests.Tokenizer;
 
+[TestClass]
 public class InputStreamTests
 {
-    [Fact]
+    [TestMethod]
     public void Empty_input_is_drained_after_end_of_input()
     {
         var s = new PreprocessedStream();
@@ -15,7 +14,7 @@ public class InputStreamTests
         s.Peek().Should().Be(-1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Plain_ascii_passes_through()
     {
         var s = new PreprocessedStream();
@@ -25,7 +24,7 @@ public class InputStreamTests
         Drain(s).Should().Equal('a', 'b', 'c');
     }
 
-    [Fact]
+    [TestMethod]
     public void Crlf_collapses_to_lf()
     {
         var s = new PreprocessedStream();
@@ -35,7 +34,7 @@ public class InputStreamTests
         Drain(s).Should().Equal('a', '\n', 'b');
     }
 
-    [Fact]
+    [TestMethod]
     public void Lone_cr_becomes_lf()
     {
         var s = new PreprocessedStream();
@@ -45,7 +44,7 @@ public class InputStreamTests
         Drain(s).Should().Equal('a', '\n', 'b');
     }
 
-    [Fact]
+    [TestMethod]
     public void Trailing_cr_flushes_to_lf_on_end_of_input()
     {
         var s = new PreprocessedStream();
@@ -60,7 +59,7 @@ public class InputStreamTests
         s.Read().Should().Be(-1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Null_passes_through_unchanged()
     {
         // Per WHATWG HTML §13.2.4 the preprocessor normalizes newlines but
@@ -73,7 +72,7 @@ public class InputStreamTests
         Drain(s).Should().Equal('a', 0, 'b');
     }
 
-    [Fact]
+    [TestMethod]
     public void Chunked_feed_preserves_normalization_across_boundary()
     {
         // '\r' arrives in one chunk; the deciding '\n' arrives in the next.
@@ -87,7 +86,7 @@ public class InputStreamTests
         Drain(s).Should().Equal('a', '\n', 'b');
     }
 
-    [Fact]
+    [TestMethod]
     public void Chunked_feed_lone_cr_followed_by_non_lf_emits_lf()
     {
         var s = new PreprocessedStream();

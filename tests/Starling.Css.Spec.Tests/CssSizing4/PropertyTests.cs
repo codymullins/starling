@@ -12,6 +12,7 @@ namespace Starling.Css.Spec.Tests.CssSizing4;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-sizing-4/">CSS Box Sizing Module Level 4</see>.
 /// </summary>
+[TestClass]
 [Spec("css-sizing-4", "https://drafts.csswg.org/css-sizing-4/")]
 public sealed class PropertyTests
 {

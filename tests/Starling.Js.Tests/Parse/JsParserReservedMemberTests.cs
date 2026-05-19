@@ -3,8 +3,6 @@ using Starling.Js.Ast;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Parse;
 
 /// <summary>
@@ -14,11 +12,12 @@ namespace Starling.Js.Tests.Parse;
 /// <c>Promise.resolve(1).catch(e => 2)</c>, <c>obj.finally</c>,
 /// <c>arr.with(0, 'x')</c>, etc. parse without the bracket-form workaround.
 /// </summary>
+[TestClass]
 public class JsParserReservedMemberTests
 {
     // -------- parse-only smoke tests -------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Dot_catch_parses_as_member_expression()
     {
         var expr = ParseExpr("p.catch");
@@ -27,21 +26,21 @@ public class JsParserReservedMemberTests
         me.Property.Should().BeOfType<Identifier>().Which.Name.Should().Be("catch");
     }
 
-    [Fact]
+    [TestMethod]
     public void Dot_finally_parses_as_member_expression()
     {
         var me = ParseExpr("obj.finally").Should().BeOfType<MemberExpression>().Subject;
         me.Property.Should().BeOfType<Identifier>().Which.Name.Should().Be("finally");
     }
 
-    [Fact]
+    [TestMethod]
     public void Dot_with_parses_as_member_expression()
     {
         var me = ParseExpr("arr.with").Should().BeOfType<MemberExpression>().Subject;
         me.Property.Should().BeOfType<Identifier>().Which.Name.Should().Be("with");
     }
 
-    [Fact]
+    [TestMethod]
     public void Optional_chain_dot_catch_parses()
     {
         var me = ParseExpr("p?.catch").Should().BeOfType<MemberExpression>().Subject;
@@ -49,35 +48,35 @@ public class JsParserReservedMemberTests
         me.Property.Should().BeOfType<Identifier>().Which.Name.Should().Be("catch");
     }
 
-    [Theory]
-    [InlineData("default")]
-    [InlineData("class")]
-    [InlineData("if")]
-    [InlineData("else")]
-    [InlineData("return")]
-    [InlineData("for")]
-    [InlineData("while")]
-    [InlineData("delete")]
-    [InlineData("in")]
-    [InlineData("instanceof")]
-    [InlineData("typeof")]
-    [InlineData("void")]
-    [InlineData("new")]
-    [InlineData("this")]
-    [InlineData("try")]
-    [InlineData("throw")]
-    [InlineData("switch")]
-    [InlineData("case")]
-    [InlineData("break")]
-    [InlineData("continue")]
-    [InlineData("function")]
-    [InlineData("var")]
-    [InlineData("export")]
-    [InlineData("import")]
-    [InlineData("yield")]
-    [InlineData("true")]
-    [InlineData("false")]
-    [InlineData("null")]
+    [TestMethod]
+    [DataRow("default")]
+    [DataRow("class")]
+    [DataRow("if")]
+    [DataRow("else")]
+    [DataRow("return")]
+    [DataRow("for")]
+    [DataRow("while")]
+    [DataRow("delete")]
+    [DataRow("in")]
+    [DataRow("instanceof")]
+    [DataRow("typeof")]
+    [DataRow("void")]
+    [DataRow("new")]
+    [DataRow("this")]
+    [DataRow("try")]
+    [DataRow("throw")]
+    [DataRow("switch")]
+    [DataRow("case")]
+    [DataRow("break")]
+    [DataRow("continue")]
+    [DataRow("function")]
+    [DataRow("var")]
+    [DataRow("export")]
+    [DataRow("import")]
+    [DataRow("yield")]
+    [DataRow("true")]
+    [DataRow("false")]
+    [DataRow("null")]
     public void Reserved_word_as_dot_property_parses(string name)
     {
         var me = ParseExpr($"o.{name}").Should().BeOfType<MemberExpression>().Subject;
@@ -85,15 +84,15 @@ public class JsParserReservedMemberTests
         me.Property.Should().BeOfType<Identifier>().Which.Name.Should().Be(name);
     }
 
-    [Theory]
+    [TestMethod]
     // contextual keywords are emitted as plain Identifier tokens already,
     // but cover them so future lexer changes don't regress.
-    [InlineData("let")]
-    [InlineData("const")]
-    [InlineData("async")]
-    [InlineData("await")]
-    [InlineData("static")]
-    [InlineData("undefined")]
+    [DataRow("let")]
+    [DataRow("const")]
+    [DataRow("async")]
+    [DataRow("await")]
+    [DataRow("static")]
+    [DataRow("undefined")]
     public void Contextual_keyword_as_dot_property_parses(string name)
     {
         var me = ParseExpr($"o.{name}").Should().BeOfType<MemberExpression>().Subject;
@@ -102,7 +101,7 @@ public class JsParserReservedMemberTests
 
     // -------- end-to-end execution tests ---------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Promise_catch_dot_form_runs_end_to_end()
     {
         var rt = Run(@"
@@ -113,7 +112,7 @@ public class JsParserReservedMemberTests
         rt.GetGlobal("r").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Reading_default_property_via_dot_round_trips()
     {
         var rt = Run(@"
@@ -124,7 +123,7 @@ public class JsParserReservedMemberTests
         rt.GetGlobal("r").AsNumber.Should().Be(42);
     }
 
-    [Fact]
+    [TestMethod]
     public void Reading_class_property_via_dot_round_trips()
     {
         var rt = Run(@"
@@ -135,7 +134,7 @@ public class JsParserReservedMemberTests
         rt.GetGlobal("r").AsString.Should().Be("foo");
     }
 
-    [Fact]
+    [TestMethod]
     public void Many_reserved_words_round_trip_through_dot_property_assignment()
     {
         // Assign each reserved-word property via bracket form (so this test

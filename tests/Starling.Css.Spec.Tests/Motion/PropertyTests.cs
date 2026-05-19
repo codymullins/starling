@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.Motion;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/motion-1/">Motion Path Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("motion", "https://drafts.csswg.org/motion-1/")]
 public sealed class PropertyTests
 {

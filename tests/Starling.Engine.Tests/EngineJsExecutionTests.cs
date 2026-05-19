@@ -2,8 +2,6 @@ using System.Net;
 using System.Text;
 using FluentAssertions;
 using SixLabors.ImageSharp;
-using Xunit;
-
 namespace Starling.Engine.Tests;
 
 /// <summary>
@@ -12,12 +10,13 @@ namespace Starling.Engine.Tests;
 /// layout, so DOM mutations performed by scripts surface in the rendered
 /// <see cref="RenderOutcome.DisplayText"/> and in the painted bitmap.
 /// </summary>
+[TestClass]
 public sealed class EngineJsExecutionTests
 {
     private static readonly RenderOptions DefaultOptions =
         new(new Size(800, 600), 16f);
 
-    [Fact]
+    [TestMethod]
     public async Task Inline_script_mutating_body_text_is_visible_in_display_text()
     {
         // The script replaces a placeholder string after parse. If the engine
@@ -33,7 +32,7 @@ public sealed class EngineJsExecutionTests
         outcome.DisplayText.Should().NotContain("placeholder");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Inline_script_appending_a_new_element_is_visible_in_display_text()
     {
         var html = @"<!doctype html><html><body>
@@ -49,7 +48,7 @@ public sealed class EngineJsExecutionTests
         outcome.DisplayText.Should().Contain("injected-by-js");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task DOMContentLoaded_listener_fires_during_engine_render()
     {
         // Listener attached during initial script run mutates the DOM when
@@ -69,7 +68,7 @@ public sealed class EngineJsExecutionTests
         outcome.DisplayText.Should().NotContain("still-loading");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Fetch_completion_landing_during_microtask_drain_is_visible_in_display_text()
     {
         // The engine's PumpPendingAsync re-enters the VM after off-thread
@@ -100,7 +99,7 @@ public sealed class EngineJsExecutionTests
         outcome.DisplayText.Should().Contain("gamma-result");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Script_with_throw_does_not_abort_render()
     {
         // First script throws; second script still runs and its mutation is
@@ -116,7 +115,7 @@ public sealed class EngineJsExecutionTests
         outcome.DisplayText.Should().Contain("after-recovery");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task setTimeout_zero_callback_is_visible_in_display_text()
     {
         // Bundlers commonly defer init via setTimeout(fn, 0). PumpPendingAsync
@@ -136,7 +135,7 @@ public sealed class EngineJsExecutionTests
         outcome.DisplayText.Should().NotContain("before-timeout");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Chained_setTimeouts_with_delays_all_settle_within_budget()
     {
         // Three nested setTimeouts each with a non-zero delay — only land
@@ -156,7 +155,7 @@ public sealed class EngineJsExecutionTests
         outcome.DisplayText.Should().Contain("3");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task requestAnimationFrame_callback_runs_during_render()
     {
         // Pages that bootstrap via rAF (instead of setTimeout) must settle
@@ -176,7 +175,7 @@ public sealed class EngineJsExecutionTests
         outcome.DisplayText.Should().NotContain("before-raf");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task cancelAnimationFrame_prevents_callback_during_render()
     {
         var html = @"<!doctype html><html><body>
@@ -197,7 +196,7 @@ public sealed class EngineJsExecutionTests
         outcome.DisplayText.Should().NotContain("should-not-run");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Chained_requestAnimationFrame_loop_settles_within_budget()
     {
         // A rAF chain — like a fade-in driven by a counter — must tick
@@ -218,7 +217,7 @@ public sealed class EngineJsExecutionTests
         outcome.DisplayText.Should().Contain("3");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task getBoundingClientRect_returns_nonzero_dimensions_for_styled_box()
     {
         // The engine pre-lays-out the document before running scripts, so
@@ -241,7 +240,7 @@ public sealed class EngineJsExecutionTests
         outcome.DisplayText.Should().Contain("h=60");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task offsetWidth_and_offsetHeight_track_layout()
     {
         var html = @"<!doctype html><html>
@@ -261,7 +260,7 @@ public sealed class EngineJsExecutionTests
         outcome.DisplayText.Should().Contain("oh=30");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task getComputedStyle_returns_resolved_css_property_value()
     {
         // The cascade snapshot the engine builds before scripts run feeds
@@ -285,7 +284,7 @@ public sealed class EngineJsExecutionTests
         outcome.DisplayText.Should().Contain("fs=24px");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Module_and_unknown_type_scripts_are_skipped()
     {
         // type="module" is not yet supported; a stray module script must not
@@ -310,13 +309,13 @@ public sealed class EngineJsExecutionTests
     {
         var tempHtml = Path.Combine(Path.GetTempPath(), $"starling-js-{Guid.NewGuid():N}.html");
         var tempPng = Path.Combine(Path.GetTempPath(), $"starling-js-{Guid.NewGuid():N}.png");
-        await File.WriteAllTextAsync(tempHtml, html, TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(tempHtml, html, CancellationToken.None);
         try
         {
             var engine = new StarlingEngine();
             var url = new Uri(tempHtml).AbsoluteUri;
             var result = await engine.RenderAsync(url, DefaultOptions, tempPng,
-                TestContext.Current.CancellationToken);
+                CancellationToken.None);
             result.IsOk.Should().BeTrue(result.IsErr ? result.Error.Message : "");
             return result.Value;
         }

@@ -2,13 +2,13 @@ using FluentAssertions;
 using Starling.Css.Animations;
 using Starling.Css.Parser;
 using Starling.Css.Values;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("css-animations-1", "https://www.w3.org/TR/css-animations-1/")]
 
+[TestClass]
 public sealed class KeyframesParserTests
 {
     private static List<KeyframesRule> ParseAll(string source)
@@ -17,7 +17,7 @@ public sealed class KeyframesParserTests
         return KeyframesParser.ParseAll(sheet).ToList();
     }
 
-    [Fact]
+    [TestMethod]
     public void From_and_to_translate_to_0_and_1()
     {
         var rules = ParseAll("@keyframes fade { from { opacity: 0 } to { opacity: 1 } }");
@@ -31,14 +31,14 @@ public sealed class KeyframesParserTests
             .Which.Value.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Percent_selectors_resolve_to_normalized_offsets()
     {
         var rules = ParseAll("@keyframes pulse { 0% { opacity: 0.2 } 50% { opacity: 1 } 100% { opacity: 0.2 } }");
         rules[0].Frames.Select(f => f.Offset).Should().Equal(0.0, 0.5, 1.0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Grouped_selectors_expand_to_one_frame_per_offset()
     {
         var rules = ParseAll("@keyframes bounce { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-10px) } }");
@@ -47,21 +47,21 @@ public sealed class KeyframesParserTests
         rules[0].Frames[0].Declarations.Should().BeSameAs(rules[0].Frames[2].Declarations);
     }
 
-    [Fact]
+    [TestMethod]
     public void Out_of_range_selectors_are_dropped()
     {
         var rules = ParseAll("@keyframes weird { -10% { opacity: 0 } 150% { opacity: 1 } 50% { opacity: 0.5 } }");
         rules[0].Frames.Select(f => f.Offset).Should().Equal(0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Vendor_prefixed_alias_is_recognised()
     {
         var rules = ParseAll("@-webkit-keyframes spin { 0% { transform: rotate(0deg) } 100% { transform: rotate(360deg) } }");
         rules.Should().ContainSingle().Which.Name.Should().Be("spin");
     }
 
-    [Fact]
+    [TestMethod]
     public void Multiple_keyframes_rules_in_one_sheet()
     {
         var rules = ParseAll(
@@ -70,7 +70,7 @@ public sealed class KeyframesParserTests
         rules.Select(r => r.Name).Should().Equal("a", "b");
     }
 
-    [Fact]
+    [TestMethod]
     public void Anonymous_at_rule_with_no_name_is_skipped()
     {
         var rules = ParseAll("@keyframes { from { opacity: 0 } }");

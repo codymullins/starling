@@ -2,13 +2,13 @@ using FluentAssertions;
 using Starling.Css.Parser;
 using Starling.Css.Properties;
 using Starling.Css.Values;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("css-logical-1", "https://www.w3.org/TR/css-logical-1/")]
 
+[TestClass]
 public sealed class LogicalPropertyTests
 {
     private static List<PropertyDeclaration> Expand(string css)
@@ -18,7 +18,7 @@ public sealed class LogicalPropertyTests
         return rule.Declarations.SelectMany(PropertyRegistry.Parse).ToList();
     }
 
-    [Fact]
+    [TestMethod]
     public void Margin_inline_start_round_trips()
     {
         PropertyRegistry.TryGetPropertyId("margin-inline-start", out var id).Should().BeTrue();
@@ -26,7 +26,7 @@ public sealed class LogicalPropertyTests
         PropertyRegistry.Name(PropertyId.MarginInlineStart).Should().Be("margin-inline-start");
     }
 
-    [Fact]
+    [TestMethod]
     public void Margin_inline_start_parses_length()
     {
         var decls = Expand("margin-inline-start: 12px;");
@@ -35,7 +35,7 @@ public sealed class LogicalPropertyTests
         decls.Single().Value.Should().Be(new CssLength(12, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Margin_inline_shorthand_splits_start_and_end()
     {
         var decls = Expand("margin-inline: 4px 8px;");
@@ -44,7 +44,7 @@ public sealed class LogicalPropertyTests
         decls.Single(d => d.Id == PropertyId.MarginInlineEnd).Value.Should().Be(new CssLength(8, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Margin_block_shorthand_with_one_value_duplicates()
     {
         var decls = Expand("margin-block: 10px;");
@@ -53,7 +53,7 @@ public sealed class LogicalPropertyTests
         decls.Single(d => d.Id == PropertyId.MarginBlockEnd).Value.Should().Be(new CssLength(10, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Padding_inline_shorthand_expands()
     {
         var decls = Expand("padding-inline: 1rem;");
@@ -62,7 +62,7 @@ public sealed class LogicalPropertyTests
         decls.Single(d => d.Id == PropertyId.PaddingInlineEnd).Value.Should().Be(new CssLength(1, CssLengthUnit.Rem));
     }
 
-    [Fact]
+    [TestMethod]
     public void Inset_shorthand_uses_4_value_box_pattern_on_physical_sides()
     {
         var decls = Expand("inset: 1px 2px 3px 4px;");
@@ -73,7 +73,7 @@ public sealed class LogicalPropertyTests
         decls.Single(d => d.Id == PropertyId.Left).Value.Should().Be(new CssLength(4, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Inset_inline_shorthand_splits_start_end()
     {
         var decls = Expand("inset-inline: 5px 10px;");
@@ -82,7 +82,7 @@ public sealed class LogicalPropertyTests
         decls.Single(d => d.Id == PropertyId.InsetInlineEnd).Value.Should().Be(new CssLength(10, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Border_inline_start_shorthand_assigns_width_style_color()
     {
         var decls = Expand("border-inline-start: 2px solid red;");
@@ -92,7 +92,7 @@ public sealed class LogicalPropertyTests
         decls.Single(d => d.Id == PropertyId.BorderInlineStartColor).Value.Should().BeOfType<CssColor>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Border_inline_shorthand_assigns_both_start_and_end()
     {
         var decls = Expand("border-inline: 1px dashed blue;");
@@ -103,7 +103,7 @@ public sealed class LogicalPropertyTests
         decls.Single(d => d.Id == PropertyId.BorderInlineEndStyle).Value.Should().Be(new CssKeyword("dashed"));
     }
 
-    [Fact]
+    [TestMethod]
     public void Logical_corner_radius_round_trips()
     {
         PropertyRegistry.Name(PropertyId.BorderStartStartRadius).Should().Be("border-start-start-radius");
@@ -115,7 +115,7 @@ public sealed class LogicalPropertyTests
         decls.Single().Value.Should().Be(new CssLength(4, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Inline_and_block_size_round_trip()
     {
         var decls = Expand("inline-size: 200px; block-size: 100px;");
@@ -124,7 +124,7 @@ public sealed class LogicalPropertyTests
         decls.Single(d => d.Id == PropertyId.BlockSize).Value.Should().Be(new CssLength(100, CssLengthUnit.Px));
     }
 
-    [Fact]
+    [TestMethod]
     public void Writing_mode_inherits()
     {
         PropertyRegistry.Inherits(PropertyId.WritingMode).Should().BeTrue();

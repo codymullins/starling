@@ -1,7 +1,5 @@
 using FluentAssertions;
 using SixLabors.ImageSharp;
-using Xunit;
-
 namespace Starling.Engine.Tests;
 
 /// <summary>
@@ -17,7 +15,8 @@ namespace Starling.Engine.Tests;
 /// rasterisation pushes the score below it, narrow the golden by
 /// platform rather than relaxing the bar — the assertion is the point.
 /// </summary>
-[Trait("Category", "NetworkLive")]
+[TestClass]
+[TestCategory("NetworkLive")]
 public class EngineLiveHttpsTests
 {
     private const string LiveUrl = "https://example.com/";
@@ -26,7 +25,7 @@ public class EngineLiveHttpsTests
     private const float DefaultFontSize = 16f;
     private const double SsimFloor = 0.99;
 
-    [Fact]
+    [TestMethod]
     public async Task Render_example_com_matches_golden_via_ssim()
     {
         if (Environment.GetEnvironmentVariable("STARLING_ALLOW_NETWORK") != "1")
@@ -43,7 +42,7 @@ public class EngineLiveHttpsTests
                 LiveUrl,
                 new RenderOptions(new Size(ViewportWidth, ViewportHeight), DefaultFontSize),
                 output,
-                TestContext.Current.CancellationToken);
+                CancellationToken.None);
 
             result.IsOk.Should().BeTrue(result.IsErr ? result.Error.Message : "");
             File.Exists(output).Should().BeTrue();
@@ -74,10 +73,10 @@ public class EngineLiveHttpsTests
     private static string LocateRepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Starling.sln")))
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Starling.slnx")))
             dir = dir.Parent;
         if (dir is null)
-            throw new InvalidOperationException("Could not locate Starling.sln walking up from the test binary.");
+            throw new InvalidOperationException("Could not locate Starling.slnx walking up from the test binary.");
         return dir.FullName;
     }
 }

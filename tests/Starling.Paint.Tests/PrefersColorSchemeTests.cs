@@ -3,8 +3,6 @@ using Starling.Css.Media;
 using Starling.Css.Properties;
 using Starling.Css.Values;
 using Starling.Html;
-using Xunit;
-
 namespace Starling.Paint.Tests;
 
 /// <summary>
@@ -13,6 +11,7 @@ namespace Starling.Paint.Tests;
 /// …)</c> rules participate in the cascade. The interactive shell binds this
 /// to its light/dark theme button.
 /// </summary>
+[TestClass]
 public sealed class PrefersColorSchemeTests
 {
     private const string Html =
@@ -21,7 +20,7 @@ public sealed class PrefersColorSchemeTests
         "  @media (prefers-color-scheme: dark) { body { color: white; } }" +
         "</style></head><body>hi</body></html>";
 
-    [Fact]
+    [TestMethod]
     public void Light_scheme_does_not_match_dark_media_rule()
     {
         var doc = HtmlParser.Parse(Html);
@@ -33,7 +32,7 @@ public sealed class PrefersColorSchemeTests
             .Should().Be(new CssColor(0, 0, 0));
     }
 
-    [Fact]
+    [TestMethod]
     public void Dark_scheme_applies_dark_media_rule()
     {
         var doc = HtmlParser.Parse(Html);

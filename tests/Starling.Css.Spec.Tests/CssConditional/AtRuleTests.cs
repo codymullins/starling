@@ -12,6 +12,7 @@ namespace Starling.Css.Spec.Tests.CssConditional;
 /// <summary>
 /// At-rule conformance for <see href="https://drafts.csswg.org/css-conditional-3/">CSS Conditional Rules Module Level 3</see>.
 /// </summary>
+[TestClass]
 [Spec("css-conditional", "https://drafts.csswg.org/css-conditional-3/")]
 public sealed class AtRuleTests
 {

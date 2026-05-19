@@ -4,16 +4,16 @@ using Starling.Css.Parser;
 using Starling.Css.Properties;
 using Starling.Css.Values;
 using Starling.Dom;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("css-fonts-4", "https://www.w3.org/TR/css-fonts-4/")]
 
+[TestClass]
 public sealed class FontFamilyValueParserTests
 {
-    [Fact]
+    [TestMethod]
     public void Preserves_case_of_ident_family_names()
     {
         var style = ResolveBody("body { font-family: Helvetica, Arial, sans-serif; }");
@@ -28,7 +28,7 @@ public sealed class FontFamilyValueParserTests
         ((CssKeyword)list[2]).Name.Should().Be("sans-serif");
     }
 
-    [Fact]
+    [TestMethod]
     public void Joins_multi_word_unquoted_family_name()
     {
         var style = ResolveBody("body { font-family: Open Sans, sans-serif; }");
@@ -36,7 +36,7 @@ public sealed class FontFamilyValueParserTests
         ((CssKeyword)list[0]).Name.Should().Be("Open Sans");
     }
 
-    [Fact]
+    [TestMethod]
     public void Preserves_quoted_family_name()
     {
         var style = ResolveBody("body { font-family: \"Helvetica Neue\"; }");

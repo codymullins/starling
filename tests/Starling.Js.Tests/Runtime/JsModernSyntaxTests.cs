@@ -2,43 +2,42 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Runtime;
 
 /// <summary>
 /// End-to-end (parse → compile → run) tests for B1b-1's modern syntax slice:
 /// template literals and arrow functions.
 /// </summary>
+[TestClass]
 public class JsModernSyntaxTests
 {
     // ----------------------------------------------------- Template literals
 
-    [Fact]
+    [TestMethod]
     public void Template_no_substitution_yields_string()
     {
         Eval("`hello world`;").AsString.Should().Be("hello world");
     }
 
-    [Fact]
+    [TestMethod]
     public void Template_single_substitution()
     {
         Eval("var n = 7; `n is ${n}!`;").AsString.Should().Be("n is 7!");
     }
 
-    [Fact]
+    [TestMethod]
     public void Template_multiple_substitutions_with_middle()
     {
         Eval("var a = 1, b = 2; `${a}+${b}=${a+b}`;").AsString.Should().Be("1+2=3");
     }
 
-    [Fact]
+    [TestMethod]
     public void Template_with_arithmetic_substitution()
     {
         Eval("`sum: ${1 + 2 * 3}`;").AsString.Should().Be("sum: 7");
     }
 
-    [Fact]
+    [TestMethod]
     public void Template_preserves_literal_newlines()
     {
         Eval("`one\ntwo`;").AsString.Should().Be("one\ntwo");
@@ -46,32 +45,32 @@ public class JsModernSyntaxTests
 
     // -------------------------------------------------------- Arrow functions
 
-    [Fact]
+    [TestMethod]
     public void Arrow_concise_body_single_param_no_parens()
     {
         // x => x * 2
         Eval("var dbl = x => x * 2; dbl(21);").AsNumber.Should().Be(42);
     }
 
-    [Fact]
+    [TestMethod]
     public void Arrow_concise_body_parenthesized_params()
     {
         Eval("var add = (a, b) => a + b; add(3, 4);").AsNumber.Should().Be(7);
     }
 
-    [Fact]
+    [TestMethod]
     public void Arrow_block_body_with_return()
     {
         Eval("var f = (x) => { return x + 1; }; f(10);").AsNumber.Should().Be(11);
     }
 
-    [Fact]
+    [TestMethod]
     public void Arrow_with_zero_params()
     {
         Eval("var nul = () => 42; nul();").AsNumber.Should().Be(42);
     }
 
-    [Fact]
+    [TestMethod]
     public void Arrow_inside_call_argument()
     {
         Eval(@"
@@ -82,7 +81,7 @@ public class JsModernSyntaxTests
 
     // -------------------------------------------------- Object literal extras
 
-    [Fact]
+    [TestMethod]
     public void Object_method_shorthand_callable_on_receiver()
     {
         var v = Eval(@"
@@ -95,7 +94,7 @@ public class JsModernSyntaxTests
         v.AsNumber.Should().Be(10);
     }
 
-    [Fact]
+    [TestMethod]
     public void Object_shorthand_property_uses_outer_binding()
     {
         Eval(@"
@@ -106,7 +105,7 @@ public class JsModernSyntaxTests
         ").AsString.Should().Be("starling-1");
     }
 
-    [Fact]
+    [TestMethod]
     public void Object_spread_copies_enumerable_own_props()
     {
         Eval(@"
@@ -116,7 +115,7 @@ public class JsModernSyntaxTests
         ").AsString.Should().Be("1,99,3");
     }
 
-    [Fact]
+    [TestMethod]
     public void Computed_object_key_resolves_dynamically()
     {
         Eval(@"

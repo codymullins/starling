@@ -12,6 +12,7 @@ namespace Starling.Css.Spec.Tests.CssAnimations;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-animations-1/">CSS Animations Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-animations", "https://drafts.csswg.org/css-animations-1/")]
 public sealed class PropertyTests
 {

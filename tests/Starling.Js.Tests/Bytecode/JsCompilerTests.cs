@@ -2,13 +2,12 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Bytecode;
 
+[TestClass]
 public class JsCompilerTests
 {
-    [Fact]
+    [TestMethod]
     public void Empty_program_just_halts()
     {
         var c = Compile("");
@@ -16,7 +15,7 @@ public class JsCompilerTests
         c.Code.Should().Equal((byte)Opcode.Halt);
     }
 
-    [Fact]
+    [TestMethod]
     public void Numeric_literal_zero_uses_LoadZero()
     {
         // Expression statement: LoadZero, Pop, Halt.
@@ -27,7 +26,7 @@ public class JsCompilerTests
             (byte)Opcode.Halt);
     }
 
-    [Fact]
+    [TestMethod]
     public void Nonzero_numeric_literal_loads_from_constant_pool()
     {
         var c = Compile("42;");
@@ -37,14 +36,14 @@ public class JsCompilerTests
         c.Code[3].Should().Be((byte)Opcode.Pop);
     }
 
-    [Fact]
+    [TestMethod]
     public void String_literal_interned_in_pool()
     {
         var c = Compile("\"hello\";");
         c.Constants.Should().Contain("hello");
     }
 
-    [Fact]
+    [TestMethod]
     public void Boolean_and_null_use_dedicated_opcodes()
     {
         var t = Compile("true;");
@@ -54,7 +53,7 @@ public class JsCompilerTests
         n.Code[0].Should().Be((byte)Opcode.LoadNull);
     }
 
-    [Fact]
+    [TestMethod]
     public void Script_top_var_declaration_emits_global_binding()
     {
         // gap:script-top-var-not-global — `var x = 1;` at script top creates
@@ -69,7 +68,7 @@ public class JsCompilerTests
             .And.Contain("StoreGlobal");
     }
 
-    [Fact]
+    [TestMethod]
     public void Var_declaration_inside_function_still_reserves_local()
     {
         // Regression: only script-top `var` becomes a global. Inside a
@@ -79,7 +78,7 @@ public class JsCompilerTests
         d.Should().Contain("DeclareLocal").And.Contain("StoreLocal");
     }
 
-    [Fact]
+    [TestMethod]
     public void Script_top_var_read_resolves_to_LoadGlobal()
     {
         // gap:script-top-var-not-global — reading a script-top var name
@@ -89,14 +88,14 @@ public class JsCompilerTests
         d.Should().Contain("LoadGlobal").And.Contain("\"x\"");
     }
 
-    [Fact]
+    [TestMethod]
     public void Free_identifier_falls_through_to_LoadGlobal()
     {
         var d = Disassembler.Disassemble(Compile("foo;"));
         d.Should().Contain("LoadGlobal").And.Contain("\"foo\"");
     }
 
-    [Fact]
+    [TestMethod]
     public void Binary_addition_compiles()
     {
         // 1 + 2; → LoadConst LoadConst Add Pop Halt
@@ -104,47 +103,47 @@ public class JsCompilerTests
         d.Should().Contain("Add");
     }
 
-    [Fact]
+    [TestMethod]
     public void Comparison_operators()
     {
         Disassembler.Disassemble(Compile("a === b;")).Should().Contain("StrictEq");
         Disassembler.Disassemble(Compile("a < b;")).Should().Contain("Lt");
     }
 
-    [Fact]
+    [TestMethod]
     public void Unary_minus()
     {
         Disassembler.Disassemble(Compile("-x;")).Should().Contain("Neg");
     }
 
-    [Fact]
+    [TestMethod]
     public void Typeof_unary()
     {
         Disassembler.Disassemble(Compile("typeof x;")).Should().Contain("TypeOf");
     }
 
-    [Fact]
+    [TestMethod]
     public void If_without_else_emits_one_forward_jump()
     {
         var d = Disassembler.Disassemble(Compile("if (a) { b(); }"));
         d.Should().Contain("JumpIfFalse");
     }
 
-    [Fact]
+    [TestMethod]
     public void If_with_else_emits_both_jumps()
     {
         var d = Disassembler.Disassemble(Compile("if (a) b(); else c();"));
         d.Should().Contain("JumpIfFalse").And.Contain("Jump ");
     }
 
-    [Fact]
+    [TestMethod]
     public void While_loop_has_backward_jump()
     {
         var d = Disassembler.Disassemble(Compile("while (a) b();"));
         d.Should().Contain("JumpIfFalse").And.Contain("Jump ");
     }
 
-    [Fact]
+    [TestMethod]
     public void Logical_and_short_circuits_via_dup_jumpiffalse_pop()
     {
         // a && b → LoadGlobal a, Dup, JumpIfFalse end, Pop, LoadGlobal b, end:
@@ -152,14 +151,14 @@ public class JsCompilerTests
         d.Should().Contain("Dup").And.Contain("JumpIfFalse").And.Contain("Pop");
     }
 
-    [Fact]
+    [TestMethod]
     public void Logical_or_short_circuits_via_dup_jumpiftrue_pop()
     {
         var d = Disassembler.Disassemble(Compile("a || b;"));
         d.Should().Contain("Dup").And.Contain("JumpIfTrue").And.Contain("Pop");
     }
 
-    [Fact]
+    [TestMethod]
     public void Nullish_coalescing_uses_JumpIfNotNullish()
     {
         // a ?? b short-circuits to 'a' when a is NOT nullish, hence the
@@ -168,42 +167,42 @@ public class JsCompilerTests
         d.Should().Contain("Dup").And.Contain("JumpIfNotNullish");
     }
 
-    [Fact]
+    [TestMethod]
     public void Member_access_compiles()
     {
         var d = Disassembler.Disassemble(Compile("a.b;"));
         d.Should().Contain("LoadProperty").And.Contain("\"b\"");
     }
 
-    [Fact]
+    [TestMethod]
     public void Computed_member_access_compiles()
     {
         var d = Disassembler.Disassemble(Compile("a[0];"));
         d.Should().Contain("LoadComputed");
     }
 
-    [Fact]
+    [TestMethod]
     public void Call_emits_callee_then_args()
     {
         var d = Disassembler.Disassemble(Compile("foo(1, 2);"));
         d.Should().Contain("Call 2");
     }
 
-    [Fact]
+    [TestMethod]
     public void Conditional_ternary_compiles()
     {
         var d = Disassembler.Disassemble(Compile("a ? b : c;"));
         d.Should().Contain("JumpIfFalse").And.Contain("Jump ");
     }
 
-    [Fact]
+    [TestMethod]
     public void Assignment_to_function_local()
     {
         var d = DisassembleNestedFunction(Compile("function f(){ var x = 0; x = 5; return x; }"));
         d.Should().Contain("StoreLocal");
     }
 
-    [Fact]
+    [TestMethod]
     public void Compound_assignment_to_local_compiles_to_load_op_store()
     {
         var d = DisassembleNestedFunction(Compile("function f(){ var x = 1; x += 2; return x; }"));
@@ -212,14 +211,14 @@ public class JsCompilerTests
             .And.Contain("StoreLocal");
     }
 
-    [Fact]
+    [TestMethod]
     public void Postfix_increment_on_local_dups_before_mutation()
     {
         var d = DisassembleNestedFunction(Compile("function f(){ var x = 0; x++; return x; }"));
         d.Should().Contain("Dup").And.Contain("Add").And.Contain("StoreLocal");
     }
 
-    [Fact]
+    [TestMethod]
     public void Postfix_increment_on_script_top_var_uses_global()
     {
         // gap:script-top-var-not-global — `x++` for a script-top var now
@@ -228,7 +227,7 @@ public class JsCompilerTests
         d.Should().Contain("LoadGlobal").And.Contain("Add").And.Contain("StoreGlobal");
     }
 
-    [Fact]
+    [TestMethod]
     public void Sequence_expression_pops_intermediate()
     {
         var d = Disassembler.Disassemble(Compile("(a, b, c);"));
@@ -236,7 +235,7 @@ public class JsCompilerTests
         d.Split('\n').Where(l => l.Contains("Pop")).Should().HaveCount(3);
     }
 
-    [Fact]
+    [TestMethod]
     public void Return_at_top_level_compiles()
     {
         var d = Disassembler.Disassemble(Compile("return;"));
@@ -246,7 +245,7 @@ public class JsCompilerTests
         d2.Should().Contain("LoadConst").And.Contain("Return");
     }
 
-    [Fact]
+    [TestMethod]
     public void Block_scope_does_not_leak_locals_outward()
     {
         // After the block ends, a reference to 'x' should NOT resolve as
@@ -255,14 +254,14 @@ public class JsCompilerTests
         d.Should().Contain("LoadGlobal").And.Contain("\"outer\"");
     }
 
-    [Fact]
+    [TestMethod]
     public void Throw_compiles()
     {
         var d = Disassembler.Disassemble(Compile("throw e;"));
         d.Should().Contain("Throw");
     }
 
-    [Fact]
+    [TestMethod]
     public void String_constants_are_interned()
     {
         var c = Compile("'a'; 'a'; 'a';");
@@ -271,7 +270,7 @@ public class JsCompilerTests
         c.Constants.Count(x => Equals(x, "a")).Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Disassembler_includes_constant_table_header()
     {
         var d = Disassembler.Disassemble(Compile("1 + 2;"));

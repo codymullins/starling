@@ -1,7 +1,5 @@
 using FluentAssertions;
 using SixLabors.ImageSharp;
-using Xunit;
-
 namespace Starling.Engine.Tests;
 
 /// <summary>
@@ -20,7 +18,8 @@ namespace Starling.Engine.Tests;
 /// with <c>STARLING_UPDATE_GOLDENS=1</c>; the test will write the produced
 /// PNG into the golden path and pass.
 /// </summary>
-[Trait("Category", "GoldenImage")]
+[TestClass]
+[TestCategory("GoldenImage")]
 public class EngineSnapshotRenderTests
 {
     private const string Host = "nginx.org";
@@ -29,7 +28,7 @@ public class EngineSnapshotRenderTests
     private const float DefaultFontSize = 16f;
     private const double SsimFloor = 0.99;
 
-    [Fact]
+    [TestMethod]
     public async Task Snapshot_nginx_org_renders_match_golden()
     {
         var repoRoot = LocateRepoRoot();
@@ -49,7 +48,7 @@ public class EngineSnapshotRenderTests
                 $"http://localhost:{server.Port}/",
                 new RenderOptions(new Size(ViewportWidth, ViewportHeight), DefaultFontSize),
                 output,
-                TestContext.Current.CancellationToken);
+                CancellationToken.None);
 
             result.IsOk.Should().BeTrue(result.IsErr ? result.Error.Message : "");
             File.Exists(output).Should().BeTrue();
@@ -85,10 +84,10 @@ public class EngineSnapshotRenderTests
     private static string LocateRepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Starling.sln")))
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Starling.slnx")))
             dir = dir.Parent;
         if (dir is null)
-            throw new InvalidOperationException("Could not locate Starling.sln walking up from the test binary.");
+            throw new InvalidOperationException("Could not locate Starling.slnx walking up from the test binary.");
         return dir.FullName;
     }
 }

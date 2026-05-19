@@ -1,7 +1,5 @@
 using FluentAssertions;
 using Starling.Html.Tokenizer;
-using Xunit;
-
 namespace Starling.Html.Tests.Tokenizer;
 
 /// <summary>
@@ -10,11 +8,12 @@ namespace Starling.Html.Tests.Tokenizer;
 /// real run, the tree builder calls it after parsing a host element like
 /// &lt;textarea&gt; or &lt;style&gt;.
 /// </summary>
+[TestClass]
 public class RawStateTests
 {
     // ----- RCDATA ----------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Rcdata_passes_text_through()
     {
         var t = new HtmlTokenizer();
@@ -33,7 +32,7 @@ public class RawStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Rcdata_keeps_lt_chars_when_not_followed_by_slash()
     {
         // "<3" inside <textarea> should pass through as '<', '3'.
@@ -51,7 +50,7 @@ public class RawStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Rcdata_close_tag_only_appropriate_when_name_matches_start()
     {
         // </p> inside <textarea> is NOT appropriate — emit as chars and stay
@@ -77,7 +76,7 @@ public class RawStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Rcdata_null_maps_to_replacement_character_with_parse_error()
     {
         var sink = new RecordingSink();
@@ -98,7 +97,7 @@ public class RawStateTests
             .Which.code.Should().Be(HtmlParseError.UnexpectedNullCharacter);
     }
 
-    [Fact]
+    [TestMethod]
     public void Rcdata_uppercase_end_tag_name_normalizes_and_closes()
     {
         var t = new HtmlTokenizer();
@@ -116,7 +115,7 @@ public class RawStateTests
 
     // ----- RAWTEXT ---------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Rawtext_does_not_decode_entities()
     {
         var t = new HtmlTokenizer();
@@ -138,7 +137,7 @@ public class RawStateTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Rawtext_closes_only_on_matching_end_tag_name()
     {
         var t = new HtmlTokenizer();
@@ -161,7 +160,7 @@ public class RawStateTests
 
     // ----- PLAINTEXT -------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Plaintext_consumes_everything_to_eof()
     {
         var t = new HtmlTokenizer();
@@ -178,7 +177,7 @@ public class RawStateTests
         new string(chars.ToArray()).Should().Be("<a>not a tag</a>");
     }
 
-    [Fact]
+    [TestMethod]
     public void Plaintext_null_maps_to_replacement_character()
     {
         var sink = new RecordingSink();
@@ -199,7 +198,7 @@ public class RawStateTests
 
     // ----- EOF in mid-attempt ---------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Rcdata_eof_mid_end_tag_attempt_emits_buffered_chars()
     {
         // Feed: <textarea>x</textare<EOF> — the close attempt is partial; the

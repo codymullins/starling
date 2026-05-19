@@ -67,6 +67,14 @@ internal sealed partial class ImageIODecoder : IImageDecoder
             // straight-alpha DecodedImage contract.
             return DecodedImage.CreatePooled(w, h, span =>
             {
+                // ArrayPool.Rent returns an uninitialised buffer. CGContextDrawImage
+                // defaults to sourceOver, so any non-zero alpha left in the rented
+                // memory would composite into semi-transparent output pixels
+                // (opaque source pixels coincidentally land right because the dst
+                // contribution drops out). Zero first so the draw is effectively a
+                // clean blit.
+                span.Clear();
+
                 fixed (byte* dst = span)
                 {
                     nint ctx = CGBitmapContextCreate(

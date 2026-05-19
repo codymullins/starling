@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssGcpm4;
 /// <summary>
 /// Selector conformance for <see href="https://drafts.csswg.org/css-gcpm-4/">CSS Generated Content for Paged Media Module Level 4</see>.
 /// </summary>
+[TestClass]
 [Spec("css-gcpm-4", "https://drafts.csswg.org/css-gcpm-4/")]
 public sealed class SelectorTests
 {

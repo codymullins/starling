@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssNav;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-nav-1/">CSS Spatial Navigation Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-nav", "https://drafts.csswg.org/css-nav-1/")]
 public sealed class PropertyTests
 {

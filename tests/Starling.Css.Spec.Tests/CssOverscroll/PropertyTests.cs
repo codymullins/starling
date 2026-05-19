@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssOverscroll;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-overscroll-1/">CSS Overscroll Behavior Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-overscroll", "https://drafts.csswg.org/css-overscroll-1/")]
 public sealed class PropertyTests
 {

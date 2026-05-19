@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssWritingModes;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-writing-modes-4/">CSS Writing Modes Module Level 4</see>.
 /// </summary>
+[TestClass]
 [Spec("css-writing-modes", "https://drafts.csswg.org/css-writing-modes-4/")]
 public sealed class PropertyTests
 {

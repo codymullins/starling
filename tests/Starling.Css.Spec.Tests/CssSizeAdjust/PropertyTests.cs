@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssSizeAdjust;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-size-adjust-1/">CSS Mobile Text Size Adjustment Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-size-adjust", "https://drafts.csswg.org/css-size-adjust-1/")]
 public sealed class PropertyTests
 {

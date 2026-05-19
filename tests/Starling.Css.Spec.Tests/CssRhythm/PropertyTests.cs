@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssRhythm;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-rhythm-1/">CSS Rhythmic Sizing Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-rhythm", "https://drafts.csswg.org/css-rhythm-1/")]
 public sealed class PropertyTests
 {

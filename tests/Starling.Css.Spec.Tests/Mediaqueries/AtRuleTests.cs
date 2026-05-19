@@ -11,6 +11,7 @@ namespace Starling.Css.Spec.Tests.Mediaqueries;
 /// <summary>
 /// At-rule conformance for <see href="https://drafts.csswg.org/mediaqueries-4/">Media Queries Level 4</see>.
 /// </summary>
+[TestClass]
 [Spec("mediaqueries", "https://drafts.csswg.org/mediaqueries-4/")]
 public sealed class AtRuleTests
 {

@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssPageFloats;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-page-floats-3/">CSS Page Floats Module Level 3</see>.
 /// </summary>
+[TestClass]
 [Spec("css-page-floats", "https://drafts.csswg.org/css-page-floats-3/")]
 public sealed class PropertyTests
 {

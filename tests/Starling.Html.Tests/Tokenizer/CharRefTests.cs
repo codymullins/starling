@@ -1,15 +1,14 @@
 using FluentAssertions;
 using Starling.Html.Tokenizer;
-using Xunit;
-
 namespace Starling.Html.Tests.Tokenizer;
 
 /// <summary>Character-reference cluster — wp:M1-01g.</summary>
+[TestClass]
 public class CharRefTests
 {
     // ----- Named references -----------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Amp_with_semicolon_decodes()
     {
         Tokenize("&amp;").Should().Equal(
@@ -17,7 +16,7 @@ public class CharRefTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Lt_gt_quot_decode()
     {
         Tokenize("&lt;a&gt;&quot;").Should().Equal(
@@ -28,7 +27,7 @@ public class CharRefTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Nbsp_decodes_to_u00a0()
     {
         Tokenize("&nbsp;").Should().Equal(
@@ -36,7 +35,7 @@ public class CharRefTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Copy_no_semicolon_decodes_with_parse_error()
     {
         // &copy is a legacy "no-semicolon" reference; the spec calls it a
@@ -52,7 +51,7 @@ public class CharRefTests
             .Which.code.Should().Be(HtmlParseError.MissingSemicolonAfterCharacterReference);
     }
 
-    [Fact]
+    [TestMethod]
     public void Longest_prefix_match_picks_notin_over_not()
     {
         // 'not' and 'notin' both decode; longest must win.
@@ -61,7 +60,7 @@ public class CharRefTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Two_codepoint_entity()
     {
         // &nvgt; decodes to U+003E followed by U+20D2.
@@ -71,7 +70,7 @@ public class CharRefTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Unknown_named_reference_emits_chars_with_parse_error()
     {
         // &zzz; doesn't exist; tokenizer should emit '&', 'z', 'z', 'z', ';'
@@ -92,7 +91,7 @@ public class CharRefTests
             .Which.code.Should().Be(HtmlParseError.UnknownNamedCharacterReference);
     }
 
-    [Fact]
+    [TestMethod]
     public void Bare_ampersand_passes_through()
     {
         // & not followed by alpha or # is data per §13.2.5.72.
@@ -105,7 +104,7 @@ public class CharRefTests
 
     // ----- Numeric references ---------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Decimal_numeric_reference()
     {
         // &#65; → 'A'
@@ -114,7 +113,7 @@ public class CharRefTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Hex_numeric_reference()
     {
         // &#x41; → 'A'
@@ -123,7 +122,7 @@ public class CharRefTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Hex_supports_uppercase_X()
     {
         Tokenize("&#X4F;").Should().Equal(
@@ -131,7 +130,7 @@ public class CharRefTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Null_reference_becomes_replacement_character()
     {
         var sink = new RecordingSink();
@@ -146,7 +145,7 @@ public class CharRefTests
             .Which.code.Should().Be(HtmlParseError.NullCharacterReference);
     }
 
-    [Fact]
+    [TestMethod]
     public void Out_of_range_reference_becomes_replacement_character()
     {
         var sink = new RecordingSink();
@@ -161,7 +160,7 @@ public class CharRefTests
             .Which.code.Should().Be(HtmlParseError.CharacterReferenceOutsideUnicodeRange);
     }
 
-    [Fact]
+    [TestMethod]
     public void Surrogate_reference_becomes_replacement_character()
     {
         var sink = new RecordingSink();
@@ -176,7 +175,7 @@ public class CharRefTests
             .Which.code.Should().Be(HtmlParseError.SurrogateCharacterReference);
     }
 
-    [Fact]
+    [TestMethod]
     public void C1_control_replacement_for_0x80_yields_euro_sign()
     {
         // &#128; (0x80) maps to U+20AC EURO SIGN per the spec's compat table.
@@ -192,7 +191,7 @@ public class CharRefTests
             .Which.code.Should().Be(HtmlParseError.ControlCharacterReference);
     }
 
-    [Fact]
+    [TestMethod]
     public void Hash_alone_emits_literal_chars()
     {
         // &#x without digits = parse error + emit '&', '#', 'x'.
@@ -213,7 +212,7 @@ public class CharRefTests
 
     // ----- References inside attributes ----------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Entity_inside_double_quoted_attribute_decodes_to_attr_value()
     {
         Tokenize("<a href=\"x?a=1&amp;b=2\">").Should().Equal(
@@ -223,7 +222,7 @@ public class CharRefTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Entity_inside_single_quoted_attribute_decodes()
     {
         Tokenize("<a title='&lt;hi&gt;'>").Should().Equal(
@@ -233,7 +232,7 @@ public class CharRefTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Entity_inside_unquoted_attribute_decodes()
     {
         Tokenize("<a id=&amp;>").Should().Equal(
@@ -243,7 +242,7 @@ public class CharRefTests
             EndOfFileToken.Instance);
     }
 
-    [Fact]
+    [TestMethod]
     public void Numeric_reference_inside_attribute_decodes()
     {
         Tokenize("<a t=\"&#65;\">").Should().Equal(

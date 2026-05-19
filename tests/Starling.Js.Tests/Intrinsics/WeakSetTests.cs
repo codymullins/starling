@@ -2,14 +2,13 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Intrinsics;
 
 /// <summary>End-to-end coverage for <c>WeakSet</c> (B3-3).</summary>
+[TestClass]
 public class WeakSetTests
 {
-    [Fact]
+    [TestMethod]
     public void WeakSet_constructor_wired()
     {
         var rt = new JsRuntime();
@@ -17,7 +16,7 @@ public class WeakSetTests
         rt.Realm.WeakSetConstructor.Should().NotBeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Add_and_has_for_object_key()
     {
         Eval(@"
@@ -27,7 +26,7 @@ public class WeakSetTests
             s.has(k);").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Primitive_throws_TypeError_on_add()
     {
         Eval(@"
@@ -37,7 +36,7 @@ public class WeakSetTests
             ok;").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Delete_removes_membership()
     {
         var r = Eval(@"
@@ -50,7 +49,7 @@ public class WeakSetTests
         r.AsString.Should().Be("true,false");
     }
 
-    [Fact]
+    [TestMethod]
     public void No_size_and_no_iteration()
     {
         Eval("typeof (new WeakSet()).size;").AsString.Should().Be("undefined");

@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssTextDecor;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-text-decor-3/">CSS Text Decoration Module Level 3</see>.
 /// </summary>
+[TestClass]
 [Spec("css-text-decor", "https://drafts.csswg.org/css-text-decor-3/")]
 public sealed class PropertyTests
 {

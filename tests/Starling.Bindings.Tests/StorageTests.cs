@@ -3,16 +3,15 @@ using Starling.Dom;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Bindings.Tests;
 
-[Collection("StorageBinding")]
+[TestClass]
+[DoNotParallelize]
 public sealed class StorageTests
 {
     public StorageTests() => StorageBinding.ResetForTests();
 
-    [Fact]
+    [TestMethod]
     public void SetItem_then_getItem_round_trips()
     {
         var runtime = BuildEnv("https://a.example.com/");
@@ -20,7 +19,7 @@ public sealed class StorageTests
             .AsString.Should().Be("v");
     }
 
-    [Fact]
+    [TestMethod]
     public void Bracket_access_is_named_setter()
     {
         var runtime = BuildEnv("https://a.example.com/");
@@ -29,7 +28,7 @@ public sealed class StorageTests
         Eval(runtime, "result = localStorage.foo;").AsString.Should().Be("bar");
     }
 
-    [Fact]
+    [TestMethod]
     public void Missing_key_returns_null_from_getItem_but_undefined_from_bracket()
     {
         var runtime = BuildEnv("https://a.example.com/");
@@ -37,7 +36,7 @@ public sealed class StorageTests
         Eval(runtime, "result = typeof localStorage.absent;").AsString.Should().Be("undefined");
     }
 
-    [Fact]
+    [TestMethod]
     public void Length_reflects_count()
     {
         var runtime = BuildEnv("https://a.example.com/");
@@ -45,7 +44,7 @@ public sealed class StorageTests
             .AsNumber.Should().Be(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void Key_returns_insertion_ordered_entry()
     {
         var runtime = BuildEnv("https://a.example.com/");
@@ -56,7 +55,7 @@ public sealed class StorageTests
         """).AsString.Should().Be("first/second");
     }
 
-    [Fact]
+    [TestMethod]
     public void RemoveItem_and_clear_drop_entries()
     {
         var runtime = BuildEnv("https://a.example.com/");
@@ -70,7 +69,7 @@ public sealed class StorageTests
         """).AsString.Should().Be("1:0");
     }
 
-    [Fact]
+    [TestMethod]
     public void Values_are_coerced_to_strings()
     {
         var runtime = BuildEnv("https://a.example.com/");
@@ -80,7 +79,7 @@ public sealed class StorageTests
             .AsString.Should().Be("true");
     }
 
-    [Fact]
+    [TestMethod]
     public void LocalStorage_is_shared_across_same_origin_realms()
     {
         var first = BuildEnv("https://a.example.com/page1");
@@ -91,7 +90,7 @@ public sealed class StorageTests
             .AsString.Should().Be("yes");
     }
 
-    [Fact]
+    [TestMethod]
     public void LocalStorage_is_isolated_across_origins()
     {
         var first = BuildEnv("https://a.example.com/");
@@ -102,7 +101,7 @@ public sealed class StorageTests
             .IsNull.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void SessionStorage_is_isolated_across_realms()
     {
         var first = BuildEnv("https://a.example.com/");
@@ -117,7 +116,7 @@ public sealed class StorageTests
     // compiler does not yet emit the `delete` unary opcode — pin a test when
     // that compiler gap closes.)
 
-[Fact]
+[TestMethod]
     public void Object_keys_returns_insertion_ordered_entries()
     {
         var runtime = BuildEnv("https://a.example.com/");

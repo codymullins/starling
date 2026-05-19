@@ -2,13 +2,12 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Intrinsics;
 
+[TestClass]
 public class BooleanTests
 {
-    [Fact]
+    [TestMethod]
     public void Boolean_constructor_coerces_primitives()
     {
         Eval("Boolean();").AsBool.Should().BeFalse();
@@ -21,7 +20,7 @@ public class BooleanTests
         Eval("Boolean({});").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void New_Boolean_boxes_but_objects_are_truthy()
     {
         Eval("var b = new Boolean(false); b.valueOf();").AsBool.Should().BeFalse();
@@ -31,7 +30,7 @@ public class BooleanTests
         Eval("new Boolean(false) ? 1 : 2;").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Boolean_prototype_methods_work_on_primitives_and_reject_wrong_receivers()
     {
         Eval("(true).toString();").AsString.Should().Be("true");
@@ -44,7 +43,7 @@ public class BooleanTests
         badToString.Should().Throw<JsThrow>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Boolean_global_and_prototype_slots_are_installed()
     {
         var rt = new JsRuntime();

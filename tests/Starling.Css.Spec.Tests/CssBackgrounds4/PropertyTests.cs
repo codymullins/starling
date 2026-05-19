@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssBackgrounds4;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-backgrounds-4/">CSS Backgrounds Module Level 4</see>.
 /// </summary>
+[TestClass]
 [Spec("css-backgrounds-4", "https://drafts.csswg.org/css-backgrounds-4/")]
 public sealed class PropertyTests
 {

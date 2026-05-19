@@ -2,13 +2,12 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Intrinsics;
 
+[TestClass]
 public class TypedArrayTests
 {
-    [Fact]
+    [TestMethod]
     public void ArrayBuffer_allocates_reports_length_slices_and_detects_views()
     {
         Eval("var b = new ArrayBuffer(8); b.byteLength;").AsNumber.Should().Be(8);
@@ -21,7 +20,7 @@ public class TypedArrayTests
         tooLarge.Should().Throw<JsThrow>();
     }
 
-    [Fact]
+    [TestMethod]
     public void DataView_round_trips_numeric_types_endianness_and_bounds()
     {
         Eval("var d = new DataView(new ArrayBuffer(32)); d.setInt8(0, -1); d.getInt8(0);").AsNumber.Should().Be(-1);
@@ -42,7 +41,7 @@ public class TypedArrayTests
         badRead.Should().Throw<JsThrow>();
     }
 
-    [Fact]
+    [TestMethod]
     public void TypedArray_constructors_cover_length_buffer_array_like_and_copy()
     {
         Eval("var a = new Uint8Array(3); a.length + a.byteLength + a.byteOffset;").AsNumber.Should().Be(6);
@@ -54,7 +53,7 @@ public class TypedArrayTests
         Eval("Uint8Array.from({0: 2, 1: 3, length: 2}, function(v) { return v * 2; })[1];").AsNumber.Should().Be(6);
     }
 
-    [Fact]
+    [TestMethod]
     public void TypedArray_indexed_access_converts_per_element_type()
     {
         Eval("var a = new Uint8Array(1); a[0] = 300; a[0];").AsNumber.Should().Be(44);
@@ -69,20 +68,20 @@ public class TypedArrayTests
         Eval("var a = new BigUint64Array(1); a[0] = 99; a[0];").AsNumber.Should().Be(99);
     }
 
-    [Fact]
+    [TestMethod]
     public void Uint8ClampedArray_clamps_and_rounds_values()
     {
         Eval("var a = new Uint8ClampedArray(4); a[0] = NaN; a[1] = 1000; a[2] = -1; a[3] = 2.5; a[0] + a[1] + a[2] + a[3];").AsNumber.Should().Be(257);
     }
 
-    [Fact]
+    [TestMethod]
     public void Subarray_shares_buffer_and_slice_copies()
     {
         Eval("var a = new Uint8Array({0:1,1:2,2:3,length:3}); var s = a.subarray(1); s[0] = 9; a[1];").AsNumber.Should().Be(9);
         Eval("var a = new Uint8Array({0:1,1:2,2:3,length:3}); var s = a.slice(1); s[0] = 9; a[1];").AsNumber.Should().Be(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void Prototype_methods_cover_mutation_search_callbacks_and_copying()
     {
         Eval("var a = new Uint8Array(3); a.fill(4); a[0] + a[1] + a[2];").AsNumber.Should().Be(12);
@@ -100,7 +99,7 @@ public class TypedArrayTests
         Eval("var a = new Uint8Array({0:1,1:2,2:3,length:3}); a.findIndex(function(v) { return v > 1; });").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void Prototype_methods_cover_iteration_join_order_and_bytes_per_element()
     {
         Eval("var a = new Uint8Array({0:3,1:1,2:2,length:3}); a.sort(); a.join('-');").AsString.Should().Be("1-2-3");
@@ -115,7 +114,9 @@ public class TypedArrayTests
         Eval("new BigUint64Array(1).BYTES_PER_ELEMENT;").AsNumber.Should().Be(8);
     }
 
-    [Fact(Skip = "B4-3 BigInt")]
+    [Ignore("B4-3 BigInt")]
+
+    [TestMethod]
     public void DataView_BigInt_large_values_round_trip_as_bigints()
     {
         Eval("var d = new DataView(new ArrayBuffer(8)); d.setBigUint64(0, 9007199254740993, true); d.getBigUint64(0, true);").AsNumber.Should().Be(9007199254740993d);

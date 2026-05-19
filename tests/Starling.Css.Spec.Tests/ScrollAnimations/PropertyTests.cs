@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.ScrollAnimations;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/scroll-animations-1/">Scroll-driven Animations Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("scroll-animations", "https://drafts.csswg.org/scroll-animations-1/")]
 public sealed class PropertyTests
 {

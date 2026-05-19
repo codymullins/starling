@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssColor5;
 /// <summary>
 /// At-rule conformance for <see href="https://drafts.csswg.org/css-color-5/">CSS Color Module Level 5</see>.
 /// </summary>
+[TestClass]
 [Spec("css-color-5", "https://drafts.csswg.org/css-color-5/")]
 public sealed class AtRuleTests
 {

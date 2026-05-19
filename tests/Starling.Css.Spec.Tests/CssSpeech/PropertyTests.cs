@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssSpeech;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-speech-1/">CSS Speech Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-speech", "https://drafts.csswg.org/css-speech-1/")]
 public sealed class PropertyTests
 {

@@ -12,6 +12,7 @@ namespace Starling.Css.Spec.Tests.CssLogical;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-logical-1/">CSS Logical Properties and Values Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-logical", "https://drafts.csswg.org/css-logical-1/")]
 public sealed class PropertyTests
 {

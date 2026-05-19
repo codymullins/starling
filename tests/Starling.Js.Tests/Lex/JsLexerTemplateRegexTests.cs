@@ -1,7 +1,5 @@
 using FluentAssertions;
 using Starling.Js.Lex;
-using Xunit;
-
 namespace Starling.Js.Tests.Lex;
 
 /// <summary>
@@ -10,9 +8,10 @@ namespace Starling.Js.Tests.Lex;
 /// ambiguous cases (template body / regex vs. division), so the tests drive
 /// the lexer directly via its <c>Scan*</c> entry points where needed.
 /// </summary>
+[TestClass]
 public class JsLexerTemplateRegexTests
 {
-    [Fact]
+    [TestMethod]
     public void Template_with_no_substitution_yields_single_token()
     {
         var lex = new JsLexer("`hello`");
@@ -22,7 +21,7 @@ public class JsLexerTemplateRegexTests
         lex.Next().Kind.Should().Be(JsTokenKind.EndOfFile);
     }
 
-    [Fact]
+    [TestMethod]
     public void Template_with_substitution_yields_head_expr_tail()
     {
         var lex = new JsLexer("`hi ${ name }!`");
@@ -45,7 +44,7 @@ public class JsLexerTemplateRegexTests
         tail.Value.Should().Be("!");
     }
 
-    [Fact]
+    [TestMethod]
     public void Template_with_two_substitutions_emits_middle()
     {
         var lex = new JsLexer("`${a}-${b}`");
@@ -65,7 +64,7 @@ public class JsLexerTemplateRegexTests
         tail.Value.Should().Be("");
     }
 
-    [Fact]
+    [TestMethod]
     public void Template_handles_escapes_and_newlines()
     {
         var lex = new JsLexer("`line1\nline2\\nline3`");
@@ -74,7 +73,7 @@ public class JsLexerTemplateRegexTests
         t.Value.Should().Be("line1\nline2\nline3");
     }
 
-    [Fact]
+    [TestMethod]
     public void Regex_literal_lexed_via_parser_entry_point()
     {
         var lex = new JsLexer("/ab\\/c/gi");
@@ -85,7 +84,7 @@ public class JsLexerTemplateRegexTests
         flags.Should().Be("gi");
     }
 
-    [Fact]
+    [TestMethod]
     public void Regex_character_class_swallows_slashes()
     {
         var lex = new JsLexer("/[/]/");
@@ -96,7 +95,7 @@ public class JsLexerTemplateRegexTests
         flags.Should().BeEmpty();
     }
 
-    [Fact]
+    [TestMethod]
     public void Private_identifier_emitted_with_hash_prefix()
     {
         var lex = new JsLexer("#field");
@@ -105,7 +104,7 @@ public class JsLexerTemplateRegexTests
         t.Value.Should().Be("#field");
     }
 
-    [Fact]
+    [TestMethod]
     public void Hashbang_skipped_at_start_of_file()
     {
         var lex = new JsLexer("#!/usr/bin/env node\nlet x;");

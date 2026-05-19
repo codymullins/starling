@@ -1,13 +1,13 @@
 using FluentAssertions;
 using Starling.Css.Parser;
 using Starling.Css.Values;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("css-color-5", "https://www.w3.org/TR/css-color-5/")]
 
+[TestClass]
 public class ColorMixHueHintTests
 {
     private static CssColor ParseColor(string text)
@@ -18,7 +18,7 @@ public class ColorMixHueHintTests
         return (CssColor)CssValueParser.Parse(decl.Value);
     }
 
-    [Fact]
+    [TestMethod]
     public void Default_hue_strategy_is_shorter()
     {
         // Red (hue 0) and a hue near 350 in oklch: shorter path goes backwards through 0/360.
@@ -29,14 +29,14 @@ public class ColorMixHueHintTests
         hue.Should().BeApproximately(0, 1.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Shorter_hue_explicit()
     {
         var c = ParseColor("color-mix(in oklch shorter hue, oklch(60% 0.15 350), oklch(60% 0.15 10))");
         c.C3.Should().BeApproximately(0, 1.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Longer_hue_takes_the_other_way_around()
     {
         var c = ParseColor("color-mix(in oklch longer hue, oklch(60% 0.15 350), oklch(60% 0.15 10))");
@@ -44,7 +44,7 @@ public class ColorMixHueHintTests
         c.C3.Should().BeApproximately(180, 1.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Increasing_hue_always_forward()
     {
         // From 350 to 10 forward goes 350 -> 360 -> 10. Halfway = 0.
@@ -52,7 +52,7 @@ public class ColorMixHueHintTests
         c.C3.Should().BeApproximately(0, 1.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Decreasing_hue_always_backward()
     {
         // From 350 to 10 backward goes 350 -> 180 -> 10. Halfway = 180.
@@ -60,7 +60,7 @@ public class ColorMixHueHintTests
         c.C3.Should().BeApproximately(180, 1.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Hue_hint_works_for_hsl()
     {
         var c = ParseColor("color-mix(in hsl longer hue, hsl(20 100% 50%), hsl(40 100% 50%))");
@@ -68,14 +68,14 @@ public class ColorMixHueHintTests
         c.C1.Should().BeApproximately(210, 2);
     }
 
-    [Fact]
+    [TestMethod]
     public void Hue_hint_works_for_lch()
     {
         var c = ParseColor("color-mix(in lch longer hue, lch(50% 50 350), lch(50% 50 10))");
         c.C3.Should().BeApproximately(180, 2);
     }
 
-    [Fact]
+    [TestMethod]
     public void Hue_hint_in_non_polar_space_fails()
     {
         // longer hue on srgb space is invalid per spec.

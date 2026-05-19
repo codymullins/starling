@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssMulticol;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-multicol-2/">CSS Multi-column Layout Module Level 2</see>.
 /// </summary>
+[TestClass]
 [Spec("css-multicol", "https://drafts.csswg.org/css-multicol-2/")]
 public sealed class PropertyTests
 {

@@ -1,11 +1,10 @@
 using FluentAssertions;
-using Xunit;
-
 namespace Starling.Engine.Tests;
 
+[TestClass]
 public sealed class NavigationHistoryTests
 {
-    [Fact]
+    [TestMethod]
     public void Navigate_back_forward_and_reload_follow_browser_history_rules()
     {
         var history = new NavigationHistory();
@@ -21,7 +20,7 @@ public sealed class NavigationHistoryTests
         history.Forward().Should().Be("https://example.test/two");
     }
 
-    [Fact]
+    [TestMethod]
     public void New_navigation_after_back_discards_forward_entries()
     {
         var history = new NavigationHistory();

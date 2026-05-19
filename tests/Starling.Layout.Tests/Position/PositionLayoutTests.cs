@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Css.Cascade;
 using Starling.Html;
 using Starling.Layout.Box;
-using Xunit;
-
 namespace Starling.Layout.Tests.Position;
 
 /// <summary>
@@ -12,6 +10,7 @@ namespace Starling.Layout.Tests.Position;
 /// content-edge offsets — same trick the painter uses, since each
 /// box's <c>Frame</c> is in its parent's content-box coordinate space.
 /// </summary>
+[TestClass]
 public sealed class PositionLayoutTests
 {
     private static LayoutEngine NewEngine() => new(new StyleEngine());
@@ -19,7 +18,7 @@ public sealed class PositionLayoutTests
     private static BlockBox Layout(string html, Size viewport)
         => NewEngine().LayoutDocument(HtmlParser.Parse(html), viewport);
 
-    [Fact]
+    [TestMethod]
     public void Position_relative_shifts_painted_box_by_left_and_top()
     {
         var root = Layout("""
@@ -52,7 +51,7 @@ public sealed class PositionLayoutTests
         b.Frame.Y.Should().BeApproximately(50, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Position_absolute_with_top_left_positions_against_nearest_positioned_ancestor()
     {
         // The parent is position:relative so it becomes the containing block.
@@ -75,7 +74,7 @@ public sealed class PositionLayoutTests
         _ = parent;
     }
 
-    [Fact]
+    [TestMethod]
     public void Position_absolute_with_no_positioned_ancestor_uses_initial_containing_block()
     {
         // Wrapper is position:static; the absolute element should resolve
@@ -93,7 +92,7 @@ public sealed class PositionLayoutTests
         doc.Y.Should().BeApproximately(7, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Position_absolute_with_only_right_inset_aligns_right_edge_against_container()
     {
         var root = Layout("""
@@ -109,7 +108,7 @@ public sealed class PositionLayoutTests
         a.Frame.Width.Should().BeApproximately(50, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Position_absolute_with_both_left_and_right_and_auto_width_fills_the_gap()
     {
         var root = Layout("""
@@ -124,7 +123,7 @@ public sealed class PositionLayoutTests
         a.Frame.Width.Should().BeApproximately(300, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Position_absolute_percentage_top_resolves_against_containing_block_height()
     {
         var root = Layout("""
@@ -138,7 +137,7 @@ public sealed class PositionLayoutTests
         a.Frame.Y.Should().BeApproximately(100, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Position_fixed_positions_against_viewport_regardless_of_nesting()
     {
         var root = Layout("""
@@ -158,7 +157,7 @@ public sealed class PositionLayoutTests
         a.Frame.Height.Should().BeApproximately(30, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Absolutely_positioned_sibling_is_removed_from_flow_so_subsequent_sibling_stacks_normally()
     {
         // Three children: in-flow 'a' (50 tall), absolute 'pos' (should not
@@ -181,7 +180,7 @@ public sealed class PositionLayoutTests
         pos.Frame.Y.Should().BeApproximately(200, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Two_absolute_siblings_position_independently_against_the_same_containing_block()
     {
         var root = Layout("""
@@ -199,7 +198,7 @@ public sealed class PositionLayoutTests
         b.Frame.Y.Should().BeApproximately(80, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Z_index_is_read_into_positioned_props_even_though_paint_order_unchanged()
     {
         // The point of this test is to exercise the parser path so a future
@@ -217,7 +216,7 @@ public sealed class PositionLayoutTests
         props.Kind.Should().Be(Starling.Layout.Position.PositionKind.Absolute);
     }
 
-    [Fact]
+    [TestMethod]
     public void Position_absolute_resolves_against_padding_box_of_positioned_ancestor()
     {
         // Parent has padding:20px; the abs child's (top:0; left:0) should

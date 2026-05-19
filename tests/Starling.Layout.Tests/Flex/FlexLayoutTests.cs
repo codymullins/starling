@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Css.Cascade;
 using Starling.Html;
 using Starling.Layout.Box;
-using Xunit;
-
 namespace Starling.Layout.Tests.Flex;
 
 /// <summary>
@@ -12,6 +10,7 @@ namespace Starling.Layout.Tests.Flex;
 /// flex container's content-box coordinates — <c>Frame.X = 0</c> is the
 /// container's left content edge.
 /// </summary>
+[TestClass]
 public sealed class FlexLayoutTests
 {
     private static LayoutEngine NewEngine() => new(new StyleEngine());
@@ -19,7 +18,7 @@ public sealed class FlexLayoutTests
     private static BlockBox Layout(string html, Size viewport)
         => NewEngine().LayoutDocument(HtmlParser.Parse(html), viewport);
 
-    [Fact]
+    [TestMethod]
     public void Row_with_no_flex_grow_places_children_at_their_explicit_widths_left_aligned()
     {
         var root = Layout("""
@@ -40,7 +39,7 @@ public sealed class FlexLayoutTests
         items[2].Frame.Width.Should().BeApproximately(120, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Justify_content_center_centers_the_row()
     {
         // 600px container, three 100px items → used 300, free 300, leading 150.
@@ -58,7 +57,7 @@ public sealed class FlexLayoutTests
         items[2].Frame.X.Should().BeApproximately(350, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Justify_content_flex_end_packs_at_end()
     {
         var root = Layout("""
@@ -73,7 +72,7 @@ public sealed class FlexLayoutTests
         items[1].Frame.X.Should().BeApproximately(500, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Justify_content_space_between_puts_no_gap_at_edges()
     {
         // 600px - 3 * 100px = 300 free; split into 2 between-gaps = 150 each.
@@ -91,7 +90,7 @@ public sealed class FlexLayoutTests
         items[2].Frame.X.Should().BeApproximately(500, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Justify_content_space_around_puts_half_gap_at_edges()
     {
         // 600 - 300 = 300 free; per-item slot = 100; half = 50 leading.
@@ -110,7 +109,7 @@ public sealed class FlexLayoutTests
         items[2].Frame.X.Should().BeApproximately(450, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Three_flex_one_children_split_container_equally()
     {
         var root = Layout("""
@@ -130,7 +129,7 @@ public sealed class FlexLayoutTests
         items[2].Frame.X.Should().BeApproximately(400, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Mixed_flex_grow_distributes_free_space_proportionally()
     {
         // flex:2 + flex:1 + flex:1 (all basis 0) → 50/25/25 split of 800px.
@@ -148,7 +147,7 @@ public sealed class FlexLayoutTests
         items[2].Frame.Width.Should().BeApproximately(200, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Align_items_center_centers_short_child_cross_axis()
     {
         // Container 100px tall, child 40px tall → cross offset = 30.
@@ -163,7 +162,7 @@ public sealed class FlexLayoutTests
         items[0].Frame.Height.Should().BeApproximately(40, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Align_items_stretch_fills_container_cross_size_when_height_auto()
     {
         // No explicit child height → stretch to container's 100px.
@@ -177,7 +176,7 @@ public sealed class FlexLayoutTests
         items[0].Frame.Height.Should().BeApproximately(100, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Flex_direction_column_stacks_main_axis_vertically()
     {
         var root = Layout("""
@@ -194,7 +193,7 @@ public sealed class FlexLayoutTests
         items[2].Frame.Y.Should().BeApproximately(110, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Flex_direction_row_reverse_reverses_visual_order_but_keeps_paint_order()
     {
         // Reverse direction: the items are positioned right-to-left visually,
@@ -223,7 +222,7 @@ public sealed class FlexLayoutTests
         dBox.Frame.X.Should().BeApproximately(300, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Gap_adds_space_between_items_but_not_at_ends()
     {
         // 600px container, 3 * 100px items + 2 * 10px gaps = 320; left-aligned.
@@ -241,7 +240,7 @@ public sealed class FlexLayoutTests
         items[2].Frame.X.Should().BeApproximately(220, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Gap_combined_with_space_between_respects_gap_as_minimum()
     {
         // 3 * 100 + 2 * 10 = 320 consumed, 280 free, split into 2 between

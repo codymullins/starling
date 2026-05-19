@@ -9,7 +9,7 @@ namespace Starling.Gui;
 
 /// <summary>
 /// Re-derives interaction from the laid-out box tree now that the GUI paints a
-/// single flat Skia bitmap instead of a native MAUI view tree. Everything
+/// single flat bitmap instead of a native MAUI view tree. Everything
 /// <c>BoxTreeRenderer</c> used to get from per-<c>Label</c> gesture recognizers
 /// — hover, link activation, drag-select, Cmd-F — is recovered here by walking
 /// the box tree in document-space CSS px and hit-testing pointer coordinates

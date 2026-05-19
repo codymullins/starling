@@ -6,8 +6,6 @@ using Starling.Layout;
 using Starling.Layout.Text;
 using Starling.Layout.Tree;
 using Starling.Paint.DisplayList;
-using Xunit;
-
 namespace Starling.Paint.Tests;
 
 /// <summary>
@@ -18,6 +16,7 @@ namespace Starling.Paint.Tests;
 /// <see cref="DrawImage"/> whose source rect is the right slice of the
 /// sprite.
 /// </summary>
+[TestClass]
 public sealed class BackgroundImagePaintTests
 {
     /// <summary>1320×60 stub: each of 22 sprite slots is 60×60.</summary>
@@ -70,7 +69,7 @@ public sealed class BackgroundImagePaintTests
         return (root, list, (resolver as StubResolver)?.Image!);
     }
 
-    [Fact]
+    [TestMethod]
     public void Background_image_with_negative_position_emits_sliced_draw_image()
     {
         using var sprite = MakeSprite();
@@ -102,7 +101,7 @@ public sealed class BackgroundImagePaintTests
         draw.Bounds.Height.Should().BeApproximately(60, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Background_image_position_zero_paints_top_left_slice()
     {
         using var sprite = MakeSprite();
@@ -121,7 +120,7 @@ public sealed class BackgroundImagePaintTests
         draw.SourceRect.Value.Width.Should().BeApproximately(60, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void No_background_image_emits_no_draw_image_for_plain_box()
     {
         using var sprite = MakeSprite();
@@ -136,7 +135,7 @@ public sealed class BackgroundImagePaintTests
         list.Items.OfType<DrawImage>().Should().BeEmpty();
     }
 
-    [Fact]
+    [TestMethod]
     public void Unresolved_url_does_not_emit_draw_image()
     {
         // Stub returns false for any url — DisplayListBuilder must skip the

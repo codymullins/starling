@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssTransitions;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-transitions-1/">CSS Transitions Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-transitions", "https://drafts.csswg.org/css-transitions-1/")]
 public sealed class PropertyTests
 {

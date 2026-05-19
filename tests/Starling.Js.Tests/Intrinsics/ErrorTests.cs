@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Intrinsics;
 
 /// <summary>
@@ -12,47 +10,48 @@ namespace Starling.Js.Tests.Intrinsics;
 /// expected name/message/toString behavior, and inherits via the right
 /// prototype chain.
 /// </summary>
+[TestClass]
 public class ErrorTests
 {
     // ---------------------------------------------------------- callable
 
-    [Fact]
+    [TestMethod]
     public void Error_call_with_message_sets_message_own_property()
     {
         Eval("Error('boom').message;").AsString.Should().Be("boom");
     }
 
-    [Fact]
+    [TestMethod]
     public void TypeError_call_with_message_sets_message_own_property()
     {
         Eval("TypeError('x').message;").AsString.Should().Be("x");
     }
 
-    [Fact]
+    [TestMethod]
     public void RangeError_call_with_message_sets_message_own_property()
     {
         Eval("RangeError('r').message;").AsString.Should().Be("r");
     }
 
-    [Fact]
+    [TestMethod]
     public void ReferenceError_call_with_message_sets_message_own_property()
     {
         Eval("ReferenceError('ref').message;").AsString.Should().Be("ref");
     }
 
-    [Fact]
+    [TestMethod]
     public void SyntaxError_call_with_message_sets_message_own_property()
     {
         Eval("SyntaxError('s').message;").AsString.Should().Be("s");
     }
 
-    [Fact]
+    [TestMethod]
     public void UriError_call_with_message_sets_message_own_property()
     {
         Eval("URIError('u').message;").AsString.Should().Be("u");
     }
 
-    [Fact]
+    [TestMethod]
     public void EvalError_call_with_message_sets_message_own_property()
     {
         Eval("EvalError('e').message;").AsString.Should().Be("e");
@@ -60,25 +59,25 @@ public class ErrorTests
 
     // ---------------------------------------------------------- construct + name
 
-    [Fact]
+    [TestMethod]
     public void New_TypeError_has_name_TypeError()
     {
         Eval("(new TypeError('y')).name;").AsString.Should().Be("TypeError");
     }
 
-    [Fact]
+    [TestMethod]
     public void New_Error_has_name_Error()
     {
         Eval("(new Error()).name;").AsString.Should().Be("Error");
     }
 
-    [Fact]
+    [TestMethod]
     public void New_RangeError_has_name_RangeError()
     {
         Eval("(new RangeError()).name;").AsString.Should().Be("RangeError");
     }
 
-    [Fact]
+    [TestMethod]
     public void New_AggregateError_has_name_AggregateError()
     {
         Eval("(new AggregateError([])).name;").AsString.Should().Be("AggregateError");
@@ -86,7 +85,7 @@ public class ErrorTests
 
     // ---------------------------------------------------------- prototype chain
 
-    [Fact]
+    [TestMethod]
     public void TypeError_instance_prototype_is_TypeError_prototype()
     {
         Eval(@"
@@ -95,7 +94,7 @@ public class ErrorTests
         ").Should().Be(JsValue.True);
     }
 
-    [Fact]
+    [TestMethod]
     public void TypeError_prototype_chain_walks_to_Error_prototype()
     {
         Eval(@"
@@ -103,19 +102,19 @@ public class ErrorTests
         ").Should().Be(JsValue.True);
     }
 
-    [Fact]
+    [TestMethod]
     public void TypeError_instance_chain_reaches_Error_prototype()
     {
         Eval("new TypeError() instanceof Error;").Should().Be(JsValue.True);
     }
 
-    [Fact]
+    [TestMethod]
     public void TypeError_instance_chain_reaches_TypeError_prototype()
     {
         Eval("new TypeError() instanceof TypeError;").Should().Be(JsValue.True);
     }
 
-    [Fact]
+    [TestMethod]
     public void All_error_subclasses_inherit_from_Error_prototype()
     {
         var subs = new[] { "TypeError", "RangeError", "ReferenceError", "SyntaxError", "URIError", "EvalError", "AggregateError" };
@@ -128,25 +127,25 @@ public class ErrorTests
 
     // ---------------------------------------------------------- toString
 
-    [Fact]
+    [TestMethod]
     public void Error_with_no_message_toString_returns_just_name()
     {
         Eval("(new Error()).toString();").AsString.Should().Be("Error");
     }
 
-    [Fact]
+    [TestMethod]
     public void Error_with_message_toString_returns_name_colon_message()
     {
         Eval("(new Error('m')).toString();").AsString.Should().Be("Error: m");
     }
 
-    [Fact]
+    [TestMethod]
     public void TypeError_with_message_toString_returns_name_colon_message()
     {
         Eval("(new TypeError('z')).toString();").AsString.Should().Be("TypeError: z");
     }
 
-    [Fact]
+    [TestMethod]
     public void TypeError_with_no_message_toString_returns_just_name()
     {
         Eval("(new TypeError()).toString();").AsString.Should().Be("TypeError");
@@ -154,19 +153,19 @@ public class ErrorTests
 
     // ---------------------------------------------------------- cause
 
-    [Fact]
+    [TestMethod]
     public void Error_with_options_cause_records_cause_on_instance()
     {
         Eval("(new Error('m', { cause: 42 })).cause;").AsNumber.Should().Be(42);
     }
 
-    [Fact]
+    [TestMethod]
     public void TypeError_with_options_cause_records_cause_on_instance()
     {
         Eval("(new TypeError('m', { cause: 'why' })).cause;").AsString.Should().Be("why");
     }
 
-    [Fact]
+    [TestMethod]
     public void Error_without_options_cause_has_no_cause_own_property()
     {
         Eval(@"
@@ -177,7 +176,7 @@ public class ErrorTests
 
     // ---------------------------------------------------------- AggregateError
 
-    [Fact]
+    [TestMethod]
     public void AggregateError_copies_errors_array_into_errors_property()
     {
         Eval(@"
@@ -186,13 +185,13 @@ public class ErrorTests
         ").AsNumber.Should().Be(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void AggregateError_message_is_second_argument()
     {
         Eval("(new AggregateError([], 'agg')).message;").AsString.Should().Be("agg");
     }
 
-    [Fact]
+    [TestMethod]
     public void AggregateError_preserves_individual_error_messages()
     {
         Eval(@"
@@ -201,7 +200,7 @@ public class ErrorTests
         ").AsString.Should().Be("a/b");
     }
 
-    [Fact]
+    [TestMethod]
     public void AggregateError_throws_TypeError_on_non_array_like_errors()
     {
         var rt = new JsRuntime();
@@ -211,13 +210,13 @@ public class ErrorTests
 
     // ---------------------------------------------------------- constructor back-ref
 
-    [Fact]
+    [TestMethod]
     public void Error_prototype_constructor_points_back_at_Error()
     {
         Eval("Error.prototype.constructor === Error;").Should().Be(JsValue.True);
     }
 
-    [Fact]
+    [TestMethod]
     public void Each_subclass_prototype_constructor_points_back_at_its_constructor()
     {
         var subs = new[] { "TypeError", "RangeError", "ReferenceError", "SyntaxError", "URIError", "EvalError", "AggregateError" };
@@ -230,19 +229,19 @@ public class ErrorTests
 
     // ---------------------------------------------------------- constructor metadata
 
-    [Fact]
+    [TestMethod]
     public void Error_constructor_name_is_Error()
     {
         Eval("Error.name;").AsString.Should().Be("Error");
     }
 
-    [Fact]
+    [TestMethod]
     public void Error_constructor_length_is_one()
     {
         Eval("Error.length;").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void AggregateError_constructor_length_is_two()
     {
         Eval("AggregateError.length;").AsNumber.Should().Be(2);

@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssTables;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-tables-3/">CSS Table Module Level 3</see>.
 /// </summary>
+[TestClass]
 [Spec("css-tables", "https://drafts.csswg.org/css-tables-3/")]
 public sealed class PropertyTests
 {

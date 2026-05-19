@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Css.Cascade;
 using Starling.Html;
 using Starling.Layout.Box;
-using Xunit;
-
 namespace Starling.Layout.Tests;
 
 /// <summary>
@@ -12,6 +10,7 @@ namespace Starling.Layout.Tests;
 /// which uses <c>body { max-width: 35em; margin: 2em auto; }</c>; without the
 /// clamp it renders full-viewport-wide instead of in a narrow centered column.
 /// </summary>
+[TestClass]
 public sealed class MaxWidthLayoutTests
 {
     private static LayoutEngine NewEngine() => new(new StyleEngine());
@@ -19,7 +18,7 @@ public sealed class MaxWidthLayoutTests
     private static BlockBox Layout(string html, Size viewport)
         => NewEngine().LayoutDocument(HtmlParser.Parse(html), viewport);
 
-    [Fact]
+    [TestMethod]
     public void Max_width_clamps_a_block_below_the_available_width()
     {
         var root = Layout(
@@ -31,7 +30,7 @@ public sealed class MaxWidthLayoutTests
             "max-width clamps the auto-width down to 200px even though 800px is available");
     }
 
-    [Fact]
+    [TestMethod]
     public void Max_width_none_lets_the_block_fill_its_container()
     {
         // `none` is the initial value; ResolveLength maps `none` to 0 and would
@@ -45,7 +44,7 @@ public sealed class MaxWidthLayoutTests
             "max-width: none must be a no-op, not a collapse-to-zero");
     }
 
-    [Fact]
+    [TestMethod]
     public void Min_width_expands_a_block_narrower_than_the_minimum()
     {
         // Both width and max-width clamp this below the min-width floor; the
@@ -59,7 +58,7 @@ public sealed class MaxWidthLayoutTests
             "min-width is the lower bound and overrides a smaller width");
     }
 
-    [Fact]
+    [TestMethod]
     public void Max_width_in_em_resolves_to_pixels()
     {
         // 35em with the default 16px font-size = 560px. This is the
@@ -73,7 +72,7 @@ public sealed class MaxWidthLayoutTests
             "35em at default 16px/em resolves to 560px");
     }
 
-    [Fact]
+    [TestMethod]
     public void Auto_margins_center_a_max_width_clamped_block()
     {
         // The words.html / MDN article-body pattern: width is auto, max-width
@@ -91,7 +90,7 @@ public sealed class MaxWidthLayoutTests
             "auto margins must distribute the 600px slack so the box centers at x=300");
     }
 
-    [Fact]
+    [TestMethod]
     public void Single_auto_margin_absorbs_all_slack()
     {
         var root = Layout(

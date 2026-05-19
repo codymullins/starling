@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssBreak;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-break-4/">CSS Fragmentation Module Level 4</see>.
 /// </summary>
+[TestClass]
 [Spec("css-break", "https://drafts.csswg.org/css-break-4/")]
 public sealed class PropertyTests
 {

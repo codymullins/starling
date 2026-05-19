@@ -3,13 +3,12 @@ using Starling.Dom;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Bindings.Tests;
 
+[TestClass]
 public sealed class PerformanceTests
 {
-    [Fact]
+    [TestMethod]
     public void Performance_now_returns_number()
     {
         var runtime = BuildEnv();
@@ -17,7 +16,7 @@ public sealed class PerformanceTests
             .AsString.Should().Be("number");
     }
 
-    [Fact]
+    [TestMethod]
     public void Performance_now_is_monotonic_nondecreasing()
     {
         var runtime = BuildEnv();
@@ -29,7 +28,7 @@ public sealed class PerformanceTests
         """).AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void TimeOrigin_is_pinned_at_install()
     {
         var origin = 1_700_000_000_000d;
@@ -38,7 +37,7 @@ public sealed class PerformanceTests
             .AsNumber.Should().Be(origin);
     }
 
-    [Fact]
+    [TestMethod]
     public void Now_is_zero_or_more_relative_to_install()
     {
         var runtime = BuildEnv();

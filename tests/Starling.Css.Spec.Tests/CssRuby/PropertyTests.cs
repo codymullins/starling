@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssRuby;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-ruby-1/">CSS Ruby Annotation Layout Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-ruby", "https://drafts.csswg.org/css-ruby-1/")]
 public sealed class PropertyTests
 {

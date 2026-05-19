@@ -4,6 +4,7 @@ namespace Starling.Css.Spec.Tests.CssVariables1;
 /// <see href="https://www.w3.org/TR/css-variables-1/#using-variables">CSS Variables L1 §3</see>:
 /// <c>var()</c> substitution.
 /// </summary>
+[TestClass]
 [Spec("css-variables-1", "https://www.w3.org/TR/css-variables-1/", section: "3")]
 public sealed class VarSubstitutionTests
 {

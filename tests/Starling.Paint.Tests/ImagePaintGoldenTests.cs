@@ -5,15 +5,15 @@ using Starling.Common.Image;
 using Starling.Dom;
 using Starling.Html;
 using Starling.Layout.Tree;
-using Xunit;
 using LayoutSize = Starling.Layout.Size;
 
 namespace Starling.Paint.Tests;
 
-[Trait("Category", "GoldenImage")]
+[TestClass]
+[TestCategory("GoldenImage")]
 public sealed class ImagePaintGoldenTests
 {
-    [Fact]
+    [TestMethod]
     public void Inline_png_image_paints_image_pixels()
     {
         // 40x20 solid red; the layout + paint pipeline should blit those red
@@ -26,9 +26,6 @@ public sealed class ImagePaintGoldenTests
         var resolver = new ManualImageResolver();
         resolver.Add(imgElement, swatch);
 
-        // Runs on the default (Skia) backend: wp:M3-06g2 fixed the shim's
-        // ts_canvas_draw_image to upload pixels as a Graphite texture, so the
-        // blit now lands on a Graphite canvas too.
         var painter = new Painter();
         using var rendered = painter.RenderDocument(
             document, new LayoutSize(320, 180), defaultFontSize: 16f, images: resolver);
@@ -37,7 +34,7 @@ public sealed class ImagePaintGoldenTests
             500, "the 40x20 red swatch (800 px) should land in the output");
     }
 
-    [Fact]
+    [TestMethod]
     public void Inline_jpeg_image_paints_image_pixels()
     {
         // Round-trip through a JPEG byte buffer so the test also exercises
@@ -50,8 +47,6 @@ public sealed class ImagePaintGoldenTests
         var resolver = new ManualImageResolver();
         resolver.Add(imgElement, swatch);
 
-        // Runs on the default (Skia) backend — see the PNG case; wp:M3-06g2
-        // fixed ts_canvas_draw_image to blit on Graphite canvases.
         var painter = new Painter();
         using var rendered = painter.RenderDocument(
             document, new LayoutSize(320, 180), defaultFontSize: 16f, images: resolver);
@@ -60,7 +55,7 @@ public sealed class ImagePaintGoldenTests
             500, "the 60x20 blue JPEG swatch should dominate a region of the output");
     }
 
-    [Fact]
+    [TestMethod]
     public void Broken_src_falls_back_to_alt_text_and_does_not_crash()
     {
         // No image registered → BoxTreeBuilder should degrade to a TextBox

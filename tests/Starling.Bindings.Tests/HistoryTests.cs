@@ -3,13 +3,12 @@ using Starling.Dom;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Bindings.Tests;
 
+[TestClass]
 public sealed class HistoryTests
 {
-    [Fact]
+    [TestMethod]
     public void History_starts_with_one_entry_and_null_state()
     {
         var (runtime, _) = BuildEnv("https://example.com/start");
@@ -17,7 +16,7 @@ public sealed class HistoryTests
         Eval(runtime, "result = history.state;").IsNull.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void PushState_appends_entry_and_updates_state()
     {
         var (runtime, _) = BuildEnv("https://example.com/start");
@@ -26,7 +25,7 @@ public sealed class HistoryTests
         Eval(runtime, "result = history.state.a;").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void PushState_updates_location_href()
     {
         var (runtime, _) = BuildEnv("https://example.com/start");
@@ -36,7 +35,7 @@ public sealed class HistoryTests
         Eval(runtime, "result = window.location.search;").AsString.Should().Be("?q=1");
     }
 
-    [Fact]
+    [TestMethod]
     public void ReplaceState_does_not_change_length()
     {
         var (runtime, _) = BuildEnv("https://example.com/start");
@@ -46,7 +45,7 @@ public sealed class HistoryTests
         Eval(runtime, "result = window.location.pathname;").AsString.Should().Be("/replaced");
     }
 
-    [Fact]
+    [TestMethod]
     public void Back_returns_to_previous_state_and_fires_popstate()
     {
         var (runtime, _) = BuildEnv("https://example.com/a");
@@ -63,7 +62,7 @@ public sealed class HistoryTests
         Eval(runtime, "result = history.length;").AsNumber.Should().Be(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void Forward_after_back_restores_pushed_state()
     {
         var (runtime, _) = BuildEnv("https://example.com/a");
@@ -76,7 +75,7 @@ public sealed class HistoryTests
         Eval(runtime, "result = window.location.pathname;").AsString.Should().Be("/b");
     }
 
-    [Fact]
+    [TestMethod]
     public void PushState_after_back_truncates_forward_entries()
     {
         var (runtime, _) = BuildEnv("https://example.com/a");
@@ -90,7 +89,7 @@ public sealed class HistoryTests
         Eval(runtime, "result = window.location.pathname;").AsString.Should().Be("/d");
     }
 
-    [Fact]
+    [TestMethod]
     public void Go_with_negative_delta_traverses_multiple_entries()
     {
         var (runtime, _) = BuildEnv("https://example.com/a");
@@ -102,7 +101,7 @@ public sealed class HistoryTests
         """).AsString.Should().Be("/a");
     }
 
-    [Fact]
+    [TestMethod]
     public void Back_at_first_entry_is_noop()
     {
         var (runtime, _) = BuildEnv("https://example.com/a");
@@ -114,7 +113,7 @@ public sealed class HistoryTests
         """).AsNumber.Should().Be(0);
     }
 
-    [Fact]
+    [TestMethod]
     public void Fragment_only_url_resolves_against_current()
     {
         var (runtime, _) = BuildEnv("https://example.com/page");
@@ -123,7 +122,7 @@ public sealed class HistoryTests
         Eval(runtime, "result = window.location.hash;").AsString.Should().Be("#section");
     }
 
-    [Fact]
+    [TestMethod]
     public void ScrollRestoration_round_trips_only_known_values()
     {
         var (runtime, _) = BuildEnv("https://example.com/");

@@ -2,13 +2,12 @@ using FluentAssertions;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using Starling.Html;
-using Xunit;
-
 namespace Starling.Engine.Tests;
 
+[TestClass]
 public class EngineRenderTests
 {
-    [Fact]
+    [TestMethod]
     public void Render_writes_a_non_empty_png_for_hello_html()
     {
         var fixture = Path.Combine(Path.GetTempPath(), $"starling-{Guid.NewGuid():N}.html");
@@ -35,7 +34,7 @@ public class EngineRenderTests
         }
     }
 
-    [Fact]
+    [TestMethod]
     public void Render_fetches_and_paints_local_image_via_file_url()
     {
         var dir = Path.Combine(Path.GetTempPath(), $"starling-{Guid.NewGuid():N}");
@@ -64,9 +63,6 @@ public class EngineRenderTests
                 "<!doctype html><body><p>before<img src=\"swatch.png\">after</p></body>");
 
             var engine = new StarlingEngine();
-            // Runs on the default (Skia) backend: wp:M3-06g2 fixed the shim's
-            // ts_canvas_draw_image to upload pixels as a Graphite texture, so
-            // blitted image pixels now land on a Graphite canvas too.
             var result = engine.Render(
                 "file://" + fixture.Replace('\\', '/'),
                 new RenderOptions(new Size(320, 180), 16f),
@@ -83,7 +79,7 @@ public class EngineRenderTests
         }
     }
 
-    [Fact]
+    [TestMethod]
     public void Render_returns_err_for_missing_file()
     {
         var engine = new StarlingEngine();
@@ -96,7 +92,7 @@ public class EngineRenderTests
         result.Error.Message.Should().Contain("File not found");
     }
 
-    [Fact]
+    [TestMethod]
     public void Render_uses_document_style_layout_and_paint_pipeline()
     {
         var fixture = Path.Combine(Path.GetTempPath(), $"starling-{Guid.NewGuid():N}.html");
@@ -134,7 +130,7 @@ public class EngineRenderTests
         }
     }
 
-    [Fact]
+    [TestMethod]
     public void ExtractDisplayText_collapses_whitespace()
     {
         var doc = HtmlParser.Parse("<body>  Hello,   world. \n\t Next line. </body>");

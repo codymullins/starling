@@ -2,8 +2,6 @@ using FluentAssertions;
 using Starling.Css.Cascade;
 using Starling.Html;
 using Starling.Layout.Box;
-using Xunit;
-
 namespace Starling.Layout.Tests;
 
 /// <summary>
@@ -13,6 +11,7 @@ namespace Starling.Layout.Tests;
 /// float pattern McMaster uses (an inline-floated &lt;ul&gt; whose children are
 /// also floats).
 /// </summary>
+[TestClass]
 public sealed class FloatLayoutTests
 {
     private static LayoutEngine NewEngine() => new(new StyleEngine());
@@ -20,7 +19,7 @@ public sealed class FloatLayoutTests
     private static BlockBox Layout(string html, Size viewport)
         => NewEngine().LayoutDocument(HtmlParser.Parse(html), viewport);
 
-    [Fact]
+    [TestMethod]
     public void Two_left_floats_sit_side_by_side_on_the_same_line()
     {
         // body has 8px UA margin → body content origin (8, 8). Two 60px floats
@@ -40,7 +39,7 @@ public sealed class FloatLayoutTests
         b.Frame.X.Should().BeApproximately(a.Frame.X + 60, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Right_floats_pin_to_right_edge()
     {
         // 200px container, two 50px floats on the right: rightmost at the edge,
@@ -63,7 +62,7 @@ public sealed class FloatLayoutTests
         b.Frame.X.Should().BeApproximately(100, 0.5); // 200 - 100
     }
 
-    [Fact]
+    [TestMethod]
     public void Floats_wrap_to_a_new_line_when_they_overflow_the_container()
     {
         // 200px container, three 80px floats: two fit on line one (160px),
@@ -87,7 +86,7 @@ public sealed class FloatLayoutTests
         c.Frame.X.Should().BeApproximately(a.Frame.X, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Clear_left_pushes_following_block_below_active_left_float()
     {
         // 200px tall float; the next block has clear:left so it must drop
@@ -105,7 +104,7 @@ public sealed class FloatLayoutTests
         next.Frame.Y.Should().BeGreaterThanOrEqualTo(f.Frame.Y + f.Frame.Height - 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Block_without_clear_flows_alongside_an_active_float()
     {
         // No clear → the next block's top edge should align with the float's
@@ -123,7 +122,7 @@ public sealed class FloatLayoutTests
         next.Frame.Y.Should().BeApproximately(f.Frame.Y, 0.5);
     }
 
-    [Fact]
+    [TestMethod]
     public void Mcmaster_style_nested_float_grid_lays_out_two_columns_then_wraps()
     {
         // Approximates .subcat ul/li from mcmaster.com: an outer float:left

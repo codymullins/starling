@@ -4,8 +4,6 @@ using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
 using Starling.Net;
-using Xunit;
-
 namespace Starling.Bindings.Tests;
 
 /// <summary>
@@ -17,11 +15,12 @@ namespace Starling.Bindings.Tests;
 /// iterators (Array Iterator over an insertion-order snapshot) so the iterator
 /// protocol (for-of, spread, destructuring) works.
 /// </summary>
+[TestClass]
 public sealed class DomArrayLikeTests
 {
     // -------------------- DOM array-like surfaces --------------------------
 
-    [Fact]
+    [TestMethod]
     public void QuerySelectorAll_returns_real_array()
     {
         var (runtime, _) = BuildEnv();
@@ -30,7 +29,7 @@ public sealed class DomArrayLikeTests
             .AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void QuerySelectorAll_map_returns_ids()
     {
         var (runtime, _) = BuildEnv();
@@ -39,7 +38,7 @@ public sealed class DomArrayLikeTests
             .AsString.Should().Be("a,b,c");
     }
 
-    [Fact]
+    [TestMethod]
     public void QuerySelectorAll_filter_narrows_result()
     {
         var (runtime, _) = BuildEnv();
@@ -50,7 +49,7 @@ public sealed class DomArrayLikeTests
         """).AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Children_is_real_array()
     {
         var (runtime, _) = BuildEnv();
@@ -59,7 +58,7 @@ public sealed class DomArrayLikeTests
             .AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Children_spread_produces_array()
     {
         var (runtime, _) = BuildEnv();
@@ -70,7 +69,7 @@ public sealed class DomArrayLikeTests
         """).AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void ChildNodes_walkable_with_for_of()
     {
         var (runtime, _) = BuildEnv();
@@ -82,7 +81,7 @@ public sealed class DomArrayLikeTests
         """).AsString.Should().Be("abc");
     }
 
-    [Fact]
+    [TestMethod]
     public void GetElementsByTagName_returns_real_array()
     {
         var (runtime, _) = BuildEnv();
@@ -93,7 +92,7 @@ public sealed class DomArrayLikeTests
         """).AsString.Should().Be("a,b,c");
     }
 
-    [Fact]
+    [TestMethod]
     public void GetElementsByClassName_returns_real_array()
     {
         var (runtime, _) = BuildEnv();
@@ -108,7 +107,7 @@ public sealed class DomArrayLikeTests
 
     // ----------------------- Headers iterators -----------------------------
 
-    [Fact]
+    [TestMethod]
     public void Headers_entries_walkable_with_for_of()
     {
         var runtime = BuildFetchEnv();
@@ -120,7 +119,7 @@ public sealed class DomArrayLikeTests
         """).AsString.Should().Be("a=1;b=2;");
     }
 
-    [Fact]
+    [TestMethod]
     public void Headers_keys_spread_into_array()
     {
         var runtime = BuildFetchEnv();
@@ -131,7 +130,7 @@ public sealed class DomArrayLikeTests
         """).AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Headers_values_is_iterable()
     {
         var runtime = BuildFetchEnv();

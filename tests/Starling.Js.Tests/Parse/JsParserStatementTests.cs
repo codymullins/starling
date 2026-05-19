@@ -1,22 +1,21 @@
 using FluentAssertions;
 using Starling.Js.Ast;
 using Starling.Js.Parse;
-using Xunit;
-
 namespace Starling.Js.Tests.Parse;
 
+[TestClass]
 public class JsParserStatementTests
 {
     // ----- Programs --------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Empty_program()
     {
         var p = ParseProgram("");
         p.Body.Should().BeEmpty();
     }
 
-    [Fact]
+    [TestMethod]
     public void Single_expression_statement()
     {
         var p = ParseProgram("42;");
@@ -25,7 +24,7 @@ public class JsParserStatementTests
             .Which.Expression.Should().BeOfType<NumericLiteral>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Asi_omits_trailing_semicolon()
     {
         var p = ParseProgram("foo()\nbar()");
@@ -34,7 +33,7 @@ public class JsParserStatementTests
 
     // ----- Variable declarations ------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Var_declaration_single()
     {
         var p = ParseProgram("var x = 1;");
@@ -44,7 +43,7 @@ public class JsParserStatementTests
         ((Identifier)v.Declarations[0].Id).Name.Should().Be("x");
     }
 
-    [Fact]
+    [TestMethod]
     public void Let_declaration_multi()
     {
         var p = ParseProgram("let a = 1, b = 2, c;");
@@ -54,14 +53,14 @@ public class JsParserStatementTests
         v.Declarations[2].Init.Should().BeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Const_declaration()
     {
         var p = ParseProgram("const PI = 3.14;");
         ((VariableDeclaration)p.Body[0]).Kind.Should().Be("const");
     }
 
-    [Fact]
+    [TestMethod]
     public void Let_as_identifier_at_statement_start()
     {
         // `let + 1` is a valid expression statement where 'let' is just
@@ -74,7 +73,7 @@ public class JsParserStatementTests
 
     // ----- Blocks / if / while / do ---------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Block_statement()
     {
         var p = ParseProgram("{ a; b; c; }");
@@ -82,7 +81,7 @@ public class JsParserStatementTests
         b.Body.Should().HaveCount(3);
     }
 
-    [Fact]
+    [TestMethod]
     public void If_with_else()
     {
         var p = ParseProgram("if (a) b(); else c();");
@@ -90,7 +89,7 @@ public class JsParserStatementTests
         ifs.Alternate.Should().NotBeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void If_no_else()
     {
         var ifs = ParseProgram("if (a) b();").Body[0]
@@ -98,14 +97,14 @@ public class JsParserStatementTests
         ifs.Alternate.Should().BeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void While_loop()
     {
         ParseProgram("while (i < 10) i++;").Body[0]
             .Should().BeOfType<WhileStatement>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Do_while_loop()
     {
         var d = ParseProgram("do { i--; } while (i > 0);").Body[0]
@@ -115,7 +114,7 @@ public class JsParserStatementTests
 
     // ----- For loops -------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void For_c_style()
     {
         var f = ParseProgram("for (let i = 0; i < 10; i++) f(i);").Body[0]
@@ -125,7 +124,7 @@ public class JsParserStatementTests
         f.Update.Should().NotBeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void For_in()
     {
         var f = ParseProgram("for (const k in obj) g(k);").Body[0]
@@ -133,14 +132,14 @@ public class JsParserStatementTests
         f.Left.Should().BeOfType<VariableDeclaration>();
     }
 
-    [Fact]
+    [TestMethod]
     public void For_of()
     {
         var f = ParseProgram("for (const k of arr) g(k);").Body[0]
             .Should().BeOfType<ForOfStatement>().Subject;
     }
 
-    [Fact]
+    [TestMethod]
     public void For_with_empty_init_and_test()
     {
         var f = ParseProgram("for (;;) {}").Body[0]
@@ -152,7 +151,7 @@ public class JsParserStatementTests
 
     // ----- Functions -------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Function_declaration()
     {
         var p = ParseProgram("function add(a, b) { return a + b; }");
@@ -162,7 +161,7 @@ public class JsParserStatementTests
         fn.Body.Body[0].Should().BeOfType<ReturnStatement>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Function_with_rest_parameter()
     {
         var fn = ParseProgram("function f(a, ...rest) {}").Body[0]
@@ -171,7 +170,7 @@ public class JsParserStatementTests
         fn.Params[1].Should().BeOfType<SpreadElement>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Generator_function_marked()
     {
         var fn = ParseProgram("function* gen() {}").Body[0]
@@ -181,35 +180,35 @@ public class JsParserStatementTests
 
     // ----- Return / break / continue / throw ------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Bare_return()
     {
         var fn = (FunctionDeclaration)ParseProgram("function f() { return; }").Body[0];
         ((ReturnStatement)fn.Body.Body[0]).Argument.Should().BeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Return_with_value()
     {
         var fn = (FunctionDeclaration)ParseProgram("function f() { return 1 + 2; }").Body[0];
         ((ReturnStatement)fn.Body.Body[0]).Argument.Should().BeOfType<BinaryExpression>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Break_with_label()
     {
         var p = ParseProgram("break outer;");
         ((BreakStatement)p.Body[0]).Label.Should().Be("outer");
     }
 
-    [Fact]
+    [TestMethod]
     public void Continue_bare()
     {
         ((ContinueStatement)ParseProgram("continue;").Body[0])
             .Label.Should().BeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Throw_statement()
     {
         ((ThrowStatement)ParseProgram("throw new Error('boom');").Body[0])
@@ -218,7 +217,7 @@ public class JsParserStatementTests
 
     // ----- try / catch / finally ------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Try_catch_finally_all_present()
     {
         var t = ParseProgram("try { a(); } catch (e) { log(e); } finally { cleanup(); }")
@@ -227,7 +226,7 @@ public class JsParserStatementTests
         t.Finalizer.Should().NotBeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Try_finally_only()
     {
         var t = ParseProgram("try { a(); } finally { cleanup(); }")
@@ -236,7 +235,7 @@ public class JsParserStatementTests
         t.Finalizer.Should().NotBeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Bare_catch_without_param()
     {
         var t = ParseProgram("try {} catch { handle(); }")
@@ -247,7 +246,7 @@ public class JsParserStatementTests
 
     // ----- switch ---------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Switch_with_cases_and_default()
     {
         var s = ParseProgram(@"switch (x) {
@@ -261,7 +260,7 @@ public class JsParserStatementTests
 
     // ----- ASI edge cases --------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Return_newline_inserts_semicolon()
     {
         // `return\nfoo` should ASI to `return; foo;` per §11.9.1.
@@ -270,7 +269,7 @@ public class JsParserStatementTests
         fn.Body.Body[1].Should().BeOfType<ExpressionStatement>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Missing_semicolon_without_newline_throws()
     {
         var act = () => ParseProgram("a b");
@@ -279,15 +278,15 @@ public class JsParserStatementTests
 
     // ----- Misc -----------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Empty_statement_via_lone_semicolon()
         => ParseProgram(";;;").Body.Should().HaveCount(3);
 
-    [Fact]
+    [TestMethod]
     public void Debugger_statement()
         => ParseProgram("debugger;").Body[0].Should().BeOfType<DebuggerStatement>();
 
-    [Fact]
+    [TestMethod]
     public void Nested_program_round_trip()
     {
         var src = @"

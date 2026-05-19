@@ -49,15 +49,4 @@ bench/results/
 out.png
 TestResults/
 
-# Native graphics track (WP M3-06a/06b) — built out-of-band, never committed.
-# Build scripts + shim source under native/ ARE committed; build output is not.
-# RID-laid-out native build output:
-runtimes/
-# fetched Skia checkout (pinned via third_party/REVISIONS.md):
-third_party/skia/
-# GN/Ninja build directory:
-native/out/
-# CMake build directory for the shim:
-native/build/
-
 **/sixlabors.lic

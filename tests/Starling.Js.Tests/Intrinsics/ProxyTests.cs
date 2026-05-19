@@ -2,21 +2,20 @@ using FluentAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
-using Xunit;
-
 namespace Starling.Js.Tests.Intrinsics;
 
 /// <summary>End-to-end coverage for ECMA-262 §28.2 Proxy + §10.5 trap semantics.</summary>
+[TestClass]
 public class ProxyTests
 {
-    [Fact]
+    [TestMethod]
     public void Empty_handler_is_transparent_to_target_properties()
     {
         Eval("var p = new Proxy({a:1}, {}); p.a;").AsNumber.Should().Be(1);
         Eval("var p = new Proxy({a:1}, {}); 'a' in p;").AsBool.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Get_trap_intercepts_property_reads()
     {
         Eval(@"
@@ -25,7 +24,7 @@ public class ProxyTests
         ").AsString.Should().Be("foo!");
     }
 
-    [Fact]
+    [TestMethod]
     public void Set_trap_observes_side_effects_and_signals_success()
     {
         Eval(@"
@@ -38,14 +37,14 @@ public class ProxyTests
         ").AsString.Should().Be("x=7");
     }
 
-    [Fact]
+    [TestMethod]
     public void Has_trap_drives_in_operator()
     {
         Eval("var p = new Proxy({}, { has: function() { return true; } }); 'foo' in p;").AsBool.Should().BeTrue();
         Eval("var p = new Proxy({a:1}, { has: function() { return false; } }); 'a' in p;").AsBool.Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void DeleteProperty_trap_drives_delete_operator()
     {
         Eval(@"
@@ -58,7 +57,7 @@ public class ProxyTests
         ").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void GetOwnPropertyDescriptor_trap_drives_object_descriptor_access()
     {
         Eval(@"
@@ -71,7 +70,7 @@ public class ProxyTests
         ").AsNumber.Should().Be(42);
     }
 
-    [Fact]
+    [TestMethod]
     public void DefineProperty_trap_intercepts_object_defineProperty()
     {
         Eval(@"
@@ -84,7 +83,7 @@ public class ProxyTests
         ").AsString.Should().Be("foo");
     }
 
-    [Fact]
+    [TestMethod]
     public void GetPrototypeOf_and_setPrototypeOf_traps_route_correctly()
     {
         Eval(@"
@@ -100,7 +99,7 @@ public class ProxyTests
         ").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void IsExtensible_and_preventExtensions_traps_route_correctly()
     {
         Eval(@"
@@ -118,7 +117,7 @@ public class ProxyTests
         ").AsNumber.Should().Be(1);
     }
 
-    [Fact]
+    [TestMethod]
     public void OwnKeys_trap_drives_object_keys()
     {
         var r = Eval(@"
@@ -131,7 +130,7 @@ public class ProxyTests
         r.AsString.Should().Be("3:a,b,c");
     }
 
-    [Fact]
+    [TestMethod]
     public void Apply_trap_intercepts_function_call()
     {
         Eval(@"
@@ -142,7 +141,7 @@ public class ProxyTests
         ").AsNumber.Should().Be(10);
     }
 
-    [Fact]
+    [TestMethod]
     public void Construct_trap_intercepts_new_call()
     {
         Eval(@"
@@ -154,7 +153,7 @@ public class ProxyTests
         ").AsNumber.Should().Be(7);
     }
 
-    [Fact]
+    [TestMethod]
     public void OwnKeys_invariant_throws_when_non_extensible_target_omits_keys()
     {
         Action act = () => Eval(@"
@@ -166,7 +165,7 @@ public class ProxyTests
         act.Should().Throw<JsThrow>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Revocable_returns_proxy_and_revoke_that_invalidates_access()
     {
         Eval(@"
@@ -182,7 +181,7 @@ public class ProxyTests
         act.Should().Throw<JsThrow>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Proxy_is_callable_only_if_target_is_callable()
     {
         // Calling a proxy wrapping a non-callable target should throw.
@@ -193,7 +192,7 @@ public class ProxyTests
         act.Should().Throw<JsThrow>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Get_trap_invariant_throws_when_returning_different_value_for_non_configurable_non_writable()
     {
         Action act = () => Eval(@"

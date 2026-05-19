@@ -1,15 +1,15 @@
 using FluentAssertions;
 using Starling.Css.Tokenizer;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("css-syntax-3", "https://www.w3.org/TR/css-syntax-3/")]
 
+[TestClass]
 public sealed class CssTokenizerTests
 {
-    [Fact]
+    [TestMethod]
     public void Tokenizes_common_style_rule_tokens()
     {
         var tokens = CssTokenizer.Tokenize("""
@@ -40,7 +40,7 @@ public sealed class CssTokenizerTests
         tokens.Should().Contain(t => t.Type == CssTokenType.Hash && t.Value == "036");
     }
 
-    [Fact]
+    [TestMethod]
     public void Skips_comments_and_tokenizes_at_keywords_strings_and_urls()
     {
         var tokens = CssTokenizer.Tokenize("""
@@ -69,7 +69,7 @@ public sealed class CssTokenizerTests
         tokens.Should().Contain(t => t.Type == CssTokenType.String && t.Value == "hello");
     }
 
-    [Fact]
+    [TestMethod]
     public void Tokenizes_signed_and_scientific_numbers()
     {
         var tokens = CssTokenizer.Tokenize("a { x: -1.5e2; y: +.5; z: 0 }");
@@ -79,7 +79,7 @@ public sealed class CssTokenizerTests
             .Should().ContainInOrder(-150d, 0.5d, 0d);
     }
 
-    [Fact]
+    [TestMethod]
     public void Treats_dimension_unit_as_identifier_after_number()
     {
         var tokens = CssTokenizer.Tokenize("0px 0em 0Q 0deg 0fr");
@@ -89,7 +89,7 @@ public sealed class CssTokenizerTests
         dimensions.Select(d => d.Unit).Should().ContainInOrder("px", "em", "Q", "deg", "fr");
     }
 
-    [Fact]
+    [TestMethod]
     public void Url_consumes_trailing_whitespace_before_close_paren()
     {
         var tokens = CssTokenizer.Tokenize("url(   https://example.test/a.css   )");
@@ -98,7 +98,7 @@ public sealed class CssTokenizerTests
         tokens[0].Value.Should().Be("https://example.test/a.css");
     }
 
-    [Fact]
+    [TestMethod]
     public void Url_with_quoted_argument_falls_through_to_function_string()
     {
         // Per spec, a url() with a quoted string is parsed as a function call so
@@ -114,7 +114,7 @@ public sealed class CssTokenizerTests
         tokens[1].Value.Should().Be("https://example.test/a.css");
     }
 
-    [Fact]
+    [TestMethod]
     public void Url_with_embedded_whitespace_becomes_bad_url()
     {
         var tokens = CssTokenizer.Tokenize("url(a b)");
@@ -122,7 +122,7 @@ public sealed class CssTokenizerTests
         tokens[0].Type.Should().Be(CssTokenType.BadUrl);
     }
 
-    [Fact]
+    [TestMethod]
     public void String_unterminated_by_newline_is_bad_string()
     {
         var tokens = CssTokenizer.Tokenize("\"open\nclose\"");
@@ -131,7 +131,7 @@ public sealed class CssTokenizerTests
         tokens[0].Value.Should().Be("open");
     }
 
-    [Fact]
+    [TestMethod]
     public void Hex_escape_in_ident_decodes_to_codepoint()
     {
         // \41 = 'A', trailing space consumed per spec.
@@ -141,7 +141,7 @@ public sealed class CssTokenizerTests
         tokens[0].Value.Should().Be("ABC");
     }
 
-    [Fact]
+    [TestMethod]
     public void Backslash_newline_in_string_is_line_continuation()
     {
         var tokens = CssTokenizer.Tokenize("\"a\\\nb\"");
@@ -150,7 +150,7 @@ public sealed class CssTokenizerTests
         tokens[0].Value.Should().Be("ab");
     }
 
-    [Fact]
+    [TestMethod]
     public void Cdo_and_cdc_are_tokenized_at_top_level()
     {
         var tokens = CssTokenizer.Tokenize("<!-- p { color: red; } -->");
@@ -159,7 +159,7 @@ public sealed class CssTokenizerTests
         tokens.Select(t => t.Type).Should().Contain(CssTokenType.Cdc);
     }
 
-    [Fact]
+    [TestMethod]
     public void Lone_hash_without_name_is_a_delim()
     {
         var tokens = CssTokenizer.Tokenize("# ");
@@ -168,7 +168,7 @@ public sealed class CssTokenizerTests
         tokens[0].Delimiter.Should().Be('#');
     }
 
-    [Fact]
+    [TestMethod]
     public void Hash_with_digit_start_still_tokenizes_as_hash()
     {
         // Tokenizer always produces Hash if the next char is a name char;
@@ -179,7 +179,7 @@ public sealed class CssTokenizerTests
         tokens[0].Value.Should().Be("123abc");
     }
 
-    [Fact]
+    [TestMethod]
     public void Function_token_swallows_name_and_open_paren()
     {
         var tokens = CssTokenizer.Tokenize("calc(1px + 2px)");
@@ -188,7 +188,7 @@ public sealed class CssTokenizerTests
         tokens[0].Value.Should().Be("calc");
     }
 
-    [Fact]
+    [TestMethod]
     public void Eof_is_emitted_exactly_once_at_end()
     {
         var tokens = CssTokenizer.Tokenize(string.Empty);

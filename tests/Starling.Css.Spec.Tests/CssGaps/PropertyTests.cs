@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssGaps;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-gaps-1/">CSS Gaps Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-gaps", "https://drafts.csswg.org/css-gaps-1/")]
 public sealed class PropertyTests
 {

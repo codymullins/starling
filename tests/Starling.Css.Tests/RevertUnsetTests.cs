@@ -4,16 +4,16 @@ using Starling.Css.Parser;
 using Starling.Css.Properties;
 using Starling.Css.Values;
 using Starling.Dom;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("css-cascade-5", "https://www.w3.org/TR/css-cascade-5/")]
 
+[TestClass]
 public sealed class RevertUnsetTests
 {
-    [Fact]
+    [TestMethod]
     public void Unset_acts_as_inherit_for_inherited_properties()
     {
         var doc = new Document();
@@ -30,7 +30,7 @@ public sealed class RevertUnsetTests
         engine.Compute(child).GetColor(PropertyId.Color).Should().Be(new CssColor(255, 0, 0));
     }
 
-    [Fact]
+    [TestMethod]
     public void Unset_acts_as_initial_for_non_inherited_properties()
     {
         var doc = new Document();
@@ -44,7 +44,7 @@ public sealed class RevertUnsetTests
         engine.Compute(p).GetColor(PropertyId.BackgroundColor).Should().Be(CssColor.Transparent);
     }
 
-    [Fact]
+    [TestMethod]
     public void Revert_falls_back_to_previous_origin()
     {
         var doc = new Document();
@@ -59,7 +59,7 @@ public sealed class RevertUnsetTests
         engine.Compute(p).GetColor(PropertyId.Color).Should().Be(new CssColor(0, 0, 255));
     }
 
-    [Fact]
+    [TestMethod]
     public void Revert_layer_falls_back_to_previous_layer_in_same_origin()
     {
         var doc = new Document();
@@ -75,7 +75,7 @@ public sealed class RevertUnsetTests
         engine.Compute(p).GetColor(PropertyId.Color).Should().Be(new CssColor(0, 0, 255));
     }
 
-    [Fact]
+    [TestMethod]
     public void All_initial_resets_every_property()
     {
         var doc = new Document();
@@ -91,7 +91,7 @@ public sealed class RevertUnsetTests
         style.GetColor(PropertyId.BackgroundColor).Should().Be(CssColor.Transparent);
     }
 
-    [Fact]
+    [TestMethod]
     public void All_revert_falls_back_to_previous_origin_for_every_property()
     {
         var doc = new Document();

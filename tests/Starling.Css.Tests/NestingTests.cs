@@ -5,16 +5,16 @@ using Starling.Css.Parser;
 using Starling.Css.Properties;
 using Starling.Css.Values;
 using Starling.Dom;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("css-nesting-1", "https://www.w3.org/TR/css-nesting-1/")]
 
+[TestClass]
 public sealed class NestingTests
 {
-    [Fact]
+    [TestMethod]
     public void Ampersand_child_selector_matches_child()
     {
         var doc = new Document();
@@ -36,7 +36,7 @@ public sealed class NestingTests
         engine.Compute(child).GetColor(PropertyId.Color).Should().Be(new CssColor(0, 0, 255));
     }
 
-    [Fact]
+    [TestMethod]
     public void Implicit_ampersand_works_for_class_selectors()
     {
         var doc = new Document();
@@ -57,7 +57,7 @@ public sealed class NestingTests
         engine.Compute(child).GetColor(PropertyId.Color).Should().Be(new CssColor(0, 0, 255));
     }
 
-    [Fact]
+    [TestMethod]
     public void Ampersand_hover_combines_with_parent_for_pseudo()
     {
         var doc = new Document();
@@ -77,7 +77,7 @@ public sealed class NestingTests
             .GetColor(PropertyId.Color).Should().Be(new CssColor(255, 0, 0));
     }
 
-    [Fact]
+    [TestMethod]
     public void Ampersand_child_combinator_matches_direct_children_only()
     {
         var doc = new Document();
@@ -98,7 +98,7 @@ public sealed class NestingTests
         engine.Compute(direct).GetColor(PropertyId.Color).Should().Be(new CssColor(255, 0, 0));
     }
 
-    [Fact]
+    [TestMethod]
     public void Nested_media_query_applies_only_at_matching_viewport()
     {
         var doc = new Document();
@@ -123,7 +123,7 @@ public sealed class NestingTests
         engine.Compute(p).GetColor(PropertyId.Color).Should().Be(new CssColor(255, 0, 0));
     }
 
-    [Fact]
+    [TestMethod]
     public void End_to_end_layered_supports_media_nesting_example()
     {
         var doc = new Document();

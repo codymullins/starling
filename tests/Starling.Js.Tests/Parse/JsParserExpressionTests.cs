@@ -1,43 +1,42 @@
 using FluentAssertions;
 using Starling.Js.Ast;
 using Starling.Js.Parse;
-using Xunit;
-
 namespace Starling.Js.Tests.Parse;
 
+[TestClass]
 public class JsParserExpressionTests
 {
     // ----- Primary expressions --------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Numeric_literal()
         => Parse("42").Should().BeOfType<NumericLiteral>()
             .Which.Value.Should().Be(42.0);
 
-    [Fact]
+    [TestMethod]
     public void String_literal()
         => Parse("\"hi\"").Should().BeOfType<StringLiteral>()
             .Which.Value.Should().Be("hi");
 
-    [Fact]
+    [TestMethod]
     public void Boolean_literal()
         => Parse("true").Should().BeOfType<BooleanLiteral>()
             .Which.Value.Should().BeTrue();
 
-    [Fact]
+    [TestMethod]
     public void Null_literal() => Parse("null").Should().BeOfType<NullLiteral>();
 
-    [Fact]
+    [TestMethod]
     public void This_expression() => Parse("this").Should().BeOfType<ThisExpression>();
 
-    [Fact]
+    [TestMethod]
     public void Identifier_expression()
         => Parse("foo").Should().BeOfType<Identifier>()
             .Which.Name.Should().Be("foo");
 
     // ----- Binary precedence ----------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Multiplication_binds_tighter_than_addition()
     {
         // 1 + 2 * 3 → BinaryExpr(+, 1, BinaryExpr(*, 2, 3))
@@ -47,7 +46,7 @@ public class JsParserExpressionTests
             .Which.Op.Should().Be("*");
     }
 
-    [Fact]
+    [TestMethod]
     public void Exponentiation_is_right_associative()
     {
         // 2 ** 3 ** 4 → BinaryExpr(**, 2, BinaryExpr(**, 3, 4))
@@ -58,7 +57,7 @@ public class JsParserExpressionTests
             .Which.Op.Should().Be("**");
     }
 
-    [Fact]
+    [TestMethod]
     public void Parens_override_precedence()
     {
         // (1 + 2) * 3 → BinaryExpr(*, BinaryExpr(+, 1, 2), 3)
@@ -68,7 +67,7 @@ public class JsParserExpressionTests
             .Which.Op.Should().Be("+");
     }
 
-    [Fact]
+    [TestMethod]
     public void Comparison_then_logical_and()
     {
         // a < b && c > d → Logical(&&, Binary(<, a, b), Binary(>, c, d))
@@ -78,7 +77,7 @@ public class JsParserExpressionTests
         log.Right.Should().BeOfType<BinaryExpression>().Which.Op.Should().Be(">");
     }
 
-    [Fact]
+    [TestMethod]
     public void Nullish_and_logical_compose()
     {
         // a ?? b || c — ?? has lower precedence than ||, so:
@@ -90,7 +89,7 @@ public class JsParserExpressionTests
 
     // ----- Unary and update -----------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Unary_minus_then_arithmetic()
     {
         // -a * b → Binary(*, Unary(-, a), b)
@@ -99,7 +98,7 @@ public class JsParserExpressionTests
         bin.Op.Should().Be("*");
     }
 
-    [Fact]
+    [TestMethod]
     public void Typeof_and_void()
     {
         var u = Parse("typeof x").Should().BeOfType<UnaryExpression>().Subject;
@@ -107,7 +106,7 @@ public class JsParserExpressionTests
         Parse("void 0").Should().BeOfType<UnaryExpression>().Which.Op.Should().Be("void");
     }
 
-    [Fact]
+    [TestMethod]
     public void Postfix_increment()
     {
         var u = Parse("a++").Should().BeOfType<UpdateExpression>().Subject;
@@ -115,7 +114,7 @@ public class JsParserExpressionTests
         u.Prefix.Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Prefix_decrement()
     {
         var u = Parse("--a").Should().BeOfType<UpdateExpression>().Subject;
@@ -125,7 +124,7 @@ public class JsParserExpressionTests
 
     // ----- Conditional and assignment -------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Conditional_expression()
     {
         var c = Parse("a ? b : c").Should().BeOfType<ConditionalExpression>().Subject;
@@ -134,7 +133,7 @@ public class JsParserExpressionTests
         ((Identifier)c.Alternate).Name.Should().Be("c");
     }
 
-    [Fact]
+    [TestMethod]
     public void Assignment_is_right_associative()
     {
         // a = b = c → Assign(=, a, Assign(=, b, c))
@@ -143,7 +142,7 @@ public class JsParserExpressionTests
         a.Value.Should().BeOfType<AssignmentExpression>().Which.Op.Should().Be("=");
     }
 
-    [Fact]
+    [TestMethod]
     public void Compound_assignment()
     {
         Parse("a += 1").Should().BeOfType<AssignmentExpression>().Which.Op.Should().Be("+=");
@@ -151,7 +150,7 @@ public class JsParserExpressionTests
 
     // ----- Member access and calls ----------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Member_access_dot()
     {
         var m = Parse("a.b.c").Should().BeOfType<MemberExpression>().Subject;
@@ -161,7 +160,7 @@ public class JsParserExpressionTests
         ((Identifier)inner.Property).Name.Should().Be("b");
     }
 
-    [Fact]
+    [TestMethod]
     public void Member_access_computed()
     {
         var m = Parse("a[0]").Should().BeOfType<MemberExpression>().Subject;
@@ -169,14 +168,14 @@ public class JsParserExpressionTests
         m.Property.Should().BeOfType<NumericLiteral>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Call_expression_with_args()
     {
         var c = Parse("foo(1, 2)").Should().BeOfType<CallExpression>().Subject;
         c.Arguments.Should().HaveCount(2);
     }
 
-    [Fact]
+    [TestMethod]
     public void Call_after_member_chain()
     {
         // a.b().c
@@ -185,7 +184,7 @@ public class JsParserExpressionTests
         call.Callee.Should().BeOfType<MemberExpression>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Optional_chaining()
     {
         var m = Parse("a?.b").Should().BeOfType<MemberExpression>().Subject;
@@ -193,7 +192,7 @@ public class JsParserExpressionTests
         ((Identifier)m.Property).Name.Should().Be("b");
     }
 
-    [Fact]
+    [TestMethod]
     public void New_expression()
     {
         var n = Parse("new Date()").Should().BeOfType<NewExpression>().Subject;
@@ -201,7 +200,7 @@ public class JsParserExpressionTests
         n.Arguments.Should().BeEmpty();
     }
 
-    [Fact]
+    [TestMethod]
     public void New_with_args_and_member()
     {
         var n = Parse("new X.Y(1)").Should().BeOfType<NewExpression>().Subject;
@@ -211,14 +210,14 @@ public class JsParserExpressionTests
 
     // ----- Arrays + objects -----------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Array_literal()
     {
         var a = Parse("[1, 2, 3]").Should().BeOfType<ArrayExpression>().Subject;
         a.Elements.Should().HaveCount(3);
     }
 
-    [Fact]
+    [TestMethod]
     public void Array_with_hole()
     {
         var a = Parse("[1, , 3]").Should().BeOfType<ArrayExpression>().Subject;
@@ -226,14 +225,14 @@ public class JsParserExpressionTests
         a.Elements[1].Should().BeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Array_spread()
     {
         var a = Parse("[...rest]").Should().BeOfType<ArrayExpression>().Subject;
         a.Elements.Should().ContainSingle().Which.Should().BeOfType<SpreadElement>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Object_literal_with_key_value_and_shorthand()
     {
         var o = Parse("{ a: 1, b }").Should().BeOfType<ObjectExpression>().Subject;
@@ -242,14 +241,14 @@ public class JsParserExpressionTests
         o.Properties[1].Shorthand.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Object_literal_with_computed_key()
     {
         var o = Parse("{ [k]: v }").Should().BeOfType<ObjectExpression>().Subject;
         o.Properties[0].Computed.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Object_literal_with_reserved_word_as_key()
     {
         // { class: 1 } — reserved words are allowed as property names.
@@ -259,7 +258,7 @@ public class JsParserExpressionTests
 
     // ----- Sequence expression --------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Top_level_sequence_via_comma()
     {
         var s = Parse("a, b, c").Should().BeOfType<SequenceExpression>().Subject;
@@ -268,14 +267,14 @@ public class JsParserExpressionTests
 
     // ----- Errors ---------------------------------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Trailing_garbage_throws()
     {
         var act = () => Parse("1 + 2 foo");
         act.Should().Throw<JsParseException>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Unclosed_paren_throws()
     {
         var act = () => Parse("(1 + 2");

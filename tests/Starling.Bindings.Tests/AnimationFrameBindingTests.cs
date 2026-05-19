@@ -3,13 +3,12 @@ using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
 using Starling.Loop;
-using Xunit;
-
 namespace Starling.Bindings.Tests;
 
+[TestClass]
 public sealed class AnimationFrameBindingTests
 {
-    [Fact]
+    [TestMethod]
     public void Raf_fires_callback_with_frame_timestamp()
     {
         var (runtime, loop, _) = NewHost();
@@ -26,7 +25,7 @@ public sealed class AnimationFrameBindingTests
         runtime.GetGlobal("__t").AsNumber.Should().Be(16);
     }
 
-    [Fact]
+    [TestMethod]
     public void CancelAnimationFrame_stops_callback()
     {
         var (runtime, loop, _) = NewHost();
@@ -41,7 +40,7 @@ public sealed class AnimationFrameBindingTests
         runtime.GetGlobal("__fired").AsBool.Should().BeFalse();
     }
 
-    [Fact]
+    [TestMethod]
     public void Nested_raf_runs_on_next_frame()
     {
         var (runtime, loop, _) = NewHost();
@@ -65,7 +64,7 @@ public sealed class AnimationFrameBindingTests
         runtime.GetGlobal("__count").AsNumber.Should().Be(3);
     }
 
-    [Fact]
+    [TestMethod]
     public void Non_callable_throws_TypeError()
     {
         var (runtime, _, _) = NewHost();
@@ -74,7 +73,7 @@ public sealed class AnimationFrameBindingTests
             .Which.Value.AsObject.Get("message").AsString.Should().Contain("callable");
     }
 
-    [Fact]
+    [TestMethod]
     public void Errors_in_callback_route_to_console_and_dont_stop_loop()
     {
         var (runtime, loop, errors) = NewHost();

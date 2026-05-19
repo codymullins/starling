@@ -1,13 +1,12 @@
 using System.Text;
 using FluentAssertions;
 using Starling.Net.Http.Cookies;
-using Xunit;
-
 namespace Starling.Net.Tests.Http;
 
+[TestClass]
 public class CookieClientIntegrationTests
 {
-    [Fact]
+    [TestMethod]
     public async Task Cookies_set_by_first_response_are_echoed_on_second_request()
     {
         var receivedCookieHeaders = new List<string>();
@@ -33,7 +32,7 @@ public class CookieClientIntegrationTests
         var jar = new CookieJar();
         using var client = new StarlingHttpClient(new StarlingHttpClientOptions { CookieJar = jar });
 
-        var ct = TestContext.Current.CancellationToken;
+        var ct = CancellationToken.None;
         var url = $"http://localhost:{server.Port}/";
         var first = await client.GetAsync(url, ct);
         first.IsOk.Should().BeTrue();
@@ -47,7 +46,7 @@ public class CookieClientIntegrationTests
         receivedCookieHeaders[1].Should().Contain("session=abc123").And.Contain("lang=en");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task HttpOnly_attribute_is_stored_but_does_not_affect_outgoing_header()
     {
         using var server = await StubHttpServer.StartAsync(_ =>
@@ -63,7 +62,7 @@ public class CookieClientIntegrationTests
         var jar = new CookieJar();
         using var client = new StarlingHttpClient(new StarlingHttpClientOptions { CookieJar = jar });
 
-        var ct = TestContext.Current.CancellationToken;
+        var ct = CancellationToken.None;
         var url = $"http://localhost:{server.Port}/";
         var r = await client.GetAsync(url, ct);
         r.IsOk.Should().BeTrue();

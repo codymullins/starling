@@ -4,6 +4,7 @@ namespace Starling.Css.Spec.Tests.CssVariables1;
 /// <see href="https://www.w3.org/TR/css-variables-1/#defining-variables">CSS Variables L1 §2</see>:
 /// custom-property declaration syntax (<c>--*</c>).
 /// </summary>
+[TestClass]
 [Spec("css-variables-1", "https://www.w3.org/TR/css-variables-1/", section: "2")]
 public sealed class CustomPropertyParsingTests
 {

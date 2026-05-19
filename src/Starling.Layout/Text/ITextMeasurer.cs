@@ -17,8 +17,8 @@ public readonly record struct FontVariation(string Tag, float Value);
 /// The font selection layout needs for measurement: a prioritised family list,
 /// bold/italic flags, and a (possibly empty) set of OpenType variation-axis
 /// settings. Layout doesn't resolve this to a concrete typeface — that's the
-/// paint module's job. The Skia-backed measurer resolves and caches per spec
-/// so each call doesn't re-walk the family list.
+/// paint module's job. The measurer resolves and caches per spec so each call
+/// doesn't re-walk the family list.
 /// <para>
 /// <see cref="Equals(FontSpec?)"/> compares families element-wise so two
 /// instances built from the same cascade compare equal (the default record

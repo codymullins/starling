@@ -1,12 +1,12 @@
 using FluentAssertions;
 using Starling.Css.Values;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("css-values-4", "https://www.w3.org/TR/css-values-4/")]
 
+[TestClass]
 public class CssCalcResolverTests
 {
     private static CssResolutionContext Ctx(double fontSize = 16, double rootFontSize = 16,
@@ -31,7 +31,7 @@ public class CssCalcResolverTests
             PercentageBasisPx = pctBasis,
         };
 
-    [Fact]
+    [TestMethod]
     public void Em_resolves_against_FontSize()
     {
         var l = new CssLength(2, CssLengthUnit.Em);
@@ -39,7 +39,7 @@ public class CssCalcResolverTests
         r.Should().BeOfType<CssLength>().Which.Value.Should().Be(40);
     }
 
-    [Fact]
+    [TestMethod]
     public void Rem_resolves_against_RootFontSize()
     {
         var l = new CssLength(1.5, CssLengthUnit.Rem);
@@ -47,7 +47,7 @@ public class CssCalcResolverTests
         r.Should().BeOfType<CssLength>().Which.Value.Should().Be(27);
     }
 
-    [Fact]
+    [TestMethod]
     public void Lh_resolves_against_LineHeight()
     {
         var l = new CssLength(2, CssLengthUnit.Lh);
@@ -55,7 +55,7 @@ public class CssCalcResolverTests
         r.Should().BeOfType<CssLength>().Which.Value.Should().Be(40);
     }
 
-    [Fact]
+    [TestMethod]
     public void Vh_and_Vw_resolve_against_viewport()
     {
         var ctx = Ctx(vw: 1000, vh: 500);
@@ -65,7 +65,7 @@ public class CssCalcResolverTests
             .Should().BeOfType<CssLength>().Which.Value.Should().Be(500);
     }
 
-    [Fact]
+    [TestMethod]
     public void Svh_lvh_dvh_resolve_independently()
     {
         var ctx = CssResolutionContext.Default with
@@ -82,7 +82,7 @@ public class CssCalcResolverTests
             .Should().BeOfType<CssLength>().Which.Value.Should().Be(700);
     }
 
-    [Fact]
+    [TestMethod]
     public void Cqw_resolves_against_container_width()
     {
         var ctx = Ctx(cw: 400, ch: 200);
@@ -92,7 +92,7 @@ public class CssCalcResolverTests
             .Should().BeOfType<CssLength>().Which.Value.Should().Be(100);
     }
 
-    [Fact]
+    [TestMethod]
     public void Percentage_resolves_against_percentage_basis()
     {
         var pct = new CssPercentage(50);
@@ -100,7 +100,7 @@ public class CssCalcResolverTests
             .Should().BeOfType<CssLength>().Which.Value.Should().Be(200);
     }
 
-    [Fact]
+    [TestMethod]
     public void Calc_100vh_minus_80px_resolves_to_pixels()
     {
         // build calc(100vh - 80px) tree manually
@@ -114,7 +114,7 @@ public class CssCalcResolverTests
         r.Should().BeOfType<CssLength>().Which.Value.Should().Be(720);
     }
 
-    [Fact]
+    [TestMethod]
     public void Calc_with_percentage_resolves_against_basis()
     {
         var tree = new CalcBinary(
@@ -127,7 +127,7 @@ public class CssCalcResolverTests
         r.Should().BeOfType<CssLength>().Which.Value.Should().Be(110);
     }
 
-    [Fact]
+    [TestMethod]
     public void Calc_min_of_mixed_units_resolves()
     {
         var tree = new CalcFunction("min",
@@ -139,7 +139,7 @@ public class CssCalcResolverTests
         r.Should().BeOfType<CssLength>().Which.Value.Should().Be(100);
     }
 
-    [Fact]
+    [TestMethod]
     public void Calc_clamp_of_mixed_units_resolves()
     {
         var tree = new CalcFunction("clamp",
@@ -156,7 +156,7 @@ public class CssCalcResolverTests
         r.Should().BeOfType<CssLength>().Which.Value.Should().Be(48);
     }
 
-    [Fact]
+    [TestMethod]
     public void Calc_nested_with_multiply_resolves()
     {
         // calc(2em + 100% * 0.5)
@@ -174,7 +174,7 @@ public class CssCalcResolverTests
         r.Should().BeOfType<CssLength>().Which.Value.Should().Be(132);
     }
 
-    [Fact]
+    [TestMethod]
     public void Calc_with_absolute_only_passes_through()
     {
         var tree = new CalcBinary(
@@ -187,14 +187,14 @@ public class CssCalcResolverTests
         r.Should().BeOfType<CssLength>().Which.Value.Should().Be(30);
     }
 
-    [Fact]
+    [TestMethod]
     public void Resolve_non_length_value_returns_input()
     {
         var v = new CssNumber(42);
         CssCalcResolver.Resolve(v, CssResolutionContext.Default).Should().BeSameAs(v);
     }
 
-    [Fact]
+    [TestMethod]
     public void Resolve_pixel_length_returns_pixels()
     {
         var v = new CssLength(50, CssLengthUnit.Px);
@@ -203,7 +203,7 @@ public class CssCalcResolverTests
         ((CssLength)r).Unit.Should().Be(CssLengthUnit.Px);
     }
 
-    [Fact]
+    [TestMethod]
     public void Resolve_absolute_unit_converts_to_px()
     {
         var v = new CssLength(1, CssLengthUnit.In);

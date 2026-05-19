@@ -7,15 +7,14 @@ namespace Starling.Common.Image;
 /// exactly <c>Width * 4</c>, no padding.
 /// </summary>
 /// <remarks>
-/// This is the paint/output contract seam: it lets <see cref="object"/>-level
-/// callers (the engine, the headless CLI, golden tests) consume a render
-/// without naming the backend's concrete bitmap type. Either backend
-/// (ImageSharp today, Skia Graphite behind the flag) yields one of these; PNG
-/// encoding still happens via ImageSharp from <see cref="Rgba"/> for now.
+/// This is the paint/output contract seam: it lets callers (the engine, the
+/// headless CLI, golden tests) consume a render without naming the backend's
+/// concrete bitmap type. PNG encoding happens via ImageSharp from
+/// <see cref="Rgba"/>.
 /// <para>
-/// Implements <see cref="IDisposable"/> as a no-op so callers can keep a
-/// uniform <c>using</c> shape across the dual-backend transition; the buffer is
-/// a plain managed array and needs no explicit release.
+/// Implements <see cref="IDisposable"/> as a no-op so callers can use a
+/// uniform <c>using</c> shape; the buffer is a plain managed array and needs
+/// no explicit release.
 /// </para>
 /// </remarks>
 public sealed class RenderedBitmap : IDisposable

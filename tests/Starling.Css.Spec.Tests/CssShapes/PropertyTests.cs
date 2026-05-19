@@ -7,6 +7,7 @@ namespace Starling.Css.Spec.Tests.CssShapes;
 /// <summary>
 /// Property conformance for <see href="https://drafts.csswg.org/css-shapes-1/">CSS Shapes Module Level 1</see>.
 /// </summary>
+[TestClass]
 [Spec("css-shapes", "https://drafts.csswg.org/css-shapes-1/")]
 public sealed class PropertyTests
 {

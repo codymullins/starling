@@ -7,21 +7,21 @@ using Org.BouncyCastle.Tls;
 using Org.BouncyCastle.Tls.Crypto.Impl.BC;
 using Starling.Net.Tcp;
 using Starling.Net.Tls;
-using Xunit;
 using BcCertificate = Org.BouncyCastle.Tls.Certificate;
 using DotNetX509Certificate = System.Security.Cryptography.X509Certificates.X509Certificate2;
 
 namespace Starling.Net.Tests.Tls;
 
+[TestClass]
 public class TlsClientTests
 {
-    [Fact]
+    [TestMethod]
     public void Default_root_store_loads_embedded_ccadb_bundle()
     {
         RootCertificates.Default.Certificates.Count.Should().BeGreaterThan(50);
     }
 
-    [Fact]
+    [TestMethod]
     public void Client_extensions_advertise_sni_and_alpn()
     {
         var options = TlsClientOptions.ForHttps("example.com");
@@ -43,32 +43,32 @@ public class TlsClientTests
         alpn.Should().Equal("h2", "http/1.1");
     }
 
-    [Theory]
-    [InlineData("example.com", "example.com", true)]
-    [InlineData("EXAMPLE.com.", "example.com", true)]
-    [InlineData("*.example.com", "www.example.com", true)]
-    [InlineData("*.example.com", "deep.www.example.com", false)]
-    [InlineData("*.example.com", "example.com", false)]
-    [InlineData("*.*.example.com", "www.example.com", false)]
+    [TestMethod]
+    [DataRow("example.com", "example.com", true)]
+    [DataRow("EXAMPLE.com.", "example.com", true)]
+    [DataRow("*.example.com", "www.example.com", true)]
+    [DataRow("*.example.com", "deep.www.example.com", false)]
+    [DataRow("*.example.com", "example.com", false)]
+    [DataRow("*.*.example.com", "www.example.com", false)]
     public void Dns_name_matching_handles_rfc6125_wildcard_shape(
         string pattern,
         string hostname,
         bool expected) =>
         CertificateHostNameMatcher.MatchDnsName(pattern, hostname).Should().Be(expected);
 
-    [Fact]
+    [TestMethod]
     public async Task Invalid_options_return_error_before_handshake()
     {
         var result = await BcTlsTransport.ConnectAsync(
             new ClosedConnection(),
             new TlsClientOptions("", []),
-            TestContext.Current.CancellationToken);
+            CancellationToken.None);
 
         result.IsErr.Should().BeTrue();
         result.Error.Should().Be(TlsError.InvalidOptions);
     }
 
-    [Fact]
+    [TestMethod]
     public void Untrusted_self_signed_certificate_chain_is_rejected()
     {
         using var rsa = RSA.Create(2048);
@@ -92,15 +92,15 @@ public class TlsClientTests
             .Should().BeFalse();
     }
 
-    [Theory]
-    [InlineData("cloudflare.com")]
-    [InlineData("tls13.akamai.io")]
+    [TestMethod]
+    [DataRow("cloudflare.com")]
+    [DataRow("tls13.akamai.io")]
     public async Task Live_tls13_handshake_when_enabled(string host)
     {
         if (Environment.GetEnvironmentVariable("STARLING_LIVE_TLS_TESTS") != "1")
             return;
 
-        var ct = TestContext.Current.CancellationToken;
+        var ct = CancellationToken.None;
         var addresses = await System.Net.Dns.GetHostAddressesAsync(host, ct);
         var endpoint = new IPEndPoint(addresses.First(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork), 443);
         var dialer = new TcpDialer(new Starling.Net.Dns.DnsResolver(new NoopDnsTransport()))

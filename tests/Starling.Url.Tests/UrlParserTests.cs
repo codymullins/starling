@@ -1,13 +1,12 @@
 using FluentAssertions;
-using Xunit;
-
 namespace Starling.Url.Tests;
 
+[TestClass]
 public class UrlParserTests
 {
     // ----- M0 baseline (still expected to work) ---------------------------
 
-    [Fact]
+    [TestMethod]
     public void Parses_file_url_with_absolute_path()
     {
         var r = UrlParser.Parse("file:///tmp/hello.html");
@@ -19,7 +18,7 @@ public class UrlParserTests
         u.IsFile.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Parses_https_url_with_default_port()
     {
         var r = UrlParser.Parse("https://example.com/foo?bar=1#frag");
@@ -33,7 +32,7 @@ public class UrlParserTests
         u.Fragment.Should().Be("frag");
     }
 
-    [Fact]
+    [TestMethod]
     public void Parses_http_url_with_explicit_port()
     {
         var r = UrlParser.Parse("http://localhost:8080/api");
@@ -42,11 +41,11 @@ public class UrlParserTests
         r.Value.Host.Should().Be("localhost");
     }
 
-    [Fact]
+    [TestMethod]
     public void Rejects_empty_input()
         => UrlParser.Parse("").IsErr.Should().BeTrue();
 
-    [Fact]
+    [TestMethod]
     public void File_url_to_filesystem_path_strips_authority()
     {
         var u = UrlParser.Parse("file:///etc/hosts").Value;
@@ -55,32 +54,32 @@ public class UrlParserTests
 
     // ----- M2-01a: WHATWG-faithful behaviors ------------------------------
 
-    [Fact]
+    [TestMethod]
     public void Scheme_is_lowercased()
     {
         UrlParser.Parse("HTTPS://Example.COM/").Value.Scheme.Should().Be("https");
     }
 
-    [Fact]
+    [TestMethod]
     public void Host_is_lowercased_for_special_schemes()
     {
         UrlParser.Parse("https://Example.COM/").Value.Host.Should().Be("example.com");
     }
 
-    [Fact]
+    [TestMethod]
     public void Default_port_collapses_to_null()
     {
         // :443 on https is the default and should not be retained.
         UrlParser.Parse("https://example.com:443/").Value.Port.Should().BeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Non_default_port_is_retained()
     {
         UrlParser.Parse("https://example.com:8443/").Value.Port.Should().Be(8443);
     }
 
-    [Fact]
+    [TestMethod]
     public void Ftp_is_now_a_recognized_special_scheme()
     {
         // M0 rejected ftp; M2 accepts it as special.
@@ -91,13 +90,13 @@ public class UrlParserTests
         r.Value.DefaultPort.Should().Be(21);
     }
 
-    [Fact]
+    [TestMethod]
     public void Websocket_is_a_recognized_special_scheme()
     {
         UrlParser.Parse("wss://example.com/socket").Value.Scheme.Should().Be("wss");
     }
 
-    [Fact]
+    [TestMethod]
     public void Userinfo_is_parsed()
     {
         var u = UrlParser.Parse("https://alice:secret@example.com/dashboard").Value;
@@ -107,7 +106,7 @@ public class UrlParserTests
         u.Path.Should().Be("/dashboard");
     }
 
-    [Fact]
+    [TestMethod]
     public void Userinfo_username_only()
     {
         var u = UrlParser.Parse("https://alice@example.com/").Value;
@@ -115,35 +114,35 @@ public class UrlParserTests
         u.Password.Should().BeNull();
     }
 
-    [Fact]
+    [TestMethod]
     public void Path_dot_segments_are_normalized()
     {
         var u = UrlParser.Parse("https://example.com/a/b/../c/./d").Value;
         u.Path.Should().Be("/a/c/d");
     }
 
-    [Fact]
+    [TestMethod]
     public void Double_dot_above_root_clamps_at_root()
     {
         var u = UrlParser.Parse("https://example.com/../../../foo").Value;
         u.Path.Should().Be("/foo");
     }
 
-    [Fact]
+    [TestMethod]
     public void Path_percent_encodes_spaces_and_specials()
     {
         var u = UrlParser.Parse("https://example.com/hello world").Value;
         u.Path.Should().Be("/hello%20world");
     }
 
-    [Fact]
+    [TestMethod]
     public void Query_percent_encodes_spaces()
     {
         var u = UrlParser.Parse("https://example.com/?q=hello world").Value;
         u.Query.Should().Be("q=hello%20world");
     }
 
-    [Fact]
+    [TestMethod]
     public void Fragment_separated_at_hash()
     {
         var u = UrlParser.Parse("https://example.com/x#frag ment").Value;
@@ -151,7 +150,7 @@ public class UrlParserTests
         u.Fragment.Should().Be("frag%20ment");
     }
 
-    [Fact]
+    [TestMethod]
     public void IPv4_octal_form_is_canonicalized()
     {
         // 0177 = 127 (octal), 0.0.1 = 0.0.1
@@ -159,14 +158,14 @@ public class UrlParserTests
         u.Host.Should().Be("127.0.0.1");
     }
 
-    [Fact]
+    [TestMethod]
     public void IPv4_hex_form_is_canonicalized()
     {
         var u = UrlParser.Parse("http://0x7F.0.0.1/").Value;
         u.Host.Should().Be("127.0.0.1");
     }
 
-    [Fact]
+    [TestMethod]
     public void IPv4_single_number_form_is_canonicalized()
     {
         // 2130706433 = 127.0.0.1 as a single 32-bit number
@@ -174,7 +173,7 @@ public class UrlParserTests
         u.Host.Should().Be("127.0.0.1");
     }
 
-    [Fact]
+    [TestMethod]
     public void Non_special_scheme_with_opaque_path()
     {
         var u = UrlParser.Parse("mailto:alice@example.com").Value;
@@ -185,14 +184,14 @@ public class UrlParserTests
         u.Path.Should().Be("alice@example.com");
     }
 
-    [Fact]
+    [TestMethod]
     public void Backslash_in_special_scheme_acts_as_slash()
     {
         var u = UrlParser.Parse("http://example.com\\foo\\bar").Value;
         u.Path.Should().Be("/foo/bar");
     }
 
-    [Fact]
+    [TestMethod]
     public void File_with_localhost_host_collapses_to_null()
     {
         var u = UrlParser.Parse("file://localhost/etc/hosts").Value;
@@ -200,7 +199,7 @@ public class UrlParserTests
         u.ToFileSystemPath().Should().Be("/etc/hosts");
     }
 
-    [Fact]
+    [TestMethod]
     public void Extra_slashes_after_special_scheme_are_ignored()
     {
         // Per WHATWG §4.4.1 special-authority-ignore-slashes, `http:///foo`
@@ -210,13 +209,13 @@ public class UrlParserTests
         u.Host.Should().Be("foo");
     }
 
-    [Fact]
+    [TestMethod]
     public void Invalid_port_returns_error()
     {
         UrlParser.Parse("http://example.com:99999/").IsErr.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Tabs_and_newlines_are_stripped_before_parsing()
     {
         var u = UrlParser.Parse("https://exam\tple.com/fo\no").Value;
@@ -224,7 +223,7 @@ public class UrlParserTests
         u.Path.Should().Be("/foo");
     }
 
-    [Fact]
+    [TestMethod]
     public void ToString_round_trips_for_normalized_urls()
     {
         UrlParser.Parse("https://example.com/foo?bar#baz").Value.ToString()
@@ -233,7 +232,7 @@ public class UrlParserTests
             .Should().Be("https://alice:secret@example.com/");
     }
 
-    [Fact]
+    [TestMethod]
     public void Relative_filename_resolves_against_file_base()
     {
         var baseUrl = UrlParser.Parse("file:///tmp/pages/page.html").Value;
@@ -242,7 +241,7 @@ public class UrlParserTests
         u.Path.Should().Be("/tmp/pages/swatch.png");
     }
 
-    [Fact]
+    [TestMethod]
     public void Relative_filename_resolves_against_https_base()
     {
         var baseUrl = UrlParser.Parse("https://example.com/dir/index.html").Value;
@@ -252,7 +251,7 @@ public class UrlParserTests
         u.Path.Should().Be("/dir/logo.png");
     }
 
-    [Fact]
+    [TestMethod]
     public void Absolute_path_resolves_against_base_host()
     {
         var baseUrl = UrlParser.Parse("https://example.com/dir/index.html").Value;

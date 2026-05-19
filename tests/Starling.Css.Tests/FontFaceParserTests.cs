@@ -1,16 +1,16 @@
 using FluentAssertions;
 using Starling.Css.FontFace;
 using Starling.Css.Parser;
-using Xunit;
 using Starling.Spec;
 
 namespace Starling.Css.Tests;
 
 [Spec("css-fonts-4", "https://www.w3.org/TR/css-fonts-4/")]
 
+[TestClass]
 public sealed class FontFaceParserTests
 {
-    [Fact]
+    [TestMethod]
     public void Parses_quoted_family_and_url_source()
     {
         var sheet = CssParser.ParseStyleSheet("""
@@ -30,7 +30,7 @@ public sealed class FontFaceParserTests
             .Which.Url.Should().Be("OpenSans.ttf");
     }
 
-    [Fact]
+    [TestMethod]
     public void Picks_up_weight_and_style_descriptors()
     {
         var sheet = CssParser.ParseStyleSheet("""
@@ -47,7 +47,7 @@ public sealed class FontFaceParserTests
         rule.Italic.Should().BeTrue();
     }
 
-    [Fact]
+    [TestMethod]
     public void Parses_multiple_src_entries_in_order()
     {
         var sheet = CssParser.ParseStyleSheet("""
@@ -63,7 +63,7 @@ public sealed class FontFaceParserTests
         rule.Sources[1].Should().BeOfType<UrlFontSource>().Which.Url.Should().Be("foo.ttf");
     }
 
-    [Fact]
+    [TestMethod]
     public void Drops_rule_missing_family_or_src()
     {
         var sheet = CssParser.ParseStyleSheet("""
@@ -74,7 +74,7 @@ public sealed class FontFaceParserTests
         FontFaceParser.ParseAll(sheet).Should().BeEmpty();
     }
 
-    [Fact]
+    [TestMethod]
     public void Accepts_unquoted_multi_word_family_name()
     {
         var sheet = CssParser.ParseStyleSheet("""
