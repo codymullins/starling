@@ -1,6 +1,7 @@
 using Tessera.Css.Properties;
 using Tessera.Css.Values;
 using Tessera.Layout.Box;
+using Tessera.Layout.Text;
 using DomElement = Tessera.Dom.Element;
 using DomNode = Tessera.Dom.Node;
 
@@ -22,9 +23,15 @@ namespace Tessera.Gui;
 /// </remarks>
 public static class BoxHitTester
 {
-    /// <summary>A text fragment with its absolute (document-space) rectangle.</summary>
+    /// <summary>
+    /// A text fragment with its absolute (document-space) rectangle. The
+    /// optional <see cref="Shaped"/> carries the glyph-level pen positions
+    /// produced at layout time so the selection model can map a pointer X
+    /// onto a character offset inside the fragment without re-shaping.
+    /// </summary>
     public readonly record struct PlacedFragment(
-        double X, double Y, double Width, double Height, string Text);
+        double X, double Y, double Width, double Height, string Text,
+        ShapedRun? Shaped = null);
 
     /// <summary>The result of hit-testing a point against the box tree.</summary>
     /// <param name="Box">The innermost box containing the point, if any.</param>
@@ -204,7 +211,7 @@ public static class BoxHitTester
             {
                 if (frag.Width <= 0) continue;
                 sink.Add(new PlacedFragment(
-                    frameX + frag.X, frameY + frag.Y, frag.Width, frag.Height, frag.Text));
+                    frameX + frag.X, frameY + frag.Y, frag.Width, frag.Height, frag.Text, frag.Shaped));
             }
             return;
         }

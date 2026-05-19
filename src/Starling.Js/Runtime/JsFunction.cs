@@ -48,6 +48,45 @@ public sealed class JsFunction : JsObject
         Upvalues = upvalues ?? throw new ArgumentNullException(nameof(upvalues));
     }
 
+    /// <summary>B2-2: build a runtime-ready function instance from a compile-time
+    /// template. Wires <c>[[Prototype]] = realm.FunctionPrototype</c> so the
+    /// new function inherits <c>call</c>/<c>apply</c>/<c>bind</c>, then stamps
+    /// the standard own properties:
+    /// <list type="bullet">
+    ///   <item><c>name</c> — declared name (or "" for anonymous).</item>
+    ///   <item><c>length</c> — declared positional arity.</item>
+    ///   <item><c>prototype</c> — fresh <c>{ constructor: thisFn }</c> object
+    ///   inheriting from <see cref="JsRealm.ObjectPrototype"/>, used by
+    ///   <c>new</c> as the new-target prototype per §10.2.4.</item>
+    /// </list>
+    /// The template object in the constant pool is never itself returned to
+    /// JS — every <c>LoadFunction</c>/<c>MakeClosure</c> dispatch produces a
+    /// fresh instance via this helper.</summary>
+    public static JsFunction CreateInstance(
+        JsRealm realm, JsFunction template, IReadOnlyList<JsValue> upvalues)
+    {
+        ArgumentNullException.ThrowIfNull(realm);
+        ArgumentNullException.ThrowIfNull(template);
+        var fn = new JsFunction(template.Name, template.Body, template.ArityDeclared, upvalues);
+        fn.SetPrototypeOf(realm.FunctionPrototype);
+
+        // §10.2.4 — the function's own `prototype` slot holds the object that
+        // `new f()` uses as the new-target prototype. Spec descriptor is
+        // writable=true, enumerable=false, configurable=false.
+        var protoObj = new JsObject(realm.ObjectPrototype);
+        protoObj.DefineOwnProperty("constructor",
+            PropertyDescriptor.Data(JsValue.Object(fn), writable: true, enumerable: false, configurable: true));
+        fn.DefineOwnProperty("prototype",
+            PropertyDescriptor.Data(JsValue.Object(protoObj), writable: true, enumerable: false, configurable: false));
+
+        // `name` and `length` are non-enumerable, non-writable, configurable per §17.
+        fn.DefineOwnProperty("name",
+            PropertyDescriptor.Data(JsValue.String(template.Name), writable: false, enumerable: false, configurable: true));
+        fn.DefineOwnProperty("length",
+            PropertyDescriptor.Data(JsValue.Number(template.ArityDeclared), writable: false, enumerable: false, configurable: true));
+        return fn;
+    }
+
     public override string ToString()
         => $"function {Name}({ArityDeclared}) {{ [bytecode] }}";
 }

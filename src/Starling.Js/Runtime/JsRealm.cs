@@ -34,10 +34,22 @@ public sealed class JsRealm
     // pass (B2-*). Nullable until populated; consumers should null-check or
     // install order their dependencies.
     public JsObject? ObjectConstructor { get; internal set; }
+    public JsObject? FunctionConstructor { get; internal set; }
     public JsObject? StringConstructor { get; internal set; }
     public JsObject? NumberConstructor { get; internal set; }
     public JsObject? BooleanConstructor { get; internal set; }
     public JsObject? SymbolConstructor { get; internal set; }
+
+    // B3-4: Promise constructor + the host-agnostic microtask queue used by
+    // its reaction jobs. The MicrotaskQueue is allocated unconditionally so
+    // Promise install can schedule reactions even before a host scheduler
+    // hooks in.
+    public JsObject? PromiseConstructor { get; internal set; }
+
+    /// <summary>HTML §8.1.5.1 microtask queue. Owns the in-process FIFO used
+    /// by Promise reactions; the host may swap in a real loop scheduler via
+    /// <see cref="JsRuntime.SetMicrotaskScheduler"/>.</summary>
+    public MicrotaskQueue Microtasks { get; } = new();
     public JsObject ArrayPrototype { get; internal set; }
     public JsObject StringPrototype { get; internal set; }
     public JsObject NumberPrototype { get; internal set; }
@@ -157,6 +169,28 @@ public sealed class JsRealm
     public JsValue NewReferenceError(string message) => NewError(ReferenceErrorPrototype, message);
     public JsValue NewSyntaxError(string message) => NewError(SyntaxErrorPrototype, message);
     public JsValue NewUriError(string message) => NewError(UriErrorPrototype, message);
+    public JsValue NewEvalError(string message) => NewError(EvalErrorPrototype, message);
+    public JsValue NewAggregateError(string message) => NewError(AggregateErrorPrototype, message);
+
+    /// <summary>Construct an Error-like object that also carries a <c>cause</c>
+    /// own slot per §20.5.1.1. Used by host-side throws that want to surface a
+    /// wrapped exception or other JS value.</summary>
+    public JsValue NewError(JsObject errorPrototype, string message, JsValue cause)
+    {
+        var err = new JsObject(errorPrototype);
+        err.DefineOwnProperty("message",
+            PropertyDescriptor.Data(JsValue.String(message), writable: true, enumerable: false, configurable: true));
+        err.DefineOwnProperty("cause",
+            PropertyDescriptor.Data(cause, writable: true, enumerable: false, configurable: true));
+        return JsValue.Object(err);
+    }
+
+    public JsValue NewTypeError(string message, JsValue cause) => NewError(TypeErrorPrototype, message, cause);
+    public JsValue NewRangeError(string message, JsValue cause) => NewError(RangeErrorPrototype, message, cause);
+    public JsValue NewReferenceError(string message, JsValue cause) => NewError(ReferenceErrorPrototype, message, cause);
+    public JsValue NewSyntaxError(string message, JsValue cause) => NewError(SyntaxErrorPrototype, message, cause);
+    public JsValue NewUriError(string message, JsValue cause) => NewError(UriErrorPrototype, message, cause);
+    public JsValue NewEvalError(string message, JsValue cause) => NewError(EvalErrorPrototype, message, cause);
 
     /// <summary>§7.1.18 boxing for primitives. Placeholder: returns a wrapper
     /// object whose [[Prototype]] is the matching <c>*Prototype</c> and which

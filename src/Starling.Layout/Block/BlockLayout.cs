@@ -68,9 +68,26 @@ internal sealed class BlockLayout
         var first = true;
         foreach (var child in parent.Children)
         {
+            // CSS 2.1 §9.3.1: `position: absolute` and `position: fixed`
+            // remove the element from normal flow. We skip them here so the
+            // cursor doesn't advance — they're placed in a second pass by
+            // PositionLayout. The child's Frame is left at default (zero)
+            // until that pass writes it.
+            if (IsOutOfFlow(child.Style))
+                continue;
+
             LayoutBlock(child, containerWidth, ref cursorY, ref prevBottomMargin, ref first, measure);
         }
         return cursorY;
+    }
+
+    private static bool IsOutOfFlow(ComputedStyle? style)
+    {
+        if (style is null) return false;
+        if (style.Get(PropertyId.Position) is not CssKeyword k) return false;
+        var name = k.Name;
+        return string.Equals(name, "absolute", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(name, "fixed", StringComparison.OrdinalIgnoreCase);
     }
 
     private void LayoutBlock(Box.Box child, double containerWidth, ref double cursorY, ref double prevBottomMargin, ref bool first, bool measure = false)
@@ -108,9 +125,21 @@ internal sealed class BlockLayout
         // handled by ResolveBoxModel).
         ResolveAutoHorizontalMargins(child, containerWidth, width);
 
-        var childContentHeight = LayoutChildren(child, width, measure);
-
+        // Flex container: hand off to the flex formatting context. Flex sizes
+        // its items inside the container's content box; the result replaces
+        // what block stacking would have produced.
         var explicitHeight = ResolveLength(child.Style, PropertyId.Height, _viewport.Height, _viewport, allowAuto: true);
+        double childContentHeight;
+        if (IsFlexContainer(child.Style))
+        {
+            var flex = new Tessera.Layout.Flex.FlexLayout(this, _viewport);
+            childContentHeight = flex.Layout(child, width, explicitHeight);
+        }
+        else
+        {
+            childContentHeight = LayoutChildren(child, width, measure);
+        }
+
         var resolvedHeight = explicitHeight ?? childContentHeight;
         var fullHeight = resolvedHeight + child.Padding.Vertical + child.Border.Vertical;
 
@@ -188,6 +217,14 @@ internal sealed class BlockLayout
 
     private static bool IsAutoMargin(ComputedStyle? style, PropertyId property)
         => style is not null && style.Get(property) is CssKeyword k && k.Name == "auto";
+
+    internal static bool IsFlexContainer(ComputedStyle? style)
+    {
+        if (style is null) return false;
+        if (style.Get(PropertyId.Display) is not CssKeyword k) return false;
+        return k.Name.Equals("flex", StringComparison.OrdinalIgnoreCase)
+            || k.Name.Equals("inline-flex", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static bool HasExplicitWidth(ComputedStyle? style)
     {

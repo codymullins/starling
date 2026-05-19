@@ -38,6 +38,8 @@ public sealed class JsRuntime
     {
         Realm = new JsRealm();
         ObjectCtor.Install(Realm);
+        FunctionCtor.Install(Realm); // B2-2 — single-line region so the B3-4 merge stays trivial.
+        ErrorCtor.Install(Realm);
         StringCtor.Install(Realm);
         NumberCtor.Install(Realm);
         BooleanCtor.Install(Realm);
@@ -49,11 +51,25 @@ public sealed class JsRuntime
         DataViewCtor.Install(Realm);
         TypedArrayCtors.Install(Realm);
         ConsoleObj.Install(Realm);
+        PromiseCtor.Install(Realm); // B3-4 — depends on Object/Function/Error protos.
         Global.Set("globalThis", JsValue.Object(Global));
         Global.Set("undefined", JsValue.Undefined);
         Global.Set("NaN", JsValue.NaN);
         Global.Set("Infinity", JsValue.Number(double.PositiveInfinity));
+
+        // Route uncaught microtask exceptions through the console sink so
+        // they don't crash the embedder. The full unhandledrejection event
+        // pipe lands with B5-1.
+        Realm.Microtasks.UncaughtHandler = ex =>
+            Realm.ConsoleSink(ConsoleLevel.Error, $"Uncaught (in promise) {ex.Message}");
     }
+
+    /// <summary>Drain any queued microtasks against the realm. Called
+    /// automatically at the bottom of every top-level
+    /// <see cref="JsVm.Run(Tessera.Js.Bytecode.Chunk)"/>; embedders running
+    /// scripts via a custom path can invoke this explicitly. No-op when a
+    /// host scheduler is installed — the host pumps its own loop.</summary>
+    public void DrainMicrotasks() => Realm.Microtasks.DrainAll();
 
     /// <summary>Register a host-side function as a global named <paramref name="name"/>.</summary>
     public void RegisterGlobal(string name, Func<JsValue[], JsValue> body)
@@ -65,6 +81,14 @@ public sealed class JsRuntime
 
     /// <summary>Set or replace a global value (variable or object).</summary>
     public void SetGlobal(string name, JsValue value) => Global.Set(name, value);
+
+    /// <summary>Bridge a host's microtask scheduler (e.g. the renderer's
+    /// <c>WebEventLoop</c>) into the realm. Pass <c>null</c> to revert to the
+    /// internal drain. Thin convenience wrapper around
+    /// <see cref="MicrotaskQueue.SetHostScheduler"/> so hosts don't need to
+    /// reach through the realm.</summary>
+    public void SetMicrotaskScheduler(Action<Action>? scheduler)
+        => Realm.Microtasks.SetHostScheduler(scheduler);
 
     /// <summary>Look up a global. Returns Undefined if absent.</summary>
     public JsValue GetGlobal(string name) => Global.Get(name);

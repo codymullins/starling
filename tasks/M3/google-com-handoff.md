@@ -58,7 +58,11 @@ blocker; defer to M6 wp:M3-09.
 | B2-8 — JSON intrinsic | ✅ | `src/Starling.Js/Intrinsics/JsonObj.cs`, `tests/Starling.Js.Tests/Intrinsics/JsonTests.cs`, `src/Starling.Js/Runtime/{JsRealm,JsVm}.cs` (+`ActiveVm` + reentrancy-safe Run wrapper) |
 | B2-9 — console | ✅ | `src/Starling.Js/Intrinsics/ConsoleObj.cs`, `src/Starling.Js/Runtime/{ConsoleSink,JsRealm,JsRuntime}.cs`, `tests/Starling.Js.Tests/Intrinsics/ConsoleTests.cs` |
 | B4-5 — TypedArray/ArrayBuffer/DataView | ✅ | `src/Starling.Js/Intrinsics/{ArrayBufferCtor,DataViewCtor,TypedArrayCtors}.cs`, `src/Starling.Js/Runtime/{JsArrayBuffer,JsTypedArray}.cs`, `tests/Starling.Js.Tests/Intrinsics/TypedArrayTests.cs` |
+| B2-2 — Function intrinsic | ✅ | `src/Starling.Js/Intrinsics/FunctionCtor.cs`, `tests/Starling.Js.Tests/Intrinsics/FunctionTests.cs`, `src/Starling.Js/Runtime/{JsObject,JsFunction,JsBoundFunction,JsVm,JsRealm}.cs`, `src/Starling.Js/Bytecode/JsCompiler.cs` (anon name = ""), `src/Starling.Js/Intrinsics/ObjectCtor.cs` (DefineMethod realm threading) |
+| B2-3 — Error hierarchy | ✅ | `src/Starling.Js/Intrinsics/ErrorCtor.cs`, `tests/Starling.Js.Tests/Intrinsics/ErrorTests.cs`, `src/Starling.Js/Runtime/JsRealm.cs` (+NewEvalError/NewAggregateError + cause overloads) |
+| B3-4 — Promise + microtasks | ✅ | `src/Starling.Js/Runtime/{MicrotaskQueue,JsPromise,JsRealm,JsRuntime,JsVm}.cs`, `src/Starling.Js/Intrinsics/PromiseCtor.cs`, `tests/Starling.Js.Tests/Intrinsics/PromiseTests.cs` |
 | B6-1 — Flex layout | ✅ | `src/Starling.Layout/Flex/{FlexProperties,FlexParser,FlexLayout}.cs`, `src/Starling.Layout/Block/BlockLayout.cs` (dispatch), `tests/Starling.Layout.Tests/Flex/FlexLayoutTests.cs` |
+| B6-2 — absolute/fixed positioning | ✅ | `src/Starling.Layout/Position/{PositionProperties,PositionParser,PositionLayout}.cs`, `src/Starling.Layout/{Block/BlockLayout,LayoutEngine}.cs`, `tests/Starling.Layout.Tests/Position/PositionLayoutTests.cs` |
 
 ### B0 surface delivered
 
@@ -117,10 +121,10 @@ session. Other rows in the queue are free for other agents/sessions.
 | **B2-5** String prototype | claude-cody (agent, lane-C-1) | complete (2026-05-19) |
 | **B2-6** Number/Boolean/globals | claude-cody (agent, lane-C-2) | complete (2026-05-19) |
 | **B2-9** console | claude-cody (agent, lane-C-3) | complete (2026-05-18) |
-| **B2-2** Function intrinsic | claude-cody (agent) | in progress (2026-05-18) |
-| **B2-3** Error hierarchy | claude-cody (agent) | in progress (2026-05-18) |
-| **B3-4** Promise + microtasks | claude-cody (agent) | in progress (2026-05-18) |
-| **B6-2** position: absolute / fixed | claude-cody (agent) | in progress (2026-05-18) |
+| **B2-2** Function intrinsic | claude-cody (agent) | complete (2026-05-18) |
+| **B2-3** Error hierarchy | claude-cody (agent) | complete (2026-05-18) |
+| **B3-4** Promise + microtasks | claude-cody (agent) | complete (2026-05-18) |
+| **B6-2** position: absolute / fixed | claude-cody (agent) | complete (2026-05-18) |
 | **B1b-2b** Destructuring | claude-cody (agent, lane-A) | complete (2026-05-19) |
 | **B3-1** Symbol + well-known symbols | claude-cody (agent, lane-D) | in progress (2026-05-18) |
 | **B4-5** TypedArray/ArrayBuffer/DataView | claude-cody (agent, lane-E) | complete (2026-05-19) |
@@ -138,6 +142,7 @@ depends on the earlier's surface).
 | **B1b-2c** | Async / await + generators (state-machine bytecode + new opcodes) | **lane A** | B3 (Promise + microtasks) | `src/Starling.Js/{Bytecode/Opcode.cs,Runtime/JsVm.cs}` + new `JsGenerator.cs` |
 | **B2-1** | `Object` intrinsic (ctor + statics + prototype) | **lane B** | B0 | `src/Starling.Js/Intrinsics/ObjectCtor.cs` (new), `tests/Starling.Js.Tests/Intrinsics/ObjectTests.cs` (new) |
 | **B2-2** | `Function` intrinsic + `call`/`apply`/`bind` | **lane B** | B0 | `src/Starling.Js/Intrinsics/FunctionCtor.cs` |
+| **B2-2-followup** | Migrate remaining intrinsics to realm-aware `JsNativeFunction(realm, name, length, body, isConstructor)` so their methods inherit `Function.prototype` (today `Math.max.bind(...)` etc. is `undefined`). Mechanical sweep — pattern matches `ObjectCtor` migration in B2-2. **Files:** `Intrinsics/{StringCtor,NumberCtor,BooleanCtor,MathObj,JsonObj,ConsoleObj,Globals}.cs`, `Runtime/JsRuntime.cs` (`RegisterGlobal` overloads). Add a regression test asserting `Math.max.bind(null, 1) instanceof Function` and `typeof JSON.stringify.call === 'function'`. | **lane B** | B2-2 | (see Files) |
 | **B2-3** | `Error` hierarchy (Error, TypeError, RangeError, ReferenceError, SyntaxError, URIError, EvalError, AggregateError) | **lane B** | B0 | `src/Starling.Js/Intrinsics/ErrorCtor.cs` |
 | **B2-4** | `Array` intrinsic + full prototype (incl. immutable `toReversed`/`toSorted`/`toSpliced`/`with`) — uses dense `JsArray : JsObject` | **lane B** | B2-1, B2-2 | `src/Starling.Js/Intrinsics/ArrayCtor.cs`, `src/Starling.Js/Runtime/JsArray.cs` (new) |
 | **B2-5** | `String` prototype (excl. RegExp paths; those land in B4-1) | **lane C** | B2-1 | `src/Starling.Js/Intrinsics/StringCtor.cs` |
@@ -149,6 +154,9 @@ depends on the earlier's surface).
 | **B3-2** | Iterator protocol + `for…of` retargeted to `@@iterator → .next`; Array/String iterators | **lane D** | B3-1, B2-4, B2-5 | `src/Starling.Js/{Bytecode/JsCompiler.cs,Intrinsics/*Iterator*.cs}` |
 | **B3-3** | `Map` / `Set` (ordered-insertion) + `WeakMap`/`WeakSet` (`ConditionalWeakTable`-backed) | **lane D** | B3-2 | `src/Starling.Js/Intrinsics/{MapCtor,SetCtor,WeakMapCtor,WeakSetCtor}.cs` |
 | **B3-4** | `Promise` + `MicrotaskQueue` (wire through `WebEventLoop`) | **lane D** | B0 | `src/Starling.Js/Runtime/MicrotaskQueue.cs` (new), `src/Starling.Js/Intrinsics/PromiseCtor.cs` |
+| **B3-4-followup-a** | Parser fix — accept reserved words as member identifiers in MemberExpression (`p.catch`, `obj.finally`, `x.default`, `o.class`, etc.). Today these only work via bracket form (`p["catch"]`), which breaks every real-world promise chain. Per ES §13.3.2: any `IdentifierName` (including reserved words) is valid after `.`. Pin a test that `Promise.resolve(1).catch(e => 2).then(v => v)` parses + evaluates. **Files:** `src/Starling.Js/Parse/JsParser.cs` (MemberExpression parser), `tests/Starling.Js.Tests/Parse/*` or `Intrinsics/PromiseTests.cs` (rewrite the bracket-form workarounds to dot form). | **lane A** | (none) | `src/Starling.Js/Parse/JsParser.cs` |
+| **B3-4-followup-b** | Swap `Promise.any`'s ad-hoc aggregate-error object for `realm.NewAggregateError(reasons, "All promises were rejected")`. 5-line change in `PromiseCtor.cs`'s `PerformPromiseAny` rejection branch. B2-3 is done so the helper exists. Pin a test that `Promise.any([Promise.reject(1), Promise.reject(2)]).catch(e => e instanceof AggregateError)` is true. | **lane D** | B2-3 (done), B3-4 (done) | `src/Starling.Js/Intrinsics/PromiseCtor.cs` |
+| **B3-4-followup-c** | `unhandledrejection` / `rejectionhandled` events — surface uncaught microtask exceptions as DOM events on `Window` instead of the current `ConsoleSink` route. Spec: §27.2.5 PromiseRejectionEvent. Tracked via `MicrotaskQueue.UncaughtHandler` (currently a `Console` writer). Roll into **B5-1** (Window/EventTarget) since the event surface lives there — but pin a TODO comment in `PromiseCtor.cs` so the B5-1 agent picks it up. | **lane F** | B5-1, B3-4 (done) | `src/Starling.Bindings/WindowBinding.cs` (when it lands), `src/Starling.Js/Runtime/MicrotaskQueue.cs` |
 | **B4-1** | `RegExp` — parser → Thompson NFA → Pike VM, full ES2024 grammar incl. unicode escapes; back-fill `String.prototype.{match,matchAll,replace,replaceAll,search,split}` | **lane E** | B2-5 | `src/Starling.Js/RegExp/*` (new subtree) + `src/Starling.Js/Intrinsics/RegExpCtor.cs` |
 | **B4-2** | `Date` — invariant locale | **lane E** | B0 | `src/Starling.Js/Intrinsics/DateCtor.cs` |
 | **B4-3** | `BigInt` (full operator set + `asIntN`/`asUintN`) | **lane E** | B2-6 | `src/Starling.Js/Intrinsics/BigIntCtor.cs` + `JsValue` BigInt arithmetic |

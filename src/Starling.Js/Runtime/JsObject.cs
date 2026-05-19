@@ -223,11 +223,28 @@ public class JsObject
 /// via <c>new</c> (defaults to true so intrinsic constructors like
 /// <c>new Array</c> work).
 /// </summary>
+/// <remarks>
+/// <para><b>Prototype chain (B2-2):</b> when constructed with a non-null
+/// <c>realm</c>, the function's <c>[[Prototype]]</c> is set to
+/// <see cref="JsRealm.FunctionPrototype"/> so it inherits <c>call</c>,
+/// <c>apply</c>, <c>bind</c>, and <c>toString</c>. Pass the realm in
+/// whenever the call site has one in scope (every <c>Install(realm)</c>
+/// intrinsic does). Legacy call sites that pass no realm produce a
+/// function whose prototype chain is empty; that's tolerated for now but
+/// will silently break <c>fn.call(...)</c> against the resulting instance,
+/// so prefer the realm-aware overload for new code.</para>
+/// </remarks>
 public sealed class JsNativeFunction : JsObject
 {
     public string Name { get; }
     public Func<JsValue, JsValue[], JsValue> Body { get; }
     public bool IsConstructor { get; }
+
+    /// <summary>Declared <c>length</c> (declared positional arity). Mirrored
+    /// as an own non-enumerable property when set via the realm-aware
+    /// constructor; intrinsics that build descriptors by hand may also stamp
+    /// it directly via DefineOwnProperty.</summary>
+    public int Length { get; }
 
     /// <summary>Construct with a (thisValue, args) callable.</summary>
     public JsNativeFunction(string name, Func<JsValue, JsValue[], JsValue> body, bool isConstructor = true)
@@ -235,6 +252,26 @@ public sealed class JsNativeFunction : JsObject
         Name = name ?? throw new ArgumentNullException(nameof(name));
         Body = body ?? throw new ArgumentNullException(nameof(body));
         IsConstructor = isConstructor;
+        Length = 0;
+    }
+
+    /// <summary>Realm-aware constructor — wires
+    /// <c>[[Prototype]] = realm.FunctionPrototype</c> and stamps
+    /// own <c>name</c> + <c>length</c> data properties (W=false, E=false,
+    /// C=true per §17 builtin function defaults). Prefer this overload when
+    /// the realm is in scope.</summary>
+    public JsNativeFunction(JsRealm realm, string name, int length, Func<JsValue, JsValue[], JsValue> body, bool isConstructor = false)
+        : base(realm?.FunctionPrototype)
+    {
+        ArgumentNullException.ThrowIfNull(realm);
+        Name = name ?? throw new ArgumentNullException(nameof(name));
+        Body = body ?? throw new ArgumentNullException(nameof(body));
+        IsConstructor = isConstructor;
+        Length = length;
+        DefineOwnProperty("name",
+            PropertyDescriptor.Data(JsValue.String(name), writable: false, enumerable: false, configurable: true));
+        DefineOwnProperty("length",
+            PropertyDescriptor.Data(JsValue.Number(length), writable: false, enumerable: false, configurable: true));
     }
 
     /// <summary>Convenience overload for legacy (args-only) host functions.</summary>

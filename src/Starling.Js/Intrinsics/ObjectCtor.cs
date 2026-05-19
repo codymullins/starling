@@ -17,7 +17,7 @@ namespace Tessera.Js.Intrinsics;
 /// </para>
 /// <para>
 /// Strict-throw on write to non-writable properties is not yet wired in the
-/// VM — <see cref="JsObject.Set"/> silently no-ops on rejected writes per
+/// VM — <c>JsObject.Set</c> silently no-ops on rejected writes per
 /// §10.1.9 sloppy semantics. Once strict-mode emission lands, this surface
 /// becomes spec-correct without further changes here.
 /// </para>
@@ -54,36 +54,36 @@ public static class ObjectCtor
             PropertyDescriptor.Data(JsValue.Object(ctor), writable: true, enumerable: false, configurable: true));
 
         // -------------------------------------------------------- Static methods
-        DefineMethod(ctor, "assign", Assign, length: 2);
-        DefineMethod(ctor, "create", (thisV, args) => Create(realm, args), length: 2);
-        DefineMethod(ctor, "defineProperty", (thisV, args) => DefineProperty(realm, args), length: 3);
-        DefineMethod(ctor, "defineProperties", (thisV, args) => DefineProperties(realm, args), length: 2);
-        DefineMethod(ctor, "getOwnPropertyDescriptor", (thisV, args) => GetOwnPropertyDescriptor(realm, args), length: 2);
-        DefineMethod(ctor, "getOwnPropertyDescriptors", (thisV, args) => GetOwnPropertyDescriptors(realm, args), length: 1);
-        DefineMethod(ctor, "getOwnPropertyNames", (thisV, args) => GetOwnPropertyNames(realm, args), length: 1);
-        DefineMethod(ctor, "getOwnPropertySymbols", (thisV, args) => GetOwnPropertySymbols(realm, args), length: 1);
-        DefineMethod(ctor, "getPrototypeOf", (thisV, args) => GetPrototypeOf(realm, args), length: 1);
-        DefineMethod(ctor, "setPrototypeOf", (thisV, args) => SetPrototypeOf(realm, args), length: 2);
-        DefineMethod(ctor, "keys", (thisV, args) => Keys(realm, args), length: 1);
-        DefineMethod(ctor, "values", (thisV, args) => Values(realm, args), length: 1);
-        DefineMethod(ctor, "entries", (thisV, args) => Entries(realm, args), length: 1);
-        DefineMethod(ctor, "freeze", (thisV, args) => Freeze(args), length: 1);
-        DefineMethod(ctor, "isFrozen", (thisV, args) => IsFrozen(args), length: 1);
-        DefineMethod(ctor, "seal", (thisV, args) => Seal(args), length: 1);
-        DefineMethod(ctor, "isSealed", (thisV, args) => IsSealed(args), length: 1);
-        DefineMethod(ctor, "preventExtensions", (thisV, args) => PreventExtensions(args), length: 1);
-        DefineMethod(ctor, "isExtensible", (thisV, args) => IsExtensible(args), length: 1);
-        DefineMethod(ctor, "is", (thisV, args) => Is(args), length: 2);
-        DefineMethod(ctor, "fromEntries", (thisV, args) => FromEntries(realm, args), length: 1);
-        DefineMethod(ctor, "hasOwn", (thisV, args) => HasOwn(args), length: 2);
+        DefineMethod(realm, ctor, "assign", Assign, length: 2);
+        DefineMethod(realm, ctor, "create", (thisV, args) => Create(realm, args), length: 2);
+        DefineMethod(realm, ctor, "defineProperty", (thisV, args) => DefineProperty(realm, args), length: 3);
+        DefineMethod(realm, ctor, "defineProperties", (thisV, args) => DefineProperties(realm, args), length: 2);
+        DefineMethod(realm, ctor, "getOwnPropertyDescriptor", (thisV, args) => GetOwnPropertyDescriptor(realm, args), length: 2);
+        DefineMethod(realm, ctor, "getOwnPropertyDescriptors", (thisV, args) => GetOwnPropertyDescriptors(realm, args), length: 1);
+        DefineMethod(realm, ctor, "getOwnPropertyNames", (thisV, args) => GetOwnPropertyNames(realm, args), length: 1);
+        DefineMethod(realm, ctor, "getOwnPropertySymbols", (thisV, args) => GetOwnPropertySymbols(realm, args), length: 1);
+        DefineMethod(realm, ctor, "getPrototypeOf", (thisV, args) => GetPrototypeOf(realm, args), length: 1);
+        DefineMethod(realm, ctor, "setPrototypeOf", (thisV, args) => SetPrototypeOf(realm, args), length: 2);
+        DefineMethod(realm, ctor, "keys", (thisV, args) => Keys(realm, args), length: 1);
+        DefineMethod(realm, ctor, "values", (thisV, args) => Values(realm, args), length: 1);
+        DefineMethod(realm, ctor, "entries", (thisV, args) => Entries(realm, args), length: 1);
+        DefineMethod(realm, ctor, "freeze", (thisV, args) => Freeze(args), length: 1);
+        DefineMethod(realm, ctor, "isFrozen", (thisV, args) => IsFrozen(args), length: 1);
+        DefineMethod(realm, ctor, "seal", (thisV, args) => Seal(args), length: 1);
+        DefineMethod(realm, ctor, "isSealed", (thisV, args) => IsSealed(args), length: 1);
+        DefineMethod(realm, ctor, "preventExtensions", (thisV, args) => PreventExtensions(args), length: 1);
+        DefineMethod(realm, ctor, "isExtensible", (thisV, args) => IsExtensible(args), length: 1);
+        DefineMethod(realm, ctor, "is", (thisV, args) => Is(args), length: 2);
+        DefineMethod(realm, ctor, "fromEntries", (thisV, args) => FromEntries(realm, args), length: 1);
+        DefineMethod(realm, ctor, "hasOwn", (thisV, args) => HasOwn(args), length: 2);
 
         // -------------------------------------------------------- Prototype methods
-        DefineMethod(objectProto, "hasOwnProperty", (thisV, args) => ProtoHasOwnProperty(realm, thisV, args), length: 1);
-        DefineMethod(objectProto, "isPrototypeOf", (thisV, args) => ProtoIsPrototypeOf(realm, thisV, args), length: 1);
-        DefineMethod(objectProto, "propertyIsEnumerable", (thisV, args) => ProtoPropertyIsEnumerable(realm, thisV, args), length: 1);
-        DefineMethod(objectProto, "toString", (thisV, args) => ProtoToString(thisV), length: 0);
-        DefineMethod(objectProto, "valueOf", (thisV, args) => ProtoValueOf(realm, thisV), length: 0);
-        DefineMethod(objectProto, "toLocaleString", (thisV, args) => ProtoToLocaleString(thisV), length: 0);
+        DefineMethod(realm, objectProto, "hasOwnProperty", (thisV, args) => ProtoHasOwnProperty(realm, thisV, args), length: 1);
+        DefineMethod(realm, objectProto, "isPrototypeOf", (thisV, args) => ProtoIsPrototypeOf(realm, thisV, args), length: 1);
+        DefineMethod(realm, objectProto, "propertyIsEnumerable", (thisV, args) => ProtoPropertyIsEnumerable(realm, thisV, args), length: 1);
+        DefineMethod(realm, objectProto, "toString", (thisV, args) => ProtoToString(thisV), length: 0);
+        DefineMethod(realm, objectProto, "valueOf", (thisV, args) => ProtoValueOf(realm, thisV), length: 0);
+        DefineMethod(realm, objectProto, "toLocaleString", (thisV, args) => ProtoToLocaleString(thisV), length: 0);
 
         realm.ObjectConstructor = ctor;
         realm.GlobalObject.DefineOwnProperty("Object",
@@ -95,15 +95,13 @@ public static class ObjectCtor
     // ====================================================================
 
     /// <summary>Install a builtin method descriptor (W=true, E=false, C=true)
-    /// per §17 default attributes for built-in functions.</summary>
-    private static void DefineMethod(JsObject target, string name,
+    /// per §17 default attributes for built-in functions. B2-2: routed through
+    /// the realm-aware <see cref="JsNativeFunction"/> ctor so each method
+    /// inherits from <c>Function.prototype</c>.</summary>
+    private static void DefineMethod(JsRealm realm, JsObject target, string name,
         Func<JsValue, JsValue[], JsValue> body, int length)
     {
-        var fn = new JsNativeFunction(name, body, isConstructor: false);
-        fn.DefineOwnProperty("name",
-            PropertyDescriptor.Data(JsValue.String(name), writable: false, enumerable: false, configurable: true));
-        fn.DefineOwnProperty("length",
-            PropertyDescriptor.Data(JsValue.Number(length), writable: false, enumerable: false, configurable: true));
+        var fn = new JsNativeFunction(realm, name, length, body, isConstructor: false);
         target.DefineOwnProperty(name, PropertyDescriptor.BuiltinMethod(JsValue.Object(fn)));
     }
 

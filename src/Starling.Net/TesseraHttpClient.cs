@@ -263,7 +263,20 @@ public sealed class TesseraHttpClient : IDisposable
             // TesseraTlsClient pins TLS 1.3; tag it post-handshake.
             Activity.Current?.SetTag("tls.protocol", "TLSv1.3");
             if (tlsResult.Value.NegotiatedApplicationProtocol is { } alpn)
+            {
                 Activity.Current?.SetTag("tls.alpn", alpn);
+                // We only speak HTTP/1.1 today; if a peer negotiates h2 despite
+                // our ALPN list, fail fast rather than feed h2 frames into the
+                // H1 parser. See browser-plan/03_NETWORKING.md (HTTP/2 = M6).
+                if (alpn != "http/1.1" && alpn.Length > 0)
+                {
+                    _diag.Log(DiagLevel.Error, "net",
+                        $"unsupported ALPN '{alpn}' negotiated for {origin.Host} (client speaks http/1.1 only)");
+                    _diag.Counter("net.tls.failures", 1);
+                    await tcp.DisposeAsync().ConfigureAwait(false);
+                    return Result<IHttpTransport, NetworkError>.Err(NetworkError.TlsHandshakeFailed);
+                }
+            }
 
             return Result<IHttpTransport, NetworkError>.Ok(
                 PooledHttpTransport.ForTls(origin, tcp, tlsResult.Value));

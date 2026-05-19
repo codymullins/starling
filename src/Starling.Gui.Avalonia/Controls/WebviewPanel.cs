@@ -472,28 +472,24 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         ClearSelectionOverlays();
         if (_fragments.Count == 0) return;
 
-        var startIdx = NearestFragmentIndex(anchor);
-        var endIdx = NearestFragmentIndex(cursor);
-        if (startIdx < 0 || endIdx < 0) return;
-        if (startIdx > endIdx) (startIdx, endIdx) = (endIdx, startIdx);
+        var anchorCaret = SelectionModel.CaretFromPoint(_fragments, anchor.X, anchor.Y);
+        var cursorCaret = SelectionModel.CaretFromPoint(_fragments, cursor.X, cursor.Y);
+        var range = SelectionModel.Order(anchorCaret, cursorCaret);
+        if (range.IsEmpty)
+        {
+            _selectionText = string.Empty;
+            return;
+        }
 
         var brush = new SolidColorBrush(AvColor.FromArgb(96, 80, 140, 255));
-        for (var i = startIdx; i <= endIdx; i++)
+        foreach (var r in SelectionModel.RectsFor(_fragments, range))
         {
-            var f = _fragments[i];
-            var overlay = MakeOverlay(brush, f.X, f.Y, f.Width, f.Height);
+            var overlay = MakeOverlay(brush, r.X, r.Y, r.Width, r.Height);
             _pageCanvas.Children.Add(overlay);
             _selectionOverlays.Add(overlay);
         }
 
-        // Whitespace fragments are now in the list (so selection paints over
-        // inter-word gaps); drop them before joining so word fragments get
-        // exactly one separating space whether the gap was an explicit space
-        // fragment or a dropped-at-wrap line break.
-        var picked = _fragments.GetRange(startIdx, endIdx - startIdx + 1)
-            .FindAll(f => !string.IsNullOrWhiteSpace(f.Text))
-            .ConvertAll(f => f.Text);
-        _selectionText = string.Join(" ", picked);
+        _selectionText = SelectionModel.TextFor(_fragments, range);
         _onStatus($"Selected {_selectionText.Length} chars — ⌘C to copy", false);
     }
 
@@ -509,24 +505,6 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         foreach (var o in _selectionOverlays)
             _pageCanvas.Children.Remove(o);
         _selectionOverlays.Clear();
-    }
-
-    private int NearestFragmentIndex((double X, double Y) point)
-    {
-        var best = -1;
-        var bestDist = double.MaxValue;
-        for (var i = 0; i < _fragments.Count; i++)
-        {
-            var f = _fragments[i];
-            if (point.X >= f.X && point.X < f.X + f.Width &&
-                point.Y >= f.Y && point.Y < f.Y + f.Height)
-                return i;
-            var cx = f.X + (f.Width / 2);
-            var cy = f.Y + (f.Height / 2);
-            var dist = ((point.X - cx) * (point.X - cx)) + ((point.Y - cy) * (point.Y - cy));
-            if (dist < bestDist) { bestDist = dist; best = i; }
-        }
-        return best;
     }
 
     /// <summary>Copies the current text selection to the clipboard.</summary>

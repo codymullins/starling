@@ -21,5 +21,14 @@ public sealed class JsBoundFunction : JsObject
         BoundArgs = boundArgs ?? Array.Empty<JsValue>();
     }
 
+    /// <summary>B2-2: realm-aware constructor — sets
+    /// <c>[[Prototype]] = realm.FunctionPrototype</c> so the bound function
+    /// inherits <c>call</c>/<c>apply</c>/<c>bind</c> (bound rebinding is
+    /// sticky on first bind per §10.4.1.3).</summary>
+    public JsBoundFunction(JsRealm realm, JsObject target, JsValue boundThis, IReadOnlyList<JsValue> boundArgs)
+        : this(target, boundThis, boundArgs, (realm ?? throw new ArgumentNullException(nameof(realm))).FunctionPrototype)
+    {
+    }
+
     public override string ToString() => $"function bound() {{ [native code] }}";
 }

@@ -38,13 +38,24 @@ public sealed class JsVm
 
     /// <summary>Run a chunk to completion. Returns the topmost value at Halt,
     /// or Undefined if the stack was empty.</summary>
+    /// <remarks>
+    /// Drains the realm's microtask queue (Promise reactions, thenable
+    /// adoption jobs) before returning, matching what an HTML embedder
+    /// would do at the bottom of a top-level task. Nested invocations
+    /// (function call → JS body) go through <see cref="CallFunction"/> /
+    /// <see cref="ConstructFunction"/> and intentionally do NOT drain — the
+    /// drain belongs to the outermost frame only. When the host installs a
+    /// microtask scheduler via <see cref="JsRuntime.SetMicrotaskScheduler"/>,
+    /// the drain is a no-op (the host loop owns pumping).
+    /// </remarks>
     public JsValue Run(Chunk chunk) =>
-        Run(chunk, args: [], thisValue: JsValue.Undefined, upvalues: Array.Empty<JsValue>());
+        Run(chunk, args: [], thisValue: JsValue.Undefined,
+            upvalues: Array.Empty<JsValue>(), drainMicrotasks: true);
 
     /// <summary>Invoke a JS function with an explicit <c>this</c> and args.
     /// Used by <see cref="AbstractOperations.Call"/>.</summary>
     public JsValue CallFunction(JsFunction fn, JsValue thisValue, JsValue[] args)
-        => Run(fn.Body, args, thisValue, fn.Upvalues);
+        => Run(fn.Body, args, thisValue, fn.Upvalues, drainMicrotasks: false);
 
     /// <summary>Construct a JS function (spec [[Construct]] for ordinary
     /// functions): allocate a fresh ordinary object inheriting from the
@@ -58,7 +69,7 @@ public sealed class JsVm
         var proto = protoSlot.IsObject ? protoSlot.AsObject : _runtime.Realm.ObjectPrototype;
         var instance = _runtime.Realm.NewObjectWithProto(proto);
         var thisVal = JsValue.Object(instance);
-        var result = Run(fn.Body, args, thisVal, fn.Upvalues);
+        var result = Run(fn.Body, args, thisVal, fn.Upvalues, drainMicrotasks: false);
         return result.IsObject ? result : thisVal;
     }
 
@@ -71,7 +82,8 @@ public sealed class JsVm
     /// a user <see cref="JsFunction"/> recurses through this entry, so
     /// the .NET call stack mirrors the JS call stack.
     /// </summary>
-    private JsValue Run(Chunk chunk, JsValue[] args, JsValue thisValue, IReadOnlyList<JsValue> upvalues)
+    private JsValue Run(Chunk chunk, JsValue[] args, JsValue thisValue,
+        IReadOnlyList<JsValue> upvalues, bool drainMicrotasks)
     {
         // Publish this VM on the realm so native intrinsics (JSON.parse
         // reviver, JSON.stringify replacer/toJSON, etc.) can dispatch JS
@@ -81,7 +93,14 @@ public sealed class JsVm
         _runtime.Realm.ActiveVm = this;
         try
         {
-            return RunInner(chunk, args, thisValue, upvalues);
+            var result = RunInner(chunk, args, thisValue, upvalues);
+            // Drain microtasks while ActiveVm still points to this VM so
+            // reaction jobs that dispatch JS handlers find a usable VM
+            // (AbstractOperations.Call needs one for JsFunction). Only the
+            // outermost (top-level Run) frame drains — nested calls do not.
+            if (drainMicrotasks)
+                _runtime.DrainMicrotasks();
+            return result;
         }
         finally
         {
@@ -327,7 +346,12 @@ public sealed class JsVm
                 case Opcode.LoadFunction:
                 {
                     var idx = ReadU16();
-                    var fn = (JsFunction)constants[idx]!;
+                    var template = (JsFunction)constants[idx]!;
+                    // Per B2-2: every LoadFunction produces a fresh instance
+                    // wired to realm.FunctionPrototype with its own
+                    // `prototype`/`name`/`length` own properties. The template
+                    // in the constant pool stays untouched.
+                    var fn = JsFunction.CreateInstance(_runtime.Realm, template, Array.Empty<JsValue>());
                     Push(JsValue.Object(fn));
                     break;
                 }
@@ -343,8 +367,10 @@ public sealed class JsVm
                     var template = (JsFunction)constants[idx]!;
                     var captured = new JsValue[nUpvalues];
                     for (var i = nUpvalues - 1; i >= 0; i--) captured[i] = Pop();
-                    var closure = new JsFunction(
-                        template.Name, template.Body, template.ArityDeclared, captured);
+                    // Per B2-2: closure also routes through CreateInstance so
+                    // it inherits Function.prototype and gets a per-call
+                    // `prototype` own-property.
+                    var closure = JsFunction.CreateInstance(_runtime.Realm, template, captured);
                     Push(JsValue.Object(closure));
                     break;
                 }
@@ -443,7 +469,10 @@ public sealed class JsVm
                     var excludedCount = ReadU16();
                     var excluded = new HashSet<string>(StringComparer.Ordinal);
                     for (var i = 0; i < excludedCount; i++)
-                        excluded.Add(AbstractOperations.ToPropertyKey(Pop()));
+                    {
+                        var key = AbstractOperations.ToPropertyKey(Pop());
+                        if (!key.IsSymbol) excluded.Add(key.AsString);
+                    }
                     var src = Pop();
                     var result = _runtime.Realm.NewOrdinaryObject();
                     if (src.IsObject)

@@ -55,10 +55,20 @@ public sealed class LayoutEngine
             root = builder.Build(document);
         }
 
+        BlockLayout block;
         using (_diag.Span("layout", "block"))
         {
-            var block = new BlockLayout(_measurer, viewport, _diag);
+            block = new BlockLayout(_measurer, viewport, _diag);
             block.Layout(root);
+        }
+
+        // Second pass: place position:absolute / fixed descendants and apply
+        // position:relative offsets. The viewport rect doubles as the
+        // initial containing block and as the fixed-positioning anchor.
+        using (_diag.Span("layout", "position"))
+        {
+            var positioning = new Tessera.Layout.Position.PositionLayout(block, viewport);
+            positioning.LayoutPositioned(root);
         }
 
         Activity.Current?.SetTag("layout.boxes", CountBoxes(root));
