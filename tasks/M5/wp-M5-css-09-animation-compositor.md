@@ -12,6 +12,7 @@ subsystem: Starling.Css
 plan_refs:
   - browser-plan/06_CSS.md
   - browser-plan/13_MILESTONES.md#m5-avalonia-shell-interactivity-polish
+completed_at: "2026-05-19T15:39:10Z"
 ---
 
 # wp:M5-css-09-animation-compositor — Stitch animations/transitions into the cascade
@@ -91,3 +92,4 @@ correct, time-varying values.
   * 5 new tests in `AnimationCompositorTests`; full Css suite 476 green,
     full sln build green.
 - 2026-05-19T15:32:47Z — claimed by agent-copilot-claude-opus-4.7, working on main
+- 2026-05-19T15:39:10Z — merged; complete
