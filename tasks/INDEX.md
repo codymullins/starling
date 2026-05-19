@@ -123,8 +123,8 @@ features previously listed as deferred — `:has`, `:nth-*`, `:is`, `:where`,
 | [wp:M5-css-01-transform-value](M5/wp-M5-css-01-transform-value.md) | 🟢 complete | agent-copilot-claude-opus-4.7 | Starling.Css |
 | [wp:M5-css-02-transform-paint](M5/wp-M5-css-02-transform-paint.md) | 🟢 complete | agent-copilot-claude-opus-4.7 | Starling.Paint |
 | [wp:M5-css-03-keyframes-rule](M5/wp-M5-css-03-keyframes-rule.md) | 🟢 complete | agent-copilot-claude-opus-4.7 | Starling.Css |
-| [wp:M5-css-04-transitions-engine](M5/wp-M5-css-04-transitions-engine.md) | 🔵 available | — | Starling.Css |
-| [wp:M5-css-05-animations-engine](M5/wp-M5-css-05-animations-engine.md) | ⚫ blocked (on 04) | — | Starling.Css |
+| [wp:M5-css-04-transitions-engine](M5/wp-M5-css-04-transitions-engine.md) | 🟢 complete | agent-copilot-claude-opus-4.7 | Starling.Css |
+| [wp:M5-css-05-animations-engine](M5/wp-M5-css-05-animations-engine.md) | 🔵 available | — | Starling.Css |
 | [wp:M5-skia-removal](M5/wp-M5-skia-removal.md) | 🟢 complete | agent-copilot-claude-opus-4.7 | Starling.Paint |
 
 ## Available right now (no dependencies pending)

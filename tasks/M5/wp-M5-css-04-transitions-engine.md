@@ -1,9 +1,10 @@
 ---
 id: wp:M5-css-04-transitions-engine
 milestone: M5
-status: "claimed"
+status: "complete"
 claimed_by: "agent-copilot-claude-opus-4.7"
 claimed_at: "2026-05-19T15:11:45Z"
+completed_at: "2026-05-19T15:40:00Z"
 branch: "main"
 depends_on:
   - wp:M1-07-css-cascade
@@ -67,3 +68,48 @@ the transition completes.
 
 - 2026-05-19T02:23Z — created (agent-copilot-claude-opus-4.7)
 - 2026-05-19T15:11:45Z — claimed by agent-copilot-claude-opus-4.7, working on main
+- 2026-05-19T15:40Z — implemented the standalone transition runtime. Three
+  new files under `src/Starling.Css/Animations/`:
+    * `TimingFunction.cs` — `linear`, `ease`/`ease-in`/`ease-out`/`ease-in-out`
+      (the spec keyword → cubic-bezier mapping), `CubicBezierTimingFunction`
+      with Newton-Raphson + bisection fallback (matches Blink's
+      `UnitBezier`), and `StepsTimingFunction` for all four jump terms.
+      `TimingFunction.FromCss(CssValue?)` parses keywords + `cubic-bezier(…)`
+      + `steps(…)` and fails soft to `ease`.
+    * `Interpolator.cs` — per-property lerp dispatch over `CssValue`. Number
+      / percentage / length (same-unit fast path, cross-absolute-unit lerp
+      in px) / time / angle (lerp in degrees) / colour (premultiplied sRGB
+      to keep transparent-fade clean) / transform (pairwise function lerp
+      when signatures match, matrix-decompose-and-lerp slow path otherwise).
+      Mismatched value kinds fall back to the spec's discrete rule
+      (50% switch point). `IsAnimatable(PropertyId)` lists the properties we
+      currently know how to interpolate.
+    * `TransitionEngine.cs` — owns `Dictionary<(Element, PropertyId), ActiveTransition>`
+      plus a parallel `_lastEffective` table for the "previous effective
+      value" baseline. Public API: `OnComputedValueChanged(element, property,
+      newValue, readProperty)` (cascade hook), `GetEffective(element,
+      property)` (cascade reads back), `Tick(nowMs)` (frame loop), and
+      `Forget(element)` (avoid leaking detached elements). Honours
+      `transition-property: none | all | <list>`, mixed `s`/`ms`/`CssTime`
+      durations, and `cubic-bezier`/`steps` timing. Interrupting an
+      in-flight transition uses the current sample as the new from-value
+      (so a class-toggle mid-fade doesn't snap back to the original start).
+  Tests: 27 new in `tests/Starling.Css.Tests/`:
+    * `TimingFunctionTests` (10) — endpoints, monotonicity, ease-in/out
+      shape, step quantisation, FromCss parse + fallback.
+    * `InterpolatorTests` (9) — numbers, lengths (same- and cross-unit),
+      discrete fallback, colour midpoint, alpha fade, transform pairwise
+      and matrix-fallback paths, IsAnimatable.
+    * `TransitionEngineTests` (8) — priming on first value, full
+      from-zero-to-one ramp with mid-sample assertion, delay, opt-out
+      (`transition-property: color` ignoring opacity changes), `none`
+      keyword, interrupted-transition resampling, and Forget.
+  All green; full Starling.Css.Tests is 447 pass / 0 fail (was 420).
+  StyleEngine cascade integration and `requestAnimationFrame` frame-loop
+  wiring intentionally not in this WP — they're explicit non-goals per the
+  WP "Notes" ("the engine driver must register the TransitionEngine as a
+  per-frame callback... once requestAnimationFrame is wired up"). The
+  multi-layer comma-separated `transition` shorthand is also still pending
+  on `wp:M5-css-multi-layer-transitions` (tracked separately because it
+  needs `CssValueList` top-level comma splitting in the cascade).
+  (agent-copilot-claude-opus-4.7)
