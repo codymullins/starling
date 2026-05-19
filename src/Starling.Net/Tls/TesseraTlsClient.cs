@@ -46,13 +46,20 @@ internal sealed class TesseraTlsClient : DefaultTlsClient
     protected override IList<ServerName> GetSniServerNames() =>
         [new ServerName(NameType.host_name, Encoding.ASCII.GetBytes(_options.ServerName))];
 
-    protected override ProtocolVersion[] GetSupportedVersions() => [ProtocolVersion.TLSv13];
+    protected override ProtocolVersion[] GetSupportedVersions() =>
+        [ProtocolVersion.TLSv13, ProtocolVersion.TLSv12];
 
     protected override int[] GetSupportedCipherSuites() =>
     [
         CipherSuite.TLS_AES_128_GCM_SHA256,
         CipherSuite.TLS_AES_256_GCM_SHA384,
         CipherSuite.TLS_CHACHA20_POLY1305_SHA256,
+        CipherSuite.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+        CipherSuite.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+        CipherSuite.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+        CipherSuite.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+        CipherSuite.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+        CipherSuite.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
     ];
 
     private IDictionary<int, byte[]> AddTesseraExtensions(IDictionary<int, byte[]> extensions)

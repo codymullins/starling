@@ -39,7 +39,7 @@ internal sealed class SameValueZeroComparer : IEqualityComparer<JsValue>
                 System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj.AsObject)),
             JsValueKind.Symbol => HashCode.Combine(JsValueKind.Symbol,
                 System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj.AsSymbol)),
-            JsValueKind.BigInt => HashCode.Combine(JsValueKind.BigInt, JsValue.ToStringValue(obj)),
+            JsValueKind.BigInt => HashCode.Combine(JsValueKind.BigInt, obj.AsBigInt),
             _ => 0,
         };
     }

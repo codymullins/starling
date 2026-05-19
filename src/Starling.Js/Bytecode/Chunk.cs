@@ -36,10 +36,24 @@ public sealed class Chunk
 }
 
 /// <summary>
-/// Placeholder for BigInt constants. The decoder is in the JS runtime
-/// (when wp:M3-05 lands intrinsics including BigInt).
+/// Constant-pool wrapper for a BigInt literal. The parser turns the lexeme
+/// (decimal / 0x / 0b / 0o, with the trailing <c>n</c> stripped) into a
+/// <see cref="System.Numerics.BigInteger"/> at AST-build time; the VM unboxes
+/// it via <see cref="Tessera.Js.Runtime.JsValue.BigInt(System.Numerics.BigInteger)"/>
+/// when <see cref="Opcode.LoadConst"/> dispatches on this record.
 /// </summary>
-public sealed record JsBigIntPlaceholder(string Digits);
+public sealed record JsBigIntPlaceholder(System.Numerics.BigInteger Value)
+{
+    /// <summary>Back-compat ctor — parse a decimal digits string.</summary>
+    public JsBigIntPlaceholder(string digits)
+        : this(System.Numerics.BigInteger.Parse(digits,
+            System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture)) { }
+
+    /// <summary>Back-compat decimal-string view of <see cref="Value"/>.
+    /// Used by the disassembler.</summary>
+    public string Digits => Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+}
 
 /// <summary>
 /// Mutable builder used by <c>JsCompiler</c>. Tracks the constant pool,

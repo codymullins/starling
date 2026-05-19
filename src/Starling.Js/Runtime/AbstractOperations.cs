@@ -64,6 +64,22 @@ public static class AbstractOperations
         };
     }
 
+    /// <summary>§7.1.13 ToBigInt — coerce to BigInt. Delegates to
+    /// <see cref="BigIntOps.ToBigInt"/> so the parsing/range logic lives next
+    /// to the rest of the BigInt operator suite.</summary>
+    public static System.Numerics.BigInteger ToBigInt(JsRealm realm, JsValue value)
+        => BigIntOps.ToBigInt(realm, value);
+
+    /// <summary>§7.1.22 ToNumeric — converts the input to a BigInt-or-Number
+    /// primitive. Used by the arithmetic operator boundary so the spec-faithful
+    /// "no implicit Number↔BigInt coercion" rule has a single seam.</summary>
+    public static JsValue ToNumeric(JsRealm realm, JsValue value)
+    {
+        var prim = ToPrimitive(value, "number");
+        if (prim.IsBigInt) return prim;
+        return JsValue.Number(JsValue.ToNumber(prim));
+    }
+
     /// <summary>§7.1.19 ToPropertyKey — Symbols are already property keys;
     /// every other primitive is stringified.</summary>
     public static JsPropertyKey ToPropertyKey(JsValue value)

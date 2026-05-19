@@ -106,6 +106,17 @@ public static class Disassembler
                     sb.Append("  ; → ").Append((i + offset).ToString("D4"));
                     break;
                 }
+                case Opcode.EnterTry:
+                {
+                    var catchOffset = BinaryPrimitives.ReadInt16LittleEndian(code.AsSpan(i, 2));
+                    i += 2;
+                    var finallyOffset = BinaryPrimitives.ReadInt16LittleEndian(code.AsSpan(i, 2));
+                    i += 2;
+                    sb.Append(op).Append(' ').Append(catchOffset).Append(' ').Append(finallyOffset);
+                    sb.Append("  ; catch→").Append(catchOffset == -1 ? "<none>" : (i + catchOffset).ToString("D4"))
+                      .Append(" finally→").Append(finallyOffset == -1 ? "<none>" : (i + finallyOffset).ToString("D4"));
+                    break;
+                }
                 default:
                     sb.Append(op);
                     break;

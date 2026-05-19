@@ -129,12 +129,20 @@ public sealed class SelectorParser
 
     private static void EnforcePseudoElementPosition(CompoundSelector compound)
     {
-        var simples = compound.SimpleSelectors;
-        for (var i = 0; i < simples.Count - 1; i++)
+        // Selectors 4 §3.6 / CSS Pseudo-Elements 4 §3: once a pseudo-element appears, only further
+        // pseudo-classes (e.g. ::-webkit-scrollbar-thumb:window-inactive, ::before:hover) or chained
+        // pseudo-elements may follow. Type/class/id/attribute selectors after a pseudo-element are invalid.
+        var seenPseudoElement = false;
+        foreach (var simple in compound.SimpleSelectors)
         {
-            if (simples[i] is PseudoElementSelector)
+            if (simple is PseudoElementSelector)
+            {
+                seenPseudoElement = true;
+                continue;
+            }
+            if (seenPseudoElement && simple is not PseudoClassSelector)
                 throw new FormatException(
-                    "A pseudo-element selector must be the last simple selector in a compound selector.");
+                    "Only pseudo-classes or further pseudo-elements may follow a pseudo-element in a compound selector.");
         }
     }
 

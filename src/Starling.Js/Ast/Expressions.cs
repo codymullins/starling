@@ -14,8 +14,16 @@ public abstract record Expression(JsPosition Start, JsPosition End) : AstNode(St
 public sealed record NumericLiteral(double Value, JsPosition Start, JsPosition End)
     : Expression(Start, End);
 
-public sealed record BigIntLiteral(string Digits, JsPosition Start, JsPosition End)
-    : Expression(Start, End);
+/// <summary>ES2024 §13.2.4 — a numeric literal followed by <c>n</c>. The
+/// parser parses the lexeme (decimal / 0x / 0b / 0o, with the trailing
+/// <c>n</c> stripped) into a <see cref="System.Numerics.BigInteger"/> so the
+/// compiler stamps the constant pool with the value directly.</summary>
+public sealed record BigIntLiteral(System.Numerics.BigInteger Value, JsPosition Start, JsPosition End)
+    : Expression(Start, End)
+{
+    /// <summary>Back-compat — decimal-string view of <see cref="Value"/>.</summary>
+    public string Digits => Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+}
 
 public sealed record StringLiteral(string Value, JsPosition Start, JsPosition End)
     : Expression(Start, End);

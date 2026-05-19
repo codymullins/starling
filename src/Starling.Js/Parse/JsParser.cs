@@ -533,7 +533,7 @@ public sealed partial class JsParser
                 return new NumericLiteral((double)t.Value!, t.Start, t.End);
             case JsTokenKind.BigIntLiteral:
                 Advance();
-                return new BigIntLiteral((string)t.Value!, t.Start, t.End);
+                return new BigIntLiteral(ParseBigIntLexeme(t.Lexeme, t.Start), t.Start, t.End);
             case JsTokenKind.StringLiteral:
                 Advance();
                 return new StringLiteral((string)t.Value!, t.Start, t.End);
@@ -825,6 +825,50 @@ public sealed partial class JsParser
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
+    /// <summary>B4-3 — decode a BigInt lexeme into a
+    /// <see cref="System.Numerics.BigInteger"/>. The lexeme is the raw source
+    /// slice, including any radix prefix and the trailing <c>n</c>.</summary>
+    private static System.Numerics.BigInteger ParseBigIntLexeme(string lexeme, JsPosition pos)
+    {
+        if (lexeme.Length > 0 && lexeme[^1] == 'n')
+            lexeme = lexeme[..^1];
+        if (lexeme.Length > 2 && lexeme[0] == '0')
+        {
+            var p = lexeme[1];
+            if (p == 'x' || p == 'X')
+                // Prefix '0' so BigInteger.Parse(HexNumber) treats the value
+                // as non-negative — a leading hex digit ≥ 8 would otherwise
+                // sign-extend (e.g. "FF" → -1).
+                return System.Numerics.BigInteger.Parse("0" + lexeme[2..],
+                    System.Globalization.NumberStyles.HexNumber,
+                    System.Globalization.CultureInfo.InvariantCulture);
+            if (p == 'b' || p == 'B') return ParseRadixBigInt(lexeme[2..], 2, pos);
+            if (p == 'o' || p == 'O') return ParseRadixBigInt(lexeme[2..], 8, pos);
+        }
+        return System.Numerics.BigInteger.Parse(lexeme,
+            System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static System.Numerics.BigInteger ParseRadixBigInt(string digits, int radix, JsPosition pos)
+    {
+        var v = System.Numerics.BigInteger.Zero;
+        foreach (var c in digits)
+        {
+            var d = c switch
+            {
+                >= '0' and <= '9' => c - '0',
+                >= 'a' and <= 'f' => c - 'a' + 10,
+                >= 'A' and <= 'F' => c - 'A' + 10,
+                _ => -1,
+            };
+            if (d < 0 || d >= radix)
+                throw new JsParseException($"invalid digit '{c}' in base-{radix} BigInt literal", pos);
+            v = v * radix + d;
+        }
+        return v;
+    }
+
     private Expression ParseLeftAssoc(Func<Expression> next, JsTokenKind op)
     {
         var left = next();

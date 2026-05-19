@@ -79,7 +79,7 @@ public sealed class StyleEngine
         ArgumentNullException.ThrowIfNull(sheet);
         _sheets.Add(sheet);
         RegisterLayers(sheet.Rules, sheet.Origin, currentPath: null);
-        var index = BuildSheetIndex(sheet);
+        var index = BuildSheetIndex(sheet, _diag);
         _sheetIndexes[sheet] = index;
         if (!_sharingDisabled && SheetUsesUnshareableSelectors(index))
             _sharingDisabled = true;
@@ -161,21 +161,33 @@ public sealed class StyleEngine
             = new(ReferenceEqualityComparer.Instance);
     }
 
-    private static SheetIndex BuildSheetIndex(StyleSheet sheet)
+    private static SheetIndex BuildSheetIndex(StyleSheet sheet, IDiagnostics diag)
     {
         var index = new SheetIndex();
-        IndexRules(index, sheet.Rules);
+        IndexRules(index, sheet.Rules, diag);
         return index;
     }
 
-    private static void IndexRules(SheetIndex index, IReadOnlyList<CssRule> rules)
+    private static void IndexRules(SheetIndex index, IReadOnlyList<CssRule> rules, IDiagnostics diag)
     {
         foreach (var rule in rules)
         {
             switch (rule)
             {
                 case StyleRule styleRule:
-                    var parsed = SelectorParser.ParseSelectorList(styleRule.Prelude);
+                    // CSS Syntax 3 §5: an invalid selector causes the rule to be dropped, but
+                    // other rules in the stylesheet must still apply. Swallow per-rule parse
+                    // failures instead of aborting the whole indexing pass.
+                    SelectorList parsed;
+                    try
+                    {
+                        parsed = SelectorParser.ParseSelectorList(styleRule.Prelude);
+                    }
+                    catch (FormatException ex)
+                    {
+                        diag.Log(DiagLevel.Warn, "css", $"dropping rule with invalid selector: {ex.Message}");
+                        break;
+                    }
                     index.ParsedSelectorLists[styleRule] = parsed;
                     index.IndexedRules.Add(styleRule);
                     index.Selectors.Add(parsed, styleRule);
@@ -186,7 +198,7 @@ public sealed class StyleEngine
                     when atRule.Name.Equals("media", StringComparison.OrdinalIgnoreCase)
                       || atRule.Name.Equals("supports", StringComparison.OrdinalIgnoreCase)
                       || atRule.Name.Equals("layer", StringComparison.OrdinalIgnoreCase):
-                    IndexRules(index, atRule.Rules);
+                    IndexRules(index, atRule.Rules, diag);
                     break;
             }
         }

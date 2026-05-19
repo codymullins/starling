@@ -282,9 +282,90 @@ public sealed partial class JsCompiler
             case ClassDeclaration cd:
                 EmitClassDeclaration(cd);
                 return;
+            case TryStatement ts:
+                EmitTry(ts);
+                return;
         }
         throw new NotSupportedException(
             $"compiler: statement kind '{s.GetType().Name}' not yet supported (see wp:M3-03 notes).");
+    }
+
+    /// <summary>
+    /// §14.15 — emit <c>try</c>/<c>catch</c>/<c>finally</c>. Lowering relies on a per-VM
+    /// try-frame stack: <see cref="Opcode.EnterTry"/> records both branch targets and
+    /// the eval-stack height, the dispatch loop's outer C# <c>catch (JsThrow)</c>
+    /// routes thrown values to the active frame's catch (or finally, if no handler),
+    /// and <see cref="Opcode.LeaveTry"/> / <see cref="Opcode.EndFinally"/> drive the
+    /// normal-completion / pending-completion flow.
+    /// </summary>
+    private void EmitTry(TryStatement ts)
+    {
+        var hasHandler = ts.Handler is not null;
+        var hasFinalizer = ts.Finalizer is not null;
+        if (!hasHandler && !hasFinalizer)
+        {
+            EmitStatement(ts.Block);
+            return;
+        }
+
+        _b.Emit(Opcode.EnterTry);
+        var catchOperandPos = _b.Position;
+        _b.EmitU16Raw(0xFFFF);
+        var finallyOperandPos = _b.Position;
+        _b.EmitU16Raw(0xFFFF);
+
+        EmitStatement(ts.Block);
+        _b.Emit(Opcode.LeaveTry);
+        int jumpPastHandler = -1;
+        if (hasHandler && !hasFinalizer)
+        {
+            jumpPastHandler = _b.EmitJump(Opcode.Jump);
+        }
+
+        if (hasHandler)
+        {
+            var catchTargetDelta = _b.Position - (catchOperandPos + 4);
+            if (catchTargetDelta is < short.MinValue or > short.MaxValue)
+                throw new InvalidOperationException("try/catch catch offset overflows i16");
+            _b.PatchI16(catchOperandPos, (short)catchTargetDelta);
+
+            _scopes.Add(new());
+            var handler = ts.Handler!;
+            if (handler.Param is Identifier idParam)
+            {
+                var slot = _b.ReserveLocal();
+                _scopes[^1][idParam.Name] = slot;
+                _b.Emit(Opcode.DeclareLocal, (byte)slot);
+                _b.Emit(Opcode.StoreLocal, (byte)slot);
+            }
+            else if (handler.Param is null)
+            {
+                _b.Emit(Opcode.Pop);
+            }
+            else
+            {
+                var srcSlot = _b.ReserveLocal();
+                _b.Emit(Opcode.StoreLocal, (byte)srcSlot);
+                DeclarePatternBindings(handler.Param);
+                EmitPatternFromLocal(handler.Param, srcSlot, isDeclaration: true);
+            }
+            foreach (var inner in handler.Body.Body) EmitStatement(inner);
+            _scopes.RemoveAt(_scopes.Count - 1);
+            _b.Emit(Opcode.LeaveTry);
+        }
+
+        if (hasFinalizer)
+        {
+            var finallyTargetDelta = _b.Position - (finallyOperandPos + 2);
+            if (finallyTargetDelta is < short.MinValue or > short.MaxValue)
+                throw new InvalidOperationException("try/catch finally offset overflows i16");
+            _b.PatchI16(finallyOperandPos, (short)finallyTargetDelta);
+
+            EmitStatement(ts.Finalizer!);
+            _b.Emit(Opcode.EndFinally);
+        }
+
+        if (jumpPastHandler >= 0) _b.PatchJump(jumpPastHandler);
     }
 
     private void EmitVarDecl(VariableDeclaration vd)
@@ -461,7 +542,7 @@ public sealed partial class JsCompiler
                 _b.Emit(Opcode.LoadNull);
                 return;
             case BigIntLiteral bi:
-                _b.EmitU16(Opcode.LoadConst, _b.AddConstant(new JsBigIntPlaceholder(bi.Digits)));
+                _b.EmitU16(Opcode.LoadConst, _b.AddConstant(new JsBigIntPlaceholder(bi.Value)));
                 return;
             case RegExpLiteral rx:
                 // Source + flags live as string constants; the VM compiles

@@ -60,6 +60,9 @@ public sealed class JsRealm
     // B4-2: Date constructor — populated by DateCtor.Install.
     public JsObject? DateConstructor { get; internal set; }
 
+    // B4-3: BigInt constructor — populated by BigIntCtor.Install.
+    public JsObject? BigIntConstructor { get; internal set; }
+
     // B4-4: Proxy constructor — populated by ProxyCtor.Install. The prototype
     // slot (<see cref="ProxyPrototype"/>) is bootstrapped in this realm's
     // constructor; ProxyCtor only owns the callable + Proxy.revocable.
@@ -140,6 +143,19 @@ public sealed class JsRealm
     public JsObject? AbortSignalConstructor { get; set; }
     public JsObject? XmlHttpRequestPrototype { get; set; }
     public JsObject? XmlHttpRequestConstructor { get; set; }
+
+    // B5-4 — Observers (MutationObserver / IntersectionObserver / ResizeObserver
+    // + MutationRecord / IntersectionObserverEntry / ResizeObserverEntry).
+    // Populated by Starling.Bindings.Observers.* installs.
+    public JsObject? MutationObserverPrototype { get; set; }
+    public JsObject? MutationObserverConstructor { get; set; }
+    public JsObject? MutationRecordPrototype { get; set; }
+    public JsObject? IntersectionObserverPrototype { get; set; }
+    public JsObject? IntersectionObserverConstructor { get; set; }
+    public JsObject? IntersectionObserverEntryPrototype { get; set; }
+    public JsObject? ResizeObserverPrototype { get; set; }
+    public JsObject? ResizeObserverConstructor { get; set; }
+    public JsObject? ResizeObserverEntryPrototype { get; set; }
 
     /// <summary>B1b-2a — singleton sentinel used as the <c>this</c> binding
     /// of a derived-class constructor frame before <c>super(...)</c> has

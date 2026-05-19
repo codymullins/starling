@@ -164,5 +164,10 @@ public enum Opcode : byte
     /// when the current function carries no field initializers.</summary>
     RunFieldInits,
 
+    // ----- Exception handling (gap:try-catch) -----
+    EnterTry,
+    LeaveTry,
+    EndFinally,
+
     Halt,           // end-of-program sentinel
 }

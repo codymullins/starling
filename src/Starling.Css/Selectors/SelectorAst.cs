@@ -11,15 +11,19 @@ public sealed record ComplexSelector(IReadOnlyList<ComplexSelectorPart> Parts)
 
     public Specificity Specificity => SpecificityCalculator.Calculate(this);
 
-    /// <summary>If the rightmost compound ends with a pseudo-element, the kind; otherwise null.</summary>
+    /// <summary>If the rightmost compound contains a pseudo-element, the kind; otherwise null.
+    /// Trailing pseudo-classes are permitted after the pseudo-element (e.g. <c>::before:hover</c>).</summary>
     public PseudoElement? TargetPseudoElement
     {
         get
         {
             if (Parts.Count == 0) return null;
-            var simples = RightmostCompound.SimpleSelectors;
-            if (simples.Count == 0) return null;
-            return simples[^1] is PseudoElementSelector pe ? pe.Kind : null;
+            foreach (var simple in RightmostCompound.SimpleSelectors)
+            {
+                if (simple is PseudoElementSelector pe)
+                    return pe.Kind;
+            }
+            return null;
         }
     }
 }

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Numerics;
 
 namespace Tessera.Js.Runtime;
 
@@ -25,7 +26,9 @@ public enum JsValueKind : byte
 /// <remarks>
 /// Spec abstract operations (ToNumber, ToString, ToBoolean, abstract+strict
 /// equality) live on this type as static methods so the VM dispatch loop can
-/// inline them.
+/// inline them. BigInt values box a <see cref="BigInteger"/> into the
+/// <c>_ref</c> slot; BigIntegers are immutable so reference sharing across
+/// struct copies is safe.
 /// </remarks>
 public readonly struct JsValue : IEquatable<JsValue>
 {
@@ -51,7 +54,13 @@ public readonly struct JsValue : IEquatable<JsValue>
     public static JsValue Boolean(bool b) => b ? True : False;
     public static JsValue String(string s) => new(JsValueKind.String, 0, s);
     public static JsValue Object(JsObject o) => new(JsValueKind.Object, 0, o);
-    public static JsValue BigInt(string digits) => new(JsValueKind.BigInt, 0, digits);
+    /// <summary>Build a BigInt from a <see cref="BigInteger"/>. The integer
+    /// is boxed once into the <c>_ref</c> slot; struct copies share it
+    /// (BigInteger is immutable).</summary>
+    public static JsValue BigInt(BigInteger v) => new(JsValueKind.BigInt, 0, (object)v);
+    /// <summary>Legacy overload — parse decimal digits into a BigInteger.</summary>
+    public static JsValue BigInt(string digits) => new(JsValueKind.BigInt, 0,
+        (object)BigInteger.Parse(digits, NumberStyles.Integer, CultureInfo.InvariantCulture));
     public static JsValue Symbol(JsSymbol symbol) => new(JsValueKind.Symbol, 0, symbol);
 
     public bool IsUndefined => Kind == JsValueKind.Undefined;
@@ -62,6 +71,7 @@ public readonly struct JsValue : IEquatable<JsValue>
     public bool IsString => Kind == JsValueKind.String;
     public bool IsObject => Kind == JsValueKind.Object;
     public bool IsSymbol => Kind == JsValueKind.Symbol;
+    public bool IsBigInt => Kind == JsValueKind.BigInt;
 
     public double AsNumber => Kind == JsValueKind.Number
         ? _num
@@ -78,6 +88,9 @@ public readonly struct JsValue : IEquatable<JsValue>
     public JsSymbol AsSymbol => Kind == JsValueKind.Symbol
         ? (JsSymbol)_ref!
         : throw new InvalidOperationException($"value is {Kind}, not Symbol");
+    public BigInteger AsBigInt => Kind == JsValueKind.BigInt
+        ? (BigInteger)_ref!
+        : throw new InvalidOperationException($"value is {Kind}, not BigInt");
 
     // -----------------------------------------------------------------------
     // ES2024 abstract operations
@@ -92,12 +105,14 @@ public readonly struct JsValue : IEquatable<JsValue>
         JsValueKind.Number => v._num != 0 && !double.IsNaN(v._num),
         JsValueKind.String => ((string)v._ref!).Length > 0,
         JsValueKind.Object => true,
-        JsValueKind.BigInt => ((string)v._ref!) != "0",
+        JsValueKind.BigInt => !((BigInteger)v._ref!).IsZero,
         JsValueKind.Symbol => true,
         _ => false,
     };
 
-    /// <summary>ToNumber per §7.1.4.</summary>
+    /// <summary>ToNumber per §7.1.4. BigInt → Number throws TypeError per
+    /// spec; surfaced here as InvalidOperationException for host callers,
+    /// lifted to a JS TypeError by the VM at the operator boundary.</summary>
     public static double ToNumber(JsValue v) => v.Kind switch
     {
         JsValueKind.Undefined => double.NaN,
@@ -129,7 +144,7 @@ public readonly struct JsValue : IEquatable<JsValue>
         JsValueKind.Number => NumberToString(v._num),
         JsValueKind.String => (string)v._ref!,
         JsValueKind.Object => "[object Object]", // simplified
-        JsValueKind.BigInt => (string)v._ref!,
+        JsValueKind.BigInt => ((BigInteger)v._ref!).ToString(CultureInfo.InvariantCulture),
         JsValueKind.Symbol => ((JsSymbol)v._ref!).DescriptiveString,
         _ => "",
     };
@@ -161,7 +176,7 @@ public readonly struct JsValue : IEquatable<JsValue>
                     : a._num == b._num,
             JsValueKind.String => string.Equals((string)a._ref!, (string)b._ref!, StringComparison.Ordinal),
             JsValueKind.Object => ReferenceEquals(a._ref, b._ref),
-            JsValueKind.BigInt => string.Equals((string)a._ref!, (string)b._ref!, StringComparison.Ordinal),
+            JsValueKind.BigInt => ((BigInteger)a._ref!).Equals((BigInteger)b._ref!),
             JsValueKind.Symbol => ReferenceEquals(a._ref, b._ref),
             _ => false,
         };
@@ -178,11 +193,36 @@ public readonly struct JsValue : IEquatable<JsValue>
             return !double.IsNaN(b._num /* unused */) && a._num == ParseNumber((string)b._ref!);
         if (a.IsString && b.IsNumber)
             return ParseNumber((string)a._ref!) == b._num;
+        // §7.2.15 — BigInt cross-type loose equality (Number / String).
+        if (a.IsBigInt && b.IsNumber) return BigIntEqualsNumber((BigInteger)a._ref!, b._num);
+        if (a.IsNumber && b.IsBigInt) return BigIntEqualsNumber((BigInteger)b._ref!, a._num);
+        if (a.IsBigInt && b.IsString) return BigIntEqualsString((BigInteger)a._ref!, (string)b._ref!);
+        if (a.IsString && b.IsBigInt) return BigIntEqualsString((BigInteger)b._ref!, (string)a._ref!);
         // Boolean → Number (either side).
         if (a.IsBoolean) return AbstractEquals(Number(a._num), b);
         if (b.IsBoolean) return AbstractEquals(a, Number(b._num));
         // Number-or-String == Object → coerce object to primitive (simplified: false).
         return false;
+    }
+
+    /// <summary>§7.2.15 BigInt == Number step: equal only for a finite,
+    /// integer-valued Number with the same value.</summary>
+    private static bool BigIntEqualsNumber(BigInteger b, double n)
+    {
+        if (double.IsNaN(n) || double.IsInfinity(n)) return false;
+        if (n != Math.Truncate(n)) return false;
+        return b == new BigInteger(n);
+    }
+
+    /// <summary>§7.2.15 BigInt == String step: equal when StringToBigInt
+    /// successfully parses the string to the same value.</summary>
+    private static bool BigIntEqualsString(BigInteger b, string s)
+    {
+        var trimmed = s.Trim();
+        if (trimmed.Length == 0) return b.IsZero;
+        if (!BigInteger.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+            return false;
+        return b == parsed;
     }
 
     public bool Equals(JsValue other) => StrictEquals(this, other);

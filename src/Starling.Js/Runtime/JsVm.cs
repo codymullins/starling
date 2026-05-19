@@ -182,8 +182,15 @@ public sealed class JsVm
             return v;
         }
 
+        // §14.15 try-frame stack — owns the catch/finally targets that the
+        // outer C# catch(JsThrow) and the Return opcode handler consult.
+        var tryStack = new Stack<TryFrame>();
+
         while (true)
         {
+            JsThrow? rethrow = null;
+            try
+            {
             var op = (Opcode)code[ip++];
             switch (op)
             {
@@ -200,7 +207,7 @@ public sealed class JsVm
                     {
                         double d => JsValue.Number(d),
                         string s => JsValue.String(s),
-                        JsBigIntPlaceholder bi => JsValue.BigInt(bi.Digits),
+                        JsBigIntPlaceholder bi => JsValue.BigInt(bi.Value),
                         _ => JsValue.Undefined,
                     });
                     break;
@@ -256,12 +263,51 @@ public sealed class JsVm
                     Push(JsAdd(a, b));
                     break;
                 }
-                case Opcode.Sub: Push(JsValue.Number(NumPop2(out var b1, ref sp, stack) - b1)); break;
-                case Opcode.Mul: { var b = Pop(); var a = Pop(); Push(JsValue.Number(JsValue.ToNumber(a) * JsValue.ToNumber(b))); break; }
-                case Opcode.Div: { var b = Pop(); var a = Pop(); Push(JsValue.Number(JsValue.ToNumber(a) / JsValue.ToNumber(b))); break; }
+                case Opcode.Sub:
+                {
+                    var b = Pop(); var a = Pop();
+                    if (a.IsBigInt || b.IsBigInt)
+                    {
+                        if (!(a.IsBigInt && b.IsBigInt)) throw BigIntOps.MixedTypeError(_runtime.Realm, "-");
+                        Push(BigIntOps.Subtract(a.AsBigInt, b.AsBigInt));
+                        break;
+                    }
+                    Push(JsValue.Number(JsValue.ToNumber(a) - JsValue.ToNumber(b)));
+                    break;
+                }
+                case Opcode.Mul:
+                {
+                    var b = Pop(); var a = Pop();
+                    if (a.IsBigInt || b.IsBigInt)
+                    {
+                        if (!(a.IsBigInt && b.IsBigInt)) throw BigIntOps.MixedTypeError(_runtime.Realm, "*");
+                        Push(BigIntOps.Multiply(a.AsBigInt, b.AsBigInt));
+                        break;
+                    }
+                    Push(JsValue.Number(JsValue.ToNumber(a) * JsValue.ToNumber(b)));
+                    break;
+                }
+                case Opcode.Div:
+                {
+                    var b = Pop(); var a = Pop();
+                    if (a.IsBigInt || b.IsBigInt)
+                    {
+                        if (!(a.IsBigInt && b.IsBigInt)) throw BigIntOps.MixedTypeError(_runtime.Realm, "/");
+                        Push(BigIntOps.Divide(_runtime.Realm, a.AsBigInt, b.AsBigInt));
+                        break;
+                    }
+                    Push(JsValue.Number(JsValue.ToNumber(a) / JsValue.ToNumber(b)));
+                    break;
+                }
                 case Opcode.Mod:
                 {
                     var b = Pop(); var a = Pop();
+                    if (a.IsBigInt || b.IsBigInt)
+                    {
+                        if (!(a.IsBigInt && b.IsBigInt)) throw BigIntOps.MixedTypeError(_runtime.Realm, "%");
+                        Push(BigIntOps.Remainder(_runtime.Realm, a.AsBigInt, b.AsBigInt));
+                        break;
+                    }
                     var ad = JsValue.ToNumber(a); var bd = JsValue.ToNumber(b);
                     Push(JsValue.Number(bd == 0 ? double.NaN : ad - Math.Floor(ad / bd) * bd));
                     break;
@@ -269,20 +315,102 @@ public sealed class JsVm
                 case Opcode.Pow:
                 {
                     var b = Pop(); var a = Pop();
+                    if (a.IsBigInt || b.IsBigInt)
+                    {
+                        if (!(a.IsBigInt && b.IsBigInt)) throw BigIntOps.MixedTypeError(_runtime.Realm, "**");
+                        Push(BigIntOps.Pow(_runtime.Realm, a.AsBigInt, b.AsBigInt));
+                        break;
+                    }
                     Push(JsValue.Number(Math.Pow(JsValue.ToNumber(a), JsValue.ToNumber(b))));
                     break;
                 }
-                case Opcode.Neg: Push(JsValue.Number(-JsValue.ToNumber(Pop()))); break;
-                case Opcode.UnaryPlus: Push(JsValue.Number(JsValue.ToNumber(Pop()))); break;
+                case Opcode.Neg:
+                {
+                    var v = Pop();
+                    if (v.IsBigInt) { Push(BigIntOps.Negate(v.AsBigInt)); break; }
+                    Push(JsValue.Number(-JsValue.ToNumber(v)));
+                    break;
+                }
+                case Opcode.UnaryPlus:
+                {
+                    var v = Pop();
+                    // §13.5.4: unary + on a BigInt throws TypeError.
+                    if (v.IsBigInt)
+                        throw new JsThrow(_runtime.Realm.NewTypeError("Cannot convert a BigInt value to a number"));
+                    Push(JsValue.Number(JsValue.ToNumber(v)));
+                    break;
+                }
 
-                // ----- Bitwise (operate on Int32) -----
-                case Opcode.BitOr:  { var b = Pop(); var a = Pop(); Push(JsValue.Number(ToInt32(a) | ToInt32(b))); break; }
-                case Opcode.BitAnd: { var b = Pop(); var a = Pop(); Push(JsValue.Number(ToInt32(a) & ToInt32(b))); break; }
-                case Opcode.BitXor: { var b = Pop(); var a = Pop(); Push(JsValue.Number(ToInt32(a) ^ ToInt32(b))); break; }
-                case Opcode.BitNot: Push(JsValue.Number(~ToInt32(Pop()))); break;
-                case Opcode.Shl: { var b = Pop(); var a = Pop(); Push(JsValue.Number(ToInt32(a) << (ToInt32(b) & 31))); break; }
-                case Opcode.Shr: { var b = Pop(); var a = Pop(); Push(JsValue.Number(ToInt32(a) >> (ToInt32(b) & 31))); break; }
-                case Opcode.Ushr: { var b = Pop(); var a = Pop(); Push(JsValue.Number((uint)ToInt32(a) >> (ToInt32(b) & 31))); break; }
+                // ----- Bitwise (Number → Int32, or BigInt-only) -----
+                case Opcode.BitOr:
+                {
+                    var b = Pop(); var a = Pop();
+                    if (a.IsBigInt || b.IsBigInt)
+                    {
+                        if (!(a.IsBigInt && b.IsBigInt)) throw BigIntOps.MixedTypeError(_runtime.Realm, "|");
+                        Push(BigIntOps.BitwiseOr(a.AsBigInt, b.AsBigInt));
+                        break;
+                    }
+                    Push(JsValue.Number(ToInt32(a) | ToInt32(b))); break;
+                }
+                case Opcode.BitAnd:
+                {
+                    var b = Pop(); var a = Pop();
+                    if (a.IsBigInt || b.IsBigInt)
+                    {
+                        if (!(a.IsBigInt && b.IsBigInt)) throw BigIntOps.MixedTypeError(_runtime.Realm, "&");
+                        Push(BigIntOps.BitwiseAnd(a.AsBigInt, b.AsBigInt));
+                        break;
+                    }
+                    Push(JsValue.Number(ToInt32(a) & ToInt32(b))); break;
+                }
+                case Opcode.BitXor:
+                {
+                    var b = Pop(); var a = Pop();
+                    if (a.IsBigInt || b.IsBigInt)
+                    {
+                        if (!(a.IsBigInt && b.IsBigInt)) throw BigIntOps.MixedTypeError(_runtime.Realm, "^");
+                        Push(BigIntOps.BitwiseXor(a.AsBigInt, b.AsBigInt));
+                        break;
+                    }
+                    Push(JsValue.Number(ToInt32(a) ^ ToInt32(b))); break;
+                }
+                case Opcode.BitNot:
+                {
+                    var v = Pop();
+                    if (v.IsBigInt) { Push(BigIntOps.BitwiseNot(v.AsBigInt)); break; }
+                    Push(JsValue.Number(~ToInt32(v))); break;
+                }
+                case Opcode.Shl:
+                {
+                    var b = Pop(); var a = Pop();
+                    if (a.IsBigInt || b.IsBigInt)
+                    {
+                        if (!(a.IsBigInt && b.IsBigInt)) throw BigIntOps.MixedTypeError(_runtime.Realm, "<<");
+                        Push(BigIntOps.ShiftLeft(_runtime.Realm, a.AsBigInt, b.AsBigInt));
+                        break;
+                    }
+                    Push(JsValue.Number(ToInt32(a) << (ToInt32(b) & 31))); break;
+                }
+                case Opcode.Shr:
+                {
+                    var b = Pop(); var a = Pop();
+                    if (a.IsBigInt || b.IsBigInt)
+                    {
+                        if (!(a.IsBigInt && b.IsBigInt)) throw BigIntOps.MixedTypeError(_runtime.Realm, ">>");
+                        Push(BigIntOps.ShiftRight(_runtime.Realm, a.AsBigInt, b.AsBigInt));
+                        break;
+                    }
+                    Push(JsValue.Number(ToInt32(a) >> (ToInt32(b) & 31))); break;
+                }
+                case Opcode.Ushr:
+                {
+                    var b = Pop(); var a = Pop();
+                    // §13.10.4 — BigInts have no unsigned right shift; throw TypeError.
+                    if (a.IsBigInt || b.IsBigInt)
+                        throw new JsThrow(_runtime.Realm.NewTypeError("BigInts have no unsigned right shift, use >> instead"));
+                    Push(JsValue.Number((uint)ToInt32(a) >> (ToInt32(b) & 31))); break;
+                }
 
                 // ----- Comparison -----
                 case Opcode.Eq:        { var b = Pop(); var a = Pop(); Push(JsValue.Boolean(JsValue.AbstractEquals(a, b))); break; }
@@ -488,11 +616,77 @@ public sealed class JsVm
                 }
 
                 // ----- Returns -----
-                case Opcode.Return: return Pop();
-                case Opcode.ReturnUndefined: return JsValue.Undefined;
+                // §14.15: divert through any enclosing finalizer first.
+                case Opcode.Return:
+                {
+                    var rv = Pop();
+                    if (DivertReturnThroughFinally(tryStack, rv, ref ip)) break;
+                    return rv;
+                }
+                case Opcode.ReturnUndefined:
+                {
+                    if (DivertReturnThroughFinally(tryStack, JsValue.Undefined, ref ip)) break;
+                    return JsValue.Undefined;
+                }
 
                 // ----- Throw -----
                 case Opcode.Throw: throw new JsThrow(Pop());
+
+                // ----- Try-frame management (gap:try-catch) -----
+                case Opcode.EnterTry:
+                {
+                    var catchOff = ReadI16();
+                    var finOff = ReadI16();
+                    tryStack.Push(new TryFrame
+                    {
+                        CatchPc = catchOff == -1 ? -1 : ip + catchOff,
+                        FinallyPc = finOff == -1 ? -1 : ip + finOff,
+                        StackBase = sp,
+                        Phase = TryPhase.TryBody,
+                        Pending = PendingCompletion.None,
+                        PendingValue = JsValue.Undefined,
+                    });
+                    break;
+                }
+                case Opcode.LeaveTry:
+                {
+                    if (tryStack.Count == 0)
+                        throw new InvalidOperationException("LeaveTry with empty try-frame stack");
+                    var frame = tryStack.Peek();
+                    if (frame.FinallyPc != -1 && frame.Phase != TryPhase.RunningFinally)
+                    {
+                        frame.Phase = TryPhase.RunningFinally;
+                        frame.Pending = PendingCompletion.Normal;
+                        frame.PendingValue = JsValue.Undefined;
+                        tryStack.Pop(); tryStack.Push(frame);
+                        ip = frame.FinallyPc;
+                    }
+                    else
+                    {
+                        tryStack.Pop();
+                    }
+                    break;
+                }
+                case Opcode.EndFinally:
+                {
+                    if (tryStack.Count == 0)
+                        throw new InvalidOperationException("EndFinally with empty try-frame stack");
+                    var frame = tryStack.Pop();
+                    switch (frame.Pending)
+                    {
+                        case PendingCompletion.Normal:
+                            break;
+                        case PendingCompletion.Throw:
+                            throw new JsThrow(frame.PendingValue);
+                        case PendingCompletion.Return:
+                        {
+                            var rv = frame.PendingValue;
+                            if (DivertReturnThroughFinally(tryStack, rv, ref ip)) break;
+                            return rv;
+                        }
+                    }
+                    break;
+                }
 
                 case Opcode.SpreadInto:
                 {
@@ -834,7 +1028,61 @@ public sealed class JsVm
                 default:
                     throw new InvalidOperationException($"opcode {op} not implemented in VM");
             }
+            }
+            catch (JsThrow ex)
+            {
+                JsValue thrown = ex.Value;
+                bool handled = false;
+                while (tryStack.Count > 0)
+                {
+                    var frame = tryStack.Peek();
+                    if (frame.Phase == TryPhase.TryBody && frame.CatchPc != -1)
+                    {
+                        sp = frame.StackBase;
+                        stack[sp++] = thrown;
+                        ip = frame.CatchPc;
+                        frame.Phase = TryPhase.CatchBody;
+                        tryStack.Pop(); tryStack.Push(frame);
+                        handled = true;
+                        break;
+                    }
+                    if (frame.Phase != TryPhase.RunningFinally && frame.FinallyPc != -1)
+                    {
+                        sp = frame.StackBase;
+                        frame.Phase = TryPhase.RunningFinally;
+                        frame.Pending = PendingCompletion.Throw;
+                        frame.PendingValue = thrown;
+                        tryStack.Pop(); tryStack.Push(frame);
+                        ip = frame.FinallyPc;
+                        handled = true;
+                        break;
+                    }
+                    tryStack.Pop();
+                }
+                if (!handled) rethrow = ex;
+            }
+            if (rethrow is not null) throw rethrow;
         }
+    }
+
+    /// <summary>§14.15 — divert a return through any enclosing finalizer.</summary>
+    private static bool DivertReturnThroughFinally(Stack<TryFrame> tryStack, JsValue value, ref int ip)
+    {
+        while (tryStack.Count > 0)
+        {
+            var frame = tryStack.Peek();
+            if (frame.Phase != TryPhase.RunningFinally && frame.FinallyPc != -1)
+            {
+                frame.Phase = TryPhase.RunningFinally;
+                frame.Pending = PendingCompletion.Return;
+                frame.PendingValue = value;
+                tryStack.Pop(); tryStack.Push(frame);
+                ip = frame.FinallyPc;
+                return true;
+            }
+            tryStack.Pop();
+        }
+        return false;
     }
 
     // -----------------------------------------------------------------------
@@ -856,7 +1104,8 @@ public sealed class JsVm
 
     /// <summary>JS '+': run ToPrimitive first; Symbols reject implicit string
     /// conversion per ECMA-262 §20.4, while explicit String(sym) is allowed by
-    /// the String constructor.</summary>
+    /// the String constructor. BigInt + BigInt is allowed; mixing BigInt with
+    /// Number throws TypeError per §13.10.4.</summary>
     private JsValue JsAdd(JsValue a, JsValue b)
     {
         a = AbstractOperations.ToPrimitive(this, a);
@@ -865,19 +1114,74 @@ public sealed class JsVm
             throw new JsThrow(_runtime.Realm.NewTypeError("Cannot convert a Symbol value to a string"));
         if (a.IsString || b.IsString)
             return JsValue.String(JsValue.ToStringValue(a) + JsValue.ToStringValue(b));
+        if (a.IsBigInt || b.IsBigInt)
+        {
+            if (!(a.IsBigInt && b.IsBigInt))
+                throw BigIntOps.MixedTypeError(_runtime.Realm, "+");
+            return BigIntOps.Add(a.AsBigInt, b.AsBigInt);
+        }
         return JsValue.Number(JsValue.ToNumber(a) + JsValue.ToNumber(b));
     }
 
     /// <summary>Less-than per §7.2.13. Returns false for NaN comparisons
-    /// per the spec.</summary>
+    /// per the spec. Cross-type BigInt/Number compares numerically with care
+    /// for non-integer doubles per §6.1.6.1.13.</summary>
     private static bool LessThan(JsValue a, JsValue b)
     {
         if (a.IsString && b.IsString)
             return string.CompareOrdinal(a.AsString, b.AsString) < 0;
+        if (a.IsBigInt && b.IsBigInt) return BigIntOps.LessThan(a.AsBigInt, b.AsBigInt);
+        if (a.IsBigInt && b.IsNumber) return BigIntLessThanNumber(a.AsBigInt, b.AsNumber);
+        if (a.IsNumber && b.IsBigInt) return NumberLessThanBigInt(a.AsNumber, b.AsBigInt);
+        if (a.IsBigInt && b.IsString)
+        {
+            // §7.2.14: parse the string as a BigInt; if it fails (non-integer
+            // or NaN) the comparison is undefined → returns false.
+            if (!System.Numerics.BigInteger.TryParse(b.AsString.Trim(),
+                System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out var rhs))
+                return false;
+            return a.AsBigInt < rhs;
+        }
+        if (a.IsString && b.IsBigInt)
+        {
+            if (!System.Numerics.BigInteger.TryParse(a.AsString.Trim(),
+                System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out var lhs))
+                return false;
+            return lhs < b.AsBigInt;
+        }
         var ad = JsValue.ToNumber(a);
         var bd = JsValue.ToNumber(b);
         if (double.IsNaN(ad) || double.IsNaN(bd)) return false;
         return ad < bd;
+    }
+
+    /// <summary>BigInt &lt; Number per §6.1.6.1.13. NaN → false; infinities
+    /// compare sign-wise; finite non-integers compare against the BigInt by
+    /// flooring the double on the BigInt's side.</summary>
+    private static bool BigIntLessThanNumber(System.Numerics.BigInteger a, double n)
+    {
+        if (double.IsNaN(n)) return false;
+        if (double.IsPositiveInfinity(n)) return true;
+        if (double.IsNegativeInfinity(n)) return false;
+        // Compare exactly when the double is an integer; otherwise compare to
+        // floor(n) and decide by the fractional sign (n > floor(n) ⇒ a < n
+        // iff a ≤ floor(n)).
+        if (n == Math.Truncate(n)) return a < new System.Numerics.BigInteger(n);
+        var floor = new System.Numerics.BigInteger(Math.Floor(n));
+        return a <= floor;
+    }
+
+    private static bool NumberLessThanBigInt(double n, System.Numerics.BigInteger b)
+    {
+        if (double.IsNaN(n)) return false;
+        if (double.IsPositiveInfinity(n)) return false;
+        if (double.IsNegativeInfinity(n)) return true;
+        if (n == Math.Truncate(n)) return new System.Numerics.BigInteger(n) < b;
+        // n is not an integer: n < b iff ceil(n) ≤ b
+        var ceil = new System.Numerics.BigInteger(Math.Ceiling(n));
+        return ceil <= b;
     }
 
     private static int ToInt32(JsValue v)
@@ -888,14 +1192,6 @@ public sealed class JsVm
         return (int)(i & 0xFFFFFFFF);
     }
 
-    // Helper to satisfy Opcode.Sub's pattern — keeps stack frame clean.
-    private static double NumPop2(out double b, ref int sp, JsValue[] stack)
-    {
-        var bv = stack[--sp];
-        var av = stack[--sp];
-        b = JsValue.ToNumber(bv);
-        return JsValue.ToNumber(av);
-    }
 
     /// <summary>B1b-2a — build a class constructor at <c>BuildClass</c>-opcode
     /// dispatch time. Sets up the prototype chain, installs methods/static
@@ -1111,3 +1407,32 @@ public sealed class JsThrow(JsValue value) : Exception($"uncaught: {value}")
     public JsValue Value { get; } = value;
 }
 #pragma warning restore RCS1194
+
+/// <summary>Phase of a §14.15 try-frame in the VM dispatch loop.</summary>
+internal enum TryPhase
+{
+    TryBody,
+    CatchBody,
+    RunningFinally,
+}
+
+/// <summary>Pending completion saved on a try-frame while its
+/// finalizer runs; replayed by <c>EndFinally</c>.</summary>
+internal enum PendingCompletion
+{
+    None,
+    Normal,
+    Throw,
+    Return,
+}
+
+/// <summary>§14.15 try-frame entry used by the VM dispatch loop.</summary>
+internal struct TryFrame
+{
+    public int CatchPc;
+    public int FinallyPc;
+    public int StackBase;
+    public TryPhase Phase;
+    public PendingCompletion Pending;
+    public JsValue PendingValue;
+}

@@ -47,4 +47,35 @@ public sealed class SelectorParserTests
         where.Specificity.Should().Be(Specificity.Zero);
         isSelector.Specificity.Should().Be(new Specificity(1, 0, 0));
     }
+
+    [Fact]
+    public void Pseudo_class_is_allowed_after_pseudo_element()
+    {
+        // ::-webkit-scrollbar-thumb:window-inactive — real selector encountered on mcmaster.com.
+        var selector = SelectorParser.ParseSelectorList("::-webkit-scrollbar-thumb:window-inactive")
+            .Selectors.Should().ContainSingle().Subject;
+
+        var simples = selector.RightmostCompound.SimpleSelectors;
+        simples.Should().HaveCount(2);
+        simples[0].Should().BeOfType<PseudoElementSelector>()
+            .Which.Name.Should().Be("-webkit-scrollbar-thumb");
+        simples[1].Should().BeOfType<PseudoClassSelector>()
+            .Which.Name.Should().Be("window-inactive");
+    }
+
+    [Fact]
+    public void Pseudo_element_target_is_recognized_with_trailing_pseudo_class()
+    {
+        // ::before:hover must still be treated as a pseudo-element-targeting rule for the cascade,
+        // not as a constraint on the element itself.
+        var selector = SelectorParser.ParseSelectorList("a::before:hover").Selectors.Single();
+        selector.TargetPseudoElement.Should().Be(PseudoElement.Before);
+    }
+
+    [Fact]
+    public void Class_after_pseudo_element_is_rejected()
+    {
+        Action act = () => SelectorParser.ParseSelectorList("::before.foo");
+        act.Should().Throw<FormatException>();
+    }
 }

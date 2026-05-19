@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using Tessera.Bindings.Observers;
 using Tessera.Dom;
 using Tessera.Dom.Events;
 using Tessera.Js.Runtime;
@@ -121,6 +122,13 @@ public static class WindowBinding
         StorageBinding.Install(runtime, document, initialUrl);
         CookieBinding.Install(runtime, document, options.CookieJar);
         PerformanceBinding.Install(runtime);
+
+        // 7) B5-4: MutationObserver / IntersectionObserver / ResizeObserver
+        // surfaces. JS-side only — records are not yet produced (see each
+        // binding's file-level TODO for the missing DOM/layout hook).
+        MutationObserverBinding.Install(runtime, document);
+        IntersectionObserverBinding.Install(runtime, document);
+        ResizeObserverBinding.Install(runtime, document);
     }
 
     /// <summary>Resolve the runtime that backs the given realm. Returns null
