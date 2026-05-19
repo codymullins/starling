@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Chrome;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -77,11 +78,22 @@ public sealed class MainWindow : Window, IBrowserController
         _session = new BrowserSession(_diag);
         _webview = new WebviewPanel(_tm, _diag, OnLinkActivated, OnWebviewStatus);
 
-        Title = "Starling (Avalonia)";
+        Title = string.Empty;
         MinWidth = 1024;
         MinHeight = 720;
         Width = 1280;
         Height = 860;
+
+        // Borderless chrome. macOS keeps Full system decorations so the native
+        // traffic lights remain visible — ExtendClientAreaToDecorationsHint
+        // pushes them on top of the toolbar (we reserve a left gutter for them
+        // in BuildChrome). Windows/Linux drop system decorations entirely; the
+        // user opted out of custom min/max/close buttons, and resize is handled
+        // by the invisible grip overlay added below.
+        ExtendClientAreaToDecorationsHint = true;
+        WindowDecorations = OperatingSystem.IsMacOS()
+            ? WindowDecorations.Full
+            : WindowDecorations.None;
 
         BuildChrome(urlText: string.Empty, statusText: "Ready", devToolsTab: null);
         _tm.Changed += (_, _) => RebuildChromeForTheme();
@@ -131,10 +143,14 @@ public sealed class MainWindow : Window, IBrowserController
         rightCluster.Children.Add(_devToolsButton);
         rightCluster.Children.Add(_themeButton);
 
+        // Reserve ~72px on the left for macOS traffic lights so they don't
+        // overlap the back/forward/reload cluster when the sidebar is
+        // collapsed. Other platforms get the original 16px inset.
+        var toolbarLeftInset = 16.0;
         var toolbarGrid = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
-            Margin = new Thickness(16, 0),
+            Margin = new Thickness(toolbarLeftInset, 0, 16, 0),
             ColumnSpacing = 14,
             VerticalAlignment = VerticalAlignment.Center,
         };
@@ -150,6 +166,10 @@ public sealed class MainWindow : Window, IBrowserController
             BorderThickness = new Thickness(0),
             Background = new SolidColorBrush(t.Bg),
         };
+        // Lets the OS treat the toolbar as the window's title bar — handles
+        // click-and-drag to move and double-click-to-maximize. Interactive
+        // children (buttons, the URL TextBox) still get input normally.
+        WindowDecorationProperties.SetElementRole(_toolbar, WindowDecorationsElementRole.TitleBar);
 
         _statusBar = new StatusBar(_tm);
         _statusBar.SetHint(statusText);
@@ -171,10 +191,57 @@ public sealed class MainWindow : Window, IBrowserController
         rootGrid.Children.Add(_sidebar); Grid.SetColumn(_sidebar, 0);
         rootGrid.Children.Add(_contentStack); Grid.SetColumn(_contentStack, 1);
         Background = new SolidColorBrush(t.Bg);
-        Content = rootGrid;
+        Content = OperatingSystem.IsMacOS() ? (Control)rootGrid : WrapWithResizeGrips(rootGrid);
 
         if (devToolsTab is { } tab) OpenDevTools(tab);
         UpdateNavButtonStates();
+    }
+
+    // Avalonia drops native resize edges when SystemDecorations == None, so
+    // on Windows/Linux we overlay an 8px transparent border around the
+    // window content and tag each edge/corner with the appropriate
+    // WindowDecorationsElementRole. The OS picks up the hit-testing role
+    // and gives users back native resize behavior + cursors.
+    private static Control WrapWithResizeGrips(Control inner)
+    {
+        const double grip = 8.0;
+        var grid = new Grid
+        {
+            RowDefinitions = new RowDefinitions($"{grip},*,{grip}"),
+            ColumnDefinitions = new ColumnDefinitions($"{grip},*,{grip}"),
+        };
+
+        static Border Strip(WindowDecorationsElementRole role)
+        {
+            var b = new Border { Background = Brushes.Transparent };
+            WindowDecorationProperties.SetElementRole(b, role);
+            return b;
+        }
+
+        var nw = Strip(WindowDecorationsElementRole.ResizeNW);
+        var n  = Strip(WindowDecorationsElementRole.ResizeN);
+        var ne = Strip(WindowDecorationsElementRole.ResizeNE);
+        var w  = Strip(WindowDecorationsElementRole.ResizeW);
+        var e  = Strip(WindowDecorationsElementRole.ResizeE);
+        var sw = Strip(WindowDecorationsElementRole.ResizeSW);
+        var s  = Strip(WindowDecorationsElementRole.ResizeS);
+        var se = Strip(WindowDecorationsElementRole.ResizeSE);
+
+        Grid.SetRow(inner, 1); Grid.SetColumn(inner, 1);
+        Grid.SetRow(nw, 0); Grid.SetColumn(nw, 0);
+        Grid.SetRow(n,  0); Grid.SetColumn(n,  1);
+        Grid.SetRow(ne, 0); Grid.SetColumn(ne, 2);
+        Grid.SetRow(w,  1); Grid.SetColumn(w,  0);
+        Grid.SetRow(e,  1); Grid.SetColumn(e,  2);
+        Grid.SetRow(sw, 2); Grid.SetColumn(sw, 0);
+        Grid.SetRow(s,  2); Grid.SetColumn(s,  1);
+        Grid.SetRow(se, 2); Grid.SetColumn(se, 2);
+
+        grid.Children.Add(inner);
+        grid.Children.Add(nw); grid.Children.Add(n); grid.Children.Add(ne);
+        grid.Children.Add(w);  grid.Children.Add(e);
+        grid.Children.Add(sw); grid.Children.Add(s); grid.Children.Add(se);
+        return grid;
     }
 
     private void RebuildChromeForTheme()
@@ -334,8 +401,9 @@ public sealed class MainWindow : Window, IBrowserController
             else
             {
                 _webview.ShowPage(result.Value);
-                if (!string.IsNullOrWhiteSpace(result.Value.Title))
-                    Title = $"{result.Value.Title} — Starling (Avalonia)";
+                Title = string.IsNullOrWhiteSpace(result.Value.Title)
+                    ? string.Empty
+                    : result.Value.Title;
                 var current = _session.History.Current;
                 if (!string.IsNullOrEmpty(current) && _urlBar.Address.Text != current)
                     _urlBar.Address.Text = current;

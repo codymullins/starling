@@ -23,7 +23,19 @@ public sealed class ImageSharpTextMeasurer : ITextMeasurer, IDisposable
     private readonly FontFaceRegistry? _webFonts;
     private readonly FontCollection _collection;
     private readonly ConcurrentDictionary<FontCacheKey, Font> _fontCache = new();
+    // Per-measurer shape cache, mirroring the cache the original
+    // SkiaTextMeasurer carried (commit 499ce3d). SixLabors.Fonts shapes content-
+    // only — no contextual kerning across run boundaries — so the same
+    // (text, size, spec) deterministically produces the same glyph advances
+    // relative to (0,0). ShapedRun is immutable, so the same instance can
+    // safely back many TextFragments. Article-class pages repeat common tokens
+    // ("the", " ", ",", digits) hundreds of times; without the cache, every
+    // InlineLayout.LayoutInlineRun call re-shapes the run and then re-shapes
+    // each word inside it.
+    private readonly ConcurrentDictionary<ShapeCacheKey, ShapedRun> _shapeCache = new();
     private bool _disposed;
+
+    private readonly record struct ShapeCacheKey(string Text, float Size, FontSpec Spec);
 
     public ImageSharpTextMeasurer(FontResolver? fonts = null, FontFaceRegistry? webFonts = null)
     {
@@ -36,25 +48,58 @@ public sealed class ImageSharpTextMeasurer : ITextMeasurer, IDisposable
     {
         ArgumentNullException.ThrowIfNull(text);
         if (text.Length == 0 || fontSize <= 0) return 0d;
-        var font = GetFont((float)fontSize, spec);
-        var advance = TextMeasurer.MeasureAdvance(text, new TextOptions(font));
-        return advance.Width;
+        return Shape(text, fontSize, spec).Advance;
     }
 
     /// <summary>
-    /// Returns the run's advance with an empty <see cref="ShapedRun.Glyphs"/>
-    /// array — the documented "let the paint backend re-shape" signal (see
-    /// <see cref="ITextMeasurer.Shape"/>'s contract and
-    /// <see cref="DefaultTextMeasurer.Shape"/>). SixLabors.Fonts 3 does not
-    /// expose OpenType glyph indices on its public surface
-    /// (<c>FontMetrics.TryGetGlyphId</c> is internal; <c>GlyphMetrics</c>
-    /// carries only the codepoint), so we can't populate
-    /// <see cref="ShapedGlyph.GlyphId"/> correctly. The ImageSharp paint
-    /// backend re-renders by string anyway, so leaving the glyph array empty
-    /// is the correct signal — no caller currently consumes it.
+    /// Shape <paramref name="text"/> once and cache the result. Returns the
+    /// per-glyph pen positions plus the total advance.
+    /// <para>
+    /// SixLabors.Fonts 3 does not expose OpenType glyph indices on its public
+    /// <see cref="GlyphMetrics"/> surface (only the codepoint), so
+    /// <see cref="ShapedGlyph.GlyphId"/> carries the codepoint as a stand-in.
+    /// The ImageSharp paint backend re-renders by string and never reads the
+    /// glyph id, so this substitution is safe; the positions are what matter,
+    /// because <c>InlineLayout</c> uses them to slice a whole-run shape
+    /// into per-word <c>TextFragment</c>s without re-shaping each word.
+    /// </para>
+    /// <para>
+    /// When the metrics count matches <c>text.Length</c> (the ASCII / 1:1
+    /// case) the slice optimisation in <c>InlineLayout</c> re-engages.
+    /// For ligatures, surrogate pairs, or combining marks the counts differ
+    /// and InlineLayout falls back to per-word shaping — still cached here
+    /// by (word, size, spec), so the regression cost is bounded.
+    /// </para>
     /// </summary>
     public ShapedRun Shape(string text, double fontSize, FontSpec spec)
-        => new(Array.Empty<ShapedGlyph>(), MeasureWidth(text, fontSize, spec));
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        if (text.Length == 0 || fontSize <= 0)
+            return new ShapedRun(Array.Empty<ShapedGlyph>(), 0d);
+
+        var size = (float)fontSize;
+        var key = new ShapeCacheKey(text, size, spec);
+        if (_shapeCache.TryGetValue(key, out var hit))
+            return hit;
+
+        var font = GetFont(size, spec);
+        var options = new TextOptions(font);
+        var advance = TextMeasurer.MeasureAdvance(text, options);
+        var metrics = TextMeasurer.GetGlyphMetrics(text, options).Span;
+
+        var glyphs = new ShapedGlyph[metrics.Length];
+        var pen = 0f;
+        for (var i = 0; i < metrics.Length; i++)
+        {
+            var gm = metrics[i];
+            glyphs[i] = new ShapedGlyph((uint)gm.CodePoint.Value, pen, 0f);
+            pen += gm.Advance.Width;
+        }
+
+        var shaped = new ShapedRun(glyphs, advance.Width);
+        _shapeCache[key] = shaped;
+        return shaped;
+    }
 
     public double NormalLineHeight(double fontSize, FontSpec spec)
     {
@@ -104,5 +149,6 @@ public sealed class ImageSharpTextMeasurer : ITextMeasurer, IDisposable
         if (_disposed) return;
         _disposed = true;
         _fontCache.Clear();
+        _shapeCache.Clear();
     }
 }

@@ -100,7 +100,7 @@ internal sealed class ImageSharpBackend : IPaintBackend
             // next frame if the page reflows back under the limit.
             _diag.Counter("paint.webgpu.fallback_cpu.oversize", 1);
             Activity.Current?.SetTag("raster.webgpu.fallback_reason", "exceeds_max_texture_dimension");
-            return RenderCpu(list, width, height, scale);
+            return RenderCpu(list, width, height, scale, webGpuFallbackReason: "exceeds_max_texture_dimension");
         }
 
         return _useWebGpu
@@ -115,7 +115,7 @@ internal sealed class ImageSharpBackend : IPaintBackend
     // rather than wrap it in try/catch.
     private const int MaxWebGpuTextureDimension = 8192;
 
-    private RenderedBitmap RenderCpu(PaintList list, int width, int height, float scale)
+    private RenderedBitmap RenderCpu(PaintList list, int width, int height, float scale, string? webGpuFallbackReason = null)
     {
         using (_diag.Span("paint", "raster.context_init"))
         {
@@ -138,6 +138,9 @@ internal sealed class ImageSharpBackend : IPaintBackend
         {
             using (_diag.Span("paint", "raster.command_record"))
             {
+                Activity.Current?.SetTag("raster.items", list.Items.Count);
+                if (webGpuFallbackReason is not null)
+                    Activity.Current?.SetTag("raster.webgpu.fallback_reason", webGpuFallbackReason);
                 image.Mutate(x => x.Paint(canvas =>
                 {
                     var transforms = new TransformStack();
@@ -206,6 +209,7 @@ internal sealed class ImageSharpBackend : IPaintBackend
             {
                 using (_diag.Span("paint", "raster.command_record"))
                 {
+                    Activity.Current?.SetTag("raster.items", list.Items.Count);
                     canvas.Fill(Brushes.Solid(Color.White), new Rectangle(0, 0, width, height));
                     var transforms = new TransformStack();
                     foreach (var item in list.Items)
@@ -214,7 +218,8 @@ internal sealed class ImageSharpBackend : IPaintBackend
                     // the GPU pipeline executes before ReadbackImage samples
                     // the texture. Without it, readback races the (un)submitted
                     // command buffer and returns the initial clear color.
-                    canvas.Flush();
+                    using (_diag.Span("paint", "raster.flush"))
+                        canvas.Flush();
                 }
             }
             finally

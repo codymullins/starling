@@ -115,7 +115,10 @@ public sealed class Sidebar : Grid
 
         return new Border
         {
-            Padding = new Thickness(18, 16, 18, 16),
+            // On macOS the native traffic lights overlap the sidebar's
+            // top-left corner; bump the top padding so the wordmark sits
+            // clear of them. Other platforms use the original 16px inset.
+            Padding = new Thickness(18, OperatingSystem.IsMacOS() ? 36 : 16, 18, 16),
             Child = row,
         };
     }
