@@ -7,6 +7,30 @@
     <PackageReference Include="BenchmarkDotNet" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Starling.Engine\Starling.Engine.csproj" />
+    <!--
+      Benchmarks reference subsystem projects directly rather than going
+      through Starling.Engine. This keeps each bench scoped to the layer it
+      measures, and avoids dragging in the JS/DOM bindings layer (which is
+      irrelevant to the parser/cascade/layout/paint/net measurements here).
+
+      Starling.Js is intentionally not referenced today: the JS intrinsics
+      work-in-progress (Symbol/TypedArray/Array intrinsics on the B-series
+      work packages) leaves the project temporarily uncompileable. Restore
+      the reference below and remove the matching `Compile Remove` once
+      Starling.Js builds clean again to re-enable `JsBench.cs`.
+    -->
+    <ProjectReference Include="..\..\src\Starling.Common\Starling.Common.csproj" />
+    <ProjectReference Include="..\..\src\Starling.Url\Starling.Url.csproj" />
+    <ProjectReference Include="..\..\src\Starling.Net\Starling.Net.csproj" />
+    <ProjectReference Include="..\..\src\Starling.Html\Starling.Html.csproj" />
+    <ProjectReference Include="..\..\src\Starling.Dom\Starling.Dom.csproj" />
+    <ProjectReference Include="..\..\src\Starling.Css\Starling.Css.csproj" />
+    <ProjectReference Include="..\..\src\Starling.Layout\Starling.Layout.csproj" />
+    <ProjectReference Include="..\..\src\Starling.Paint\Starling.Paint.csproj" />
+    <!-- <ProjectReference Include="..\..\src\Starling.Js\Starling.Js.csproj" /> -->
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="JsBench.cs" />
+    <None Include="JsBench.cs" />
   </ItemGroup>
 </Project>
