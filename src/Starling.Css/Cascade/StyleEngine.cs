@@ -215,6 +215,34 @@ public sealed class StyleEngine
     public ComputedStyle Compute(Element element, SelectorMatchContext? context)
         => Compute(element, context, cache: null);
 
+    private AnimationCompositor? _compositor;
+
+    /// <summary>
+    /// The animation/transition compositor wired to this engine's
+    /// <see cref="AnimationEngine"/> and <see cref="TransitionEngine"/>.
+    /// Lazily constructed on first use.
+    /// </summary>
+    public AnimationCompositor Compositor =>
+        _compositor ??= new AnimationCompositor(AnimationEngine, TransitionEngine);
+
+    /// <summary>
+    /// Compute the static cascade for <paramref name="element"/> and overlay
+    /// the current animation + transition samples at clock
+    /// <paramref name="nowMs"/>. Equivalent to
+    /// <c>Compositor.Compose(element, Compute(element, context, cache), nowMs)</c>.
+    /// Returns the static <see cref="ComputedStyle"/> unchanged when no
+    /// animation or transition affects the element.
+    /// </summary>
+    public ComputedStyle ComputeWithAnimations(
+        Element element,
+        double nowMs,
+        SelectorMatchContext? context = null,
+        CascadeCache? cache = null)
+    {
+        var staticStyle = Compute(element, context, cache);
+        return Compositor.Compose(element, staticStyle, nowMs);
+    }
+
     /// <summary>
     /// Pre-cascade an entire element subtree in parallel, populating
     /// <paramref name="cache"/> so subsequent

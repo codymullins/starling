@@ -1,22 +1,138 @@
 using Tessera.Css.Cascade;
 using Tessera.Css.Properties;
 using Tessera.Css.Values;
+using Tessera.Dom;
 
 namespace Tessera.Css.Animations;
 
 /// <summary>
-/// Static helpers that turn cascaded Animation* longhand values into a flat
-/// list of <see cref="AnimationDeclaration"/> objects suitable for feeding to
-/// <see cref="AnimationEngine.OnAnimationsCascaded"/>.
+/// Stitches <see cref="AnimationEngine"/> + <see cref="TransitionEngine"/>
+/// into the cascade. Given a statically-cascaded <see cref="ComputedStyle"/>
+/// and the current monotonic clock, <see cref="Compose"/> feeds new
+/// cascaded values to the underlying engines (driving animation start/stop
+/// and transition triggering) and returns a <see cref="ComputedStyle"/> with
+/// the engines' current samples overlaid on top.
+/// <para>
+/// Effective-value priority (CSS Animations 1 §3.2):
+/// <c>transition &gt; animation &gt; static cascade</c>.
+/// </para>
 /// </summary>
-/// <remarks>
-/// Per CSS Animations 1 §4.1, the parallel longhand lists are zipped to the
-/// length of <c>animation-name</c>. Shorter parallel lists cycle from the
-/// start so e.g. <c>animation-name: a, b, c; animation-duration: 1s, 2s</c>
-/// gives durations <c>1s, 2s, 1s</c>.
-/// </remarks>
-public static class AnimationCompositor
+public sealed class AnimationCompositor
 {
+    private readonly AnimationEngine _animations;
+    private readonly TransitionEngine _transitions;
+
+    // Per-element cache so re-cascades that produce the same animation list
+    // don't restart playback.
+    private readonly Dictionary<Element, IReadOnlyList<AnimationDeclaration>> _lastDecls = new();
+    // Per-element snapshot of the most recently observed static cascade for
+    // every property listed in transition-property. The TransitionEngine
+    // also keeps a snapshot but its is keyed by "every property it's ever
+    // seen change"; this one is scoped to actually-transitioned properties
+    // so we don't drive zero-duration transitions for unrelated changes.
+    private readonly Dictionary<Element, Dictionary<PropertyId, CssValue>> _snapshots = new();
+
+    public AnimationCompositor(AnimationEngine animations, TransitionEngine transitions)
+    {
+        ArgumentNullException.ThrowIfNull(animations);
+        ArgumentNullException.ThrowIfNull(transitions);
+        _animations = animations;
+        _transitions = transitions;
+    }
+
+    /// <summary>
+    /// Sample the engines at <paramref name="nowMs"/> and return a
+    /// <see cref="ComputedStyle"/> where any animation- or transition-driven
+    /// property values overlay the static cascade. Returns
+    /// <paramref name="staticStyle"/> unchanged when no animation /
+    /// transition is in flight for <paramref name="element"/>.
+    /// </summary>
+    public ComputedStyle Compose(Element element, ComputedStyle staticStyle, double nowMs)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        ArgumentNullException.ThrowIfNull(staticStyle);
+
+        // 1. Detect cascade-level animation declaration changes and feed
+        //    the AnimationEngine so it starts/stops instances. Compare
+        //    structurally so a re-cascade with the same shorthand doesn't
+        //    reset playback.
+        var decls = BuildDeclarations(staticStyle);
+        if (!_lastDecls.TryGetValue(element, out var prior) || !DeclsEqual(prior, decls))
+        {
+            _animations.OnAnimationsCascaded(element, decls);
+            _lastDecls[element] = decls;
+        }
+
+        // 2. Detect transitioned-property changes and feed the
+        //    TransitionEngine.
+        var transitioned = ParseTransitionProperty(staticStyle);
+        if (transitioned.Count > 0)
+        {
+            if (!_snapshots.TryGetValue(element, out var snap))
+                _snapshots[element] = snap = new Dictionary<PropertyId, CssValue>();
+            foreach (var prop in transitioned)
+            {
+                if (!staticStyle.TryGet(prop, out var newVal)) continue;
+                // Only feed the TransitionEngine when the *static* cascade
+                // value actually changed since we last saw it. The engine's
+                // own _lastEffective gets mutated by Tick (it stores the
+                // sampled mid-tween value), so re-feeding the same static
+                // value would look like a change and restart the
+                // transition every frame.
+                if (snap.TryGetValue(prop, out var lastStatic) && Equals(lastStatic, newVal))
+                    continue;
+                _transitions.OnComputedValueChanged(element, prop, newVal, p =>
+                    staticStyle.TryGet(p, out var v) ? v : null);
+                snap[prop] = newVal;
+            }
+        }
+
+        // 3. Collect overrides — union of properties touched by an active
+        //    animation and properties with an active transition. Transition
+        //    wins (§3.2). GetEffective returns null when nothing is in
+        //    flight, so the natural cascade value wins by default.
+        Dictionary<PropertyId, CssValue>? overrides = null;
+
+        foreach (var prop in _animations.ActiveProperties(element))
+        {
+            var animVal = _animations.GetEffective(element, prop);
+            if (animVal is null) continue;
+            (overrides ??= new Dictionary<PropertyId, CssValue>())[prop] = animVal;
+        }
+
+        foreach (var prop in _transitions.ActiveProperties(element))
+        {
+            var transVal = _transitions.GetEffective(element, prop);
+            if (transVal is null) continue;
+            (overrides ??= new Dictionary<PropertyId, CssValue>())[prop] = transVal;
+        }
+
+        return overrides is null ? staticStyle : staticStyle.WithOverrides(overrides);
+    }
+
+    /// <summary>Forget all per-element compositor state for
+    /// <paramref name="element"/>. Call on element detachment alongside
+    /// <see cref="AnimationEngine.Forget"/> + <see cref="TransitionEngine.Forget"/>.</summary>
+    public void Forget(Element element)
+    {
+        _lastDecls.Remove(element);
+        _snapshots.Remove(element);
+    }
+
+    /// <summary>Reset all per-element state — primarily for tests.</summary>
+    public void Reset()
+    {
+        _lastDecls.Clear();
+        _snapshots.Clear();
+    }
+
+    /// <summary>
+    /// Turn the cascaded Animation* longhand values into one
+    /// <see cref="AnimationDeclaration"/> per layer. Parallel longhand lists
+    /// shorter than <c>animation-name</c> cycle from the start
+    /// (CSS Animations 1 §4.1). Layers with <c>animation-name: none</c> are
+    /// skipped.
+    /// </summary>
     public static IReadOnlyList<AnimationDeclaration> BuildDeclarations(ComputedStyle style)
     {
         var names = AsList(style.Get(PropertyId.AnimationName));
@@ -50,6 +166,39 @@ public static class AnimationCompositor
         return result;
     }
 
+    private static IReadOnlyList<PropertyId> ParseTransitionProperty(ComputedStyle style)
+    {
+        if (!style.TryGet(PropertyId.TransitionProperty, out var raw))
+            return Array.Empty<PropertyId>();
+        var values = AsList(raw);
+        if (values.Count == 0) return Array.Empty<PropertyId>();
+        var result = new List<PropertyId>(values.Count);
+        foreach (var v in values)
+        {
+            if (v is not CssKeyword k) continue;
+            if (k.Name is "none" or "") continue;
+            if (k.Name is "all" or "initial")
+            {
+                // "all" expands to every animatable property; we can't
+                // enumerate that cheaply, so let the engine catch changes
+                // lazily by snapshotting only the properties the static
+                // style actually defines (most pages use specific names).
+                continue;
+            }
+            if (PropertyRegistry.TryGetPropertyId(k.Name, out var id))
+                result.Add(id);
+        }
+        return result;
+    }
+
+    private static bool DeclsEqual(IReadOnlyList<AnimationDeclaration> a, IReadOnlyList<AnimationDeclaration> b)
+    {
+        if (a.Count != b.Count) return false;
+        for (var i = 0; i < a.Count; i++)
+            if (!a[i].Equals(b[i])) return false;
+        return true;
+    }
+
     private static IReadOnlyList<CssValue> AsList(CssValue value)
         => value is CssValueList list
             ? list.Values.Where(v => v is not CssKeyword { Name: "" }).ToList()
@@ -70,7 +219,7 @@ public static class AnimationCompositor
         CssTime t => t.InSeconds * 1000d,
         CssDimension d when d.Unit == "s" => d.Value * 1000d,
         CssDimension d when d.Unit == "ms" => d.Value,
-        CssNumber n => n.Value, // tolerate unitless 0
+        CssNumber n => n.Value,
         _ => 0d,
     };
 
@@ -104,11 +253,4 @@ public static class AnimationCompositor
     };
 
     private static TimingFunction ParseTimingFunction(CssValue v) => TimingFunction.FromCss(v);
-
-    private static double AsDouble(CssValue v) => v switch
-    {
-        CssNumber n => n.Value,
-        CssPercentage p => p.Value / 100d,
-        _ => 0d,
-    };
 }

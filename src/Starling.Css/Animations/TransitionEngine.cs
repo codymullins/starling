@@ -193,6 +193,17 @@ public sealed class TransitionEngine
     }
 
     /// <summary>
+    /// Enumerate the <see cref="PropertyId"/>s that currently have an
+    /// in-flight transition for <paramref name="element"/>.
+    /// </summary>
+    public IEnumerable<PropertyId> ActiveProperties(Element element)
+    {
+        foreach (var key in _active.Keys)
+            if (ReferenceEquals(key.Item1, element))
+                yield return key.Item2;
+    }
+
+    /// <summary>
     /// Clear all active transitions and the effective-value table for
     /// <paramref name="element"/>. Called by the host when an element is
     /// detached so we don't leak Element references through the dictionary.

@@ -126,6 +126,26 @@ public sealed class AnimationEngine
         return winning;
     }
 
+    /// <summary>
+    /// Enumerate the distinct <see cref="PropertyId"/>s currently targeted by
+    /// any active animation on <paramref name="element"/>. Returns an empty
+    /// sequence if the element has no active animations or none of their
+    /// keyframes touch a recognised property.
+    /// </summary>
+    public IEnumerable<PropertyId> ActiveProperties(Element element)
+    {
+        if (!_active.TryGetValue(element, out var list)) yield break;
+        var seen = new HashSet<PropertyId>();
+        foreach (var inst in list)
+        {
+            if (!_keyframes.TryGetValue(inst.Name, out var rule)) continue;
+            foreach (var frame in rule.Frames)
+                foreach (var decl in frame.Declarations)
+                    if (PropertyRegistry.TryGetPropertyId(decl.Property, out var id) && seen.Add(id))
+                        yield return id;
+        }
+    }
+
     /// <summary>Advance the engine clock. Returns the number of animations that
     /// completed (entered a non-replaying terminal state) during this tick.</summary>
     public int Tick(double nowMs)

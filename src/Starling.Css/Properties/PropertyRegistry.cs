@@ -742,7 +742,7 @@ public static class PropertyRegistry
         var sawDuration = false;
         foreach (var v in values)
         {
-            if (v is CssDimension { Unit: "s" or "ms" })
+            if (v is CssTime || v is CssDimension { Unit: "s" or "ms" })
             {
                 if (!sawDuration)
                 {

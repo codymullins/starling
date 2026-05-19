@@ -21,6 +21,32 @@ public sealed class ComputedStyle
 
     public CssValue Get(PropertyId property) => _values[property];
 
+    public bool TryGet(PropertyId property, out CssValue value)
+    {
+        if (_values.TryGetValue(property, out var v))
+        {
+            value = v;
+            return true;
+        }
+        value = default!;
+        return false;
+    }
+
+    /// <summary>
+    /// Returns a new <see cref="ComputedStyle"/> with the given property values
+    /// overlaid on top of this one. Used by the animation compositor
+    /// (CSS Animations 1 §3.2) to layer in-flight animation + transition
+    /// samples over the static cascade. Custom properties are unchanged.
+    /// </summary>
+    internal ComputedStyle WithOverrides(IReadOnlyDictionary<PropertyId, CssValue> overrides)
+    {
+        if (overrides.Count == 0) return this;
+        var merged = new Dictionary<PropertyId, CssValue>(_values.Count);
+        foreach (var kv in _values) merged[kv.Key] = kv.Value;
+        foreach (var kv in overrides) merged[kv.Key] = kv.Value;
+        return new ComputedStyle(merged, CustomProperties);
+    }
+
     /// <summary>Layout-time used-value resolution. Resolves any remaining
     /// percentages or symbolic units (e.g. percentages, container units when
     /// a container basis is supplied) using <paramref name="ctx"/>.</summary>
