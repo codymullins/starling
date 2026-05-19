@@ -68,15 +68,15 @@ if (!string.IsNullOrWhiteSpace(rustLog))
 
 builder.Build().Run();
 
-// Walk up from this binary's location until we find Starling.sln. AppContext.
+// Walk up from this binary's location until we find Starling.slnx. AppContext.
 // BaseDirectory points at AppHost's bin/, which is N levels below the repo
 // root regardless of how the user launched `dotnet run`.
 static string LocateRepoRoot()
 {
     var dir = AppContext.BaseDirectory;
-    while (!string.IsNullOrEmpty(dir) && !File.Exists(Path.Combine(dir, "Starling.sln")))
+    while (!string.IsNullOrEmpty(dir) && !File.Exists(Path.Combine(dir, "Starling.slnx")))
         dir = Path.GetDirectoryName(dir);
     return string.IsNullOrEmpty(dir)
-        ? throw new InvalidOperationException("Could not locate Starling.sln from " + AppContext.BaseDirectory)
+        ? throw new InvalidOperationException("Could not locate Starling.slnx from " + AppContext.BaseDirectory)
         : dir;
 }
