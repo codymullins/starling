@@ -1,7 +1,7 @@
 ---
 id: wp:M5-css-10-engine-frame-loop
 milestone: M5
-status: "claimed"
+status: "complete"
 claimed_by: "agent-copilot-claude-opus-4.7"
 claimed_at: "2026-05-19T15:50:55Z"
 branch: "main"
@@ -62,3 +62,12 @@ renderer can rasterize a chosen frame.
 - 2026-05-19T16:25Z — created (agent-copilot-claude-opus-4.7). Blocked on
   wp:M5-css-08 and wp:M5-css-09.
 - 2026-05-19T15:50:55Z — claimed by agent-copilot-claude-opus-4.7, working on main
+- 2026-05-19T22:30Z — complete. Threaded `nowMs` through `BoxTreeBuilder`,
+  `LayoutEngine`, and `Painter` (added `RenderWithStyle` overload that
+  reuses caller's `StyleEngine` so animation state survives between
+  paints). Added `TesseraEngine.RenderFrame(LaidOutPage, long nowMs)` that
+  ticks `AnimationEngine` + `TransitionEngine` then repaints. Added
+  `--frames N --frame-step Nms|Ns` flags to the headless renderer with
+  `RenderFrameSequence` writing `framePadded.png` per timestamp. Tests in
+  `AnimationFrameRenderTests`: deterministic-no-animation + keyframe
+  background-color sampling at t=0/500/999ms.

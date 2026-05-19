@@ -2,6 +2,7 @@ using Tessera.Css.Cascade;
 using Tessera.Dom;
 using Tessera.Layout;
 using Tessera.Layout.Box;
+using Tessera.Paint;
 
 namespace Tessera.Engine;
 
@@ -18,9 +19,9 @@ namespace Tessera.Engine;
 /// </remarks>
 public sealed class LaidOutPage : IDisposable
 {
-    private readonly IDisposable _images;
-    private readonly IDisposable _stylesheets;
-    private readonly IDisposable _webFonts;
+    private readonly ImageFetcher _images;
+    private readonly StylesheetFetcher _stylesheets;
+    private readonly FontFaceRegistry _webFonts;
     private bool _disposed;
 
     internal LaidOutPage(
@@ -30,9 +31,10 @@ public sealed class LaidOutPage : IDisposable
         Size viewport,
         string url,
         string? title,
-        IDisposable images,
-        IDisposable stylesheets,
-        IDisposable webFonts)
+        ImageFetcher images,
+        StylesheetFetcher stylesheets,
+        FontFaceRegistry webFonts,
+        float? defaultFontSize)
     {
         Root = root;
         Document = document;
@@ -43,6 +45,7 @@ public sealed class LaidOutPage : IDisposable
         _images = images;
         _stylesheets = stylesheets;
         _webFonts = webFonts;
+        DefaultFontSize = defaultFontSize;
     }
 
     public BlockBox Root { get; }
@@ -65,6 +68,15 @@ public sealed class LaidOutPage : IDisposable
     /// viewport. The shell sizes its scroll surface to this value.
     /// </summary>
     public double DocumentHeight => Root.Frame.Height;
+
+    /// <summary>Default font size used when the page was first laid out.
+    /// Re-paints (e.g. via <see cref="TesseraEngine.RenderFrame"/>) reuse
+    /// it so frame-to-frame rasters stay consistent.</summary>
+    internal float? DefaultFontSize { get; }
+
+    internal ImageFetcher Images => _images;
+    internal StylesheetFetcher Stylesheets => _stylesheets;
+    internal FontFaceRegistry WebFonts => _webFonts;
 
     public void Dispose()
     {

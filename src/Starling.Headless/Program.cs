@@ -164,6 +164,8 @@ internal static class Program
         var output = "out.png";
         var viewport = new Size(800, 600);
         var fontSize = 32f;
+        var frames = 1;
+        var frameStepMs = 16L;
 
         for (var i = 1; i < args.Length; i++)
         {
@@ -187,6 +189,21 @@ internal static class Program
                         return 1;
                     }
                     break;
+                case "--frames" when i + 1 < args.Length:
+                    if (!int.TryParse(args[++i], System.Globalization.CultureInfo.InvariantCulture, out frames)
+                        || frames < 1)
+                    {
+                        Console.Error.WriteLine($"error: invalid --frames '{args[i]}' (must be >= 1).");
+                        return 1;
+                    }
+                    break;
+                case "--frame-step" when i + 1 < args.Length:
+                    if (!TryParseFrameStep(args[++i], out frameStepMs))
+                    {
+                        Console.Error.WriteLine($"error: invalid --frame-step '{args[i]}' (expected e.g. '16ms' or '16').");
+                        return 1;
+                    }
+                    break;
                 default:
                     Console.Error.WriteLine($"error: unknown render option '{args[i]}'.");
                     return 1;
@@ -197,6 +214,12 @@ internal static class Program
         var url = NormalizeUrlOrPath(input);
 
         var engine = new TesseraEngine(diagnostics: s_diagnostics);
+
+        if (frames > 1)
+        {
+            return RenderFrameSequence(engine, url, new RenderOptions(viewport, fontSize), output, frames, frameStepMs);
+        }
+
         var result = engine.Render(url, new RenderOptions(viewport, fontSize), output);
 
         return result.Match(
@@ -210,6 +233,78 @@ internal static class Program
                 Console.Error.WriteLine($"error: {err.Message}");
                 return 1;
             });
+    }
+
+    private static int RenderFrameSequence(
+        TesseraEngine engine, string url, RenderOptions options, string outputTemplate,
+        int frames, long frameStepMs)
+    {
+        // Lay the page out once, then ask the engine to repaint at evenly
+        // spaced frame timestamps. The animation/transition engines on the
+        // retained LaidOutPage carry their state forward between calls so
+        // CSS animations sample correctly across the sequence.
+        var layoutTask = engine.LayoutPageAsync(url, options);
+        var layoutResult = layoutTask.GetAwaiter().GetResult();
+        return layoutResult.Match(
+            page =>
+            {
+                using (page)
+                {
+                    var width = 0; var height = 0;
+                    var pad = frames.ToString(System.Globalization.CultureInfo.InvariantCulture).Length;
+                    var dir = Path.GetDirectoryName(outputTemplate);
+                    var stem = Path.GetFileNameWithoutExtension(outputTemplate);
+                    var ext = Path.GetExtension(outputTemplate);
+                    if (string.IsNullOrEmpty(ext)) ext = ".png";
+
+                    for (var i = 0; i < frames; i++)
+                    {
+                        var nowMs = i * frameStepMs;
+                        var bitmap = engine.RenderFrame(page, nowMs);
+                        try
+                        {
+                            var name = $"{stem}{i.ToString("D" + pad, System.Globalization.CultureInfo.InvariantCulture)}{ext}";
+                            var path = string.IsNullOrEmpty(dir) ? name : Path.Combine(dir, name);
+                            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                            using var image = Image.LoadPixelData<SixLabors.ImageSharp.PixelFormats.Rgba32>(
+                                bitmap.Rgba, bitmap.Width, bitmap.Height);
+                            image.SaveAsPng(path);
+                            width = bitmap.Width; height = bitmap.Height;
+                            Console.WriteLine($"rendered {path} ({bitmap.Width}x{bitmap.Height}) @ t={nowMs}ms");
+                        }
+                        finally
+                        {
+                            bitmap.Dispose();
+                        }
+                    }
+
+                    Console.WriteLine($"wrote {frames} frames ({width}x{height}) step={frameStepMs}ms.");
+                    return 0;
+                }
+            },
+            err =>
+            {
+                Console.Error.WriteLine($"error: {err.Message}");
+                return 1;
+            });
+    }
+
+    private static bool TryParseFrameStep(string raw, out long ms)
+    {
+        ms = 0;
+        if (string.IsNullOrWhiteSpace(raw)) return false;
+        var s = raw.Trim();
+        if (s.EndsWith("ms", StringComparison.OrdinalIgnoreCase)) s = s[..^2];
+        else if (s.EndsWith("s", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!double.TryParse(s[..^1], System.Globalization.CultureInfo.InvariantCulture, out var sec) || sec <= 0)
+                return false;
+            ms = (long)(sec * 1000);
+            return ms > 0;
+        }
+        if (!long.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, out ms) || ms <= 0)
+            return false;
+        return true;
     }
 
     private static int StubSubcommand(string name)

@@ -23,7 +23,7 @@ namespace Tessera.Engine;
 /// </summary>
 /// <remarks>
 /// As of the M1 static-rendering closure the renderer uses the document-level
-/// pipeline in <see cref="Painter.RenderDocument"/> for file and network inputs.
+/// pipeline in <see cref="Painter.RenderDocument(Document, Tessera.Layout.Size, float?, Tessera.Layout.Tree.IImageResolver?, System.Func{Element, Tessera.Css.Parser.StyleSheet?}?, FontFaceRegistry?)"/> for file and network inputs.
 /// </remarks>
 public sealed class TesseraEngine
 {
@@ -285,7 +285,7 @@ public sealed class TesseraEngine
 
             var title = ExtractTitle(doc);
             return Result<LaidOutPage, RenderError>.Ok(
-                new LaidOutPage(root, doc, style, viewport, url, title, images, stylesheets, webFonts));
+                new LaidOutPage(root, doc, style, viewport, url, title, images, stylesheets, webFonts, options.FontSize));
         }
         catch
         {
@@ -294,6 +294,32 @@ public sealed class TesseraEngine
             webFonts.Dispose();
             throw;
         }
+    }
+
+    /// <summary>
+    /// Re-paint an already-laid-out page at frame timestamp <paramref name="nowMs"/>.
+    /// Ticks the page's animation and transition engines forward, then runs the
+    /// painter with the timestamp threaded through the cascade so any in-flight
+    /// CSS animations and transitions sample their current value into the
+    /// returned bitmap. The page's box tree is rebuilt each call (cheap when
+    /// only animated properties changed; the cascade cache short-circuits the
+    /// static side), so the same <see cref="LaidOutPage"/> can drive an arbitrary
+    /// frame sequence. Callers typically loop calling this once per rAF tick.
+    /// </summary>
+    public Tessera.Common.Image.RenderedBitmap RenderFrame(LaidOutPage page, long nowMs)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        page.Style.AnimationEngine.Tick(nowMs);
+        page.Style.TransitionEngine.Tick(nowMs);
+
+        return _painter.RenderWithStyle(
+            page.Document,
+            page.Style,
+            new LayoutSize(page.Viewport.Width, page.Viewport.Height),
+            page.Images,
+            page.WebFonts,
+            nowMs: (double)nowMs);
     }
 
     /// <summary>

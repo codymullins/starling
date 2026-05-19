@@ -13,13 +13,20 @@ internal sealed class BoxTreeBuilder
 {
     private readonly StyleEngine _style;
     private readonly IImageResolver _images;
+    private readonly double? _nowMs;
 
-    public BoxTreeBuilder(StyleEngine style, IImageResolver? images = null)
+    public BoxTreeBuilder(StyleEngine style, IImageResolver? images = null, double? nowMs = null)
     {
         ArgumentNullException.ThrowIfNull(style);
         _style = style;
         _images = images ?? NullImageResolver.Instance;
+        _nowMs = nowMs;
     }
+
+    private ComputedStyle Compute(Element el, CascadeCache cache)
+        => _nowMs is { } t
+            ? _style.ComputeWithAnimations(el, t, context: null, cache)
+            : _style.Compute(el, context: null, cache);
 
     public BlockBox Build(Document document)
     {
@@ -40,7 +47,7 @@ internal sealed class BoxTreeBuilder
         // around ~50μs per partition that beats serial only past ~12 items
         // per depth).
         _style.PrecomputeTree(root, cache);
-        var rootStyle = _style.Compute(root, context: null, cache);
+        var rootStyle = Compute(root, cache);
         var rootBox = new BlockBox(rootStyle, root);
         BuildChildren(root, rootStyle, rootBox, cache);
         WrapInlinesInAnonymousBlocks(rootBox);
@@ -54,7 +61,7 @@ internal sealed class BoxTreeBuilder
             switch (child)
             {
                 case Element element:
-                    var elementStyle = _style.Compute(element, context: null, cache);
+                    var elementStyle = Compute(element, cache);
                     var display = DisplayKeyword(elementStyle);
                     if (display == "none") continue;
                     if (display == "contents")

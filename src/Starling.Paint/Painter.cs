@@ -50,10 +50,29 @@ public sealed class Painter
         IImageResolver? images = null,
         Func<Element, StyleSheet?>? externalStylesheet = null,
         FontFaceRegistry? webFonts = null)
+        => RenderDocument(document, viewport, defaultFontSize, images, externalStylesheet, webFonts, nowMs: null);
+
+    /// <summary>
+    /// Render at a specific frame timestamp — drives CSS animations and
+    /// transitions through the cascade so the produced bitmap reflects the
+    /// engine state at <paramref name="nowMs"/>. Callers must Tick the
+    /// underlying <see cref="StyleEngine.AnimationEngine"/> and
+    /// <see cref="StyleEngine.TransitionEngine"/> to <paramref name="nowMs"/>
+    /// before calling this — the painter does not own the engines and so
+    /// cannot advance them itself.
+    /// </summary>
+    public RenderedBitmap RenderDocument(
+        Document document,
+        LayoutSize viewport,
+        float? defaultFontSize,
+        IImageResolver? images,
+        Func<Element, StyleSheet?>? externalStylesheet,
+        FontFaceRegistry? webFonts,
+        double? nowMs)
     {
         ArgumentNullException.ThrowIfNull(document);
 
-        var root = LayoutDocument(document, viewport, defaultFontSize, images, externalStylesheet, webFonts);
+        var root = LayoutDocument(document, viewport, defaultFontSize, images, externalStylesheet, webFonts, nowMs);
 
         PaintList displayList;
         using (_diag.Span("paint", "display_list"))
@@ -93,13 +112,25 @@ public sealed class Painter
         IImageResolver? images = null,
         Func<Element, StyleSheet?>? externalStylesheet = null,
         FontFaceRegistry? webFonts = null)
+        => LayoutDocument(document, viewport, defaultFontSize, images, externalStylesheet, webFonts, nowMs: null);
+
+    /// <summary>Layout at a frame timestamp — see the matching RenderDocument
+    /// overload for semantics.</summary>
+    public Tessera.Layout.Box.BlockBox LayoutDocument(
+        Document document,
+        LayoutSize viewport,
+        float? defaultFontSize,
+        IImageResolver? images,
+        Func<Element, StyleSheet?>? externalStylesheet,
+        FontFaceRegistry? webFonts,
+        double? nowMs)
     {
-        var (root, _) = LayoutDocumentWithStyle(document, viewport, defaultFontSize, images, externalStylesheet, webFonts);
+        var (root, _) = LayoutDocumentWithStyle(document, viewport, defaultFontSize, images, externalStylesheet, webFonts, nowMs);
         return root;
     }
 
     /// <summary>
-    /// Same as <see cref="LayoutDocument"/> but also returns the
+    /// Same as <see cref="LayoutDocument(Document, LayoutSize, float?, IImageResolver?, Func{Element, StyleSheet?}?, FontFaceRegistry?)"/> but also returns the
     /// <see cref="StyleEngine"/> used for the cascade, so interactive callers
     /// can recompute styles for individual elements when state changes
     /// (<c>:hover</c>, <c>:focus</c>, <c>:active</c>) without re-running layout.
@@ -111,6 +142,18 @@ public sealed class Painter
         IImageResolver? images = null,
         Func<Element, StyleSheet?>? externalStylesheet = null,
         FontFaceRegistry? webFonts = null)
+        => LayoutDocumentWithStyle(document, viewport, defaultFontSize, images, externalStylesheet, webFonts, nowMs: null);
+
+    /// <summary>Layout overload that threads a frame timestamp through the
+    /// cascade. See the matching RenderDocument overload for semantics.</summary>
+    public (Tessera.Layout.Box.BlockBox Root, StyleEngine Style) LayoutDocumentWithStyle(
+        Document document,
+        LayoutSize viewport,
+        float? defaultFontSize,
+        IImageResolver? images,
+        Func<Element, StyleSheet?>? externalStylesheet,
+        FontFaceRegistry? webFonts,
+        double? nowMs)
     {
         ArgumentNullException.ThrowIfNull(document);
 
@@ -120,22 +163,60 @@ public sealed class Painter
         using (_diag.Span("paint", "style_cascade"))
             style = CreateStyleEngine(document, defaultFontSize, externalStylesheet, _diag);
 
-        // Layout measures with ImageSharp's SixLabors.Fonts metrics
-        // (ImageSharpTextMeasurer) so line breaks, widths, and baselines
-        // match what the ImageSharp.Drawing 3 backend draws. The measurer
-        // caches sized Font handles, so it is created per layout call and
-        // disposed when done. (The layout engine's own DefaultTextMeasurer
-        // remains for paint-free layout unit tests, but the Painter pipeline
-        // is always ImageSharp.)
         var measurer = PaintBackendSelector.CreateMeasurer(_fonts, webFonts);
         try
         {
             var layoutEngine = new LayoutEngineImpl(style, measurer, images, _diag);
             Tessera.Layout.Box.BlockBox root;
             using (_diag.Span("paint", "layout"))
-                root = layoutEngine.LayoutDocument(document, viewport);
+                root = layoutEngine.LayoutDocument(document, viewport, nowMs);
             Tessera.Common.Diagnostics.NativeCallTrace.Mark("layout.end");
             return (root, style);
+        }
+        finally
+        {
+            (measurer as IDisposable)?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Re-layout and paint <paramref name="document"/> using the caller's
+    /// pre-built <see cref="StyleEngine"/> at frame timestamp
+    /// <paramref name="nowMs"/>. Used by the frame loop so the
+    /// <see cref="StyleEngine.AnimationEngine"/> / <see cref="StyleEngine.TransitionEngine"/>
+    /// state seeded on a retained engine survives across paints (the
+    /// fresh-engine path of <see cref="RenderDocument(Document, LayoutSize, float?, IImageResolver?, Func{Element, StyleSheet?}?, FontFaceRegistry?, double?)"/>
+    /// would reseed every call, restarting animations on each frame).
+    /// Callers tick the engines before invoking this.
+    /// </summary>
+    public RenderedBitmap RenderWithStyle(
+        Document document,
+        StyleEngine style,
+        LayoutSize viewport,
+        IImageResolver? images,
+        FontFaceRegistry? webFonts,
+        double nowMs)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(style);
+
+        var measurer = PaintBackendSelector.CreateMeasurer(_fonts, webFonts);
+        try
+        {
+            var layoutEngine = new LayoutEngineImpl(style, measurer, images, _diag);
+            Tessera.Layout.Box.BlockBox root;
+            using (_diag.Span("paint", "layout"))
+                root = layoutEngine.LayoutDocument(document, viewport, nowMs);
+
+            PaintList displayList;
+            using (_diag.Span("paint", "display_list"))
+                displayList = new DisplayListBuilder().Build(root);
+
+            using (_diag.Span("paint", $"raster:{PaintBackendSelector.Selected.ToString().ToLowerInvariant()}"))
+            {
+                using var backend = PaintBackendSelector.Create(_fonts, webFonts, _diag);
+                return backend.Render(displayList, viewport);
+            }
         }
         finally
         {

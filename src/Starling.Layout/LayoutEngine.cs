@@ -40,6 +40,15 @@ public sealed class LayoutEngine
     }
 
     public BlockBox LayoutDocument(Document document, Size viewport)
+        => LayoutDocument(document, viewport, nowMs: null);
+
+    /// <summary>
+    /// Layout overload that threads a monotonic frame clock into the cascade.
+    /// When <paramref name="nowMs"/> is non-null, each element is computed
+    /// via <see cref="StyleEngine.ComputeWithAnimations"/> so the box tree
+    /// reflects any in-flight CSS animations + transitions at that instant.
+    /// </summary>
+    public BlockBox LayoutDocument(Document document, Size viewport, double? nowMs)
     {
         ArgumentNullException.ThrowIfNull(document);
 
@@ -51,7 +60,7 @@ public sealed class LayoutEngine
         BlockBox root;
         using (_diag.Span("layout", "box_tree_build"))
         {
-            var builder = new BoxTreeBuilder(_style, _images);
+            var builder = new BoxTreeBuilder(_style, _images, nowMs);
             root = builder.Build(document);
         }
 
