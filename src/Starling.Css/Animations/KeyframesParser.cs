@@ -47,17 +47,30 @@ public static class KeyframesParser
             if (offsets.Count == 0) continue;
 
             var declarations = new List<KeyframeDeclaration>(style.Declarations.Count);
+            TimingFunction? segmentTiming = null;
             foreach (var decl in style.Declarations)
             {
                 // CSS Animations 1 §4.1: !important is ignored inside keyframes.
                 CssValue value;
                 try { value = CssValueParser.Parse(decl.Value); }
                 catch { continue; }
+
+                // §7.1: animation-timing-function declared inside a keyframe
+                // overrides the animation-level timing function for the
+                // segment *starting at this keyframe*. Strip it from the
+                // declaration list (it's not a regular animatable property)
+                // and parse it into a TimingFunction.
+                if (string.Equals(decl.Name, "animation-timing-function", StringComparison.OrdinalIgnoreCase))
+                {
+                    segmentTiming = TimingFunction.FromCss(value);
+                    continue;
+                }
+
                 declarations.Add(new KeyframeDeclaration(decl.Name.ToLowerInvariant(), value));
             }
 
             foreach (var offset in offsets)
-                frames.Add(new Keyframe(offset, declarations));
+                frames.Add(new Keyframe(offset, declarations, segmentTiming));
         }
 
         // Stable sort by offset so consumers can binary-search or step linearly.

@@ -1,7 +1,7 @@
 ---
 id: wp:M5-css-11-per-keyframe-timing
 milestone: M5
-status: "claimed"
+status: "complete"
 claimed_by: "agent-copilot-claude-opus-4.7"
 claimed_at: "2026-05-19T15:39:22Z"
 branch: "main"
@@ -52,4 +52,15 @@ starting at that keyframe**, not to the whole animation
 ## Handoff log
 
 - 2026-05-19T16:25Z — created (agent-copilot-claude-opus-4.7).
+- 2026-05-19T18:15Z — completed.
+  * `Keyframe` record gained `SegmentTimingFunction` (nullable).
+  * `KeyframesParser` strips `animation-timing-function` from each keyframe's
+    declarations and parses it via `TimingFunction.FromCss` onto the frame.
+  * `AnimationInstance.SampleAtProgress` now brackets by raw iteration
+    progress (no pre-easing) and applies the *before*-frame's segment
+    timing function — falling back to the animation-level function when
+    null. The final keyframe's timing function is naturally ignored (no
+    segment starts at it).
+  * 2 new tests in `PerKeyframeTimingTests`; full Css suite 478 green;
+    sln build green.
 - 2026-05-19T15:39:22Z — claimed by agent-copilot-claude-opus-4.7, working on main

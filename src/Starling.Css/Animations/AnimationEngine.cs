@@ -341,15 +341,12 @@ public sealed class AnimationInstance
 
     private CssValue? SampleAtProgress(PropertyId property, KeyframesRule rule, double progress)
     {
-        // Apply the per-animation timing function to the iteration
-        // progress. CSS Animations 1 §3.5 — the keyframe-level timing
-        // function would override on a per-segment basis, but our parser
-        // doesn't yet capture it; using the animation-level function is
-        // the correct fallback (spec §3.5 explicitly: "if [the
-        // animation-timing-function] is unspecified at a keyframe, the
-        // effective timing function is the animation's
-        // animation-timing-function").
-        var eased = _decl.TimingFunction.Evaluate(Math.Clamp(progress, 0, 1));
+        // Bracket by the raw iteration progress. CSS Animations 1 §7.1 says
+        // the per-keyframe timing function (and, as a fallback, the
+        // animation-level function) applies to the segment that starts at
+        // the "before" keyframe — so we shouldn't pre-ease the iteration
+        // progress before bracketing.
+        progress = Math.Clamp(progress, 0, 1);
 
         // Find the bracketing keyframes for this property. Frames are
         // already sorted by offset (KeyframesParser stable-sorts on parse).
@@ -358,14 +355,20 @@ public sealed class AnimationInstance
         var propertyName = PropertyName(property);
         KeyframeDeclaration? before = null;
         double beforeOffset = 0;
+        TimingFunction? beforeSegmentTiming = null;
         KeyframeDeclaration? after = null;
         double afterOffset = 1;
         foreach (var frame in rule.Frames)
         {
             var decl = FindDecl(frame.Declarations, propertyName);
             if (decl is null) continue;
-            if (frame.Offset <= eased) { before = decl; beforeOffset = frame.Offset; }
-            if (frame.Offset >= eased) { after = decl; afterOffset = frame.Offset; break; }
+            if (frame.Offset <= progress)
+            {
+                before = decl;
+                beforeOffset = frame.Offset;
+                beforeSegmentTiming = frame.SegmentTimingFunction;
+            }
+            if (frame.Offset >= progress) { after = decl; afterOffset = frame.Offset; break; }
         }
         if (before is null && after is null) return null;
         if (before is null) { before = after; beforeOffset = afterOffset; }
@@ -373,7 +376,13 @@ public sealed class AnimationInstance
 
         var span = afterOffset - beforeOffset;
         if (span <= 1e-9) return before!.Value;
-        var segmentP = (eased - beforeOffset) / span;
+        var segmentP = (progress - beforeOffset) / span;
+
+        // §7.1: per-keyframe timing function on the *before* keyframe wins;
+        // otherwise fall back to the animation-level function.
+        var timing = beforeSegmentTiming ?? _decl.TimingFunction;
+        segmentP = timing.Evaluate(Math.Clamp(segmentP, 0, 1));
+
         return Interpolator.Interpolate(property, before!.Value, after!.Value, segmentP);
     }
 

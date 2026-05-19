@@ -130,7 +130,7 @@ features previously listed as deferred — `:has`, `:nth-*`, `:is`, `:where`,
 | [wp:M5-css-08-rAF-event-loop](M5/wp-M5-css-08-rAF-event-loop.md) | 🔵 available | — | Starling.Loop |
 | [wp:M5-css-09-animation-compositor](M5/wp-M5-css-09-animation-compositor.md) | 🟢 complete | — | Starling.Css |
 | [wp:M5-css-10-engine-frame-loop](M5/wp-M5-css-10-engine-frame-loop.md) | 🟠 blocked (08, 09) | — | Starling.Engine |
-| [wp:M5-css-11-per-keyframe-timing](M5/wp-M5-css-11-per-keyframe-timing.md) | 🔵 available | — | Starling.Css |
+| [wp:M5-css-11-per-keyframe-timing](M5/wp-M5-css-11-per-keyframe-timing.md) | 🟢 complete | — | Starling.Css |
 | [wp:M5-skia-removal](M5/wp-M5-skia-removal.md) | 🟢 complete | agent-copilot-claude-opus-4.7 | Starling.Paint |
 
 ## Available right now (no dependencies pending)
