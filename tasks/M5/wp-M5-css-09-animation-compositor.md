@@ -1,9 +1,9 @@
 ---
 id: wp:M5-css-09-animation-compositor
 milestone: M5
-status: "available"
-claimed_by: null
-claimed_at: null
+status: "claimed"
+claimed_by: "agent-copilot-claude-opus-4.7"
+claimed_at: "2026-05-19T15:32:47Z"
 branch: "main"
 depends_on:
   - wp:M5-css-06-keyframes-registry
@@ -69,3 +69,4 @@ correct, time-varying values.
 
 - 2026-05-19T16:25Z — created (agent-copilot-claude-opus-4.7). Blocked on
   wp:M5-css-06 and wp:M5-css-07.
+- 2026-05-19T15:32:47Z — claimed by agent-copilot-claude-opus-4.7, working on main
