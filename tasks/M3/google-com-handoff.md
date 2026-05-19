@@ -68,6 +68,20 @@ blocker; defer to M6 wp:M3-09.
 | B5-1 — Window / document / EventTarget | ✅ | `src/Starling.Bindings/{EventTargetBinding,DomWrappers,NodeBindings,QuerySelectorEngine,WindowBinding}.cs`, `src/Starling.Js/Runtime/{JsRealm,JsObject}.cs`, `tests/Starling.Bindings.Tests/WindowDocumentTests.cs` (DomBindingHost deleted) |
 | B5-2 — Timers | ✅ | `src/Starling.Bindings/{TimersBinding,Starling.Bindings.csproj}`, `tests/Starling.Bindings.Tests/TimersTests.cs` |
 | B5-5 — history / storage / cookie / performance | ✅ | `src/Starling.Bindings/{HistoryBinding,StorageBinding,CookieBinding,PerformanceBinding,WindowBinding,EventTargetBinding}.cs`, `tests/Starling.Bindings.Tests/{HistoryTests,StorageTests,CookieTests,PerformanceTests}.cs` |
+| B3-2 — Iterator protocol | ✅ | `src/Starling.Js/Intrinsics/IteratorIntrinsics.cs` (+ ArrayIterator + StringIterator), `src/Starling.Js/{Bytecode/{Opcode,JsCompiler},Runtime/{JsVm,AbstractOperations,JsRuntime},Intrinsics/{ArrayCtor,StringCtor}}.cs` (+ GetIterator/IteratorStep/IteratorClose AO; for…of + spread retargeted), `tests/Starling.Js.Tests/Runtime/IteratorProtocolTests.cs` |
+| B4-1 — RegExp | ✅ | `src/Starling.Js/RegExp/{RegexFlags,RegexCharClass,RegexAst,RegexParser,RegexInstruction,RegexCompiler,RegexProgram,RegexPikeVm,MatchResult,CompiledRegex}.cs`, `src/Starling.Js/Runtime/JsRegExp.cs`, `src/Starling.Js/Intrinsics/{RegExpCtor,StringCtor}.cs`, `tests/Starling.Js.Tests/{RegExp/RegexPikeVmTests,Intrinsics/RegExpTests}.cs` |
+| B5-3 — fetch + XMLHttpRequest | ✅ | `src/Starling.Bindings/{FetchBinding,XhrBinding,WindowBinding}.cs`, `src/Starling.Js/Runtime/{MicrotaskQueue,JsRealm,JsVm}.cs` (thread-safe enqueue), `tests/Starling.Bindings.Tests/{FetchTests,XhrTests}.cs` |
+| B3-4-followup-a/b — parser reserved words + Promise.any AggregateError | ✅ | `src/Starling.Js/Parse/JsParser.cs` (ExpectIdentifierName), `src/Starling.Js/Intrinsics/PromiseCtor.cs`, `tests/Starling.Js.Tests/{Parse/JsParserReservedMemberTests,Intrinsics/{PromiseTests,ArrayTests}}.cs` |
+| B4-1-followup-a — regex literal parser | ✅ | `src/Starling.Js/Lex/JsLexer.cs` (PushBack), `src/Starling.Js/{Ast/Expressions,Parse/JsParser,Bytecode/{Opcode,JsCompiler,Disassembler},Runtime/JsVm}.cs` (LoadRegExp opcode), `tests/Starling.Js.Tests/Parse/JsParserRegExpLiteralTests.cs` |
+| B5-3-followup-a — WithActiveVm helper | ✅ | `src/Starling.Js/Runtime/JsRuntime.cs` (helper + `_primaryVm`), `src/Starling.Bindings/{TimersBinding,FetchBinding,XhrBinding}.cs` (empty-chunk hack removed), `tests/Starling.Js.Tests/Runtime/WithActiveVmTests.cs` |
+| B5-3-followup-b — NoWarn revert | ✅ | `Directory.Build.props`; underlying analyzer fires fixed across `src/Starling.Js/{RegExp/*,Intrinsics/{RegExpCtor,StringCtor},Runtime/IteratorProtocolTests}.cs` + tests |
+| B5-1-followup — DOM array-likes | ✅ | `src/Starling.Bindings/{NodeBindings,FetchBinding}.cs` (real `JsArray` + Headers iterators), `tests/Starling.Bindings.Tests/{WindowDocumentTests,DomArrayLikeTests}.cs` |
+| B3-1 — Symbol + well-known symbols | ✅ | `src/Starling.Js/Intrinsics/SymbolCtor.cs`, `src/Starling.Js/Runtime/{JsSymbol,JsRealm}.cs`, `tests/Starling.Js.Tests/Intrinsics/SymbolTests.cs` |
+| B1b-2a — Class declarations | ✅ | `src/Starling.Js/Parse/JsParser.Classes.cs`, `src/Starling.Js/Bytecode/{JsCompiler.Classes,ClassTemplate}.cs`, `src/Starling.Js/{Ast/{Expressions,Statements},Bytecode/{Opcode,Disassembler,JsCompiler},Parse/{JsParser,JsParser.Statements},Runtime/{JsFunction,JsRealm,JsVm}}.cs`, `tests/Starling.Js.Tests/Runtime/JsClassTests.cs` |
+| B3-3 — Map/Set/WeakMap/WeakSet | ✅ | `src/Starling.Js/Runtime/{JsMap,JsSet,JsWeakMap,JsWeakSet,JsMapIterator,JsSetIterator,SameValueZeroComparer}.cs`, `src/Starling.Js/Intrinsics/{MapCtor,SetCtor,WeakMapCtor,WeakSetCtor}.cs`, `tests/Starling.Js.Tests/Intrinsics/{MapTests,SetTests,WeakMapTests,WeakSetTests}.cs` |
+| B4-4 — Proxy + Reflect | ✅ | `src/Starling.Js/Runtime/{JsProxy,JsObject,AbstractOperations,JsRealm}.cs`, `src/Starling.Js/Intrinsics/{ProxyCtor,ReflectObj,ObjectCtor}.cs`, `tests/Starling.Js.Tests/Intrinsics/{ProxyTests,ReflectTests}.cs` |
+| B4-2 — Date | ✅ | `src/Starling.Js/Runtime/JsDate.cs`, `src/Starling.Js/Intrinsics/DateCtor.cs`, `src/Starling.Js/Runtime/{JsRealm,JsRuntime}.cs`, `tests/Starling.Js.Tests/Intrinsics/DateTests.cs` |
+| B4-1-followup-b — matchAll iterator | ✅ | `src/Starling.Js/Intrinsics/{RegExpStringIterator,StringCtor,RegExpCtor}.cs`, `tests/Starling.Js.Tests/Intrinsics/RegExpTests.cs` (+ iterator-shape tests) |
 
 ### B0 surface delivered
 
@@ -131,16 +145,17 @@ session. Other rows in the queue are free for other agents/sessions.
 | **B3-4** Promise + microtasks | claude-cody (agent) | complete (2026-05-18) |
 | **B6-2** position: absolute / fixed | claude-cody (agent) | complete (2026-05-18) |
 | **B1b-2b** Destructuring | claude-cody (agent, lane-A) | complete (2026-05-19) |
-| **B3-1** Symbol + well-known symbols | claude-cody (agent, lane-D) | in progress (2026-05-18) |
+| **B3-1** Symbol + well-known symbols | claude-cody (agent, lane-D) | complete (2026-05-19) |
 | **B4-5** TypedArray/ArrayBuffer/DataView | claude-cody (agent, lane-E) | complete (2026-05-19) |
-| **B4-1-followup-a** regex literal parser | claude-cody (agent) | in progress (2026-05-19) |
-| **B5-3-followup-a** WithActiveVm helper | claude-cody (agent) | in progress (2026-05-19) |
-| **B5-3-followup-b** revert NoWarn | claude-cody (agent) | in progress (2026-05-19) |
+| **B4-1-followup-a** regex literal parser | claude-cody (agent) | complete (2026-05-19) |
+| **B5-3-followup-a** WithActiveVm helper | claude-cody (agent) | complete (2026-05-19) |
+| **B5-3-followup-b** revert NoWarn | claude-cody (agent) | complete (2026-05-19) |
 | **B5-1-followup** DOM array-likes | claude-cody (agent) | complete (2026-05-19) |
-| **B1b-2a** Class declarations | claude-cody (agent) | in progress (2026-05-19) |
-| **B3-3** Map/Set/WeakMap/WeakSet | claude-cody (agent) | in progress (2026-05-19) |
-| **B4-4** Proxy + Reflect | claude-cody (agent) | in progress (2026-05-19) |
-| **B4-2 + B4-1-followup-b** Date + matchAll iterator | claude-cody (agent) | in progress (2026-05-19) |
+| **B1b-2a** Class declarations | claude-cody (agent) | complete (2026-05-19) |
+| **B3-3** Map/Set/WeakMap/WeakSet | claude-cody (agent) | complete (2026-05-19) |
+| **B4-4** Proxy + Reflect | claude-cody (agent) | complete (2026-05-19) |
+| **B4-2 + B4-1-followup-b** Date + matchAll iterator | claude-cody (agent) | complete (2026-05-19) |
+| **Fixups** Proxy/Reflect + B5-5 location + Map/Weak | claude-cody (agent) | complete (2026-05-19) |
 | **B2-2-followup** realm-aware intrinsics | claude-cody (agent) | complete (2026-05-19) |
 | **B2-4** Array + JsArray | claude-cody (agent) | complete (2026-05-19) |
 | **B5-2** Timers | claude-cody (agent) | complete (2026-05-19) |
