@@ -1,10 +1,10 @@
 ---
 id: wp:M5-css-02-transform-paint
 milestone: M5
-status: available
-claimed_by: ""
-claimed_at: ""
-branch: main
+status: "claimed"
+claimed_by: "agent-copilot-claude-opus-4.7"
+claimed_at: "2026-05-19T14:53:52Z"
+branch: "main"
 depends_on:
   - wp:M5-css-01-transform-value
 subsystem: Starling.Paint
@@ -108,3 +108,4 @@ every primitive call.
   ImageSharp.Drawing 3's per-primitive `DrawingOptions.Transform` instead of
   the (now-deleted) Skia shim's `ts_canvas_save`/`concat44`. The backend now
   owns the transform stack in managed code. (agent-copilot-claude-opus-4.7)
+- 2026-05-19T14:53:52Z — claimed by agent-copilot-claude-opus-4.7, working on main
