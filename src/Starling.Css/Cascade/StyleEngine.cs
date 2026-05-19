@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Tessera.Common.Diagnostics;
+using Tessera.Css.Animations;
 using Tessera.Css.Media;
 using Tessera.Css.Parser;
 using Tessera.Css.Properties;
@@ -33,12 +34,25 @@ public sealed class StyleEngine
     public StyleEngine(bool includeUserAgentStyleSheet = true, IDiagnostics? diagnostics = null)
     {
         _diag = diagnostics ?? NoopDiagnostics.Instance;
+        AnimationEngine = new AnimationEngine();
+        TransitionEngine = new TransitionEngine();
         foreach (var origin in Enum.GetValues<StyleOrigin>())
             _layerOrders[origin] = new LayerOrder();
 
         if (includeUserAgentStyleSheet)
             AddStyleSheet(UaStyleSheet.Parse());
     }
+
+    /// <summary>The animation engine fed by <c>@keyframes</c> rules in every
+    /// stylesheet attached via <see cref="AddStyleSheet"/>. Sample with
+    /// <see cref="AnimationEngine.GetEffective(Element, PropertyId)"/> after
+    /// the compositor (wp:M5-css-09) feeds cascaded declarations to it.</summary>
+    public AnimationEngine AnimationEngine { get; }
+
+    /// <summary>The transition engine. Independent from animations but exposed
+    /// here so the compositor (wp:M5-css-09) can route both through one
+    /// <see cref="StyleEngine"/> instance.</summary>
+    public TransitionEngine TransitionEngine { get; }
 
     public MediaContext MediaContext
     {
@@ -69,6 +83,7 @@ public sealed class StyleEngine
         _sheetIndexes[sheet] = index;
         if (!_sharingDisabled && SheetUsesUnshareableSelectors(index))
             _sharingDisabled = true;
+        RegisterKeyframesFromSheet(sheet);
     }
 
     public void RemoveStyleSheet(StyleSheet sheet)
@@ -78,6 +93,24 @@ public sealed class StyleEngine
         _sheetIndexes.Remove(sheet);
         // Re-evaluate whether sharing can be re-enabled after removal.
         _sharingDisabled = _sheetIndexes.Values.Any(SheetUsesUnshareableSelectors);
+        UnregisterKeyframesFromSheet(sheet);
+    }
+
+    private void RegisterKeyframesFromSheet(StyleSheet sheet)
+    {
+        foreach (var rule in KeyframesParser.ParseAll(sheet))
+            AnimationEngine.RegisterKeyframes(rule);
+    }
+
+    private void UnregisterKeyframesFromSheet(StyleSheet sheet)
+    {
+        // After removing this sheet, rebuild the keyframes registry from the
+        // remaining sheets so that names defined elsewhere survive and names
+        // unique to the removed sheet are dropped. Last-wins ordering matches
+        // the original add order, just like CSSOM removeRule semantics.
+        AnimationEngine.ClearKeyframes();
+        foreach (var remaining in _sheets)
+            RegisterKeyframesFromSheet(remaining);
     }
 
     /// <summary>

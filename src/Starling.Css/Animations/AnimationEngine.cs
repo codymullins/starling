@@ -53,6 +53,15 @@ public sealed class AnimationEngine
     /// <summary>Clear all registered keyframes (e.g. between stylesheet swaps).</summary>
     public void ClearKeyframes() => _keyframes.Clear();
 
+    /// <summary>True if a <c>@keyframes</c> rule with the given name is
+    /// currently registered. Mostly useful for tests + diagnostics.</summary>
+    public bool HasKeyframes(string name) => _keyframes.ContainsKey(name);
+
+    /// <summary>Look up a registered <c>@keyframes</c> rule by name; returns
+    /// <c>null</c> when no rule by that name exists.</summary>
+    public KeyframesRule? GetKeyframes(string name)
+        => _keyframes.TryGetValue(name, out var rule) ? rule : null;
+
     /// <summary>
     /// Diff the element's previously-active animation list against the
     /// newly cascaded <c>animation-name</c> list and start / update / stop

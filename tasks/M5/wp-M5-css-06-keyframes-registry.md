@@ -1,8 +1,10 @@
 ---
 id: wp:M5-css-06-keyframes-registry
 milestone: M5
-status: "claimed"
+status: "complete"
 claimed_by: "agent-copilot-claude-opus-4.7"
+claimed_at: "2026-05-19T16:30:00Z"
+completed_at: "2026-05-19T16:45:00Z"
 claimed_at: "2026-05-19T15:25:53Z"
 branch: "main"
 depends_on: []
@@ -51,4 +53,17 @@ a real keyframe set.
 
 - 2026-05-19T16:25Z — created (agent-copilot-claude-opus-4.7) — see
   `plan.md` in session state for the broader compositor plan.
+- 2026-05-19T16:45Z — complete.
+  - `StyleEngine` now constructs `AnimationEngine` + `TransitionEngine` in
+    its ctor and exposes them as public properties.
+  - `AddStyleSheet` calls `KeyframesParser.ParseAll(sheet)` and registers
+    each rule with the animation engine. `RemoveStyleSheet` rebuilds the
+    registry from remaining sheets so last-wins ordering is preserved.
+  - `AnimationEngine` gained `HasKeyframes(name)` / `GetKeyframes(name)`
+    lookups for tests + compositor diagnostics. `ClearKeyframes()` already
+    existed.
+  - New `tests/Starling.Css.Tests/StyleEngineKeyframesRegistrationTests.cs`
+    (5 cases): add-registers, plain-sheets-don't-register, remove-drops,
+    remove-preserves-other-sheet, later-sheet-overrides-by-name.
+  - Css suite: 465 pass / 0 fail (was 460).
 - 2026-05-19T15:25:53Z — claimed by agent-copilot-claude-opus-4.7, working on main

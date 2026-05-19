@@ -125,7 +125,7 @@ features previously listed as deferred — `:has`, `:nth-*`, `:is`, `:where`,
 | [wp:M5-css-03-keyframes-rule](M5/wp-M5-css-03-keyframes-rule.md) | 🟢 complete | agent-copilot-claude-opus-4.7 | Starling.Css |
 | [wp:M5-css-04-transitions-engine](M5/wp-M5-css-04-transitions-engine.md) | 🟢 complete | agent-copilot-claude-opus-4.7 | Starling.Css |
 | [wp:M5-css-05-animations-engine](M5/wp-M5-css-05-animations-engine.md) | 🟢 complete | agent-copilot-claude-opus-4.7 | Starling.Css |
-| [wp:M5-css-06-keyframes-registry](M5/wp-M5-css-06-keyframes-registry.md) | 🔵 available | — | Starling.Css |
+| [wp:M5-css-06-keyframes-registry](M5/wp-M5-css-06-keyframes-registry.md) | 🟢 complete | agent-copilot-claude-opus-4.7 | Starling.Css |
 | [wp:M5-css-07-animation-shorthand-multilayer](M5/wp-M5-css-07-animation-shorthand-multilayer.md) | 🔵 available | — | Starling.Css |
 | [wp:M5-css-08-rAF-event-loop](M5/wp-M5-css-08-rAF-event-loop.md) | 🔵 available | — | Starling.Loop |
 | [wp:M5-css-09-animation-compositor](M5/wp-M5-css-09-animation-compositor.md) | 🟠 blocked (06, 07) | — | Starling.Css |
