@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<!--
+  B7 smoke-test fixture: simplified mock of https://www.google.com/search?q=hello.
+
+  Real Google search results land in the page only after JS execution against
+  the page's bundle, which the engine doesn't yet wire into RenderAsync (B7
+  scope-down — the engine's static pipeline is what runs today). To keep the
+  smoke test green, this fixture inlines a representative results block so the
+  engine's DisplayText surfaces it from the static HTML.
+
+  The fetch-driven path is exercised separately in GoogleSearchTests'
+  Search_page_fetches_results_via_xhr test, which spins up an in-process JS
+  runtime + DOM bindings (the same shape FetchTests uses) and verifies the
+  engine's stack-below-engine pieces actually populate document.body when JS
+  runs end-to-end.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>hello - Google Search</title>
+  <style>
+    body { font-family: arial, sans-serif; margin: 0; }
+    header { padding: 12px 16px; border-bottom: 1px solid #ebebeb; }
+    .logo { font-size: 24px; font-weight: bold; display: inline-block; margin-right: 16px; }
+    .topnav { display: inline-block; }
+    .topnav a { margin-right: 8px; color: #5f6368; text-decoration: none; font-size: 12px; }
+    main { padding: 8px 160px; }
+    .stats { color: #70757a; font-size: 12px; padding: 8px 0; }
+    .result { padding: 12px 0; }
+    .result h3 { margin: 0; color: #1a0dab; font-size: 18px; font-weight: normal; }
+    .result .url { color: #006621; font-size: 13px; }
+    .result .snippet { color: #4d5156; font-size: 13px; line-height: 1.4; margin-top: 2px; }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="logo">Google</span>
+    <span class="topnav">
+      <a href="/search?q=hello&tbm=isch">Images</a>
+      <a href="/search?q=hello&tbm=nws">News</a>
+      <a href="/search?q=hello&tbm=vid">Videos</a>
+      <a href="/maps?q=hello">Maps</a>
+    </span>
+  </header>
+  <main>
+    <div class="stats">About 4,910,000,000 results (0.42 seconds)</div>
+    <div class="result">
+      <h3>Hello - Wikipedia</h3>
+      <div class="url">https://en.wikipedia.org &rsaquo; wiki &rsaquo; Hello</div>
+      <div class="snippet">Hello is a salutation or greeting in the English language. It is first attested in writing from 1826.</div>
+    </div>
+    <div class="result">
+      <h3>Adele - Hello (Official Music Video)</h3>
+      <div class="url">https://www.youtube.com &rsaquo; watch</div>
+      <div class="snippet">Hello, it's me. I was wondering if after all these years you'd like to meet.</div>
+    </div>
+    <div class="result">
+      <h3>HELLO! - Daily royal, celebrity, and lifestyle news</h3>
+      <div class="url">https://www.hellomagazine.com</div>
+      <div class="snippet">HELLO! brings you the latest celebrity and royal news from the UK and around the world.</div>
+    </div>
+    <div class="result">
+      <h3>hello, world program - Wikipedia</h3>
+      <div class="url">https://en.wikipedia.org &rsaquo; wiki &rsaquo; "Hello,_World!"_program</div>
+      <div class="snippet">A "Hello, World!" program is generally a computer program that ignores any input and outputs or displays a message similar to "Hello, World!".</div>
+    </div>
+  </main>
+  <footer style="padding:16px;color:#70757a;font-size:12px">
+    <span>Privacy</span>
+    <span>Terms</span>
+    <span>Settings</span>
+  </footer>
+</body>
+</html>

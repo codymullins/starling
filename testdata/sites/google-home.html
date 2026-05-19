@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<!--
+  B7 smoke-test fixture: simplified mock of https://www.google.com/.
+  Hand-crafted (not a captured snapshot) so the file stays small and stable;
+  the goal is to exercise the static parse → layout → paint pipeline against
+  shape (header nav, brand, form), not to be byte-faithful with Google.
+
+  When TESSERA_ALLOW_NETWORK=1 + TESSERA_UPDATE_GOLDENS=1 are both set, the
+  Live_* test in GoogleSearchTests will overwrite this file with the real
+  HTML response from https://www.google.com/.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Google</title>
+  <style>
+    body { font-family: arial, sans-serif; margin: 0; }
+    .topnav { padding: 8px 16px; text-align: right; }
+    .topnav a { margin-left: 12px; text-decoration: none; color: #1a0dab; }
+    .brand { text-align: center; margin-top: 80px; font-size: 56px; font-weight: bold; }
+    .search { text-align: center; margin-top: 24px; }
+    .search input { width: 480px; padding: 10px; border: 1px solid #ccc; border-radius: 24px; }
+    .buttons { text-align: center; margin-top: 16px; }
+    .buttons button { padding: 8px 16px; margin: 0 4px; background: #f8f9fa; border: 1px solid #f8f9fa; }
+    footer { margin-top: 200px; padding: 16px; background: #f2f2f2; color: #70757a; }
+  </style>
+</head>
+<body>
+  <nav class="topnav">
+    <a href="/about">About</a>
+    <a href="/store">Store</a>
+    <a href="https://mail.google.com/">Gmail</a>
+    <a href="https://www.google.com/imghp">Images</a>
+    <a href="/accounts/signin">Sign in</a>
+  </nav>
+  <div class="brand">Google</div>
+  <form class="search" action="/search" method="get">
+    <input name="q" type="text" autocomplete="off" aria-label="Search">
+  </form>
+  <div class="buttons">
+    <button type="submit">Google Search</button>
+    <button type="submit">I'm Feeling Lucky</button>
+  </div>
+  <footer>
+    <span>Advertising</span>
+    <span>Business</span>
+    <span>How Search works</span>
+    <span>Privacy</span>
+    <span>Terms</span>
+    <span>Settings</span>
+  </footer>
+</body>
+</html>
