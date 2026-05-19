@@ -459,7 +459,7 @@ internal sealed class InlineLayout
         return style.Get(widthId) is CssLength len ? Block.BlockLayout.ToPx(len, _viewport) : 0;
     }
 
-    private static void LayoutImage(
+    private void LayoutImage(
         ImageBox image,
         double availableWidth,
         List<ImageBox> placedImages,
@@ -467,8 +467,7 @@ internal sealed class InlineLayout
         ref double cursorY,
         ref double currentLineHeight)
     {
-        var width = image.IntrinsicWidth;
-        var height = image.IntrinsicHeight;
+        var (width, height) = ResolveReplacedSize(image, availableWidth);
 
         // Wrap to the next line if this image won't fit and the current line
         // already has content. An image wider than the container stays on its
@@ -490,6 +489,97 @@ internal sealed class InlineLayout
         image.Frame = new Rect(cursorX, cursorY, width, height);
         placedImages.Add(image);
         cursorX += width;
+    }
+
+    /// <summary>
+    /// CSS 2.1 §10.3.2 (used dimensions of a replaced element) + §10.4
+    /// (min-/max-width/height clamps). Resolves the box's computed
+    /// <c>width</c>/<c>height</c>/<c>min-*</c>/<c>max-*</c> against the
+    /// available inline-axis width, preserving the intrinsic aspect ratio
+    /// when one axis is <c>auto</c>. Height percentages resolve against an
+    /// unknown containing-block height in inline context, so they collapse
+    /// to <c>auto</c> here (matches the common Chromium behaviour).
+    /// </summary>
+    internal (double Width, double Height) ResolveReplacedSize(ImageBox image, double availableWidth)
+    {
+        var style = image.Style;
+        var iw = image.IntrinsicWidth > 0 ? image.IntrinsicWidth : 1;
+        var ih = image.IntrinsicHeight > 0 ? image.IntrinsicHeight : 1;
+        var ratio = iw / ih;
+
+        var specW = Block.BlockLayout.ResolveLength(style, PropertyId.Width, availableWidth, _viewport, allowAuto: true);
+        // Height percentages need a known containing-block height; in inline
+        // context we don't have one, so leave height as auto when authored
+        // as a percentage. Lengths still resolve normally.
+        var specH = style?.Get(PropertyId.Height) is CssPercentage
+            ? (double?)null
+            : Block.BlockLayout.ResolveLength(style, PropertyId.Height, 0, _viewport, allowAuto: true);
+
+        double w, h;
+        if (specW.HasValue && specH.HasValue)
+        {
+            w = specW.Value;
+            h = specH.Value;
+        }
+        else if (specW.HasValue)
+        {
+            w = specW.Value;
+            h = w / ratio;
+        }
+        else if (specH.HasValue)
+        {
+            h = specH.Value;
+            w = h * ratio;
+        }
+        else
+        {
+            w = iw;
+            h = ih;
+        }
+
+        // §10.4 min/max constraints. When the constrained axis was derived
+        // from the other axis (auto), keep aspect ratio while clamping; when
+        // it was authored explicitly, clamp only that axis.
+        var maxW = Block.BlockLayout.ResolveLength(style, PropertyId.MaxWidth, availableWidth, _viewport);
+        if (style?.Get(PropertyId.MaxWidth) is CssKeyword mwk && mwk.Name == "none") maxW = null;
+        var minW = Block.BlockLayout.ResolveLength(style, PropertyId.MinWidth, availableWidth, _viewport) ?? 0;
+
+        var maxH = Block.BlockLayout.ResolveLength(style, PropertyId.MaxHeight, 0, _viewport);
+        if (style?.Get(PropertyId.MaxHeight) is CssKeyword mhk && mhk.Name == "none") maxH = null;
+        // Height percentages on min/max-height resolve against an unknown
+        // containing-block height; ignore them in inline context.
+        if (style?.Get(PropertyId.MaxHeight) is CssPercentage) maxH = null;
+        var minHRaw = style?.Get(PropertyId.MinHeight) is CssPercentage
+            ? (double?)null
+            : Block.BlockLayout.ResolveLength(style, PropertyId.MinHeight, 0, _viewport);
+        var minH = minHRaw ?? 0;
+
+        if (maxW.HasValue && w > maxW.Value)
+        {
+            var scale = maxW.Value / w;
+            w = maxW.Value;
+            if (!specH.HasValue) h *= scale;
+        }
+        if (w < minW)
+        {
+            var scale = w > 0 ? minW / w : 1;
+            w = minW;
+            if (!specH.HasValue) h *= scale;
+        }
+        if (maxH.HasValue && h > maxH.Value)
+        {
+            var scale = maxH.Value / h;
+            h = maxH.Value;
+            if (!specW.HasValue) w *= scale;
+        }
+        if (h < minH)
+        {
+            var scale = h > 0 ? minH / h : 1;
+            h = minH;
+            if (!specW.HasValue) w *= scale;
+        }
+
+        return (w, h);
     }
 
     private static void AddFragment(TextBox owner, List<(TextBox Owner, int Index)> fragments, TextFragment fragment)

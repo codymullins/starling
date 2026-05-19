@@ -134,6 +134,7 @@ features previously listed as deferred — `:has`, `:nth-*`, `:is`, `:where`,
 | [wp:M5-css-10-engine-frame-loop](M5/wp-M5-css-10-engine-frame-loop.md) | 🟢 complete | agent-copilot-claude-opus-4.7 | Starling.Engine |
 | [wp:M5-css-11-per-keyframe-timing](M5/wp-M5-css-11-per-keyframe-timing.md) | 🟢 complete | — | Starling.Css |
 | [wp:M5-skia-removal](M5/wp-M5-skia-removal.md) | 🟢 complete | agent-copilot-claude-opus-4.7 | Starling.Paint |
+| [wp:M5-img-css-sizing](M5/wp-M5-img-css-sizing.md) | 🟢 complete | agent-copilot-claude-opus-4.7 | Starling.Layout |
 
 ## M12 — Tiled compositor + layer tree
 
