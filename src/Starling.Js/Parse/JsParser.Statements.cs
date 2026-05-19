@@ -44,6 +44,7 @@ public sealed partial class JsParser
             case JsTokenKind.Switch:    return ParseSwitch();
             case JsTokenKind.Debugger:  return ParseDebugger();
             case JsTokenKind.Function:  return ParseFunctionDeclaration();
+            case JsTokenKind.Class:     return ParseClassDeclarationWithExtendsTracking();
             case JsTokenKind.Var:       return ParseVar("var");
             case JsTokenKind.Const:     return ParseVar("const");
         }

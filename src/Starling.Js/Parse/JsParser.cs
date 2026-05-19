@@ -427,6 +427,15 @@ public sealed partial class JsParser
         {
             if (Match(JsTokenKind.Dot))
             {
+                // §13.3.2 — private name access: obj.#privateName.
+                if (_current.Kind == JsTokenKind.PrivateIdentifier)
+                {
+                    var pt = Advance();
+                    node = new MemberExpression(node,
+                        new PrivateNameExpression(pt.Lexeme, pt.Start, pt.End),
+                        Computed: false, Optional: false, node.Start, pt.End);
+                    continue;
+                }
                 var prop = ExpectIdentifierName("expected property name after '.'");
                 node = new MemberExpression(node,
                     new Identifier(prop.Lexeme, prop.Start, prop.End),
@@ -566,6 +575,10 @@ public sealed partial class JsParser
                 return ParseObjectLiteral();
             case JsTokenKind.Function:
                 return ParseFunctionExpression();
+            case JsTokenKind.Class:
+                return ParseClassExpression();
+            case JsTokenKind.Super:
+                return ParseSuperExpression();
             case JsTokenKind.TemplateNoSubstitution:
             case JsTokenKind.TemplateHead:
                 return ParseTemplateLiteral();

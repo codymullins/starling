@@ -46,6 +46,10 @@ public sealed class JsRuntime
         BooleanCtor.Install(Realm);
         SymbolCtor.Install(Realm);
         IteratorIntrinsics.Install(Realm); // B3-2 — depends on SymbolCtor for @@iterator.
+        MapCtor.Install(Realm);            // B3-3 — depends on B3-2 iterator protocol.
+        SetCtor.Install(Realm);
+        WeakMapCtor.Install(Realm);
+        WeakSetCtor.Install(Realm);
         Globals.Install(Realm);
         MathObj.Install(Realm);
         JsonObj.Install(Realm);
@@ -55,6 +59,9 @@ public sealed class JsRuntime
         ConsoleObj.Install(Realm);
         PromiseCtor.Install(Realm); // B3-4 — depends on Object/Function/Error protos.
         RegExpCtor.Install(Realm);  // B4-1 — depends on Function/Error/Array protos.
+        DateCtor.Install(Realm);    // B4-2 — depends on Function.prototype only.
+        ProxyCtor.Install(Realm);   // B4-4 — depends on Function.prototype only.
+        ReflectObj.Install(Realm);  // B4-4 — depends on Symbol (for @@toStringTag).
         Global.Set("globalThis", JsValue.Object(Global));
         Global.Set("undefined", JsValue.Undefined);
         Global.Set("NaN", JsValue.NaN);

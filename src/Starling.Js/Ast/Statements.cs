@@ -131,6 +131,18 @@ public sealed record FunctionDeclaration(
     JsPosition Start, JsPosition End)
     : Statement(Start, End);
 
+/// <summary>
+/// <c>class Name [extends Base] { body }</c> as a statement. Per ES2024
+/// §15.7, the resulting binding is a <c>let</c> in the enclosing lexical
+/// scope.
+/// </summary>
+public sealed record ClassDeclaration(
+    Identifier Name,
+    Expression? BaseClass,
+    ClassBody Body,
+    JsPosition Start, JsPosition End)
+    : Statement(Start, End);
+
 // -----------------------------------------------------------------------
 // Program root
 // -----------------------------------------------------------------------

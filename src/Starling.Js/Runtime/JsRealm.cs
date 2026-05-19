@@ -41,6 +41,13 @@ public sealed class JsRealm
     public JsObject? BooleanConstructor { get; internal set; }
     public JsObject? SymbolConstructor { get; internal set; }
 
+    // B3-3 — Map/Set/WeakMap/WeakSet constructors. Populated by their
+    // Install passes; nullable until then.
+    public JsObject? MapConstructor { get; internal set; }
+    public JsObject? SetConstructor { get; internal set; }
+    public JsObject? WeakMapConstructor { get; internal set; }
+    public JsObject? WeakSetConstructor { get; internal set; }
+
     // B3-4: Promise constructor + the host-agnostic microtask queue used by
     // its reaction jobs. The MicrotaskQueue is allocated unconditionally so
     // Promise install can schedule reactions even before a host scheduler
@@ -49,6 +56,17 @@ public sealed class JsRealm
 
     // B4-1: RegExp constructor — populated by RegExpCtor.Install.
     public JsObject? RegExpConstructor { get; internal set; }
+
+    // B4-2: Date constructor — populated by DateCtor.Install.
+    public JsObject? DateConstructor { get; internal set; }
+
+    // B4-4: Proxy constructor — populated by ProxyCtor.Install. The prototype
+    // slot (<see cref="ProxyPrototype"/>) is bootstrapped in this realm's
+    // constructor; ProxyCtor only owns the callable + Proxy.revocable.
+    public JsObject? ProxyConstructor { get; internal set; }
+
+    // B4-4: Reflect namespace object — populated by ReflectObj.Install.
+    public JsObject? ReflectObject { get; internal set; }
 
     /// <summary>HTML §8.1.5.1 microtask queue. Owns the in-process FIFO used
     /// by Promise reactions; the host may swap in a real loop scheduler via
@@ -122,6 +140,12 @@ public sealed class JsRealm
     public JsObject? AbortSignalConstructor { get; set; }
     public JsObject? XmlHttpRequestPrototype { get; set; }
     public JsObject? XmlHttpRequestConstructor { get; set; }
+
+    /// <summary>B1b-2a — singleton sentinel used as the <c>this</c> binding
+    /// of a derived-class constructor frame before <c>super(...)</c> has
+    /// run. Any <c>LoadThisChecked</c> dispatch that observes this value
+    /// throws ReferenceError per ES2024 §10.2.1.1.</summary>
+    public JsObject UninitializedThisSentinel { get; } = new();
 
     /// <summary>The VM currently executing against this realm, if any. Set
     /// by <see cref="JsVm"/> on entry to <c>Run</c>. Native intrinsics that

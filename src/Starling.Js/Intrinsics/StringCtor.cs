@@ -383,8 +383,18 @@ public static class StringCtor
             ? (JsRegExp)args[0].AsObject
             : RegExpCtor.Create(realm, args.Length > 0 && !args[0].IsUndefined ? JsValue.ToStringValue(args[0]) : "",
                 all ? "g" : "");
-        var symbol = all ? SymbolCtor.MatchAll : SymbolCtor.Match;
-        var fn = re.Get(symbol);
+        if (all)
+        {
+            // B4-1-followup-b: return a real RegExp String Iterator instead of
+            // an array. Spec §22.1.3.13 requires matchAll to throw TypeError if
+            // the regex is not global; mirror that here for parity with the
+            // Symbol.matchAll path.
+            if ((re.Flags & Tessera.Js.RegExp.RegexFlags.Global) == 0)
+                throw new JsThrow(realm.NewTypeError("matchAll requires a global regular expression"));
+            var unicode = (re.Flags & Tessera.Js.RegExp.RegexFlags.Unicode) != 0;
+            return JsValue.Object(new JsRegExpStringIterator(realm, re, s, global: true, unicode: unicode));
+        }
+        var fn = re.Get(SymbolCtor.Match);
         if (!fn.IsObject) return JsValue.Null;
         return AbstractOperations.Call(realm.ActiveVm, fn, JsValue.Object(re), new[] { JsValue.String(s) });
     }

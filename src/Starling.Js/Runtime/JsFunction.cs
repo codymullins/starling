@@ -35,6 +35,27 @@ public sealed class JsFunction : JsObject
     /// compiler. Empty for plain (non-capturing) functions.</summary>
     public IReadOnlyList<JsValue> Upvalues { get; }
 
+    /// <summary>B1b-2a: the prototype object on which this function lives
+    /// when it is a class method (or the constructor for static methods).
+    /// <c>super.x</c> resolves to <c>HomeObject.[[Prototype]][x]</c>.
+    /// Null for plain functions and template instances.</summary>
+    public JsObject? HomeObject { get; set; }
+
+    /// <summary>B1b-2a: <c>ClassConstructorKind</c>. <see cref="ClassConstructorKind.None"/>
+    /// means a plain function. <see cref="ClassConstructorKind.Base"/> is a
+    /// class constructor without <c>extends</c>; <see cref="ClassConstructorKind.Derived"/>
+    /// requires <c>super(...)</c> before any <c>this</c> access.</summary>
+    public ClassConstructorKind ConstructorKind { get; set; } = ClassConstructorKind.None;
+
+    /// <summary>B1b-2a: instance-field initializer thunks. Each entry is a
+    /// pre-instantiated zero-arg <see cref="JsFunction"/> invoked with
+    /// <c>this</c> = the new instance after the (possibly synthesized)
+    /// <c>super(...)</c> returns, in declaration order. The
+    /// <see cref="InstanceFieldInit.FieldKey"/> selects the slot to write —
+    /// null entries indicate computed keys (not yet supported by
+    /// B1b-2a).</summary>
+    public IReadOnlyList<InstanceFieldInit>? InstanceFieldInitializers { get; set; }
+
     public JsFunction(string name, Chunk body, int arityDeclared)
         : this(name, body, arityDeclared, Array.Empty<JsValue>())
     {
@@ -67,7 +88,14 @@ public sealed class JsFunction : JsObject
     {
         ArgumentNullException.ThrowIfNull(realm);
         ArgumentNullException.ThrowIfNull(template);
-        var fn = new JsFunction(template.Name, template.Body, template.ArityDeclared, upvalues);
+        var fn = new JsFunction(template.Name, template.Body, template.ArityDeclared, upvalues)
+        {
+            ConstructorKind = template.ConstructorKind,
+            // HomeObject is copied through to the instance so per-call closures
+            // still resolve super correctly. For class methods/ctors compiled
+            // via DefineClass the template carries the slot.
+            HomeObject = template.HomeObject,
+        };
         fn.SetPrototypeOf(realm.FunctionPrototype);
 
         // §10.2.4 — the function's own `prototype` slot holds the object that
@@ -89,4 +117,28 @@ public sealed class JsFunction : JsObject
 
     public override string ToString()
         => $"function {Name}({ArityDeclared}) {{ [bytecode] }}";
+}
+
+/// <summary>One instance-field initializer attached to a class constructor.
+/// <see cref="FieldKey"/> is the property name to write; for a private
+/// field it's the mangled name. <see cref="IsPrivate"/> selects between
+/// <c>DefineOwnProperty</c> and the public <c>Set</c> path so private
+/// slots become non-enumerable per spec.</summary>
+public sealed record InstanceFieldInit(string FieldKey, bool IsPrivate, JsFunction Thunk);
+
+/// <summary>
+/// ES2024 §10.2.1 [[ConstructorKind]] internal slot. Distinguishes between
+/// plain functions, base-class constructors, and derived-class constructors —
+/// the last requires <c>super(...)</c> to bind <c>this</c> before any use.
+/// </summary>
+public enum ClassConstructorKind
+{
+    /// <summary>Plain function (non-class).</summary>
+    None,
+    /// <summary>Base-class constructor — pre-allocates <c>this</c> per the
+    /// ordinary [[Construct]] semantics.</summary>
+    Base,
+    /// <summary>Derived-class constructor — <c>this</c> is uninitialized until
+    /// <c>super(...)</c> completes.</summary>
+    Derived,
 }

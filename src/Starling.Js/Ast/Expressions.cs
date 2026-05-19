@@ -169,3 +169,105 @@ public sealed record TaggedTemplateExpression(
     TemplateLiteral Quasi,
     JsPosition Start, JsPosition End)
     : Expression(Start, End);
+
+// -----------------------------------------------------------------------
+// Classes (B1b-2a)
+// -----------------------------------------------------------------------
+
+/// <summary>
+/// ES2024 §15.7 ClassBody — collected by the parser. Methods include both
+/// regular methods and accessor (get/set) methods (their <see cref="MethodKind"/>
+/// distinguishes). Fields are public/private instance or static field
+/// declarations. <see cref="StaticBlocks"/> hold static-initialization
+/// blocks (ES2022 §15.7.4).
+/// </summary>
+public sealed record ClassBody(
+    MethodDefinition? Constructor,
+    IReadOnlyList<MethodDefinition> Methods,
+    IReadOnlyList<PropertyField> Fields,
+    IReadOnlyList<BlockStatement> StaticBlocks,
+    JsPosition Start, JsPosition End)
+    : AstNode(Start, End);
+
+/// <summary>
+/// A method definition inside a class body. <see cref="Key"/> is an
+/// <see cref="Identifier"/>, <see cref="StringLiteral"/>, <see cref="NumericLiteral"/>,
+/// or <see cref="PrivateNameExpression"/>; if <see cref="Computed"/> is true,
+/// it can be any expression.
+/// </summary>
+public sealed record MethodDefinition(
+    Expression Key,
+    MethodKind Kind,
+    bool IsStatic,
+    bool Computed,
+    IReadOnlyList<Expression> Params,
+    BlockStatement Body,
+    JsPosition Start, JsPosition End)
+    : AstNode(Start, End);
+
+public enum MethodKind
+{
+    /// <summary>Regular method — <c>foo() { ... }</c>.</summary>
+    Method,
+    /// <summary>Constructor — <c>constructor() { ... }</c>.</summary>
+    Constructor,
+    /// <summary>Getter — <c>get name() { ... }</c>.</summary>
+    Get,
+    /// <summary>Setter — <c>set name(v) { ... }</c>.</summary>
+    Set,
+}
+
+/// <summary>
+/// A field declaration inside a class body — <c>name = expr;</c> or
+/// <c>#name = expr;</c>, with or without <see cref="IsStatic"/>.
+/// <see cref="Initializer"/> may be null for declarations without
+/// initializers (the field still pins the slot but starts undefined).
+/// </summary>
+public sealed record PropertyField(
+    Expression Key,
+    bool IsStatic,
+    bool Computed,
+    Expression? Initializer,
+    JsPosition Start, JsPosition End)
+    : AstNode(Start, End);
+
+/// <summary>
+/// A <c>#name</c> reference — either a private-field declaration key,
+/// a private-method key, or a private property access. The lexer emits
+/// the leading <c>#</c> in <see cref="Name"/>.
+/// </summary>
+public sealed record PrivateNameExpression(
+    string Name,
+    JsPosition Start, JsPosition End)
+    : Expression(Start, End);
+
+/// <summary>
+/// <c>class [Name] [extends Base] { body }</c> as an expression.
+/// <see cref="Name"/> is optional; when present it's bound inside the body
+/// only (the rest of the program does not see it).
+/// </summary>
+public sealed record ClassExpression(
+    Identifier? Name,
+    Expression? BaseClass,
+    ClassBody Body,
+    JsPosition Start, JsPosition End)
+    : Expression(Start, End);
+
+/// <summary>
+/// <c>super.prop</c> / <c>super[expr]</c> property access. The compiler
+/// lowers this to <see cref="Tessera.Js.Bytecode.Opcode.LoadSuperProperty"/>
+/// or <see cref="Tessera.Js.Bytecode.Opcode.StoreSuperProperty"/>.
+/// </summary>
+public sealed record SuperPropertyExpression(
+    Expression Property,
+    bool Computed,
+    JsPosition Start, JsPosition End)
+    : Expression(Start, End);
+
+/// <summary>
+/// <c>super(...args)</c> call — only valid inside a derived constructor.
+/// </summary>
+public sealed record SuperCallExpression(
+    IReadOnlyList<Expression> Arguments,
+    JsPosition Start, JsPosition End)
+    : Expression(Start, End);

@@ -3,6 +3,7 @@ using Tessera.Dom;
 using Tessera.Dom.Events;
 using Tessera.Js.Runtime;
 using Tessera.Net;
+using Tessera.Net.Http.Cookies;
 
 namespace Tessera.Bindings;
 
@@ -80,17 +81,14 @@ public static class WindowBinding
             PropertyDescriptor.Data(JsValue.Object(global), writable: true, enumerable: true, configurable: true));
         global.DefineOwnProperty("document",
             PropertyDescriptor.Data(JsValue.Object(docWrapper), writable: true, enumerable: true, configurable: true));
-        // Force a stable Location object — accessor read returns the same one.
-        EventTargetBinding.DefineAccessor(realm, global, "location",
-            (_, _) => JsValue.Object(LocationObjectFor(realm, document)),
-            (_, args) =>
-            {
-                // Setter is a navigation request; not wired yet.
-                var target = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
-                realm.ConsoleSink(ConsoleLevel.Warn,
-                    $"window.location assignment ignored (navigation not yet wired): {target}");
-                return JsValue.Undefined;
-            });
+        // Force a stable Location object. Stored as a data property so bare
+        // `location` (Opcode.LoadGlobal, which goes through the data-only
+        // JsObject.Get fast path) sees the object — accessor descriptors on
+        // the global return undefined under that opcode. Cross-document
+        // navigation via assignment is wired in B5-3+.
+        global.DefineOwnProperty("location",
+            PropertyDescriptor.Data(JsValue.Object(LocationObjectFor(realm, document)),
+                writable: true, enumerable: true, configurable: true));
         global.DefineOwnProperty("name",
             PropertyDescriptor.Data(JsValue.String(""), writable: true, enumerable: true, configurable: true));
         global.DefineOwnProperty("navigator",
@@ -114,6 +112,15 @@ public static class WindowBinding
             FetchBinding.Install(runtime, httpClient, document);
             XhrBinding.Install(runtime, httpClient, document);
         }
+
+        // 6) B5-5: history, storage, cookies, performance. HistoryBinding
+        //    installs first so WindowBinding.UrlFor consults its current entry
+        //    when other bindings read the document URL during their own setup.
+        var initialUrl = options.DocumentUrl ?? "about:blank";
+        HistoryBinding.Install(runtime, document, initialUrl);
+        StorageBinding.Install(runtime, document, initialUrl);
+        CookieBinding.Install(runtime, document, options.CookieJar);
+        PerformanceBinding.Install(runtime);
     }
 
     /// <summary>Resolve the runtime that backs the given realm. Returns null
@@ -168,9 +175,14 @@ public static class WindowBinding
     }
 
     /// <summary>Resolve the URL string assigned to a document on install.
-    /// Defaults to <c>about:blank</c> when none was specified.</summary>
-    internal static string UrlFor(JsRealm _, Document doc)
-        => DocMeta.TryGetValue(doc, out var m) ? m.Url : "about:blank";
+    /// Defaults to <c>about:blank</c> when none was specified. When the realm
+    /// has a session history installed, its current entry takes precedence so
+    /// <c>history.pushState</c> is reflected in <c>location.href</c>.</summary>
+    internal static string UrlFor(JsRealm realm, Document doc)
+    {
+        if (HistoryBinding.HistoryForRealm(realm) is { } hist) return hist.CurrentUrl;
+        return DocMeta.TryGetValue(doc, out var m) ? m.Url : "about:blank";
+    }
 
     /// <summary>Get the document's base URL (without falling back to
     /// about:blank). Returns null when the document was installed without one;
@@ -230,7 +242,8 @@ public readonly record struct WindowInstallOptions(
     string? UserAgent = null,
     double InnerWidth = 0,
     double InnerHeight = 0,
-    TesseraHttpClient? HttpClient = null);
+    TesseraHttpClient? HttpClient = null,
+    CookieJar? CookieJar = null);
 
 internal static class ConditionalWeakTableExtensions
 {

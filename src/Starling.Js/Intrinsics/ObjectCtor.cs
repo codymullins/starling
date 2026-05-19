@@ -344,11 +344,13 @@ public static class ObjectCtor
         return MakeArrayLike(realm, symbols);
     }
 
-    /// <summary>§20.1.2.12 Object.getPrototypeOf.</summary>
+    /// <summary>§20.1.2.12 Object.getPrototypeOf. Goes through the virtual
+    /// <see cref="JsObject.GetPrototypeOf"/> so proxies' getPrototypeOf trap fires.</summary>
     private static JsValue GetPrototypeOf(JsRealm realm, JsValue[] args)
     {
         var target = RequireObject(realm, args.Length > 0 ? args[0] : JsValue.Undefined);
-        return target.Prototype is null ? JsValue.Null : JsValue.Object(target.Prototype);
+        var proto = target.GetPrototypeOf();
+        return proto is null ? JsValue.Null : JsValue.Object(proto);
     }
 
     /// <summary>§20.1.2.22 Object.setPrototypeOf.</summary>

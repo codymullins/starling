@@ -67,6 +67,7 @@ blocker; defer to M6 wp:M3-09.
 | B2-4 — Array intrinsic + JsArray | ✅ | `src/Starling.Js/Runtime/JsArray.cs`, `src/Starling.Js/Intrinsics/ArrayCtor.cs`, `src/Starling.Js/{Bytecode/{Opcode,JsCompiler},Runtime/{JsObject,JsRealm,JsVm,JsRuntime},Intrinsics/ObjectCtor}.cs`, `tests/Starling.Js.Tests/Intrinsics/ArrayTests.cs` |
 | B5-1 — Window / document / EventTarget | ✅ | `src/Starling.Bindings/{EventTargetBinding,DomWrappers,NodeBindings,QuerySelectorEngine,WindowBinding}.cs`, `src/Starling.Js/Runtime/{JsRealm,JsObject}.cs`, `tests/Starling.Bindings.Tests/WindowDocumentTests.cs` (DomBindingHost deleted) |
 | B5-2 — Timers | ✅ | `src/Starling.Bindings/{TimersBinding,Starling.Bindings.csproj}`, `tests/Starling.Bindings.Tests/TimersTests.cs` |
+| B5-5 — history / storage / cookie / performance | ✅ | `src/Starling.Bindings/{HistoryBinding,StorageBinding,CookieBinding,PerformanceBinding,WindowBinding,EventTargetBinding}.cs`, `tests/Starling.Bindings.Tests/{HistoryTests,StorageTests,CookieTests,PerformanceTests}.cs` |
 
 ### B0 surface delivered
 
@@ -135,7 +136,11 @@ session. Other rows in the queue are free for other agents/sessions.
 | **B4-1-followup-a** regex literal parser | claude-cody (agent) | in progress (2026-05-19) |
 | **B5-3-followup-a** WithActiveVm helper | claude-cody (agent) | in progress (2026-05-19) |
 | **B5-3-followup-b** revert NoWarn | claude-cody (agent) | in progress (2026-05-19) |
-| **B5-1-followup** DOM array-likes | claude-cody (agent) | in progress (2026-05-19) |
+| **B5-1-followup** DOM array-likes | claude-cody (agent) | complete (2026-05-19) |
+| **B1b-2a** Class declarations | claude-cody (agent) | in progress (2026-05-19) |
+| **B3-3** Map/Set/WeakMap/WeakSet | claude-cody (agent) | in progress (2026-05-19) |
+| **B4-4** Proxy + Reflect | claude-cody (agent) | in progress (2026-05-19) |
+| **B4-2 + B4-1-followup-b** Date + matchAll iterator | claude-cody (agent) | in progress (2026-05-19) |
 | **B2-2-followup** realm-aware intrinsics | claude-cody (agent) | complete (2026-05-19) |
 | **B2-4** Array + JsArray | claude-cody (agent) | complete (2026-05-19) |
 | **B5-2** Timers | claude-cody (agent) | complete (2026-05-19) |
@@ -144,6 +149,7 @@ session. Other rows in the queue are free for other agents/sessions.
 | **B3-2** Iterator protocol | claude-cody (agent) | in progress (2026-05-19) |
 | **B4-1** RegExp | claude-cody (agent) | in progress (2026-05-19) |
 | **B3-4-followup-a/b** Parser fix + AggregateError swap | claude-cody (agent) | in progress (2026-05-19) |
+| **B5-5** history / storage / cookie / performance | claude-cody (agent, lane-F) | complete (2026-05-19) |
 
 ## Work queue
 
@@ -255,6 +261,17 @@ Critical paths into B7:
   Snapshot golden is stale, not a regression. Re-vendor with
   `TESSERA_UPDATE_GOLDENS=1` when the underlying paint change is
   intentional.
+- **Bare-name accessor globals resolve to undefined** (surfaced by B5-5).
+  `Opcode.LoadGlobal` reads through `JsObject.Get` which returns `Undefined`
+  for accessor descriptors instead of invoking the getter — so unqualified
+  `location.href` evaluates to `(undefined).href` and throws. `window.location.href`
+  works because dotted member access routes through `AbstractOperations.Get`.
+  Most real-world bundles use the bare form. Fix: switch `LoadGlobal` to
+  `AbstractOperations.Get(_runtime.Realm.GlobalObject, name, JsValue.Object(global))`
+  (or equivalent VM-aware path) so accessors fire. Same applies to `StoreGlobal`
+  for accessor setters (`location.href = ...`, `history.scrollRestoration = ...`).
+  File as a small standalone WP — touches `JsVm.cs` only, with regression tests
+  in `WindowDocumentTests`.
 
 ## How to run / verify
 

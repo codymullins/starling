@@ -72,6 +72,14 @@ public static class EventTargetBinding
         DefineAccessor(realm, evProto, "eventPhase", (thisV, _) => HostEventOr(thisV, e => JsValue.Number((int)e.EventPhase), JsValue.Number(0)));
         DefineAccessor(realm, evProto, "timeStamp", (thisV, _) => HostEventOr(thisV, e => JsValue.Number(e.TimeStamp), JsValue.Number(0)));
         DefineAccessor(realm, evProto, "isTrusted", (thisV, _) => HostEventOr(thisV, e => JsValue.Boolean(e.IsTrusted), JsValue.False));
+        // PopStateEvent.state surfaces on the shared Event prototype: any
+        // non-popstate event returns undefined here, which matches the
+        // observable behavior of real browsers where only PopStateEvent has
+        // the slot.
+        DefineAccessor(realm, evProto, "state",
+            (thisV, _) => TryGetHostEvent(thisV, out var e) && e is PopStateEvent p && p.State is JsValue jv
+                ? jv
+                : JsValue.Undefined);
 
         DefineMethod(realm, evProto, "preventDefault", (thisV, _) =>
         {

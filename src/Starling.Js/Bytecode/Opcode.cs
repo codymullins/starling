@@ -97,5 +97,72 @@ public enum Opcode : byte
     CallApplyMethod,  // pop args-array + callee + receiver; this=receiver
     NewApply,         // pop args-array + ctor
 
+    // ----- Classes (B1b-2a) -----
+    /// <summary>Push the current frame's [[HomeObject]] (the prototype that
+    /// owns the method currently executing). Used by <c>super.x</c> and
+    /// <c>super.x()</c> to compute the base prototype. Throws TypeError when
+    /// the current function has no home object (not a class method).</summary>
+    LoadHomeObject,
+    /// <summary>Push the current frame's [[NewTarget]] — the constructor
+    /// invoked by <c>new</c>, threaded through derived <c>super(...)</c>
+    /// calls per §10.2.1.</summary>
+    LoadNewTarget,
+    /// <summary>Pop a value and bind it as the current frame's <c>this</c>.
+    /// Used by derived constructors after <c>super(...)</c> returns. Subsequent
+    /// <c>LoadThis</c> instructions in the same frame see the new binding.</summary>
+    BindThis,
+    /// <summary>Like <see cref="LoadThis"/> but throws ReferenceError when
+    /// <c>this</c> is uninitialized (i.e. inside a derived constructor before
+    /// <c>super(...)</c> has been called). The compiler emits this for any
+    /// <c>this</c> access inside a class body.</summary>
+    LoadThisChecked,
+    /// <summary>Pop an args-array. Invoke the parent constructor (via
+    /// [[HomeObject]].[[Prototype]].constructor) with the current
+    /// [[NewTarget]] and push the constructed object — the caller is
+    /// expected to immediately <see cref="BindThis"/>.</summary>
+    CallSuperCtor,
+    /// <summary>[u16 nameIdx] — push the property looked up on
+    /// <c>[[HomeObject]].[[Prototype]]</c> with the current frame's
+    /// <c>this</c> as the receiver for accessor getters. Lowering for
+    /// <c>super.name</c> reads. The frame's <c>this</c> is consulted via
+    /// the implicit <c>thisV</c> slot — no operand on the eval stack.</summary>
+    LoadSuperProperty,
+    /// <summary>[u16 nameIdx] — pop value, write to <c>this[name]</c>
+    /// (per spec, <c>super.name = v</c> sets the property on the receiver,
+    /// not the prototype). Pushes the assigned value back.</summary>
+    StoreSuperProperty,
+    /// <summary>[u16 mangledNameIdx] — pop receiver, push the value of the
+    /// private slot. Throws TypeError if the receiver lacks the slot
+    /// (handled in VM). The mangled name is a class-unique constant pool
+    /// entry that identifies the slot.</summary>
+    PrivateGet,
+    /// <summary>[u16 mangledNameIdx] — pop receiver + value, write to the
+    /// private slot on the receiver. Pushes the assigned value.</summary>
+    PrivateSet,
+    /// <summary>[u16 mangledNameIdx] — pop receiver + value, define a fresh
+    /// private slot on the receiver. Throws TypeError if the slot already
+    /// exists. Pushes nothing (consumes both operands).</summary>
+    DefinePrivateField,
+    /// <summary>[u16 templateIdx] — consult the <see cref="ClassTemplate"/>
+    /// constant; if the template has <c>HasExtends</c>, pop the base-class
+    /// value from the stack. Allocate the class constructor + prototype,
+    /// install methods/static fields/static blocks, then push the
+    /// constructor as a JsValue. Field initializers for instance fields
+    /// are stamped onto the constructor's internal slot and run during
+    /// later <c>new</c> invocations.</summary>
+    BuildClass,
+    /// <summary>Push a fresh <see cref="Tessera.Js.Runtime.JsArray"/>
+    /// containing every argument the current frame received (in argument
+    /// order). Used to forward all arguments to <c>super(...args)</c> in
+    /// a synthesized default derived constructor.</summary>
+    LoadCallerArgs,
+    /// <summary>Run each thunk in
+    /// <c>currentFunction.InstanceFieldInitializers</c> with <c>this</c>
+    /// bound to the current frame's <c>this</c>. Emitted by the compiler
+    /// at the top of a base-class constructor body, and immediately after
+    /// <see cref="BindThis"/> in a derived-class constructor body. No-op
+    /// when the current function carries no field initializers.</summary>
+    RunFieldInits,
+
     Halt,           // end-of-program sentinel
 }

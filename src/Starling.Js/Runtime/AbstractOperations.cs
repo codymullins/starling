@@ -75,11 +75,12 @@ public static class AbstractOperations
 
     /// <summary>§7.2.3 IsCallable — true if the value is an object with a
     /// callable internal method ([[Call]]). For us: a JsFunction, a
-    /// JsNativeFunction, or a bound function.</summary>
+    /// JsNativeFunction, a bound function, or a proxy whose target is callable.</summary>
     public static bool IsCallable(JsValue value)
     {
         if (!value.IsObject) return false;
         var obj = value.AsObject;
+        if (obj is JsProxy proxy) return !proxy.IsRevoked && proxy.TargetIsCallable;
         return obj is JsFunction or JsNativeFunction or JsBoundFunction;
     }
 
@@ -92,6 +93,7 @@ public static class AbstractOperations
             JsFunction => true,
             JsNativeFunction nat => nat.IsConstructor,
             JsBoundFunction bf => IsConstructor(JsValue.Object(bf.Target)),
+            JsProxy proxy => !proxy.IsRevoked && proxy.TargetIsConstructor,
             _ => false,
         };
     }
@@ -105,6 +107,13 @@ public static class AbstractOperations
     public static JsValue Get(JsVm? vm, JsObject obj, JsPropertyKey key, JsValue receiver = default)
     {
         if (receiver.IsUndefined) receiver = JsValue.Object(obj);
+        // §10.5.8: Proxy exotic objects route property reads through the [[Get]]
+        // internal method (which consults the `get` trap). Done at the AO entry
+        // so every call site picks it up — the VM and intrinsics all call here
+        // rather than virtual JsObject.Get(string), so dispatching via virtual
+        // override is not enough.
+        if (obj is JsProxy proxy)
+            return proxy.GetWithReceiver(key, receiver);
         // ECMA-262 §25.2.5: integer-indexed exotic element access is handled
         // by the typed-array object before ordinary descriptor lookup.
         if (obj is JsTypedArray ta && key.IsString && IsCanonicalArrayIndex(key.AsString))
@@ -132,6 +141,10 @@ public static class AbstractOperations
     public static bool Set(JsVm? vm, JsObject obj, JsPropertyKey key, JsValue value, JsValue receiver = default)
     {
         if (receiver.IsUndefined) receiver = JsValue.Object(obj);
+        // §10.5.9: Proxy exotic objects route writes through the [[Set]] internal
+        // method (which consults the `set` trap). See note on Get above.
+        if (obj is JsProxy proxy)
+            return proxy.SetWithReceiver(key, value, receiver);
         // ECMA-262 §25.2.5 integer-indexed exotic writes go to the backing
         // ArrayBuffer instead of creating ordinary own properties.
         if (obj is JsTypedArray ta && key.IsString && IsCanonicalArrayIndex(key.AsString))
@@ -178,6 +191,7 @@ public static class AbstractOperations
                 : throw new InvalidOperationException("VM required to call JS function"),
             JsBoundFunction bf => Call(vm, JsValue.Object(bf.Target), bf.BoundThis,
                 ConcatBoundArgs(bf.BoundArgs, args)),
+            JsProxy proxy => proxy.ProxyCall(thisValue, args),
             _ => throw new JsThrow(JsValue.String($"not a function: {callee.AsObject}")),
         };
     }
@@ -196,6 +210,7 @@ public static class AbstractOperations
                 : throw new InvalidOperationException("VM required to construct JS function"),
             JsBoundFunction bf => Construct(vm, JsValue.Object(bf.Target),
                 ConcatBoundArgs(bf.BoundArgs, args), newTarget),
+            JsProxy proxy => proxy.ProxyConstruct(args, newTarget),
             _ => throw new JsThrow(JsValue.String($"not a constructor: {ctor.AsObject}")),
         };
     }

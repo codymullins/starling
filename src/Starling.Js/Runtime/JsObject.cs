@@ -21,8 +21,13 @@ public class JsObject
     public JsObject? Prototype { get; private set; }
 
     /// <summary>The [[Extensible]] internal slot. When false, new own properties
-    /// are rejected.</summary>
-    public bool Extensible { get; private set; } = true;
+    /// are rejected. Virtual so exotic objects (notably <see cref="JsProxy"/>)
+    /// can route through the <c>isExtensible</c> trap.</summary>
+    public virtual bool Extensible => _extensible;
+
+    /// <summary>Backing field for <see cref="Extensible"/>; mutated only by
+    /// <see cref="PreventExtensions"/> on ordinary objects.</summary>
+    private bool _extensible = true;
 
     public JsObject() { }
 
@@ -39,8 +44,14 @@ public class JsObject
         return true;
     }
 
-    /// <summary>§10.1.3 [[PreventExtensions]].</summary>
-    public bool PreventExtensions() { Extensible = false; return true; }
+    /// <summary>§10.1.1 [[GetPrototypeOf]]. Virtual hook so
+    /// <see cref="JsProxy"/> can route through the <c>getPrototypeOf</c> trap;
+    /// ordinary objects return the <see cref="Prototype"/> slot directly.</summary>
+    public virtual JsObject? GetPrototypeOf() => Prototype;
+
+    /// <summary>§10.1.3 [[PreventExtensions]]. Virtual so <see cref="JsProxy"/>
+    /// can route through the <c>preventExtensions</c> trap.</summary>
+    public virtual bool PreventExtensions() { _extensible = false; return true; }
 
     /// <summary>Spec [[Get]] simplified to data-only resolution: walks the
     /// prototype chain and returns the data slot's value, or Undefined.
@@ -103,15 +114,16 @@ public class JsObject
         else Set(key.AsString, value);
     }
 
-    /// <summary>Spec [[HasProperty]] — walks the prototype chain.</summary>
-    public bool Has(string name)
+    /// <summary>Spec [[HasProperty]] — walks the prototype chain. Virtual so
+    /// <see cref="JsProxy"/> can route through the <c>has</c> trap.</summary>
+    public virtual bool Has(string name)
     {
         for (var o = this; o is not null; o = o.Prototype)
             if (o._properties.ContainsKey(name)) return true;
         return false;
     }
 
-    public bool Has(JsSymbol symbol)
+    public virtual bool Has(JsSymbol symbol)
     {
         for (var o = this; o is not null; o = o.Prototype)
             if (o._symbolProperties.ContainsKey(symbol)) return true;

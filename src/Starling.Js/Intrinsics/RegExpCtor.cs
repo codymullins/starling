@@ -143,6 +143,12 @@ public static class RegExpCtor
         return JsValue.Boolean(!result.IsNull);
     }
 
+    // Public-internal helper so JsRegExpStringIterator can build per-match
+    // arrays without rerouting through prototype.exec (avoids re-entering the
+    // dispatcher just to construct the same object).
+    internal static JsArray BuildMatchArrayForIterator(JsRealm realm, JsRegExp re, RegexMatch m)
+        => BuildMatchArray(realm, re, m);
+
     private static JsArray BuildMatchArray(JsRealm realm, JsRegExp re, RegexMatch m)
     {
         var arr = new JsArray(realm);

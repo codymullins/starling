@@ -34,10 +34,16 @@ namespace Tessera.Js.Bytecode;
 ///   <item>ForIn/ForOf iteration protocol (M3-04 VM needs iterator support).</item>
 /// </list>
 /// </remarks>
-public sealed class JsCompiler
+public sealed partial class JsCompiler
 {
     private readonly ChunkBuilder _b = new();
     private readonly List<Dictionary<string, int>> _scopes = [new()];
+
+    /// <summary>Stack of class private-name scopes — each frame maps the
+    /// source-level name (e.g. <c>#x</c>) to its mangled own-property key
+    /// for the active class. Resolution walks outer-to-inner so nested
+    /// classes shadow correctly.</summary>
+    private readonly Stack<Dictionary<string, string>> _privateScopes = new();
 
     /// <summary>Enclosing compiler — null for the script-top compiler. Used
     /// by lazy upvalue resolution to walk lexically-enclosing scopes when
@@ -273,6 +279,9 @@ public sealed class JsCompiler
                 // Hoisted at scope entry by HoistFunctionDeclarations;
                 // textual position emits nothing.
                 return;
+            case ClassDeclaration cd:
+                EmitClassDeclaration(cd);
+                return;
         }
         throw new NotSupportedException(
             $"compiler: statement kind '{s.GetType().Name}' not yet supported (see wp:M3-03 notes).");
@@ -465,7 +474,7 @@ public sealed class JsCompiler
                 EmitIdLoad(id.Name);
                 return;
             case ThisExpression:
-                _b.Emit(Opcode.LoadThis);
+                _b.Emit(_classMethodDepth > 0 ? Opcode.LoadThisChecked : Opcode.LoadThis);
                 return;
             case BinaryExpression bin:
                 EmitExpression(bin.Left);
@@ -526,6 +535,18 @@ public sealed class JsCompiler
             case ArrowFunctionExpression arrow:
                 EmitArrowFunction(arrow);
                 return;
+            case ClassExpression cls:
+                EmitClassExpression(cls);
+                return;
+            case SuperPropertyExpression sp:
+                EmitSuperProperty(sp);
+                return;
+            case SuperCallExpression sc:
+                EmitSuperCall(sc);
+                return;
+            case PrivateNameExpression:
+                throw new NotSupportedException(
+                    "private-name reference used outside a member-expression context");
         }
         throw new NotSupportedException(
             $"compiler: expression kind '{e.GetType().Name}' not yet supported.");
@@ -718,6 +739,20 @@ public sealed class JsCompiler
         }
         if (a.Target is MemberExpression me)
         {
+            // Super-property assignment: super.x = v writes to `this`.
+            if (me.Object is SuperPropertyExpression)
+                throw new NotSupportedException("super.x = v is not supported in B1b-2a");
+            // Private name assignment: this.#x = v
+            if (!me.Computed && me.Property is PrivateNameExpression pne)
+            {
+                var mangled = ResolvePrivateName(pne.Name);
+                EmitExpression(me.Object);
+                EmitExpression(a.Value);
+                if (a.Op != "=")
+                    throw new NotSupportedException("compound assignment to private field not supported");
+                _b.EmitU16(Opcode.PrivateSet, _b.AddConstant(mangled));
+                return;
+            }
             // StoreProperty / StoreComputed already re-push the assigned
             // value, so the expression's net result is one value on the
             // stack — no extra Dup needed (it would leak a value).
@@ -733,6 +768,14 @@ public sealed class JsCompiler
 
     private void EmitMemberLoad(MemberExpression m)
     {
+        // Private name: obj.#name
+        if (!m.Computed && m.Property is PrivateNameExpression pne)
+        {
+            var mangled = ResolvePrivateName(pne.Name);
+            EmitExpression(m.Object);
+            _b.EmitU16(Opcode.PrivateGet, _b.AddConstant(mangled));
+            return;
+        }
         EmitExpression(m.Object);
         if (m.Computed)
         {
@@ -755,6 +798,26 @@ public sealed class JsCompiler
         foreach (var arg in call.Arguments)
             if (arg is SpreadElement) { hasSpread = true; break; }
 
+        // super.method(args) — must bind this=current this.
+        if (call.Callee is SuperPropertyExpression sp)
+        {
+            if (sp.Computed)
+                throw new NotSupportedException("computed super[...] is not supported in B1b-2a");
+            var name = ((Identifier)sp.Property).Name;
+            // Push this for receiver, then the resolved super method.
+            _b.Emit(_classMethodDepth > 0 ? Opcode.LoadThisChecked : Opcode.LoadThis);  // [this]
+            _b.EmitU16(Opcode.LoadSuperProperty, _b.AddConstant(name));                 // [this, fn]
+            if (hasSpread)
+            {
+                EmitArgsAsArray(call.Arguments);
+                _b.Emit(Opcode.CallApplyMethod);
+                return;
+            }
+            foreach (var arg in call.Arguments) EmitExpression(arg);
+            _b.Emit(Opcode.CallMethod, (byte)call.Arguments.Count);
+            return;
+        }
+
         // Method call form: obj.method() or obj[key]() must bind
         // this=obj inside the callee. Emit obj once, Dup it, load the
         // property, then args, then CallMethod which consumes
@@ -768,6 +831,11 @@ public sealed class JsCompiler
             {
                 EmitExpression(me.Property);    // [obj, obj, key]
                 _b.Emit(Opcode.LoadComputed);   // [obj, fn]
+            }
+            else if (me.Property is PrivateNameExpression pne)
+            {
+                var mangled = ResolvePrivateName(pne.Name);
+                _b.EmitU16(Opcode.PrivateGet, _b.AddConstant(mangled));  // [obj, fn]
             }
             else
             {

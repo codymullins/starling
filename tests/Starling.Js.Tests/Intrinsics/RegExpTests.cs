@@ -179,6 +179,56 @@ public class RegExpTests
         Run("'hello'.match('l')[0];").AsString.Should().Be("l");
     }
 
+    // ---------------- matchAll iterator (B4-1-followup-b) ----------------
+
+    [Fact]
+    public void MatchAll_returns_iterator_spreadable_to_two_matches()
+    {
+        Run("[...'abc abc'.matchAll(new RegExp('[a-z]+', 'g'))].length;").AsNumber.Should().Be(2);
+    }
+
+    [Fact]
+    public void MatchAll_iterator_yields_match_arrays_with_groups()
+    {
+        Run("var r=[]; for (var m of 'a1b2'.matchAll(new RegExp('(\\\\w)(\\\\d)', 'g'))) r.push(m[1]+m[2]); r.join(',');")
+            .AsString.Should().Be("a1,b2");
+    }
+
+    [Fact]
+    public void MatchAll_iterator_next_callable_directly()
+    {
+        Run("var it = 'abc'.matchAll(new RegExp('[a-z]', 'g')); it.next().value[0];")
+            .AsString.Should().Be("a");
+    }
+
+    [Fact]
+    public void MatchAll_iterator_is_self_iterable_via_symbol_iterator()
+    {
+        Run("var it = 'ab'.matchAll(new RegExp('.', 'g')); it[Symbol.iterator]() === it;")
+            .AsBool.Should().BeTrue();
+    }
+
+    [Fact]
+    public void MatchAll_spread_collects_match_arrays_in_order()
+    {
+        Run("var ms = [...'hello'.matchAll(new RegExp('l', 'g'))]; ms[0][0];").AsString.Should().Be("l");
+        Run("var ms = [...'hello'.matchAll(new RegExp('l', 'g'))]; ms.length;").AsNumber.Should().Be(2);
+    }
+
+    [Fact]
+    public void MatchAll_throws_when_regex_not_global()
+    {
+        Action act = () => Run("'abc'.matchAll(new RegExp('a'));");
+        act.Should().Throw<JsThrow>();
+    }
+
+    [Fact]
+    public void MatchAll_result_is_not_array()
+    {
+        // Pin the iterator-shape regression: Array.isArray must be false now.
+        Run("Array.isArray('a'.matchAll(new RegExp('a', 'g')));").AsBool.Should().BeFalse();
+    }
+
     private static JsValue Run(string src)
     {
         var program = new JsParser(src).ParseProgram();
