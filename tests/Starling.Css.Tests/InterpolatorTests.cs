@@ -3,8 +3,11 @@ using Tessera.Css.Animations;
 using Tessera.Css.Properties;
 using Tessera.Css.Values;
 using Xunit;
+using Starling.Spec;
 
 namespace Tessera.Css.Tests;
+
+[Spec("web-animations-1", "https://www.w3.org/TR/web-animations-1/")]
 
 public sealed class InterpolatorTests
 {

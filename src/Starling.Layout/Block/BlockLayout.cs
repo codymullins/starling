@@ -66,6 +66,13 @@ internal sealed class BlockLayout
         var cursorY = 0d;
         var prevBottomMargin = 0d;
         var first = true;
+        // Every LayoutChildren call gets its own float context — every block
+        // is treated as a new BFC for floats, which is a simplification of
+        // CSS 2.1 §9.4.1 (BFCs are actually only established by floats,
+        // overflow!=visible, position:absolute|fixed, display:inline-block,
+        // and the root). The simplification is fine while inline floats and
+        // float-escape-across-non-BFC layouts aren't exercised.
+        var floats = new FloatContext(containerWidth);
         foreach (var child in parent.Children)
         {
             // CSS 2.1 §9.3.1: `position: absolute` and `position: fixed`
@@ -76,9 +83,96 @@ internal sealed class BlockLayout
             if (IsOutOfFlow(child.Style))
                 continue;
 
+            var floatSide = GetFloatSide(child.Style);
+            if (floatSide is not null)
+            {
+                LayoutFloat(child, containerWidth, floats, floatSide, cursorY);
+                continue;
+            }
+
+            // CSS 2.1 §9.5.2 — clear on a non-float pushes its top edge past
+            // every active float of the requested side(s) before normal flow
+            // resumes. Apply before margin-collapse so the cleared block
+            // starts in the right band.
+            var clearSide = GetClearSide(child.Style);
+            if (clearSide is not null)
+            {
+                var clearY = floats.ClearY(clearSide);
+                if (clearY > cursorY)
+                {
+                    cursorY = clearY;
+                    prevBottomMargin = 0;
+                }
+            }
+
             LayoutBlock(child, containerWidth, ref cursorY, ref prevBottomMargin, ref first, measure);
         }
+        // Grow the consumed height to enclose any floats that stick past the
+        // last in-flow block (§10.6.7). Without this, a float-only container
+        // would report zero height even though its floats are visible.
+        var floatBottom = floats.MaxFloatBottom();
+        if (floatBottom > cursorY) cursorY = floatBottom;
         return cursorY;
+    }
+
+    private static string? GetFloatSide(ComputedStyle? style)
+    {
+        if (style is null) return null;
+        if (style.Get(PropertyId.Float) is not CssKeyword k) return null;
+        return k.Name.Equals("left", StringComparison.OrdinalIgnoreCase) ? "left"
+            : k.Name.Equals("right", StringComparison.OrdinalIgnoreCase) ? "right"
+            : null;
+    }
+
+    private static string? GetClearSide(ComputedStyle? style)
+    {
+        if (style is null) return null;
+        if (style.Get(PropertyId.Clear) is not CssKeyword k) return null;
+        var n = k.Name;
+        return n.Equals("left", StringComparison.OrdinalIgnoreCase) ? "left"
+            : n.Equals("right", StringComparison.OrdinalIgnoreCase) ? "right"
+            : n.Equals("both", StringComparison.OrdinalIgnoreCase) ? "both"
+            : null;
+    }
+
+    private void LayoutFloat(Box.Box child, double containerWidth, FloatContext floats, string side, double startY)
+    {
+        // Floats use the regular block sizing path (specified width, intrinsic
+        // height from laid-out children) but are placed by the float context
+        // instead of advancing the cursor. They establish their own BFC so the
+        // recursive LayoutChildren call gets its own FloatContext.
+        if (child.Kind == BoxKind.AnonymousBlock) return;
+
+        ResolveBoxModel(child, containerWidth);
+        var width = ContentWidth(child, containerWidth);
+
+        var explicitHeight = ResolveLength(child.Style, PropertyId.Height, _viewport.Height, _viewport, allowAuto: true);
+        double childContentHeight;
+        if (IsFlexContainer(child.Style))
+        {
+            var flex = new Tessera.Layout.Flex.FlexLayout(this, _viewport);
+            childContentHeight = flex.Layout(child, width, explicitHeight);
+        }
+        else
+        {
+            childContentHeight = LayoutChildren(child, width);
+        }
+
+        var resolvedHeight = explicitHeight ?? childContentHeight;
+        var fullHeight = resolvedHeight + child.Padding.Vertical + child.Border.Vertical;
+        var fullWidth = width + child.Padding.Horizontal + child.Border.Horizontal;
+        var outerWidth = fullWidth + child.Margin.Horizontal;
+        var outerHeight = fullHeight + child.Margin.Vertical;
+
+        var placement = side == "left"
+            ? floats.PlaceLeft(startY, outerWidth, outerHeight)
+            : floats.PlaceRight(startY, outerWidth, outerHeight);
+
+        child.Frame = new Rect(
+            placement.X + child.Margin.Left,
+            placement.Y + child.Margin.Top,
+            fullWidth,
+            fullHeight);
     }
 
     private static bool IsOutOfFlow(ComputedStyle? style)

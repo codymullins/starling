@@ -76,7 +76,7 @@ public sealed class Painter
 
         PaintList displayList;
         using (_diag.Span("paint", "display_list"))
-            displayList = new DisplayListBuilder().Build(root);
+            displayList = new DisplayListBuilder().Build(root, styleOverride: null, images: images);
 
         using (_diag.Span("paint", $"raster:{PaintBackendSelector.Selected.ToString().ToLowerInvariant()}"))
         {
@@ -210,7 +210,7 @@ public sealed class Painter
 
             PaintList displayList;
             using (_diag.Span("paint", "display_list"))
-                displayList = new DisplayListBuilder().Build(root);
+                displayList = new DisplayListBuilder().Build(root, styleOverride: null, images: images);
 
             using (_diag.Span("paint", $"raster:{PaintBackendSelector.Selected.ToString().ToLowerInvariant()}"))
             {

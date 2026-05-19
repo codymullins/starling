@@ -22,15 +22,15 @@ public sealed class IconButton : Border
         bool isOn = false, double? size = null)
     {
         _t = tm.Tokens;
-        var box = size ?? tm.Metrics.Row;
+        var box = size ?? 34;
         _on = isOn;
 
         Width = box;
         Height = box;
         Background = new SolidColorBrush(isOn ? _t.AccentBg : Colors.Transparent);
         BorderThickness = new Thickness(0);
-        CornerRadius = new CornerRadius(tm.Metrics.RMd);
-        Child = Icons.Make(iconData, isOn ? _t.Accent : _t.Text2, 16);
+        CornerRadius = new CornerRadius(9);
+        Child = Icons.Make(iconData, isOn ? _t.Accent : _t.Text2, 17);
         global::Avalonia.Automation.AutomationProperties.SetName(this, label);
 
         ChromeKit.AttachClick(this, () => { if (_enabled) Clicked?.Invoke(this, EventArgs.Empty); });

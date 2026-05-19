@@ -19,6 +19,7 @@ public sealed class ThemeManager
 
     public string ChromeFont => Type == TypeMode.Mono ? Fonts.Mono : Fonts.Sans;
     public string MonoFont => Fonts.Mono;
+    public string SansFont => Fonts.Sans;
 
     public event EventHandler? Changed;
 
@@ -48,8 +49,9 @@ public sealed class ThemeManager
 
 public static class Fonts
 {
-    // Empty → Avalonia's default font (Inter, registered via WithInterFont()).
-    public const string Sans = "";
-    // macOS-resident monospace; resolves by name on osx-arm64.
-    public const string Mono = "Menlo";
+    // Bundled via Starling.Gui.Avalonia.csproj as AvaloniaResource. The
+    // FontFamily syntax is "avares://<assembly>/<path>#<family-name>".
+    private const string Asm = "Starling.Gui.Avalonia";
+    public const string Sans = $"avares://{Asm}/Assets/Fonts/Geist-Variable.ttf#Geist";
+    public const string Mono = $"avares://{Asm}/Assets/Fonts/GeistMono-Variable.ttf#Geist Mono";
 }

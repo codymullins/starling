@@ -93,6 +93,10 @@ public static class PropertyRegistry
             PropertyId.BorderTopLeftRadius or PropertyId.BorderTopRightRadius or PropertyId.BorderBottomRightRadius or PropertyId.BorderBottomLeftRadius => CssLength.Zero,
             PropertyId.Color => CssColor.Black,
             PropertyId.BackgroundColor => CssColor.Transparent,
+            PropertyId.BackgroundImage => new CssKeyword("none"),
+            PropertyId.BackgroundPosition => new CssKeyword("0% 0%"),
+            PropertyId.BackgroundSize => new CssKeyword("auto"),
+            PropertyId.BackgroundRepeat => new CssKeyword("repeat"),
             PropertyId.Opacity => new CssNumber(1),
             PropertyId.Visibility => new CssKeyword("visible"),
             PropertyId.FontFamily => new CssKeyword("serif"),
@@ -269,8 +273,8 @@ public static class PropertyRegistry
                 yield return new PropertyDeclaration(PropertyId.OverflowY, values.Count > 1 ? values[1] : values[0], important);
                 break;
             case "background":
-                if (values.FirstOrDefault(IsColorLike) is { } color)
-                    yield return new PropertyDeclaration(PropertyId.BackgroundColor, color, important);
+                foreach (var item in ExpandBackground(values, important))
+                    yield return item;
                 break;
             case "border":
                 foreach (var value in values)
@@ -527,6 +531,59 @@ public static class PropertyRegistry
         yield return new PropertyDeclaration(start, values[0], important);
         yield return new PropertyDeclaration(end, values.Count > 1 ? values[1] : values[0], important);
     }
+
+    private static IEnumerable<PropertyDeclaration> ExpandBackground(List<CssValue> values, bool important)
+    {
+        // CSS Backgrounds 3 §3.10 — the `background` shorthand sets multiple
+        // background-* longhands. Full layered parsing (split on top-level
+        // commas, per-layer position/size with slash separator) is deferred;
+        // for now we collect each component once across the value list. This
+        // is enough for the common single-layer authoring style used by sites
+        // like mcmaster.com: `background: url(sprite.png) -60px 0 no-repeat`.
+        CssValue? color = null;
+        CssValue? image = null;
+        CssValue? repeat = null;
+        var positionValues = new List<CssValue>();
+
+        foreach (var v in values)
+        {
+            if (color is null && IsColorLike(v))
+            {
+                color = v;
+            }
+            else if (image is null && (v is CssUrl || v is CssFunctionValue { Name: "linear-gradient" or "radial-gradient" or "conic-gradient" or "repeating-linear-gradient" or "repeating-radial-gradient" or "repeating-conic-gradient" or "image-set" or "url" }))
+            {
+                image = v;
+            }
+            else if (v is CssKeyword k && IsBackgroundRepeatKeyword(k.Name))
+            {
+                repeat = v;
+            }
+            else if (v is CssLength or CssPercentage or CssNumber
+                || (v is CssKeyword pk && IsBackgroundPositionKeyword(pk.Name)))
+            {
+                positionValues.Add(v);
+            }
+        }
+
+        if (color is not null)
+            yield return new PropertyDeclaration(PropertyId.BackgroundColor, color, important);
+        if (image is not null)
+            yield return new PropertyDeclaration(PropertyId.BackgroundImage, image, important);
+        if (repeat is not null)
+            yield return new PropertyDeclaration(PropertyId.BackgroundRepeat, repeat, important);
+        if (positionValues.Count > 0)
+        {
+            var pos = positionValues.Count == 1 ? positionValues[0] : new CssValueList(positionValues);
+            yield return new PropertyDeclaration(PropertyId.BackgroundPosition, pos, important);
+        }
+    }
+
+    private static bool IsBackgroundRepeatKeyword(string name)
+        => name is "repeat" or "no-repeat" or "repeat-x" or "repeat-y" or "space" or "round";
+
+    private static bool IsBackgroundPositionKeyword(string name)
+        => name is "left" or "right" or "top" or "bottom" or "center";
 
     private static IEnumerable<PropertyDeclaration> ExpandFlex(List<CssValue> values, bool important)
     {

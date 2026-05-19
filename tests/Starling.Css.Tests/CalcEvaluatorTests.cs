@@ -2,8 +2,11 @@ using FluentAssertions;
 using Tessera.Css.Parser;
 using Tessera.Css.Values;
 using Xunit;
+using Starling.Spec;
 
 namespace Tessera.Css.Tests;
+
+[Spec("css-values-4", "https://www.w3.org/TR/css-values-4/")]
 
 public sealed class CalcEvaluatorTests
 {

@@ -368,7 +368,23 @@ internal sealed class ImageSharpBackend : IPaintBackend
         // DrawingCanvas.DrawImage signature is (image, sourceRect, destinationRect, resampler) —
         // sourceRect is the integer crop inside the source image and
         // destinationRect is the float-precision target on the canvas.
-        var sourceRect = new SixLabors.ImageSharp.Rectangle(0, 0, decoded.Width, decoded.Height);
+        SixLabors.ImageSharp.Rectangle sourceRect;
+        if (item.SourceRect is { } sr)
+        {
+            // Clamp to the source dimensions so a slice that overruns the
+            // image (e.g. a sprite-sheet edge with sub-pixel rounding) still
+            // produces a valid integer rect.
+            var x = Math.Clamp((int)Math.Round(sr.X), 0, decoded.Width);
+            var y = Math.Clamp((int)Math.Round(sr.Y), 0, decoded.Height);
+            var w = Math.Clamp((int)Math.Round(sr.Width), 0, decoded.Width - x);
+            var h = Math.Clamp((int)Math.Round(sr.Height), 0, decoded.Height - y);
+            if (w <= 0 || h <= 0) return;
+            sourceRect = new SixLabors.ImageSharp.Rectangle(x, y, w, h);
+        }
+        else
+        {
+            sourceRect = new SixLabors.ImageSharp.Rectangle(0, 0, decoded.Width, decoded.Height);
+        }
         var destRect = ToDeviceRectF(item.Bounds, scale);
         canvas.DrawImage(src, sourceRect, destRect, KnownResamplers.Bicubic);
     }

@@ -5,7 +5,7 @@ namespace Tessera.Paint.Tests;
 /// <summary>
 /// Pixel-reader helpers for the backend-neutral <see cref="RenderedBitmap"/>.
 /// The golden tests used to index an ImageSharp <c>Image&lt;Rgba32&gt;</c>;
-/// since wp:M3-06i <see cref="Painter.RenderDocument"/> returns a
+/// since wp:M3-06i <c>Painter.RenderDocument</c> returns a
 /// <see cref="RenderedBitmap"/>, so the readers walk its raw RGBA buffer.
 /// </summary>
 internal static class BitmapPixels

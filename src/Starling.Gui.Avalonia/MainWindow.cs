@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -13,6 +14,7 @@ using Starling.Gui.Avalonia.Theme;
 using Tessera.Common;
 using Tessera.Common.Diagnostics;
 using Tessera.Engine;
+using Tessera.Gui;
 using Tessera.Telemetry;
 using EngineSize = SixLabors.ImageSharp.Size;
 using RenderOptions = Tessera.Engine.RenderOptions;
@@ -30,6 +32,9 @@ public sealed class MainWindow : Window, IBrowserController
 
     private static readonly IReadOnlyList<TabInfo> Bookmarks =
     [
+        new TabInfo("b0a", "example.com",      "Example",                 Url: "https://example.com"),
+        new TabInfo("b0b", "Todos",            "Todos",                   Url: "https://jsonplaceholder.typicode.com/todos"),
+        new TabInfo("b0c", "netclaw.dev",      "netclaw.dev",             Url: "https://netclaw.dev/"),
         new TabInfo("b1", "google.com",       "Google",                  Url: "https://google.com"),
         new TabInfo("b2", "justinjackson.ca", "Words — Justin Jackson",  Url: "https://justinjackson.ca/words.html"),
         new TabInfo("b3", "ladybird.org",     "Ladybird",                Url: "https://ladybird.org/"),
@@ -104,31 +109,49 @@ public sealed class MainWindow : Window, IBrowserController
 
         var reloadCell = new Panel { Children = { _reloadButton, _stopButton } };
 
-        var toolbarGrid = new Grid
+        // Nav cluster on the left, with a small column gap that keeps the
+        // three buttons visually grouped but not boxed.
+        var navCluster = new StackPanel
         {
-            ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,*,Auto,Auto"),
-            Margin = new Thickness(12, 6),
-            ColumnSpacing = 8,
+            Orientation = global::Avalonia.Layout.Orientation.Horizontal,
+            Spacing = 2,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        toolbarGrid.Children.Add(_backButton); Grid.SetColumn(_backButton, 0);
-        toolbarGrid.Children.Add(_forwardButton); Grid.SetColumn(_forwardButton, 1);
-        toolbarGrid.Children.Add(reloadCell); Grid.SetColumn(reloadCell, 2);
-        toolbarGrid.Children.Add(_urlBar); Grid.SetColumn(_urlBar, 3);
-        toolbarGrid.Children.Add(_devToolsButton); Grid.SetColumn(_devToolsButton, 4);
-        toolbarGrid.Children.Add(_themeButton); Grid.SetColumn(_themeButton, 5);
+        navCluster.Children.Add(_backButton);
+        navCluster.Children.Add(_forwardButton);
+        navCluster.Children.Add(reloadCell);
+
+        var rightCluster = new StackPanel
+        {
+            Orientation = global::Avalonia.Layout.Orientation.Horizontal,
+            Spacing = 2,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        rightCluster.Children.Add(_devToolsButton);
+        rightCluster.Children.Add(_themeButton);
+
+        var toolbarGrid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
+            Margin = new Thickness(16, 0),
+            ColumnSpacing = 14,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        toolbarGrid.Children.Add(navCluster); Grid.SetColumn(navCluster, 0);
+        toolbarGrid.Children.Add(_urlBar); Grid.SetColumn(_urlBar, 1);
+        toolbarGrid.Children.Add(rightCluster); Grid.SetColumn(rightCluster, 2);
 
         var t = _tm.Tokens;
         _toolbar = new Border
         {
             Child = toolbarGrid,
-            BorderThickness = new Thickness(0, 0, 0, 1),
-            Background = new SolidColorBrush(t.Panel),
-            BorderBrush = new SolidColorBrush(t.Border),
+            Height = 58,
+            BorderThickness = new Thickness(0),
+            Background = new SolidColorBrush(t.Bg),
         };
 
         _statusBar = new StatusBar(_tm);
-        _statusBar.SetLeft(statusText);
+        _statusBar.SetHint(statusText);
 
         // Content stack: toolbar / [webview | optional devtools] / status bar.
         // The middle row is a Grid("*,Auto,Auto") so the DevTools panel can be
@@ -141,7 +164,7 @@ public sealed class MainWindow : Window, IBrowserController
         _contentStack.Children.Add(middle); Grid.SetRow(middle, 1);
         _contentStack.Children.Add(_statusBar); Grid.SetRow(_statusBar, 2);
 
-        _sidebar = new Sidebar(_tm, Bookmarks, activeId: null, OnSidebarTabActivated);
+        _sidebar = new Sidebar(_tm, Bookmarks, activeId: null, OnSidebarTabActivated, buildLabel: GetBuildLabel());
 
         var rootGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
         rootGrid.Children.Add(_sidebar); Grid.SetColumn(_sidebar, 0);
@@ -156,7 +179,7 @@ public sealed class MainWindow : Window, IBrowserController
     private void RebuildChromeForTheme()
     {
         var urlText = _urlBar.Address.Text ?? string.Empty;
-        var statusText = _statusBar.LeftText;
+        var statusText = _statusBar.HintText;
         DevToolsTab? activeTab = _devtools?.ActiveTab;
 
         // Detach _webview from the old middle grid so it can be re-parented to
@@ -237,7 +260,20 @@ public sealed class MainWindow : Window, IBrowserController
     private async void OnLinkActivated(string resolvedUrl)
         => await NavigateAsync(resolvedUrl, ignoreEmpty: true);
 
-    private void OnWebviewStatus(string text, bool isError) => _statusBar.SetLeft(text, isError);
+    private void OnWebviewStatus(string text, bool isError) => _statusBar.SetHint(text, isError);
+
+    private static string GetBuildLabel()
+    {
+        // Short build-sha label from assembly informational version. Falls
+        // back to "" if none — the footer just renders nothing.
+        var asm = Assembly.GetExecutingAssembly();
+        var info = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+                   ?? string.Empty;
+        var plus = info.IndexOf('+');
+        if (plus >= 0) info = info[(plus + 1)..];
+        if (info.Length > 8) info = info[..8];
+        return info;
+    }
 
     private async void OnSidebarTabActivated(TabInfo tab)
     {
@@ -247,10 +283,17 @@ public sealed class MainWindow : Window, IBrowserController
 
     private async Task NavigateAsync(string? raw, bool ignoreEmpty)
     {
-        var url = (raw ?? string.Empty).Trim();
-        if (url.Length == 0)
+        var trimmed = (raw ?? string.Empty).Trim();
+        if (trimmed.Length == 0)
         {
-            if (!ignoreEmpty) _statusBar.SetLeft("Enter a URL first.", isError: true);
+            if (!ignoreEmpty) _statusBar.SetHint("Enter a URL first.", isError: true);
+            return;
+        }
+
+        var url = UrlBarInputNormalizer.Normalize(trimmed);
+        if (url is null)
+        {
+            _statusBar.SetHint($"Can't navigate: '{trimmed}' is not a URL.", isError: true);
             return;
         }
         if (_urlBar.Address.Text != url) _urlBar.Address.Text = url;
@@ -277,7 +320,8 @@ public sealed class MainWindow : Window, IBrowserController
 
             if (result.IsErr)
             {
-                _statusBar.SetLeft($"{opLabel} failed: {result.Error.Message}", isError: true);
+                _statusBar.SetState(StatusState.Error);
+                _statusBar.SetHint($"{opLabel} failed: {result.Error.Message}", isError: true);
             }
             else
             {
@@ -287,19 +331,30 @@ public sealed class MainWindow : Window, IBrowserController
                 var current = _session.History.Current;
                 if (!string.IsNullOrEmpty(current) && _urlBar.Address.Text != current)
                     _urlBar.Address.Text = current;
-                _statusBar.SetLeft(
-                    $"{opLabel} → {result.Value.Viewport.Width}×{(int)result.Value.DocumentHeight} px · {sw.ElapsedMilliseconds} ms");
+
+                _statusBar.SetState(StatusState.Ready);
+                _statusBar.SetHint($"{opLabel} → {sw.ElapsedMilliseconds} ms");
+                _statusBar.SetInfo(
+                    view: $"{result.Value.Viewport.Width}×{result.Value.Viewport.Height}",
+                    doc:  $"{(int)result.Value.DocumentHeight} px",
+                    hist: HistoryLabel());
             }
         }
         catch (OperationCanceledException) when (myCts.IsCancellationRequested)
         {
             if (ReferenceEquals(_navCts, myCts))
-                _statusBar.SetLeft($"{opLabel} canceled.", isError: true);
+            {
+                _statusBar.SetState(StatusState.Error);
+                _statusBar.SetHint($"{opLabel} canceled.", isError: true);
+            }
         }
         catch (Exception ex)
         {
             if (ReferenceEquals(_navCts, myCts))
-                _statusBar.SetLeft($"{opLabel} threw: {ex.Message}", isError: true);
+            {
+                _statusBar.SetState(StatusState.Error);
+                _statusBar.SetHint($"{opLabel} threw: {ex.Message}", isError: true);
+            }
         }
         finally
         {
@@ -319,7 +374,9 @@ public sealed class MainWindow : Window, IBrowserController
         _forwardButton.SetEnabled(false);
         _reloadButton.IsVisible = false;
         _stopButton.IsVisible = true;
-        _statusBar.SetLeft($"{label}…");
+        _statusBar.SetState(StatusState.Loading);
+        _statusBar.SetHint($"{label}…");
+        _urlBar.ShowProgress();
     }
 
     private void EndBusy()
@@ -327,7 +384,15 @@ public sealed class MainWindow : Window, IBrowserController
         _busy = false;
         _stopButton.IsVisible = false;
         _reloadButton.IsVisible = true;
+        _urlBar.HideProgress();
         UpdateNavButtonStates();
+    }
+
+    private string HistoryLabel()
+    {
+        var h = _session.History;
+        if (h.Count == 0 || h.Index < 0) return "0 / 0";
+        return $"{h.Index + 1} / {h.Count}";
     }
 
     private void UpdateNavButtonStates()

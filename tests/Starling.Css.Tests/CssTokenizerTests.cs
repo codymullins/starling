@@ -1,8 +1,11 @@
 using FluentAssertions;
 using Tessera.Css.Tokenizer;
 using Xunit;
+using Starling.Spec;
 
 namespace Tessera.Css.Tests;
+
+[Spec("css-syntax-3", "https://www.w3.org/TR/css-syntax-3/")]
 
 public sealed class CssTokenizerTests
 {

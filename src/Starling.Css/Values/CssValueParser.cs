@@ -78,6 +78,16 @@ public static class CssValueParser
             return ParseEnv(function.Values);
         if (name == "attr")
             return ParseAttr(function.Values);
+        if (name == "url")
+        {
+            // `url("…")` tokenizes as a function token (`url(` + string +
+            // `)`) rather than a `<url-token>`. Unify both shapes to CssUrl
+            // so downstream property handling doesn't need to special-case
+            // quoted vs. bare URLs.
+            var args = SplitArguments(function.Values).ToList();
+            if (args.Count > 0 && Parse(args[0]) is CssString s)
+                return new CssUrl(s.Value);
+        }
 
         if (IsMathFunction(name))
             return CalcEvaluator.ParseFunction(name, function.Values);

@@ -36,7 +36,6 @@ public static class Icons
     public const string TriRight = "M6 4l4 4-4 4";
     public const string TriDown = "M4 6l4 4 4-4";
     public const string Rec = "M8 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z";
-    public const string Cmd = "M5 5a1.5 1.5 0 1 0 1.5 1.5V5H5ZM11 5a1.5 1.5 0 1 1-1.5 1.5V5H11ZM5 11a1.5 1.5 0 1 1 1.5-1.5V11H5ZM11 11a1.5 1.5 0 1 0-1.5-1.5V11H11ZM6.5 6.5h3v3h-3z";
     public const string Sun = "M8 5.25a2.75 2.75 0 1 0 0 5.5 2.75 2.75 0 0 0 0-5.5ZM8 1.5v1.5M8 13v1.5M14.5 8H13M3 8H1.5M12.6 3.4l-1.1 1.1M4.5 11.5l-1.1 1.1M12.6 12.6l-1.1-1.1M4.5 4.5l-1.1-1.1";
     public const string Moon = "M13.25 9.5A5 5 0 1 1 6.5 2.75a4 4 0 0 0 6.75 6.75Z";
 

@@ -7,17 +7,11 @@ using Xunit;
 namespace Tessera.Js.Tests.Runtime;
 
 /// <summary>
-/// gap:try-catch — end-to-end coverage for §14.15 try/catch/finally.
-/// Drives the new EnterTry/LeaveTry/EndFinally opcodes through every
-/// completion shape (normal, throw, return) so the VM's try-frame
-/// stack stays honest on real bundles.
+/// End-to-end coverage for §14.15 try/catch/finally. Drives the
+/// EnterTry/LeaveTry/EndFinally opcodes through every completion shape
+/// (normal, throw, return) so the VM's try-frame stack stays honest on
+/// real bundles.
 /// </summary>
-/// <remarks>
-/// Tests that need a function body to mutate outer state use an object
-/// reference (gap:closure-write-back is still open at the time of writing,
-/// so plain captured-var assignment from inside a nested function would
-/// not write back through the upvalue snapshot).
-/// </remarks>
 public class JsTryCatchTests
 {
     [Fact]
@@ -110,13 +104,11 @@ public class JsTryCatchTests
     [Fact]
     public void Return_inside_try_with_finally_runs_finally_then_returns_value()
     {
-        // Use an object side-effect channel to observe the finalizer
-        // without depending on gap:closure-write-back.
         Eval(@"
-            var bag = { ran: 0 };
-            function f(b) { try { return 1; } finally { b.ran = 2; } }
-            var rv = f(bag);
-            rv === 1 && bag.ran === 2;
+            var ran = 0;
+            function f() { try { return 1; } finally { ran = 2; } }
+            var rv = f();
+            rv === 1 && ran === 2;
         ").AsBool.Should().BeTrue();
     }
 

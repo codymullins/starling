@@ -4,47 +4,62 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Starling.Gui.Avalonia.Theme;
 
 namespace Starling.Gui.Avalonia.Chrome;
 
 /// <summary>
-/// 220px vertical tab sidebar — Avalonia port of Starling.Gui's Chrome/Sidebar.cs.
-/// Top to bottom: wordmark row, command-palette stub, BOOKMARKS/PINNED/TODAY
-/// tab sections, and the build-pill footer.
+/// 232px vertical bookmark sidebar — calm-modern redesign. A small gradient
+/// app-mark + "Starling" wordmark at top, a single Bookmarks section with
+/// deterministic-color favicon tiles, and a quiet single-line footer.
 /// </summary>
 public sealed class Sidebar : Grid
 {
-    public const double WidthDip = 220;
+    public const double WidthDip = 232;
+
+    // Soft, calm tile colors — assigned deterministically per host. None of
+    // these are eye-grabbing; they sit politely in the sidebar.
+    private static readonly Color[] TileColors =
+    [
+        Color.FromRgb(0xE0, 0x7A, 0x55), // warm orange
+        Color.FromRgb(0x4A, 0x8A, 0x78), // teal-green
+        Color.FromRgb(0x6E, 0x7F, 0xC6), // periwinkle
+        Color.FromRgb(0xD1, 0x8A, 0x3D), // gold
+        Color.FromRgb(0x9D, 0x6F, 0xB5), // heather
+        Color.FromRgb(0xC2, 0x5E, 0x7A), // rose
+        Color.FromRgb(0x5A, 0x8A, 0x5A), // sage
+    ];
 
     public Sidebar(
         ThemeManager tm,
         IReadOnlyList<TabInfo> bookmarks,
         string? activeId,
-        Action<TabInfo>? onTabActivated = null)
+        Action<TabInfo>? onTabActivated = null,
+        string? buildLabel = null)
     {
         var t = tm.Tokens;
 
         Width = WidthDip;
-        Background = new SolidColorBrush(t.Bg);
+        Background = new SolidColorBrush(t.Panel);
         RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto");
 
         var wordmark = BuildWordmark(tm);
         Children.Add(wordmark); SetRow(wordmark, 0);
 
-        var commandStub = BuildCommandStub(tm);
-        Children.Add(commandStub); SetRow(commandStub, 1);
+        var sectionLabel = BuildSectionLabel(tm, "Bookmarks", bookmarks.Count);
+        Children.Add(sectionLabel); SetRow(sectionLabel, 1);
 
-        var sections = BuildSections(tm, bookmarks, activeId, onTabActivated);
-        Children.Add(sections); SetRow(sections, 2);
+        var list = BuildList(tm, bookmarks, activeId, onTabActivated);
+        Children.Add(list); SetRow(list, 2);
 
-        var footer = BuildFooter(tm);
+        var footer = BuildFooter(tm, buildLabel);
         Children.Add(footer); SetRow(footer, 3);
 
-        // Right-edge hairline spans every row.
+        // Right-edge hairline rules the whole height
         var edge = new Rectangle
         {
-            Fill = new SolidColorBrush(t.Border),
+            Fill = new SolidColorBrush(t.Rule()),
             Width = 1,
             HorizontalAlignment = HorizontalAlignment.Right,
         };
@@ -54,62 +69,96 @@ public sealed class Sidebar : Grid
 
     private static Control BuildWordmark(ThemeManager tm)
     {
-        var label = ChromeKit.Mono(tm, "starling", tm.Metrics.FsMd, tm.Tokens.Text, FontWeight.Bold);
-        label.VerticalAlignment = VerticalAlignment.Center;
+        var t = tm.Tokens;
+
+        // Gradient app-mark — only spot of brand color in the chrome.
+        var markBg = new Border
+        {
+            Width = 22,
+            Height = 22,
+            CornerRadius = new CornerRadius(7),
+            Background = new LinearGradientBrush
+            {
+                StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+                EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
+                GradientStops =
+                {
+                    new GradientStop(t.Accent, 0),
+                    new GradientStop(t.Accent2, 1),
+                },
+            },
+            Child = Icons.Make("M3 11 L7 5 L10 9 L13 4", Colors.White, 13, 1.6),
+            BoxShadow = new BoxShadows(new BoxShadow
+            {
+                Blur = 2, OffsetX = 0, OffsetY = 1,
+                Color = Color.FromArgb(0x4D, t.Accent.R, t.Accent.G, t.Accent.B),
+            }),
+        };
+
+        var name = new TextBlock
+        {
+            Text = "Starling",
+            FontFamily = new FontFamily(tm.SansFont),
+            FontSize = 15.5,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = new SolidColorBrush(t.Text),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var row = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 9,
+            VerticalAlignment = VerticalAlignment.Center,
+            Children = { markBg, name },
+        };
+
         return new Border
         {
-            Height = 38,
-            Padding = new Thickness(14, 0),
-            Child = label,
-        };
-    }
-
-    private static Control BuildCommandStub(ThemeManager tm)
-    {
-        var t = tm.Tokens;
-        var row = new Grid
-        {
-            ColumnSpacing = 6,
-            VerticalAlignment = VerticalAlignment.Center,
-            ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
-        };
-        var cmd = Icons.Make(Icons.Cmd, t.Muted, 11);
-        row.Children.Add(cmd); SetColumn(cmd, 0);
-
-        var label = ChromeKit.Mono(tm, "search · jump · run", tm.Metrics.FsXs, t.Muted);
-        row.Children.Add(label); SetColumn(label, 1);
-
-        var shortcut = ChromeKit.Mono(tm, "⌘K", tm.Metrics.FsXs, t.Muted);
-        row.Children.Add(shortcut); SetColumn(shortcut, 2);
-
-        var well = new Border
-        {
-            Margin = new Thickness(8, 0, 8, 8),
-            Height = 28,
-            Padding = new Thickness(8, 0),
-            Background = new SolidColorBrush(t.Surface),
-            BorderBrush = new SolidColorBrush(t.Border),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(tm.Metrics.RSm),
+            Padding = new Thickness(18, 16, 18, 16),
             Child = row,
         };
-        global::Avalonia.Automation.AutomationProperties.SetName(well, "Open command palette");
-        return well;
     }
 
-    private static Control BuildSections(
+    private static Control BuildSectionLabel(ThemeManager tm, string text, int count)
+    {
+        var t = tm.Tokens;
+        var label = new TextBlock
+        {
+            Text = text,
+            FontFamily = new FontFamily(tm.SansFont),
+            FontSize = 11,
+            FontWeight = FontWeight.Medium,
+            Foreground = new SolidColorBrush(t.Muted),
+        };
+        var countLabel = new TextBlock
+        {
+            Text = count.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            FontFamily = new FontFamily(tm.MonoFont),
+            FontSize = 10,
+            Foreground = new SolidColorBrush(t.Faint),
+        };
+
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        grid.Children.Add(label); Grid.SetColumn(label, 0);
+        grid.Children.Add(countLabel); Grid.SetColumn(countLabel, 1);
+
+        return new Border
+        {
+            Padding = new Thickness(22, 8, 22, 6),
+            Child = grid,
+        };
+    }
+
+    private static Control BuildList(
         ThemeManager tm,
         IReadOnlyList<TabInfo> bookmarks,
         string? activeId,
         Action<TabInfo>? onTabActivated)
     {
-        var stack = new StackPanel { Spacing = 1 };
-        if (bookmarks.Count > 0)
-        {
-            stack.Children.Add(SectionLabel(tm, "Bookmarks"));
-            foreach (var tab in bookmarks)
-                stack.Children.Add(TabRow(tm, tab, tab.Id == activeId, onTabActivated));
-        }
+        var stack = new StackPanel { Spacing = 1, Margin = new Thickness(10, 0, 10, 8) };
+        foreach (var tab in bookmarks)
+            stack.Children.Add(BuildRow(tm, tab, tab.Id == activeId, onTabActivated));
 
         return new ScrollViewer
         {
@@ -119,66 +168,55 @@ public sealed class Sidebar : Grid
         };
     }
 
-    private static Control SectionLabel(ThemeManager tm, string text)
-    {
-        var label = ChromeKit.Mono(tm, text.ToUpperInvariant(), 10, tm.Tokens.Faint);
-        // CharacterSpacing analogue in Avalonia is LetterSpacing on FormattedText —
-        // TextBlock approximates the wider tracking via FontStretch/FontWeight; we
-        // skip it here to match design proximity without invasive font work.
-        return new Border
-        {
-            Padding = new Thickness(10, 8, 10, 4),
-            Child = label,
-        };
-    }
-
-    private static Control TabRow(ThemeManager tm, TabInfo tab, bool active, Action<TabInfo>? onTabActivated)
+    private static Control BuildRow(ThemeManager tm, TabInfo tab, bool active, Action<TabInfo>? onTabActivated)
     {
         var t = tm.Tokens;
 
-        var grid = new Grid
+        Control icon = tab.Loading ? Spinner(t) : FaviconTile(tm, tab.Host);
+
+        var title = new TextBlock
         {
-            ColumnSpacing = 8,
+            Text = tab.Title,
+            FontFamily = new FontFamily(tm.SansFont),
+            FontSize = 13,
+            FontWeight = active ? FontWeight.Medium : FontWeight.Normal,
+            Foreground = new SolidColorBrush(active ? t.Text : t.Text2),
+            TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center,
-            ColumnDefinitions = new ColumnDefinitions("2,Auto,*,Auto"),
         };
 
-        if (active)
+        var grid = new Grid
         {
-            var rail = new Border
-            {
-                Width = 2,
-                Background = new SolidColorBrush(t.Accent),
-                CornerRadius = new CornerRadius(1),
-                Margin = new Thickness(0, 6),
-            };
-            grid.Children.Add(rail); SetColumn(rail, 0);
-        }
-
-        Control icon = tab.Loading ? Spinner(t) : Favicon.Make(tm, tab.Host, 12);
-        grid.Children.Add(icon); SetColumn(icon, 1);
-
-        var title = ChromeKit.Sans(tm, tab.Title, tm.Metrics.FsSm,
-            active ? t.Text : t.Text2);
-        title.VerticalAlignment = VerticalAlignment.Center;
-        grid.Children.Add(title); SetColumn(title, 2);
+            ColumnSpacing = 11,
+            VerticalAlignment = VerticalAlignment.Center,
+            ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
+        };
+        grid.Children.Add(icon); Grid.SetColumn(icon, 0);
+        grid.Children.Add(title); Grid.SetColumn(title, 1);
 
         if (tab.Audio)
         {
             var dot = ChromeKit.Dot(t.Accent);
-            grid.Children.Add(dot); SetColumn(dot, 3);
+            grid.Children.Add(dot); Grid.SetColumn(dot, 2);
         }
 
         var row = new Border
         {
-            Height = tm.Metrics.RowSm,
-            Margin = new Thickness(6, 0),
-            Padding = new Thickness(10, 0),
+            Padding = new Thickness(10, 8),
             Background = new SolidColorBrush(active ? t.Surface : Colors.Transparent),
-            CornerRadius = new CornerRadius(tm.Metrics.RSm),
+            BorderBrush = new SolidColorBrush(active ? t.Hair : Colors.Transparent),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(7),
+            BoxShadow = active
+                ? new BoxShadows(new BoxShadow
+                {
+                    Blur = 2, OffsetX = 0, OffsetY = 1,
+                    Color = Color.FromArgb(0x14, 0, 0, 0),
+                })
+                : default,
             Child = grid,
         };
-        global::Avalonia.Automation.AutomationProperties.SetName(row, $"Tab: {tab.Title}");
+        global::Avalonia.Automation.AutomationProperties.SetName(row, $"Bookmark: {tab.Title}");
 
         if (!active)
         {
@@ -194,29 +232,79 @@ public sealed class Sidebar : Grid
         return row;
     }
 
-    /// <summary>Static stand-in for a loading spinner — 1.5px accent ring.</summary>
+    /// <summary>16×16 rounded-square tile with a single capital letter on a
+    /// deterministic-from-host color background.</summary>
+    private static Control FaviconTile(ThemeManager tm, string host)
+    {
+        var color = TileColorFor(host);
+        var letter = LetterFor(host);
+        return new Border
+        {
+            Width = 16,
+            Height = 16,
+            CornerRadius = new CornerRadius(4),
+            Background = new SolidColorBrush(color),
+            Child = new TextBlock
+            {
+                Text = letter,
+                FontFamily = new FontFamily(tm.SansFont),
+                FontSize = 9,
+                FontWeight = FontWeight.SemiBold,
+                Foreground = new SolidColorBrush(Colors.White),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            },
+        };
+    }
+
+    private static Color TileColorFor(string host)
+    {
+        if (string.IsNullOrEmpty(host)) return TileColors[0];
+        // Cheap deterministic hash — sum of bytes, mod palette length.
+        var sum = 0;
+        foreach (var ch in host) sum += ch;
+        return TileColors[Math.Abs(sum) % TileColors.Length];
+    }
+
+    private static string LetterFor(string host)
+    {
+        if (string.IsNullOrEmpty(host)) return "?";
+        var trimmed = host.StartsWith("www.", StringComparison.OrdinalIgnoreCase) ? host[4..] : host;
+        if (string.IsNullOrEmpty(trimmed)) return "?";
+        return trimmed[..1].ToUpperInvariant();
+    }
+
+    /// <summary>1.5px accent ring stand-in for a loading spinner.</summary>
     private static Control Spinner(ThemeTokens t) => new Ellipse
     {
-        Width = 12,
-        Height = 12,
+        Width = 16, Height = 16,
         Stroke = new SolidColorBrush(t.Accent),
         StrokeThickness = 1.5,
         VerticalAlignment = VerticalAlignment.Center,
     };
 
-    private static Control BuildFooter(ThemeManager tm)
+    private static Control BuildFooter(ThemeManager tm, string? buildLabel)
     {
-        var pill = BuildPill.Make(tm, "M3", new[] { "flow layout", "async loader" });
-        var content = new StackPanel
+        var t = tm.Tokens;
+        var label = new TextBlock
         {
-            Margin = new Thickness(tm.Metrics.PadSm),
-            Children = { pill },
+            Text = buildLabel ?? string.Empty,
+            FontFamily = new FontFamily(tm.MonoFont),
+            FontSize = 10.5,
+            Foreground = new SolidColorBrush(t.Faint),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var content = new Border
+        {
+            Padding = new Thickness(20, 12, 20, 14),
+            Child = label,
         };
 
         var wrap = new Grid();
         var hairline = new Rectangle
         {
-            Fill = new SolidColorBrush(tm.Tokens.Border),
+            Fill = new SolidColorBrush(t.Rule()),
             Height = 1,
             VerticalAlignment = VerticalAlignment.Top,
         };

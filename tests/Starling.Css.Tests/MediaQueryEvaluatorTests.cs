@@ -6,8 +6,11 @@ using Tessera.Css.Properties;
 using Tessera.Css.Values;
 using Tessera.Dom;
 using Xunit;
+using Starling.Spec;
 
 namespace Tessera.Css.Tests;
+
+[Spec("mediaqueries-5", "https://www.w3.org/TR/mediaqueries-5/")]
 
 public sealed class MediaQueryEvaluatorTests
 {

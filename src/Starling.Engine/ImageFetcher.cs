@@ -45,6 +45,20 @@ internal sealed class ImageFetcher : IImageResolver, IDisposable
     public bool TryResolve(Element element, out ResolvedImage image)
         => _byElement.TryGetValue(element, out image);
 
+    public bool TryResolveUrl(string url, out DecodedImage image)
+    {
+        // The fetcher's prefetch pass keys the cache by absolute URL string;
+        // the paint pipeline calls this with the verbatim CSS url() value, so
+        // we look up by the same key the resolver code stored.
+        if (_byUrl.TryGetValue(url, out var cached))
+        {
+            image = cached;
+            return true;
+        }
+        image = null!;
+        return false;
+    }
+
     public async Task FetchAllAsync(Document document, TesseraUrl? baseUrl, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(document);
@@ -67,6 +81,78 @@ internal sealed class ImageFetcher : IImageResolver, IDisposable
             if (decoded is null) continue;
 
             _byElement[img] = new ResolvedImage(decoded.Width, decoded.Height, decoded);
+        }
+    }
+
+    /// <summary>
+    /// Walk a parsed stylesheet for <c>url(...)</c> references in
+    /// background-image declarations and prefetch each one so paint can resolve
+    /// the URL synchronously when emitting display items. The CSS url() value
+    /// is also indexed verbatim so the paint pipeline's lookup matches without
+    /// the caller needing to re-resolve URLs.
+    /// </summary>
+    public async Task FetchBackgroundsAsync(IEnumerable<(Tessera.Css.Parser.StyleSheet Sheet, TesseraUrl? BaseUrl)> stylesheets, TesseraUrl? documentBaseUrl, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(stylesheets);
+
+        // (raw url, base url used to resolve relative references). External
+        // stylesheets carry their own base URL so relative paths inside them
+        // resolve against the sheet, not the document.
+        var rawByBase = new Dictionary<string, TesseraUrl?>(StringComparer.Ordinal);
+        foreach (var (sheet, sheetBase) in stylesheets)
+        {
+            var perSheet = new HashSet<string>(StringComparer.Ordinal);
+            CollectBackgroundUrls(sheet, perSheet);
+            foreach (var raw in perSheet)
+                rawByBase.TryAdd(raw, sheetBase ?? documentBaseUrl);
+        }
+
+        foreach (var (raw, baseUrl) in rawByBase)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (_byUrl.ContainsKey(raw)) continue;
+
+            var absolute = ResolveAbsolute(raw, baseUrl);
+            if (absolute is null) continue;
+            var decoded = await FetchAndDecodeAsync(absolute, ct).ConfigureAwait(false);
+            if (decoded is null) continue;
+            // Index under the *raw* CSS url() string so the paint-time lookup,
+            // which only sees the CSS value, finds the prefetched bitmap.
+            _byUrl[raw] = decoded;
+        }
+    }
+
+    private static void CollectBackgroundUrls(Tessera.Css.Parser.StyleSheet sheet, HashSet<string> urls)
+    {
+        foreach (var rule in sheet.Rules)
+            CollectFromRule(rule, urls);
+    }
+
+    private static void CollectFromRule(Tessera.Css.Parser.CssRule rule, HashSet<string> urls)
+    {
+        if (rule is Tessera.Css.Parser.StyleRule sr)
+        {
+            foreach (var decl in sr.Declarations)
+            {
+                if (!decl.Name.Contains("background", StringComparison.OrdinalIgnoreCase)) continue;
+                foreach (var v in Tessera.Css.Values.CssValueParser.ParseList(decl.Value))
+                    if (v is Tessera.Css.Values.CssUrl u && !string.IsNullOrEmpty(u.Value))
+                        urls.Add(u.Value);
+            }
+        }
+        else if (rule is Tessera.Css.Parser.AtRule at)
+        {
+            // Walk inner rules (e.g. @media wraps StyleRule children) and any
+            // declarations carried directly on the at-rule (rare, but harmless).
+            foreach (var inner in at.Rules)
+                CollectFromRule(inner, urls);
+            foreach (var decl in at.Declarations)
+            {
+                if (!decl.Name.Contains("background", StringComparison.OrdinalIgnoreCase)) continue;
+                foreach (var v in Tessera.Css.Values.CssValueParser.ParseList(decl.Value))
+                    if (v is Tessera.Css.Values.CssUrl u && !string.IsNullOrEmpty(u.Value))
+                        urls.Add(u.Value);
+            }
         }
     }
 

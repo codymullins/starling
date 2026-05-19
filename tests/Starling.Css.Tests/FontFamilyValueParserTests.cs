@@ -5,8 +5,11 @@ using Tessera.Css.Properties;
 using Tessera.Css.Values;
 using Tessera.Dom;
 using Xunit;
+using Starling.Spec;
 
 namespace Tessera.Css.Tests;
+
+[Spec("css-fonts-4", "https://www.w3.org/TR/css-fonts-4/")]
 
 public sealed class FontFamilyValueParserTests
 {

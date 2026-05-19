@@ -31,9 +31,12 @@ public sealed record DrawText(
 /// Blit a decoded image into <paramref name="Bounds"/>. <paramref name="Source"/>
 /// is a backend-neutral <see cref="DecodedImage"/> (straight RGBA8888); the
 /// paint backend reads its pixels directly. If <c>Bounds</c> differs from the
-/// source's native size the backend resamples.
+/// source's native size the backend resamples. When
+/// <paramref name="SourceRect"/> is non-null, only that sub-rectangle of the
+/// source pixels is blitted — used for CSS sprite-sheet painting where
+/// <c>background-position</c> picks a slice out of a larger image.
 /// </summary>
-public sealed record DrawImage(Rect Bounds, DecodedImage Source) : DisplayItem;
+public sealed record DrawImage(Rect Bounds, DecodedImage Source, Rect? SourceRect = null) : DisplayItem;
 
 /// <summary>
 /// Pushes a 2D affine <paramref name="Matrix"/> onto the backend's transform

@@ -435,7 +435,7 @@ internal sealed class WebviewPanel : UserControl, IDisposable
 
         RenderedBitmap rendered;
         using (_diag.Span("gui", "render"))
-            rendered = _renderer.Render(_currentPage.Root, (float)_currentScale, styleOverride);
+            rendered = _renderer.Render(_currentPage.Root, (float)_currentScale, styleOverride, _currentPage.ImageResolver);
         WriteableBitmap bmp;
         using (rendered)
             bmp = BitmapBridge.ToWriteableBitmap(rendered, _currentScale);
@@ -623,18 +623,7 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     }
 
     private string? ResolveLink(string href)
-    {
-        if (_currentPage is null) return null;
-        if (Uri.TryCreate(href, UriKind.Absolute, out var abs))
-            return abs.ToString();
-
-        if (Uri.TryCreate(_currentPage.Url, UriKind.Absolute, out var baseUri) &&
-            Uri.TryCreate(baseUri, href, out var combined))
-        {
-            return combined.ToString();
-        }
-        return href;
-    }
+        => _currentPage is null ? null : LinkResolver.Resolve(href, _currentPage.Url);
 
     public void Dispose()
     {

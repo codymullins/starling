@@ -2,6 +2,7 @@ using Tessera.Css.Cascade;
 using Tessera.Dom;
 using Tessera.Layout;
 using Tessera.Layout.Box;
+using Tessera.Layout.Tree;
 using Tessera.Paint;
 
 namespace Tessera.Engine;
@@ -75,6 +76,14 @@ public sealed class LaidOutPage : IDisposable
     internal float? DefaultFontSize { get; }
 
     internal ImageFetcher Images => _images;
+
+    /// <summary>
+    /// The image resolver behind this page, exposed for paint hosts that
+    /// want to re-render at a different scale or with a different style
+    /// override and still resolve <c>&lt;img&gt;</c> / CSS-<c>url()</c>
+    /// references.
+    /// </summary>
+    public IImageResolver ImageResolver => _images;
     internal StylesheetFetcher Stylesheets => _stylesheets;
     internal FontFaceRegistry WebFonts => _webFonts;
 

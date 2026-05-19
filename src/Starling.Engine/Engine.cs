@@ -150,6 +150,15 @@ public sealed class TesseraEngine
                 .ConfigureAwait(false);
         }
 
+        // Prefetch CSS-referenced background-image url()s now so the paint
+        // pipeline can resolve them synchronously when emitting display items.
+        using (_diag.Span("engine", "fetch_backgrounds"))
+        {
+            await images
+                .FetchBackgroundsAsync(EnumerateAuthorSheets(doc, u, stylesheets), u, ct)
+                .ConfigureAwait(false);
+        }
+
         Tessera.Common.Image.RenderedBitmap bitmap;
         using (_diag.Span("engine", "render_document"))
         {
@@ -278,6 +287,10 @@ public sealed class TesseraEngine
                     .FetchAllAsync(EnumerateAuthorSheets(doc, u, stylesheets), webFonts, ct)
                     .ConfigureAwait(false);
             }
+
+            await images
+                .FetchBackgroundsAsync(EnumerateAuthorSheets(doc, u, stylesheets), u, ct)
+                .ConfigureAwait(false);
 
             var viewport = new LayoutSize(options.Viewport.Width, options.Viewport.Height);
             var (root, style) = _painter.LayoutDocumentWithStyle(

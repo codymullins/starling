@@ -4,6 +4,7 @@ using Tessera.Css.Properties;
 using Tessera.Css.Values;
 using Tessera.Dom;
 using Xunit;
+using Starling.Spec;
 
 namespace Tessera.Css.Tests;
 
@@ -15,6 +16,7 @@ namespace Tessera.Css.Tests;
 ///
 /// References: https://www.w3.org/TR/css-animations-1/ §3, §4.
 /// </summary>
+[Spec("css-animations-1", "https://www.w3.org/TR/css-animations-1/")]
 public sealed class AnimationEngineSpecTests
 {
     private static KeyframesRule SimpleFade()

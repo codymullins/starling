@@ -6,8 +6,11 @@ using Tessera.Css.Properties;
 using Tessera.Css.Values;
 using Tessera.Dom;
 using Xunit;
+using Starling.Spec;
 
 namespace Tessera.Css.Tests;
+
+[Spec("css-nesting-1", "https://www.w3.org/TR/css-nesting-1/")]
 
 public sealed class NestingTests
 {

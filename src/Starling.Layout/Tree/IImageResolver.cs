@@ -16,6 +16,17 @@ public interface IImageResolver
     /// will fall back to the element's <c>alt</c> text in that case.
     /// </summary>
     bool TryResolve(Element element, out ResolvedImage image);
+
+    /// <summary>
+    /// Resolve a CSS <c>url(...)</c> reference (e.g. <c>background-image</c>)
+    /// to a decoded image. Defaults to no-op; implementations that prefetch
+    /// CSS-referenced images override it.
+    /// </summary>
+    bool TryResolveUrl(string url, out DecodedImage image)
+    {
+        image = null!;
+        return false;
+    }
 }
 
 /// <summary>

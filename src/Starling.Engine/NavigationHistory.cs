@@ -13,6 +13,7 @@ public sealed class NavigationHistory
     public bool CanGoBack => _index > 0;
     public bool CanGoForward => _index >= 0 && _index + 1 < _entries.Count;
     public int Count => _entries.Count;
+    public int Index => _index;
     public IReadOnlyList<string> Entries => _entries;
 
     public string Navigate(string url)

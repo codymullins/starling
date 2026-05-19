@@ -3,6 +3,7 @@ using Tessera.Common.Image;
 using Tessera.Css.Cascade;
 using Tessera.Layout.Box;
 using Tessera.Layout.Text;
+using Tessera.Layout.Tree;
 using Tessera.Paint;
 using Tessera.Paint.Backend;
 using Tessera.Paint.DisplayList;
@@ -32,12 +33,12 @@ internal sealed class PageRendererHost : IDisposable
         _backend = PaintBackendSelector.Create(FontResolver.Default, webFonts: null, _diag);
     }
 
-    public RenderedBitmap Render(BlockBox root, float scale = 1.0f, Func<Box, ComputedStyle?>? styleOverride = null)
+    public RenderedBitmap Render(BlockBox root, float scale = 1.0f, Func<Box, ComputedStyle?>? styleOverride = null, IImageResolver? images = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(root);
 
-        PaintList displayList = new DisplayListBuilder().Build(root, styleOverride);
+        PaintList displayList = new DisplayListBuilder().Build(root, styleOverride, images);
         var surfaceSize = new LayoutSize(
             Math.Max(1, root.Frame.Width),
             Math.Max(1, root.Frame.Height));

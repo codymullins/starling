@@ -1,0 +1,3780 @@
+{
+  "spec": {
+    "title": "Cascading Style Sheets (CSS) Level 2",
+    "url": "https://drafts.csswg.org/css2/"
+  },
+  "properties": [
+    {
+      "name": "margin-top",
+      "href": "https://drafts.csswg.org/css2/#propdef-margin-top",
+      "value": "<margin-width> | inherit",
+      "initial": "0",
+      "appliesTo": "all elements except elements with table display types other than table-caption, table and inline-table",
+      "inherited": "no",
+      "percentages": "refer to width of containing block",
+      "computedValue": "the percentage as specified or the absolute length",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "styleDeclaration": [
+        "margin-top",
+        "marginTop"
+      ]
+    },
+    {
+      "name": "margin-bottom",
+      "href": "https://drafts.csswg.org/css2/#propdef-margin-bottom",
+      "value": "<margin-width> | inherit",
+      "initial": "0",
+      "appliesTo": "all elements except elements with table display types other than table-caption, table and inline-table",
+      "inherited": "no",
+      "percentages": "refer to width of containing block",
+      "computedValue": "the percentage as specified or the absolute length",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "styleDeclaration": [
+        "margin-bottom",
+        "marginBottom"
+      ]
+    },
+    {
+      "name": "margin-right",
+      "href": "https://drafts.csswg.org/css2/#propdef-margin-right",
+      "value": "<margin-width> | inherit",
+      "initial": "0",
+      "appliesTo": "all elements except elements with table display types other than table-caption, table and inline-table",
+      "inherited": "no",
+      "percentages": "refer to width of containing block",
+      "computedValue": "the percentage as specified or the absolute length",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "styleDeclaration": [
+        "margin-right",
+        "marginRight"
+      ]
+    },
+    {
+      "name": "margin-left",
+      "href": "https://drafts.csswg.org/css2/#propdef-margin-left",
+      "value": "<margin-width> | inherit",
+      "initial": "0",
+      "appliesTo": "all elements except elements with table display types other than table-caption, table and inline-table",
+      "inherited": "no",
+      "percentages": "refer to width of containing block",
+      "computedValue": "the percentage as specified or the absolute length",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "styleDeclaration": [
+        "margin-left",
+        "marginLeft"
+      ]
+    },
+    {
+      "name": "margin",
+      "href": "https://drafts.csswg.org/css2/#propdef-margin",
+      "value": "<margin-width>{1,4} | inherit",
+      "initial": "see individual properties",
+      "appliesTo": "all elements except elements with table display types other than table-caption, table and inline-table",
+      "inherited": "no",
+      "percentages": "refer to width of containing block",
+      "computedValue": "see individual properties",
+      "animationType": "see individual properties",
+      "canonicalOrder": "per grammar",
+      "media": "visual",
+      "styleDeclaration": [
+        "margin"
+      ]
+    },
+    {
+      "name": "padding-top",
+      "href": "https://drafts.csswg.org/css2/#propdef-padding-top",
+      "value": "<padding-width> | inherit",
+      "initial": "0",
+      "appliesTo": "all elements except table-row-group, table-header-group, table-footer-group, table-row, table-column-group and table-column",
+      "inherited": "no",
+      "percentages": "refer to width of containing block",
+      "computedValue": "the percentage as specified or the absolute length",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "styleDeclaration": [
+        "padding-top",
+        "paddingTop"
+      ]
+    },
+    {
+      "name": "padding-right",
+      "href": "https://drafts.csswg.org/css2/#propdef-padding-right",
+      "value": "<padding-width> | inherit",
+      "initial": "0",
+      "appliesTo": "all elements except table-row-group, table-header-group, table-footer-group, table-row, table-column-group and table-column",
+      "inherited": "no",
+      "percentages": "refer to width of containing block",
+      "computedValue": "the percentage as specified or the absolute length",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "styleDeclaration": [
+        "padding-right",
+        "paddingRight"
+      ]
+    },
+    {
+      "name": "padding-bottom",
+      "href": "https://drafts.csswg.org/css2/#propdef-padding-bottom",
+      "value": "<padding-width> | inherit",
+      "initial": "0",
+      "appliesTo": "all elements except table-row-group, table-header-group, table-footer-group, table-row, table-column-group and table-column",
+      "inherited": "no",
+      "percentages": "refer to width of containing block",
+      "computedValue": "the percentage as specified or the absolute length",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "styleDeclaration": [
+        "padding-bottom",
+        "paddingBottom"
+      ]
+    },
+    {
+      "name": "padding-left",
+      "href": "https://drafts.csswg.org/css2/#propdef-padding-left",
+      "value": "<padding-width> | inherit",
+      "initial": "0",
+      "appliesTo": "all elements except table-row-group, table-header-group, table-footer-group, table-row, table-column-group and table-column",
+      "inherited": "no",
+      "percentages": "refer to width of containing block",
+      "computedValue": "the percentage as specified or the absolute length",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "styleDeclaration": [
+        "padding-left",
+        "paddingLeft"
+      ]
+    },
+    {
+      "name": "padding",
+      "href": "https://drafts.csswg.org/css2/#propdef-padding",
+      "value": "<padding-width>{1,4} | inherit",
+      "initial": "see individual properties",
+      "appliesTo": "all elements except table-row-group, table-header-group, table-footer-group, table-row, table-column-group and table-column",
+      "inherited": "no",
+      "percentages": "refer to width of containing block",
+      "computedValue": "see individual properties",
+      "animationType": "see individual properties",
+      "canonicalOrder": "per grammar",
+      "media": "visual",
+      "styleDeclaration": [
+        "padding"
+      ]
+    },
+    {
+      "name": "border-top-width",
+      "href": "https://drafts.csswg.org/css2/#propdef-border-top-width",
+      "value": "<border-width> | inherit",
+      "initial": "medium",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "absolute length; 0 if the border style is none or hidden",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "styleDeclaration": [
+        "border-top-width",
+        "borderTopWidth"
+      ]
+    },
+    {
+      "name": "border-right-width",
+      "href": "https://drafts.csswg.org/css2/#propdef-border-right-width",
+      "value": "<border-width> | inherit",
+      "initial": "medium",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "absolute length; 0 if the border style is none or hidden",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "styleDeclaration": [
+        "border-right-width",
+        "borderRightWidth"
+      ]
+    },
+    {
+      "name": "border-bottom-width",
+      "href": "https://drafts.csswg.org/css2/#propdef-border-bottom-width",
+      "value": "<border-width> | inherit",
+      "initial": "medium",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "absolute length; 0 if the border style is none or hidden",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "styleDeclaration": [
+        "border-bottom-width",
+        "borderBottomWidth"
+      ]
+    },
+    {
+      "name": "border-left-width",
+      "href": "https://drafts.csswg.org/css2/#propdef-border-left-width",
+      "value": "<border-width> | inherit",
+      "initial": "medium",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "absolute length; 0 if the border style is none or hidden",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "styleDeclaration": [
+        "border-left-width",
+        "borderLeftWidth"
+      ]
+    },
+    {
+      "name": "border-width",
+      "href": "https://drafts.csswg.org/css2/#propdef-border-width",
+      "value": "<border-width>{1,4} | inherit",
+      "initial": "see individual properties",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "see individual properties",
+      "animationType": "see individual properties",
+      "canonicalOrder": "per grammar",
+      "media": "visual",
+      "styleDeclaration": [
+        "border-width",
+        "borderWidth"
+      ]
+    },
+    {
+      "name": "border-top-color",
+      "href": "https://drafts.csswg.org/css2/#propdef-border-top-color",
+      "value": "<color> | transparent | inherit",
+      "initial": "the value of the color property",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "when taken from the color property, the computed value of color; otherwise, as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "values": [
+        {
+          "name": "<color>",
+          "prose": "Specifies a color value.",
+          "href": "https://drafts.csswg.org/css2/#valdef-border-color-color",
+          "type": "value",
+          "value": "<color>"
+        },
+        {
+          "name": "transparent",
+          "prose": "The border is transparent (though it may have width).",
+          "href": "https://drafts.csswg.org/css2/#valdef-border-color-transparent",
+          "type": "value",
+          "value": "transparent"
+        }
+      ],
+      "styleDeclaration": [
+        "border-top-color",
+        "borderTopColor"
+      ]
+    },
+    {
+      "name": "border-right-color",
+      "href": "https://drafts.csswg.org/css2/#propdef-border-right-color",
+      "value": "<color> | transparent | inherit",
+      "initial": "the value of the color property",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "when taken from the color property, the computed value of color; otherwise, as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "values": [
+        {
+          "name": "<color>",
+          "prose": "Specifies a color value.",
+          "href": "https://drafts.csswg.org/css2/#valdef-border-color-color",
+          "type": "value",
+          "value": "<color>"
+        },
+        {
+          "name": "transparent",
+          "prose": "The border is transparent (though it may have width).",
+          "href": "https://drafts.csswg.org/css2/#valdef-border-color-transparent",
+          "type": "value",
+          "value": "transparent"
+        }
+      ],
+      "styleDeclaration": [
+        "border-right-color",
+        "borderRightColor"
+      ]
+    },
+    {
+      "name": "border-bottom-color",
+      "href": "https://drafts.csswg.org/css2/#propdef-border-bottom-color",
+      "value": "<color> | transparent | inherit",
+      "initial": "the value of the color property",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "when taken from the color property, the computed value of color; otherwise, as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "values": [
+        {
+          "name": "<color>",
+          "prose": "Specifies a color value.",
+          "href": "https://drafts.csswg.org/css2/#valdef-border-color-color",
+          "type": "value",
+          "value": "<color>"
+        },
+        {
+          "name": "transparent",
+          "prose": "The border is transparent (though it may have width).",
+          "href": "https://drafts.csswg.org/css2/#valdef-border-color-transparent",
+          "type": "value",
+          "value": "transparent"
+        }
+      ],
+      "styleDeclaration": [
+        "border-bottom-color",
+        "borderBottomColor"
+      ]
+    },
+    {
+      "name": "border-left-color",
+      "href": "https://drafts.csswg.org/css2/#propdef-border-left-color",
+      "value": "<color> | transparent | inherit",
+      "initial": "the value of the color property",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "when taken from the color property, the computed value of color; otherwise, as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "values": [
+        {
+          "name": "<color>",
+          "prose": "Specifies a color value.",
+          "href": "https://drafts.csswg.org/css2/#valdef-border-color-color",
+          "type": "value",
+          "value": "<color>"
+        },
+        {
+          "name": "transparent",
+          "prose": "The border is transparent (though it may have width).",
+          "href": "https://drafts.csswg.org/css2/#valdef-border-color-transparent",
+          "type": "value",
+          "value": "transparent"
+        }
+      ],
+      "styleDeclaration": [
+        "border-left-color",
+        "borderLeftColor"
+      ]
+    },
+    {
+      "name": "border-color",
+      "href": "https://drafts.csswg.org/css2/#propdef-border-color",
+      "value": "[ <color> | transparent ]{1,4} | inherit",
+      "initial": "see individual properties",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "see individual properties",
+      "animationType": "see individual properties",
+      "canonicalOrder": "per grammar",
+      "media": "visual",
+      "values": [
+        {
+          "name": "<color>",
+          "prose": "Specifies a color value.",
+          "href": "https://drafts.csswg.org/css2/#valdef-border-color-color",
+          "type": "value",
+          "value": "<color>"
+        },
+        {
+          "name": "transparent",
+          "prose": "The border is transparent (though it may have width).",
+          "href": "https://drafts.csswg.org/css2/#valdef-border-color-transparent",
+          "type": "value",
+          "value": "transparent"
+        }
+      ],
+      "styleDeclaration": [
+        "border-color",
+        "borderColor"
+      ]
+    },
+    {
+      "name": "border-top-style",
+      "href": "https://drafts.csswg.org/css2/#propdef-border-top-style",
+      "value": "<border-style> | inherit",
+      "initial": "none",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "styleDeclaration": [
+        "border-top-style",
+        "borderTopStyle"
+      ]
+    },
+    {
+      "name": "border-right-style",
+      "href": "https://drafts.csswg.org/css2/#propdef-border-right-style",
+      "value": "<border-style> | inherit",
+      "initial": "none",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "styleDeclaration": [
+        "border-right-style",
+        "borderRightStyle"
+      ]
+    },
+    {
+      "name": "border-bottom-style",
+      "href": "https://drafts.csswg.org/css2/#propdef-border-bottom-style",
+      "value": "<border-style> | inherit",
+      "initial": "none",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "styleDeclaration": [
+        "border-bottom-style",
+        "borderBottomStyle"
+      ]
+    },
+    {
+      "name": "border-left-style",
+      "href": "https://drafts.csswg.org/css2/#propdef-border-left-style",
+      "value": "<border-style> | inherit",
+      "initial": "none",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "styleDeclaration": [
+        "border-left-style",
+        "borderLeftStyle"
+      ]
+    },
+    {
+      "name": "border-style",
+      "href": "https://drafts.csswg.org/css2/#propdef-border-style",
+      "value": "<border-style>{1,4} | inherit",
+      "initial": "see individual properties",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "see individual properties",
+      "animationType": "see individual properties",
+      "canonicalOrder": "per grammar",
+      "media": "visual",
+      "styleDeclaration": [
+        "border-style",
+        "borderStyle"
+      ]
+    },
+    {
+      "name": "border-top",
+      "href": "https://drafts.csswg.org/css2/#propdef-border-top",
+      "value": "[ <border-width> || <border-style> || <'border-top-color'> ] | inherit",
+      "initial": "see individual properties",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "see individual properties",
+      "animationType": "see individual properties",
+      "canonicalOrder": "per grammar",
+      "media": "visual",
+      "styleDeclaration": [
+        "border-top",
+        "borderTop"
+      ]
+    },
+    {
+      "name": "border-right",
+      "href": "https://drafts.csswg.org/css2/#propdef-border-right",
+      "value": "[ <border-width> || <border-style> || <'border-top-color'> ] | inherit",
+      "initial": "see individual properties",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "see individual properties",
+      "animationType": "see individual properties",
+      "canonicalOrder": "per grammar",
+      "media": "visual",
+      "styleDeclaration": [
+        "border-right",
+        "borderRight"
+      ]
+    },
+    {
+      "name": "border-bottom",
+      "href": "https://drafts.csswg.org/css2/#propdef-border-bottom",
+      "value": "[ <border-width> || <border-style> || <'border-top-color'> ] | inherit",
+      "initial": "see individual properties",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "see individual properties",
+      "animationType": "see individual properties",
+      "canonicalOrder": "per grammar",
+      "media": "visual",
+      "styleDeclaration": [
+        "border-bottom",
+        "borderBottom"
+      ]
+    },
+    {
+      "name": "border-left",
+      "href": "https://drafts.csswg.org/css2/#propdef-border-left",
+      "value": "[ <border-width> || <border-style> || <'border-top-color'> ] | inherit",
+      "initial": "see individual properties",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "see individual properties",
+      "animationType": "see individual properties",
+      "canonicalOrder": "per grammar",
+      "media": "visual",
+      "styleDeclaration": [
+        "border-left",
+        "borderLeft"
+      ]
+    },
+    {
+      "name": "border",
+      "href": "https://drafts.csswg.org/css2/#propdef-border",
+      "value": "[ <border-width> || <border-style> || <'border-top-color'> ] | inherit",
+      "initial": "see individual properties",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "see individual properties",
+      "animationType": "see individual properties",
+      "canonicalOrder": "per grammar",
+      "media": "visual",
+      "styleDeclaration": [
+        "border"
+      ]
+    },
+    {
+      "name": "display",
+      "href": "https://drafts.csswg.org/css2/#propdef-display",
+      "value": "inline | block | list-item | inline-block | table | inline-table | table-row-group | table-header-group | table-footer-group | table-row | table-column-group | table-column | table-cell | table-caption | none | inherit",
+      "initial": "inline",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "see text",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "all",
+      "values": [
+        {
+          "name": "block",
+          "prose": "This value causes an element to generate a block box.",
+          "href": "https://drafts.csswg.org/css2/#value-def-block",
+          "type": "value",
+          "value": "block"
+        },
+        {
+          "name": "inline-block",
+          "prose": "This value causes an element to generate an inline-level block container. The inside of an inline-block is formatted as a block box, and the element itself is formatted as an atomic inline-level box.",
+          "href": "https://drafts.csswg.org/css2/#value-def-inline-block",
+          "type": "value",
+          "value": "inline-block"
+        },
+        {
+          "name": "inline",
+          "prose": "This value causes an element to generate one or more inline boxes.",
+          "href": "https://drafts.csswg.org/css2/#value-def-inline",
+          "type": "value",
+          "value": "inline"
+        },
+        {
+          "name": "list-item",
+          "prose": "This value causes an element (e.g., LI in HTML) to generate a principal block box and a marker box. For information about lists and examples of list formatting, please consult the section on lists.",
+          "href": "https://drafts.csswg.org/css2/#value-def-list-item",
+          "type": "value",
+          "value": "list-item"
+        },
+        {
+          "name": "none",
+          "prose": "This value causes an element to not appear in the formatting structure (i.e., in visual media the element generates no boxes and has no effect on layout). Descendant elements do not generate any boxes either; the element and its content are removed from the formatting structure entirely. This behavior cannot be overridden by setting the display property on the descendants. Please note that a display of none does not create an invisible box; it creates no box at all. CSS includes mechanisms that enable an element to generate boxes in the formatting structure that affect formatting but are not visible themselves. Please consult the section on visibility for details.",
+          "href": "https://drafts.csswg.org/css2/#valdef-display-none",
+          "type": "value",
+          "value": "none"
+        },
+        {
+          "name": "table",
+          "prose": "These values cause an element to behave like a table element (subject to restrictions described in the chapter on tables).",
+          "href": "https://drafts.csswg.org/css2/#value-def-table",
+          "type": "value",
+          "value": "table"
+        },
+        {
+          "name": "inline-table",
+          "prose": "These values cause an element to behave like a table element (subject to restrictions described in the chapter on tables).",
+          "href": "https://drafts.csswg.org/css2/#value-def-inline-table",
+          "type": "value",
+          "value": "inline-table"
+        },
+        {
+          "name": "table-row-group",
+          "prose": "These values cause an element to behave like a table element (subject to restrictions described in the chapter on tables).",
+          "href": "https://drafts.csswg.org/css2/#value-def-table-row-group",
+          "type": "value",
+          "value": "table-row-group"
+        },
+        {
+          "name": "table-column",
+          "prose": "These values cause an element to behave like a table element (subject to restrictions described in the chapter on tables).",
+          "href": "https://drafts.csswg.org/css2/#value-def-table-column",
+          "type": "value",
+          "value": "table-column"
+        },
+        {
+          "name": "table-column-group",
+          "prose": "These values cause an element to behave like a table element (subject to restrictions described in the chapter on tables).",
+          "href": "https://drafts.csswg.org/css2/#value-def-table-column-group",
+          "type": "value",
+          "value": "table-column-group"
+        },
+        {
+          "name": "table-header-group",
+          "prose": "These values cause an element to behave like a table element (subject to restrictions described in the chapter on tables).",
+          "href": "https://drafts.csswg.org/css2/#value-def-table-header-group",
+          "type": "value",
+          "value": "table-header-group"
+        },
+        {
+          "name": "table-footer-group",
+          "prose": "These values cause an element to behave like a table element (subject to restrictions described in the chapter on tables).",
+          "href": "https://drafts.csswg.org/css2/#value-def-table-footer-group",
+          "type": "value",
+          "value": "table-footer-group"
+        },
+        {
+          "name": "table-row",
+          "prose": "These values cause an element to behave like a table element (subject to restrictions described in the chapter on tables).",
+          "href": "https://drafts.csswg.org/css2/#value-def-table-row",
+          "type": "value",
+          "value": "table-row"
+        },
+        {
+          "name": "table-cell",
+          "prose": "These values cause an element to behave like a table element (subject to restrictions described in the chapter on tables).",
+          "href": "https://drafts.csswg.org/css2/#value-def-table-cell",
+          "type": "value",
+          "value": "table-cell"
+        },
+        {
+          "name": "table-caption",
+          "prose": "These values cause an element to behave like a table element (subject to restrictions described in the chapter on tables).",
+          "href": "https://drafts.csswg.org/css2/#value-def-table-caption",
+          "type": "value",
+          "value": "table-caption"
+        }
+      ],
+      "styleDeclaration": [
+        "display"
+      ]
+    },
+    {
+      "name": "position",
+      "href": "https://drafts.csswg.org/css2/#propdef-position",
+      "value": "static | relative | absolute | fixed | inherit",
+      "initial": "static",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "values": [
+        {
+          "name": "static",
+          "prose": "The box is a normal box, laid out according to the normal flow. The top, right, bottom, and left properties do not apply.",
+          "href": "https://drafts.csswg.org/css2/#valdef-position-static",
+          "type": "value",
+          "value": "static"
+        },
+        {
+          "name": "relative",
+          "prose": "The box’s position is calculated according to the normal flow (this is called the position in normal flow). Then the box is offset relative to its normal position. When a box B is relatively positioned, the position of the following box is calculated as though B were not offset. The effect of position:relative on table-row-group, table-header-group, table-footer-group, table-row, table-column-group, table-column, table-cell, and table-caption elements is undefined.",
+          "href": "https://drafts.csswg.org/css2/#valdef-position-relative",
+          "type": "value",
+          "value": "relative"
+        },
+        {
+          "name": "absolute",
+          "prose": "The box’s position (and possibly size) is specified with the top, right, bottom, and left properties. These properties specify offsets with respect to the box’s containing block. Absolutely positioned boxes are taken out of the normal flow. This means they have no impact on the layout of later siblings. Also, though absolutely positioned boxes have margins, they do not collapse with any other margins.",
+          "href": "https://drafts.csswg.org/css2/#valdef-position-absolute",
+          "type": "value",
+          "value": "absolute"
+        },
+        {
+          "name": "fixed",
+          "prose": "The box’s position is calculated according to the absolute model, but in addition, the box is fixed with respect to some reference. As with the absolute model, the box’s margins do not collapse with any other margins. In the case of handheld, projection, screen, tty, and tv media types, the box is fixed with respect to the viewport and does not move when scrolled. In the case of the print media type, the box is rendered on every page, and is fixed with respect to the page box, even if the page is seen through a viewport (in the case of a print-preview, for example). For other media types, the presentation is undefined. Authors may wish to specify fixed in a media-dependent way. For instance, an author may want a box to remain at the top of the viewport on the screen, but not at the top of each printed page. The two specifications may be separated by using an @media rule, as in: @media screen { h1#first { position: fixed } } @media print { h1#first { position: static } } UAs must not paginate the content of fixed boxes. Note that UAs may print invisible content in other ways. See \"Content outside the page box\" in chapter 13.",
+          "href": "https://drafts.csswg.org/css2/#valdef-position-fixed",
+          "type": "value",
+          "value": "fixed"
+        }
+      ],
+      "styleDeclaration": [
+        "position"
+      ]
+    },
+    {
+      "name": "top",
+      "href": "https://drafts.csswg.org/css2/#propdef-top",
+      "value": "<length> | <percentage> | auto | inherit",
+      "initial": "auto",
+      "appliesTo": "positioned elements",
+      "inherited": "no",
+      "percentages": "refer to height of containing block",
+      "computedValue": "if specified as a length, the corresponding absolute length; if specified as a percentage, the specified value; otherwise, auto.",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "values": [
+        {
+          "name": "<length>",
+          "prose": "The offset is a fixed distance from the reference edge. Negative values are allowed.",
+          "href": "https://drafts.csswg.org/css2/#valdef-top-length",
+          "type": "value",
+          "value": "<length>"
+        },
+        {
+          "name": "<percentage>",
+          "prose": "The offset is a percentage of the containing block’s width (for left or right) or height (for top and bottom). Negative values are allowed.",
+          "href": "https://drafts.csswg.org/css2/#valdef-top-percentage",
+          "type": "value",
+          "value": "<percentage>"
+        },
+        {
+          "name": "auto",
+          "prose": "For non-replaced elements, the effect of this value depends on which of related properties have the value auto as well. See the sections on the width and height of absolutely positioned, non-replaced elements for details. For replaced elements, the effect of this value depends only on the intrinsic dimensions of the replaced content. See the sections on the width and height of absolutely positioned, replaced elements for details.",
+          "href": "https://drafts.csswg.org/css2/#valdef-top-auto",
+          "type": "value",
+          "value": "auto"
+        }
+      ],
+      "styleDeclaration": [
+        "top"
+      ]
+    },
+    {
+      "name": "right",
+      "href": "https://drafts.csswg.org/css2/#propdef-right",
+      "value": "<length> | <percentage> | auto | inherit",
+      "initial": "auto",
+      "appliesTo": "positioned elements",
+      "inherited": "no",
+      "percentages": "refer to width of containing block",
+      "computedValue": "if specified as a length, the corresponding absolute length; if specified as a percentage, the specified value; otherwise, auto.",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "values": [
+        {
+          "name": "<length>",
+          "prose": "The offset is a fixed distance from the reference edge. Negative values are allowed.",
+          "href": "https://drafts.csswg.org/css2/#valdef-top-length",
+          "type": "value",
+          "value": "<length>"
+        },
+        {
+          "name": "<percentage>",
+          "prose": "The offset is a percentage of the containing block’s width (for left or right) or height (for top and bottom). Negative values are allowed.",
+          "href": "https://drafts.csswg.org/css2/#valdef-top-percentage",
+          "type": "value",
+          "value": "<percentage>"
+        },
+        {
+          "name": "auto",
+          "prose": "For non-replaced elements, the effect of this value depends on which of related properties have the value auto as well. See the sections on the width and height of absolutely positioned, non-replaced elements for details. For replaced elements, the effect of this value depends only on the intrinsic dimensions of the replaced content. See the sections on the width and height of absolutely positioned, replaced elements for details.",
+          "href": "https://drafts.csswg.org/css2/#valdef-top-auto",
+          "type": "value",
+          "value": "auto"
+        }
+      ],
+      "styleDeclaration": [
+        "right"
+      ]
+    },
+    {
+      "name": "bottom",
+      "href": "https://drafts.csswg.org/css2/#propdef-bottom",
+      "value": "<length> | <percentage> | auto | inherit",
+      "initial": "auto",
+      "appliesTo": "positioned elements",
+      "inherited": "no",
+      "percentages": "refer to height of containing block",
+      "computedValue": "if specified as a length, the corresponding absolute length; if specified as a percentage, the specified value; otherwise, auto.",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "values": [
+        {
+          "name": "<length>",
+          "prose": "The offset is a fixed distance from the reference edge. Negative values are allowed.",
+          "href": "https://drafts.csswg.org/css2/#valdef-top-length",
+          "type": "value",
+          "value": "<length>"
+        },
+        {
+          "name": "<percentage>",
+          "prose": "The offset is a percentage of the containing block’s width (for left or right) or height (for top and bottom). Negative values are allowed.",
+          "href": "https://drafts.csswg.org/css2/#valdef-top-percentage",
+          "type": "value",
+          "value": "<percentage>"
+        },
+        {
+          "name": "auto",
+          "prose": "For non-replaced elements, the effect of this value depends on which of related properties have the value auto as well. See the sections on the width and height of absolutely positioned, non-replaced elements for details. For replaced elements, the effect of this value depends only on the intrinsic dimensions of the replaced content. See the sections on the width and height of absolutely positioned, replaced elements for details.",
+          "href": "https://drafts.csswg.org/css2/#valdef-top-auto",
+          "type": "value",
+          "value": "auto"
+        }
+      ],
+      "styleDeclaration": [
+        "bottom"
+      ]
+    },
+    {
+      "name": "left",
+      "href": "https://drafts.csswg.org/css2/#propdef-left",
+      "value": "<length> | <percentage> | auto | inherit",
+      "initial": "auto",
+      "appliesTo": "positioned elements",
+      "inherited": "no",
+      "percentages": "refer to width of containing block",
+      "computedValue": "if specified as a length, the corresponding absolute length; if specified as a percentage, the specified value; otherwise, auto.",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "values": [
+        {
+          "name": "<length>",
+          "prose": "The offset is a fixed distance from the reference edge. Negative values are allowed.",
+          "href": "https://drafts.csswg.org/css2/#valdef-top-length",
+          "type": "value",
+          "value": "<length>"
+        },
+        {
+          "name": "<percentage>",
+          "prose": "The offset is a percentage of the containing block’s width (for left or right) or height (for top and bottom). Negative values are allowed.",
+          "href": "https://drafts.csswg.org/css2/#valdef-top-percentage",
+          "type": "value",
+          "value": "<percentage>"
+        },
+        {
+          "name": "auto",
+          "prose": "For non-replaced elements, the effect of this value depends on which of related properties have the value auto as well. See the sections on the width and height of absolutely positioned, non-replaced elements for details. For replaced elements, the effect of this value depends only on the intrinsic dimensions of the replaced content. See the sections on the width and height of absolutely positioned, replaced elements for details.",
+          "href": "https://drafts.csswg.org/css2/#valdef-top-auto",
+          "type": "value",
+          "value": "auto"
+        }
+      ],
+      "styleDeclaration": [
+        "left"
+      ]
+    },
+    {
+      "name": "float",
+      "href": "https://drafts.csswg.org/css2/#propdef-float",
+      "value": "left | right | none | inherit",
+      "initial": "none",
+      "appliesTo": "all, but see {visuren.html#dis-pos-flo}9.7{}",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "values": [
+        {
+          "name": "left",
+          "prose": "The element generates a block box that is floated to the left. Content flows on the right side of the box, starting at the top (subject to the clear property).",
+          "href": "https://drafts.csswg.org/css2/#valdef-float-left",
+          "type": "value",
+          "value": "left"
+        },
+        {
+          "name": "right",
+          "prose": "Similar to left, except the box is floated to the right, and content flows on the left side of the box, starting at the top.",
+          "href": "https://drafts.csswg.org/css2/#valdef-float-right",
+          "type": "value",
+          "value": "right"
+        },
+        {
+          "name": "none",
+          "prose": "The box is not floated.",
+          "href": "https://drafts.csswg.org/css2/#valdef-float-none",
+          "type": "value",
+          "value": "none"
+        }
+      ],
+      "styleDeclaration": [
+        "float"
+      ]
+    },
+    {
+      "name": "clear",
+      "href": "https://drafts.csswg.org/css2/#propdef-clear",
+      "value": "none | left | right | both | inherit",
+      "initial": "none",
+      "appliesTo": "block-level elements",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "values": [
+        {
+          "name": "left",
+          "prose": "Requires that the top border edge of the box be below the bottom outer edge of any left-floating boxes that resulted from elements earlier in the source document.",
+          "href": "https://drafts.csswg.org/css2/#valdef-clear-left",
+          "type": "value",
+          "value": "left"
+        },
+        {
+          "name": "right",
+          "prose": "Requires that the top border edge of the box be below the bottom outer edge of any right-floating boxes that resulted from elements earlier in the source document.",
+          "href": "https://drafts.csswg.org/css2/#valdef-clear-right",
+          "type": "value",
+          "value": "right"
+        },
+        {
+          "name": "both",
+          "prose": "Requires that the top border edge of the box be below the bottom outer edge of any right-floating and left-floating boxes that resulted from elements earlier in the source document.",
+          "href": "https://drafts.csswg.org/css2/#valdef-clear-both",
+          "type": "value",
+          "value": "both"
+        },
+        {
+          "name": "none",
+          "prose": "No constraint on the box’s position with respect to floats.",
+          "href": "https://drafts.csswg.org/css2/#valdef-clear-none",
+          "type": "value",
+          "value": "none"
+        }
+      ],
+      "styleDeclaration": [
+        "clear"
+      ]
+    },
+    {
+      "name": "z-index",
+      "href": "https://drafts.csswg.org/css2/#propdef-z-index",
+      "value": "auto | <integer> | inherit",
+      "initial": "auto",
+      "appliesTo": "positioned elements",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "values": [
+        {
+          "name": "auto",
+          "prose": "The stack level of the generated box in the current stacking context is 0. The box does not establish a new stacking context unless it is the root element.",
+          "href": "https://drafts.csswg.org/css2/#valdef-z-index-auto",
+          "type": "value",
+          "value": "auto"
+        }
+      ],
+      "styleDeclaration": [
+        "z-index",
+        "zIndex"
+      ]
+    },
+    {
+      "name": "direction",
+      "href": "https://drafts.csswg.org/css2/#propdef-direction",
+      "value": "ltr | rtl | inherit",
+      "initial": "ltr",
+      "appliesTo": "all elements, but see prose",
+      "inherited": "yes",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "values": [
+        {
+          "name": "ltr",
+          "prose": "Left-to-right direction.",
+          "href": "https://drafts.csswg.org/css2/#valdef-direction-ltr",
+          "type": "value",
+          "value": "ltr"
+        },
+        {
+          "name": "rtl",
+          "prose": "Right-to-left direction.",
+          "href": "https://drafts.csswg.org/css2/#valdef-direction-rtl",
+          "type": "value",
+          "value": "rtl"
+        }
+      ],
+      "styleDeclaration": [
+        "direction"
+      ]
+    },
+    {
+      "name": "unicode-bidi",
+      "href": "https://drafts.csswg.org/css2/#propdef-unicode-bidi",
+      "value": "normal | embed | bidi-override | inherit",
+      "initial": "normal",
+      "appliesTo": "all elements, but see prose",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "values": [
+        {
+          "name": "normal",
+          "prose": "The element does not open an additional level of embedding with respect to the bidirectional algorithm. For inline elements, implicit reordering works across element boundaries.",
+          "href": "https://drafts.csswg.org/css2/#valdef-unicode-bidi-normal",
+          "type": "value",
+          "value": "normal"
+        },
+        {
+          "name": "embed",
+          "prose": "If the element is inline, this value opens an additional level of embedding with respect to the bidirectional algorithm. The direction of this embedding level is given by the direction property. Inside the element, reordering is done implicitly. This corresponds to adding a LRE (U+202A; for 'direction: ltr') or RLE (U+202B; for 'direction: rtl') at the start of the element and a PDF (U+202C) at the end of the element.",
+          "href": "https://drafts.csswg.org/css2/#valdef-unicode-bidi-embed",
+          "type": "value",
+          "value": "embed"
+        },
+        {
+          "name": "bidi-override",
+          "prose": "For inline elements this creates an override. For block container elements this creates an override for inline-level descendants not within another block container element. This means that inside the element, reordering is strictly in sequence according to the direction property; the implicit part of the bidirectional algorithm is ignored. This corresponds to adding a LRO (U+202D; for 'direction: ltr') or RLO (U+202E; for 'direction: rtl') at the start of the element or at the start of each anonymous child block box, if any, and a PDF (U+202C) at the end of the element.",
+          "href": "https://drafts.csswg.org/css2/#valdef-unicode-bidi-bidi-override",
+          "type": "value",
+          "value": "bidi-override"
+        }
+      ],
+      "styleDeclaration": [
+        "unicode-bidi",
+        "unicodeBidi"
+      ]
+    },
+    {
+      "name": "width",
+      "href": "https://drafts.csswg.org/css2/#propdef-width",
+      "value": "<length> | <percentage> | auto | inherit",
+      "initial": "auto",
+      "appliesTo": "all elements but non-replaced inline elements, table rows, and row groups",
+      "inherited": "no",
+      "percentages": "refer to width of containing block",
+      "computedValue": "the percentage or auto as specified or the absolute length",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "values": [
+        {
+          "name": "auto",
+          "prose": "The width depends on the values of other properties. See the sections below.",
+          "href": "https://drafts.csswg.org/css2/#valdef-width-auto",
+          "type": "value",
+          "value": "auto"
+        }
+      ],
+      "styleDeclaration": [
+        "width"
+      ]
+    },
+    {
+      "name": "min-width",
+      "href": "https://drafts.csswg.org/css2/#propdef-min-width",
+      "value": "<length> | <percentage> | inherit",
+      "initial": "0",
+      "appliesTo": "all elements but non-replaced inline elements, table rows, and row groups",
+      "inherited": "no",
+      "percentages": "refer to width of containing block",
+      "computedValue": "the percentage as specified or the absolute length",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "styleDeclaration": [
+        "min-width",
+        "minWidth"
+      ]
+    },
+    {
+      "name": "max-width",
+      "href": "https://drafts.csswg.org/css2/#propdef-max-width",
+      "value": "<length> | <percentage> | none | inherit",
+      "initial": "none",
+      "appliesTo": "all elements but non-replaced inline elements, table rows, and row groups",
+      "inherited": "no",
+      "percentages": "refer to width of containing block",
+      "computedValue": "the percentage as specified or the absolute length or none",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "values": [
+        {
+          "name": "none",
+          "prose": "(Only on max-width) No limit on the width of the box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-max-width-none",
+          "type": "value",
+          "value": "none"
+        }
+      ],
+      "styleDeclaration": [
+        "max-width",
+        "maxWidth"
+      ]
+    },
+    {
+      "name": "height",
+      "href": "https://drafts.csswg.org/css2/#propdef-height",
+      "value": "<length> | <percentage> | auto | inherit",
+      "initial": "auto",
+      "appliesTo": "all elements but non-replaced inline elements, table columns, and column groups",
+      "inherited": "no",
+      "percentages": "see prose",
+      "computedValue": "the percentage or auto (see prose under <percentage>) or the absolute length",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "values": [
+        {
+          "name": "auto",
+          "prose": "The height depends on the values of other properties. See the prose below.",
+          "href": "https://drafts.csswg.org/css2/#valdef-height-auto",
+          "type": "value",
+          "value": "auto"
+        }
+      ],
+      "styleDeclaration": [
+        "height"
+      ]
+    },
+    {
+      "name": "min-height",
+      "href": "https://drafts.csswg.org/css2/#propdef-min-height",
+      "value": "<length> | <percentage> | inherit",
+      "initial": "0",
+      "appliesTo": "all elements but non-replaced inline elements, table columns, and column groups",
+      "inherited": "no",
+      "percentages": "see prose",
+      "computedValue": "the percentage as specified or the absolute length",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "styleDeclaration": [
+        "min-height",
+        "minHeight"
+      ]
+    },
+    {
+      "name": "max-height",
+      "href": "https://drafts.csswg.org/css2/#propdef-max-height",
+      "value": "<length> | <percentage> | none | inherit",
+      "initial": "none",
+      "appliesTo": "all elements but non-replaced inline elements, table columns, and column groups",
+      "inherited": "no",
+      "percentages": "see prose",
+      "computedValue": "the percentage as specified or the absolute length or none",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "values": [
+        {
+          "name": "none",
+          "prose": "(Only on max-height) No limit on the height of the box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-max-height-none",
+          "type": "value",
+          "value": "none"
+        }
+      ],
+      "styleDeclaration": [
+        "max-height",
+        "maxHeight"
+      ]
+    },
+    {
+      "name": "line-height",
+      "href": "https://drafts.csswg.org/css2/#propdef-line-height",
+      "value": "normal | <number> | <length> | <percentage> | inherit",
+      "initial": "normal",
+      "appliesTo": "*",
+      "inherited": "yes",
+      "percentages": "refer to the font size of the element itself",
+      "computedValue": "for <length> and <percentage> the absolute value; otherwise as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "values": [
+        {
+          "name": "normal",
+          "prose": "Tells user agents to set the used value to a \"reasonable\" value based on the font of the element. The value has the same meaning as <number>. We recommend a used value for normal between 1.0 to 1.2. The computed value is normal.",
+          "href": "https://drafts.csswg.org/css2/#valdef-line-height-normal",
+          "type": "value",
+          "value": "normal"
+        }
+      ],
+      "styleDeclaration": [
+        "line-height",
+        "lineHeight"
+      ]
+    },
+    {
+      "name": "vertical-align",
+      "href": "https://drafts.csswg.org/css2/#propdef-vertical-align",
+      "value": "baseline | sub | super | top | text-top | middle | bottom | text-bottom | <percentage> | <length> | inherit",
+      "initial": "baseline",
+      "appliesTo": "inline-level and table-cell elements",
+      "inherited": "no",
+      "percentages": "refer to the line-height of the element itself",
+      "computedValue": "for <percentage> and <length> the absolute length, otherwise as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "values": [
+        {
+          "name": "baseline",
+          "prose": "Align the baseline of the box with the baseline of the parent box. If the box does not have a baseline, align the bottom margin edge with the parent’s baseline.",
+          "href": "https://drafts.csswg.org/css2/#valdef-vertical-align-baseline",
+          "type": "value",
+          "value": "baseline"
+        },
+        {
+          "name": "middle",
+          "prose": "Align the vertical midpoint of the box with the baseline of the parent box plus half the x-height of the parent.",
+          "href": "https://drafts.csswg.org/css2/#valdef-vertical-align-middle",
+          "type": "value",
+          "value": "middle"
+        },
+        {
+          "name": "sub",
+          "prose": "Lower the baseline of the box to the proper position for subscripts of the parent’s box. (This value has no effect on the font size of the element’s text.)",
+          "href": "https://drafts.csswg.org/css2/#valdef-vertical-align-sub",
+          "type": "value",
+          "value": "sub"
+        },
+        {
+          "name": "super",
+          "prose": "Raise the baseline of the box to the proper position for superscripts of the parent’s box. (This value has no effect on the font size of the element’s text.)",
+          "href": "https://drafts.csswg.org/css2/#valdef-vertical-align-super",
+          "type": "value",
+          "value": "super"
+        },
+        {
+          "name": "text-top",
+          "prose": "Align the top of the box with the top of the parent’s content area (see 10.6.1).",
+          "href": "https://drafts.csswg.org/css2/#valdef-vertical-align-text-top",
+          "type": "value",
+          "value": "text-top"
+        },
+        {
+          "name": "text-bottom",
+          "prose": "Align the bottom of the box with the bottom of the parent’s content area (see 10.6.1).",
+          "href": "https://drafts.csswg.org/css2/#valdef-vertical-align-text-bottom",
+          "type": "value",
+          "value": "text-bottom"
+        },
+        {
+          "name": "<percentage>",
+          "prose": "Raise (positive value) or lower (negative value) the box by this distance (a percentage of the line-height value). The value 0% means the same as baseline.",
+          "href": "https://drafts.csswg.org/css2/#valdef-vertical-align-percentage",
+          "type": "value",
+          "value": "<percentage>"
+        },
+        {
+          "name": "<length>",
+          "prose": "Raise (positive value) or lower (negative value) the box by this distance. The value 0cm means the same as baseline.",
+          "href": "https://drafts.csswg.org/css2/#valdef-vertical-align-length",
+          "type": "value",
+          "value": "<length>"
+        },
+        {
+          "name": "top",
+          "prose": "Align the top of the aligned subtree with the top of the line box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-vertical-align-top",
+          "type": "value",
+          "value": "top"
+        },
+        {
+          "name": "bottom",
+          "prose": "Align the bottom of the aligned subtree with the bottom of the line box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-vertical-align-bottom",
+          "type": "value",
+          "value": "bottom"
+        }
+      ],
+      "styleDeclaration": [
+        "vertical-align",
+        "verticalAlign"
+      ]
+    },
+    {
+      "name": "overflow",
+      "href": "https://drafts.csswg.org/css2/#propdef-overflow",
+      "value": "visible | hidden | scroll | auto | inherit",
+      "initial": "visible",
+      "appliesTo": "block containers",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "values": [
+        {
+          "name": "visible",
+          "prose": "This value indicates that content is not clipped, i.e., it may be rendered outside the block box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-overflow-visible",
+          "type": "value",
+          "value": "visible"
+        },
+        {
+          "name": "hidden",
+          "prose": "This value indicates that the content is clipped and that no scrolling user interface should be provided to view the content outside the clipping region.",
+          "href": "https://drafts.csswg.org/css2/#valdef-overflow-hidden",
+          "type": "value",
+          "value": "hidden"
+        },
+        {
+          "name": "scroll",
+          "prose": "This value indicates that the content is clipped and that if the user agent uses a scrolling mechanism that is visible on the screen (such as a scroll bar or a panner), that mechanism should be displayed for a box whether or not any of its content is clipped. This avoids any problem with scrollbars appearing and disappearing in a dynamic environment. When this value is specified and the target medium is print, overflowing content may be printed.",
+          "href": "https://drafts.csswg.org/css2/#valdef-overflow-scroll",
+          "type": "value",
+          "value": "scroll"
+        },
+        {
+          "name": "auto",
+          "prose": "The behavior of the auto value is user agent-dependent, but should cause a scrolling mechanism to be provided for overflowing boxes.",
+          "href": "https://drafts.csswg.org/css2/#valdef-overflow-auto",
+          "type": "value",
+          "value": "auto"
+        }
+      ],
+      "styleDeclaration": [
+        "overflow"
+      ]
+    },
+    {
+      "name": "clip",
+      "href": "https://drafts.csswg.org/css2/#propdef-clip",
+      "value": "<shape> | auto | inherit",
+      "initial": "auto",
+      "appliesTo": "absolutely positioned elements",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "auto if specified as auto, otherwise a rectangle with four values, each of which is auto if specified as auto and the computed length otherwise",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "values": [
+        {
+          "name": "auto",
+          "prose": "The element does not clip.",
+          "href": "https://drafts.csswg.org/css2/#valdef-clip-auto",
+          "type": "value",
+          "value": "auto"
+        }
+      ],
+      "styleDeclaration": [
+        "clip"
+      ]
+    },
+    {
+      "name": "visibility",
+      "href": "https://drafts.csswg.org/css2/#propdef-visibility",
+      "value": "visible | hidden | collapse | inherit",
+      "initial": "visible",
+      "appliesTo": "*",
+      "inherited": "yes",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "values": [
+        {
+          "name": "visible",
+          "prose": "The generated box is visible.",
+          "href": "https://drafts.csswg.org/css2/#valdef-visibility-visible",
+          "type": "value",
+          "value": "visible"
+        },
+        {
+          "name": "hidden",
+          "prose": "The generated box is invisible (fully transparent, nothing is drawn), but still affects layout. Furthermore, descendants of the element will be visible if they have 'visibility: visible'.",
+          "href": "https://drafts.csswg.org/css2/#valdef-visibility-hidden",
+          "type": "value",
+          "value": "hidden"
+        },
+        {
+          "name": "collapse",
+          "prose": "Please consult the section on dynamic row and column effects in tables. If used on elements other than rows, row groups, columns, or column groups, collapse has the same meaning as hidden.",
+          "href": "https://drafts.csswg.org/css2/#valdef-visibility-collapse",
+          "type": "value",
+          "value": "collapse"
+        }
+      ],
+      "styleDeclaration": [
+        "visibility"
+      ]
+    },
+    {
+      "name": "content",
+      "href": "https://drafts.csswg.org/css2/#propdef-content",
+      "value": "normal | none | [ <string> | <uri> | <counter> | attr(<identifier>) | open-quote | close-quote | no-open-quote | no-close-quote ]+ | inherit",
+      "initial": "normal",
+      "appliesTo": ":before and :after pseudo-elements",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "On elements, always computes to normal. On :before and :after, if normal is specified, computes to none. Otherwise, for URI values, the absolute URI; for attr() values, the resulting string; for other keywords, as specified.",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "all",
+      "values": [
+        {
+          "name": "none",
+          "prose": "The pseudo-element is not generated.",
+          "href": "https://drafts.csswg.org/css2/#valdef-content-none",
+          "type": "value",
+          "value": "none"
+        },
+        {
+          "name": "normal",
+          "prose": "Computes to none for the :before and :after pseudo-elements.",
+          "href": "https://drafts.csswg.org/css2/#valdef-content-normal",
+          "type": "value",
+          "value": "normal"
+        },
+        {
+          "name": "<string>",
+          "prose": "Text content (see the section on strings).",
+          "href": "https://drafts.csswg.org/css2/#valdef-content-string",
+          "type": "value",
+          "value": "<string>"
+        },
+        {
+          "name": "<uri>",
+          "prose": "The value is a URI that designates an external resource (such as an image). If the user agent cannot display the resource it must either leave it out as if it were not specified or display some indication that the resource cannot be displayed.",
+          "href": "https://drafts.csswg.org/css2/#valdef-content-uri",
+          "type": "value",
+          "value": "<uri>"
+        },
+        {
+          "name": "<counter>",
+          "prose": "Counters may be specified with two different functions: counter() or counters(). The former has two forms: 'counter(name)' or 'counter(name, style)'. The generated text is the value of the innermost counter of the given name in scope at this pseudo-element; it is formatted in the indicated style (decimal by default). The latter function also has two forms: 'counters(name, string)' or 'counters(name, string, style)'. The generated text is the value of all counters with the given name in scope at this pseudo-element, from outermost to innermost separated by the specified string. The counters are rendered in the indicated style (decimal by default). See the section on automatic counters and numbering for more information. The name must not be none, inherit or initial. Such a name causes the declaration to be ignored.",
+          "href": "https://drafts.csswg.org/css2/#valdef-content-counter",
+          "type": "value",
+          "value": "<counter>"
+        },
+        {
+          "name": "open-quote",
+          "prose": "These values are replaced by the appropriate string from the quotes property.",
+          "href": "https://drafts.csswg.org/css2/#value-def-open-quote",
+          "type": "value",
+          "value": "open-quote"
+        },
+        {
+          "name": "close-quote",
+          "prose": "These values are replaced by the appropriate string from the quotes property.",
+          "href": "https://drafts.csswg.org/css2/#value-def-close-quote",
+          "type": "value",
+          "value": "close-quote"
+        },
+        {
+          "name": "no-open-quote",
+          "prose": "Introduces no content, but increments (decrements) the level of nesting for quotes.",
+          "href": "https://drafts.csswg.org/css2/#value-def-no-open-quote",
+          "type": "value",
+          "value": "no-open-quote"
+        },
+        {
+          "name": "no-close-quote",
+          "prose": "Introduces no content, but increments (decrements) the level of nesting for quotes.",
+          "href": "https://drafts.csswg.org/css2/#value-def-no-close-quote",
+          "type": "value",
+          "value": "no-close-quote"
+        },
+        {
+          "name": "attr()",
+          "value": "attr()",
+          "href": "https://drafts.csswg.org/css2/#valdef-content-attr-x",
+          "type": "value"
+        }
+      ],
+      "styleDeclaration": [
+        "content"
+      ]
+    },
+    {
+      "name": "quotes",
+      "href": "https://drafts.csswg.org/css2/#propdef-quotes",
+      "value": "[<string> <string>]+ | none | inherit",
+      "initial": "depends on user agent",
+      "appliesTo": "*",
+      "inherited": "yes",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "values": [
+        {
+          "name": "none",
+          "prose": "The open-quote and close-quote values of the content property produce no quotation marks.",
+          "href": "https://drafts.csswg.org/css2/#valdef-quotes-none",
+          "type": "value",
+          "value": "none"
+        },
+        {
+          "name": "[<string> <string>]+",
+          "prose": "Values for the open-quote and close-quote values of the content property are taken from this list of pairs of quotation marks (opening and closing). The first (leftmost) pair represents the outermost level of quotation, the second pair the first level of embedding, etc. The user agent must apply the appropriate pair of quotation marks according to the level of embedding.",
+          "href": "https://drafts.csswg.org/css2/#valdef-quotes-strings",
+          "type": "value",
+          "value": "[<string> <string>]+"
+        }
+      ],
+      "styleDeclaration": [
+        "quotes"
+      ]
+    },
+    {
+      "name": "counter-reset",
+      "href": "https://drafts.csswg.org/css2/#propdef-counter-reset",
+      "value": "[ <identifier> <integer>? ]+ | none | inherit",
+      "initial": "none",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "all",
+      "values": [
+        {
+          "name": "none",
+          "prose": "The keywords none, inherit and initial must not be used as counter names. A value of none on its own means no counters are reset, resp. incremented. inherit on its own has its usual meaning (see 6.2.1). initial is reserved for future use.",
+          "href": "https://drafts.csswg.org/css2/#valdef-counter-reset-none",
+          "type": "value",
+          "value": "none"
+        }
+      ],
+      "styleDeclaration": [
+        "counter-reset",
+        "counterReset"
+      ]
+    },
+    {
+      "name": "counter-increment",
+      "href": "https://drafts.csswg.org/css2/#propdef-counter-increment",
+      "value": "[ <identifier> <integer>? ]+ | none | inherit",
+      "initial": "none",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "all",
+      "values": [
+        {
+          "name": "none",
+          "prose": "The keywords none, inherit and initial must not be used as counter names. A value of none on its own means no counters are reset, resp. incremented. inherit on its own has its usual meaning (see 6.2.1). initial is reserved for future use.",
+          "href": "https://drafts.csswg.org/css2/#valdef-counter-reset-none",
+          "type": "value",
+          "value": "none"
+        }
+      ],
+      "styleDeclaration": [
+        "counter-increment",
+        "counterIncrement"
+      ]
+    },
+    {
+      "name": "list-style-type",
+      "href": "https://drafts.csswg.org/css2/#propdef-list-style-type",
+      "value": "disc | circle | square | decimal | decimal-leading-zero | lower-roman | upper-roman | lower-greek | lower-latin | upper-latin | armenian | georgian | lower-alpha | upper-alpha | none | inherit",
+      "initial": "disc",
+      "appliesTo": "elements with 'display: list-item'",
+      "inherited": "yes",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "values": [
+        {
+          "name": "none",
+          "prose": "This property specifies appearance of the list item marker if list-style-image has the value none or if the image pointed to by the URI cannot be displayed. The value none specifies no marker, otherwise there are three types of marker: glyphs, numbering systems, and alphabetic systems.",
+          "href": "https://drafts.csswg.org/css2/#valdef-list-style-type-none",
+          "type": "value",
+          "value": "none"
+        },
+        {
+          "name": "disc",
+          "prose": "Glyphs are specified with disc, circle, and square. Their exact rendering depends on the user agent.",
+          "href": "https://drafts.csswg.org/css2/#value-def-disc",
+          "type": "value",
+          "value": "disc"
+        },
+        {
+          "name": "circle",
+          "prose": "Glyphs are specified with disc, circle, and square. Their exact rendering depends on the user agent.",
+          "href": "https://drafts.csswg.org/css2/#value-def-circle",
+          "type": "value",
+          "value": "circle"
+        },
+        {
+          "name": "square",
+          "prose": "Glyphs are specified with disc, circle, and square. Their exact rendering depends on the user agent.",
+          "href": "https://drafts.csswg.org/css2/#value-def-square",
+          "type": "value",
+          "value": "square"
+        },
+        {
+          "name": "decimal",
+          "prose": "Decimal numbers, beginning with 1.",
+          "href": "https://drafts.csswg.org/css2/#value-def-decimal",
+          "type": "value",
+          "value": "decimal"
+        },
+        {
+          "name": "decimal-leading-zero",
+          "prose": "Decimal numbers padded by initial zeros (e.g., 01, 02, 03, ..., 98, 99).",
+          "href": "https://drafts.csswg.org/css2/#value-def-decimal-leading-zero",
+          "type": "value",
+          "value": "decimal-leading-zero"
+        },
+        {
+          "name": "lower-roman",
+          "prose": "Lowercase roman numerals (i, ii, iii, iv, v, etc.).",
+          "href": "https://drafts.csswg.org/css2/#value-def-lower-roman",
+          "type": "value",
+          "value": "lower-roman"
+        },
+        {
+          "name": "upper-roman",
+          "prose": "Uppercase roman numerals (I, II, III, IV, V, etc.).",
+          "href": "https://drafts.csswg.org/css2/#value-def-upper-roman",
+          "type": "value",
+          "value": "upper-roman"
+        },
+        {
+          "name": "georgian",
+          "prose": "Traditional Georgian numbering (an, ban, gan, ..., he, tan, in, in-an, ...).",
+          "href": "https://drafts.csswg.org/css2/#value-def-georgian",
+          "type": "value",
+          "value": "georgian"
+        },
+        {
+          "name": "armenian",
+          "prose": "Traditional uppercase Armenian numbering.",
+          "href": "https://drafts.csswg.org/css2/#value-def-armenian",
+          "type": "value",
+          "value": "armenian"
+        },
+        {
+          "name": "lower-latin",
+          "prose": "Lowercase ascii letters (a, b, c, ... z).",
+          "href": "https://drafts.csswg.org/css2/#value-def-lower-latin",
+          "type": "value",
+          "value": "lower-latin"
+        },
+        {
+          "name": "lower-alpha",
+          "prose": "Lowercase ascii letters (a, b, c, ... z).",
+          "href": "https://drafts.csswg.org/css2/#velue-def-lower-alpha",
+          "type": "value",
+          "value": "lower-alpha"
+        },
+        {
+          "name": "upper-latin",
+          "prose": "Uppercase ascii letters (A, B, C, ... Z).",
+          "href": "https://drafts.csswg.org/css2/#value-def-upper-latin",
+          "type": "value",
+          "value": "upper-latin"
+        },
+        {
+          "name": "upper-alpha",
+          "prose": "Uppercase ascii letters (A, B, C, ... Z).",
+          "href": "https://drafts.csswg.org/css2/#value-def-upper-alpha",
+          "type": "value",
+          "value": "upper-alpha"
+        },
+        {
+          "name": "lower-greek",
+          "prose": "Lowercase classical Greek alpha, beta, gamma, ... (α, β, γ, ...)",
+          "href": "https://drafts.csswg.org/css2/#value-def-lower-greek",
+          "type": "value",
+          "value": "lower-greek"
+        }
+      ],
+      "styleDeclaration": [
+        "list-style-type",
+        "listStyleType"
+      ]
+    },
+    {
+      "name": "list-style-image",
+      "href": "https://drafts.csswg.org/css2/#propdef-list-style-image",
+      "value": "<uri> | none | inherit",
+      "initial": "none",
+      "appliesTo": "elements with 'display: list-item'",
+      "inherited": "yes",
+      "percentages": "N/A",
+      "computedValue": "absolute URI or none",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "styleDeclaration": [
+        "list-style-image",
+        "listStyleImage"
+      ]
+    },
+    {
+      "name": "list-style-position",
+      "href": "https://drafts.csswg.org/css2/#propdef-list-style-position",
+      "value": "inside | outside | inherit",
+      "initial": "outside",
+      "appliesTo": "elements with 'display: list-item'",
+      "inherited": "yes",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "values": [
+        {
+          "name": "outside",
+          "prose": "The marker box is outside the principal block box. The position of the list-item marker adjacent to floats is undefined in CSS 2. CSS 2 does not specify the precise location of the marker box or its position in the painting order, but does require that for list items whose direction property is ltr the marker box be on the left side of the content and for elements whose direction property is rtl the marker box be on the right side of the content. The marker box is fixed with respect to the principal block box’s border and does not scroll with the principal block box’s content. In CSS 2, a UA may hide the marker if the element’s overflow is other than visible. (This is expected to change in the future.) The size or contents of the marker box may affect the height of the principal block box and/or the height of its first line box, and in some cases may cause the creation of a new line box. Note: This interaction may be more precisely defined in a future level of CSS.",
+          "href": "https://drafts.csswg.org/css2/#valdef-list-style-position-outside",
+          "type": "value",
+          "value": "outside"
+        },
+        {
+          "name": "inside",
+          "prose": "The marker box is placed as the first inline box in the principal block box, before the element’s content and before any :before pseudo-elements. CSS 2 does not specify the precise location of the marker box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-list-style-position-inside",
+          "type": "value",
+          "value": "inside"
+        }
+      ],
+      "styleDeclaration": [
+        "list-style-position",
+        "listStylePosition"
+      ]
+    },
+    {
+      "name": "list-style",
+      "href": "https://drafts.csswg.org/css2/#propdef-list-style",
+      "value": "[ <'list-style-type'> || <'list-style-position'> || <'list-style-image'> ] | inherit",
+      "initial": "see individual properties",
+      "appliesTo": "elements with 'display: list-item'",
+      "inherited": "yes",
+      "percentages": "N/A",
+      "computedValue": "see individual properties",
+      "animationType": "see individual properties",
+      "canonicalOrder": "per grammar",
+      "media": "visual",
+      "styleDeclaration": [
+        "list-style",
+        "listStyle"
+      ]
+    },
+    {
+      "name": "page-break-before",
+      "href": "https://drafts.csswg.org/css2/#propdef-page-break-before",
+      "value": "auto | always | avoid | left | right | inherit",
+      "initial": "auto",
+      "appliesTo": "block-level elements (but see text)",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual, paged",
+      "values": [
+        {
+          "name": "auto",
+          "prose": "Neither force nor forbid a page break before (after, inside) the generated box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-page-break-auto",
+          "type": "value",
+          "value": "auto"
+        },
+        {
+          "name": "always",
+          "prose": "Always force a page break before (after) the generated box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-page-break-always",
+          "type": "value",
+          "value": "always"
+        },
+        {
+          "name": "avoid",
+          "prose": "Avoid a page break before (after, inside) the generated box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-page-break-avoid",
+          "type": "value",
+          "value": "avoid"
+        },
+        {
+          "name": "left",
+          "prose": "Force one or two page breaks before (after) the generated box so that the next page is formatted as a left page.",
+          "href": "https://drafts.csswg.org/css2/#valdef-page-break-left",
+          "type": "value",
+          "value": "left"
+        },
+        {
+          "name": "right",
+          "prose": "Force one or two page breaks before (after) the generated box so that the next page is formatted as a right page.",
+          "href": "https://drafts.csswg.org/css2/#valdef-page-break-right",
+          "type": "value",
+          "value": "right"
+        }
+      ],
+      "styleDeclaration": [
+        "page-break-before",
+        "pageBreakBefore"
+      ]
+    },
+    {
+      "name": "page-break-after",
+      "href": "https://drafts.csswg.org/css2/#propdef-page-break-after",
+      "value": "auto | always | avoid | left | right | inherit",
+      "initial": "auto",
+      "appliesTo": "block-level elements (but see text)",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual, paged",
+      "values": [
+        {
+          "name": "auto",
+          "prose": "Neither force nor forbid a page break before (after, inside) the generated box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-page-break-auto",
+          "type": "value",
+          "value": "auto"
+        },
+        {
+          "name": "always",
+          "prose": "Always force a page break before (after) the generated box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-page-break-always",
+          "type": "value",
+          "value": "always"
+        },
+        {
+          "name": "avoid",
+          "prose": "Avoid a page break before (after, inside) the generated box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-page-break-avoid",
+          "type": "value",
+          "value": "avoid"
+        },
+        {
+          "name": "left",
+          "prose": "Force one or two page breaks before (after) the generated box so that the next page is formatted as a left page.",
+          "href": "https://drafts.csswg.org/css2/#valdef-page-break-left",
+          "type": "value",
+          "value": "left"
+        },
+        {
+          "name": "right",
+          "prose": "Force one or two page breaks before (after) the generated box so that the next page is formatted as a right page.",
+          "href": "https://drafts.csswg.org/css2/#valdef-page-break-right",
+          "type": "value",
+          "value": "right"
+        }
+      ],
+      "styleDeclaration": [
+        "page-break-after",
+        "pageBreakAfter"
+      ]
+    },
+    {
+      "name": "page-break-inside",
+      "href": "https://drafts.csswg.org/css2/#propdef-page-break-inside",
+      "value": "avoid | auto | inherit",
+      "initial": "auto",
+      "appliesTo": "block-level elements (but see text)",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual, paged",
+      "values": [
+        {
+          "name": "auto",
+          "prose": "Neither force nor forbid a page break before (after, inside) the generated box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-page-break-auto",
+          "type": "value",
+          "value": "auto"
+        },
+        {
+          "name": "always",
+          "prose": "Always force a page break before (after) the generated box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-page-break-always",
+          "type": "value",
+          "value": "always"
+        },
+        {
+          "name": "avoid",
+          "prose": "Avoid a page break before (after, inside) the generated box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-page-break-avoid",
+          "type": "value",
+          "value": "avoid"
+        },
+        {
+          "name": "left",
+          "prose": "Force one or two page breaks before (after) the generated box so that the next page is formatted as a left page.",
+          "href": "https://drafts.csswg.org/css2/#valdef-page-break-left",
+          "type": "value",
+          "value": "left"
+        },
+        {
+          "name": "right",
+          "prose": "Force one or two page breaks before (after) the generated box so that the next page is formatted as a right page.",
+          "href": "https://drafts.csswg.org/css2/#valdef-page-break-right",
+          "type": "value",
+          "value": "right"
+        }
+      ],
+      "styleDeclaration": [
+        "page-break-inside",
+        "pageBreakInside"
+      ]
+    },
+    {
+      "name": "orphans",
+      "href": "https://drafts.csswg.org/css2/#propdef-orphans",
+      "value": "<integer> | inherit",
+      "initial": "2",
+      "appliesTo": "block container elements",
+      "inherited": "yes",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual, paged",
+      "styleDeclaration": [
+        "orphans"
+      ]
+    },
+    {
+      "name": "widows",
+      "href": "https://drafts.csswg.org/css2/#propdef-widows",
+      "value": "<integer> | inherit",
+      "initial": "2",
+      "appliesTo": "block container elements",
+      "inherited": "yes",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual, paged",
+      "styleDeclaration": [
+        "widows"
+      ]
+    },
+    {
+      "name": "color",
+      "href": "https://drafts.csswg.org/css2/#propdef-color",
+      "value": "<color> | inherit",
+      "initial": "depends on user agent",
+      "appliesTo": "*",
+      "inherited": "yes",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "styleDeclaration": [
+        "color"
+      ]
+    },
+    {
+      "name": "background-color",
+      "href": "https://drafts.csswg.org/css2/#propdef-background-color",
+      "value": "<color> | transparent | inherit",
+      "initial": "transparent",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "styleDeclaration": [
+        "background-color",
+        "backgroundColor"
+      ]
+    },
+    {
+      "name": "background-image",
+      "href": "https://drafts.csswg.org/css2/#propdef-background-image",
+      "value": "<uri> | none | inherit",
+      "initial": "none",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "absolute URI or none",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "values": [
+        {
+          "name": "<uri>",
+          "prose": "Values for this property are either <uri>, to specify the image, or none, when no image is used.",
+          "href": "https://drafts.csswg.org/css2/#valdef-background-image-uri",
+          "type": "value",
+          "value": "<uri>"
+        },
+        {
+          "name": "none",
+          "prose": "Values for this property are either <uri>, to specify the image, or none, when no image is used.",
+          "href": "https://drafts.csswg.org/css2/#valdef-background-image-none",
+          "type": "value",
+          "value": "none"
+        }
+      ],
+      "styleDeclaration": [
+        "background-image",
+        "backgroundImage"
+      ]
+    },
+    {
+      "name": "background-repeat",
+      "href": "https://drafts.csswg.org/css2/#propdef-background-repeat",
+      "value": "repeat | repeat-x | repeat-y | no-repeat | inherit",
+      "initial": "repeat",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "styleDeclaration": [
+        "background-repeat",
+        "backgroundRepeat"
+      ]
+    },
+    {
+      "name": "background-attachment",
+      "href": "https://drafts.csswg.org/css2/#propdef-background-attachment",
+      "value": "scroll | fixed | inherit",
+      "initial": "scroll",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "values": [
+        {
+          "name": "fixed",
+          "prose": "If a background image is specified, this property specifies whether it is fixed with regard to the viewport (fixed) or scrolls along with the containing block (scroll).",
+          "href": "https://drafts.csswg.org/css2/#valdef-background-attachment-fixed",
+          "type": "value",
+          "value": "fixed"
+        },
+        {
+          "name": "scroll",
+          "prose": "If a background image is specified, this property specifies whether it is fixed with regard to the viewport (fixed) or scrolls along with the containing block (scroll).",
+          "href": "https://drafts.csswg.org/css2/#valdef-background-attachment-scroll",
+          "type": "value",
+          "value": "scroll"
+        }
+      ],
+      "styleDeclaration": [
+        "background-attachment",
+        "backgroundAttachment"
+      ]
+    },
+    {
+      "name": "background-position",
+      "href": "https://drafts.csswg.org/css2/#propdef-background-position",
+      "value": "[ [ <percentage> | <length> | left | center | right ] [ <percentage> | <length> | top | center | bottom ]? ] | [ [ left | center | right ] || [ top | center | bottom ] ] | inherit",
+      "initial": "0% 0%",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "refer to the size of the box itself",
+      "computedValue": "for <length> the absolute value, otherwise a percentage",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "values": [
+        {
+          "name": "top",
+          "prose": "Equivalent to 0% for the vertical position.",
+          "href": "https://drafts.csswg.org/css2/#valdef-background-position-top",
+          "type": "value",
+          "value": "top"
+        },
+        {
+          "name": "right",
+          "prose": "Equivalent to 100% for the horizontal position.",
+          "href": "https://drafts.csswg.org/css2/#valdef-background-position-right",
+          "type": "value",
+          "value": "right"
+        },
+        {
+          "name": "bottom",
+          "prose": "Equivalent to 100% for the vertical position.",
+          "href": "https://drafts.csswg.org/css2/#valdef-background-position-bottom",
+          "type": "value",
+          "value": "bottom"
+        },
+        {
+          "name": "left",
+          "prose": "Equivalent to 0% for the horizontal position.",
+          "href": "https://drafts.csswg.org/css2/#valdef-background-position-left",
+          "type": "value",
+          "value": "left"
+        },
+        {
+          "name": "center",
+          "prose": "Equivalent to 50% for the horizontal position if it is not otherwise given, or 50% for the vertical position if it is.",
+          "href": "https://drafts.csswg.org/css2/#valdef-background-position-center",
+          "type": "value",
+          "value": "center"
+        }
+      ],
+      "styleDeclaration": [
+        "background-position",
+        "backgroundPosition"
+      ]
+    },
+    {
+      "name": "background",
+      "href": "https://drafts.csswg.org/css2/#propdef-background",
+      "value": "[<'background-color'> || <'background-image'> || <'background-repeat'> || <'background-attachment'> || <'background-position'>] | inherit",
+      "initial": "see individual properties",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "allowed on background-position",
+      "computedValue": "see individual properties",
+      "animationType": "see individual properties",
+      "canonicalOrder": "per grammar",
+      "media": "visual",
+      "styleDeclaration": [
+        "background"
+      ]
+    },
+    {
+      "name": "font-family",
+      "href": "https://drafts.csswg.org/css2/#propdef-font-family",
+      "value": "[ [ <family-name> | <generic-family> ] [, <family-name> | <generic-family>]* ] | inherit",
+      "initial": "depends on user agent",
+      "appliesTo": "*",
+      "inherited": "yes",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "styleDeclaration": [
+        "font-family",
+        "fontFamily"
+      ]
+    },
+    {
+      "name": "font-style",
+      "href": "https://drafts.csswg.org/css2/#propdef-font-style",
+      "value": "normal | italic | oblique | inherit",
+      "initial": "normal",
+      "appliesTo": "*",
+      "inherited": "yes",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "values": [
+        {
+          "name": "normal",
+          "prose": "A value of normal selects a font that is classified as normal in the UA’s font database, while oblique selects a font that is labeled oblique. A value of italic selects a font that is labeled italic, or, if that is not available, one labeled oblique.",
+          "href": "https://drafts.csswg.org/css2/#valdef-font-style-normal",
+          "type": "value",
+          "value": "normal"
+        },
+        {
+          "name": "oblique",
+          "prose": "A value of normal selects a font that is classified as normal in the UA’s font database, while oblique selects a font that is labeled oblique. A value of italic selects a font that is labeled italic, or, if that is not available, one labeled oblique.",
+          "href": "https://drafts.csswg.org/css2/#valdef-font-style-oblique",
+          "type": "value",
+          "value": "oblique"
+        },
+        {
+          "name": "italic",
+          "prose": "A value of normal selects a font that is classified as normal in the UA’s font database, while oblique selects a font that is labeled oblique. A value of italic selects a font that is labeled italic, or, if that is not available, one labeled oblique.",
+          "href": "https://drafts.csswg.org/css2/#valdef-font-style-italic",
+          "type": "value",
+          "value": "italic"
+        },
+        {
+          "name": "small-caps",
+          "prose": "A value of normal selects a font that is not a small-caps font, small-caps selects a small-caps font. It is acceptable (but not required) in CSS 2 if the small-caps font is a created by taking a normal font and replacing the lowercase letters by scaled uppercase characters. As a last resort, uppercase letters will be used as replacement for a small-caps font.",
+          "href": "https://drafts.csswg.org/css2/#valdef-font-style-small-caps",
+          "type": "value",
+          "value": "small-caps"
+        }
+      ],
+      "styleDeclaration": [
+        "font-style",
+        "fontStyle"
+      ]
+    },
+    {
+      "name": "font-variant",
+      "href": "https://drafts.csswg.org/css2/#propdef-font-variant",
+      "value": "normal | small-caps | inherit",
+      "initial": "normal",
+      "appliesTo": "*",
+      "inherited": "yes",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "values": [
+        {
+          "name": "normal",
+          "prose": "A value of normal selects a font that is not a small-caps font, small-caps selects a small-caps font. It is acceptable (but not required) in CSS 2 if the small-caps font is a created by taking a normal font and replacing the lowercase letters by scaled uppercase characters. As a last resort, uppercase letters will be used as replacement for a small-caps font.",
+          "href": "https://drafts.csswg.org/css2/#valdef-font-variant-normal",
+          "type": "value",
+          "value": "normal"
+        }
+      ],
+      "styleDeclaration": [
+        "font-variant",
+        "fontVariant"
+      ]
+    },
+    {
+      "name": "font-weight",
+      "href": "https://drafts.csswg.org/css2/#propdef-font-weight",
+      "value": "normal | bold | bolder | lighter | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900 | inherit",
+      "initial": "normal",
+      "appliesTo": "*",
+      "inherited": "yes",
+      "percentages": "N/A",
+      "computedValue": "see text",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "values": [
+        {
+          "name": "normal",
+          "prose": "The font-weight property selects the weight of the font. The values 100 to 900 form an ordered sequence, where each number indicates a weight that is at least as dark as its predecessor. The keyword normal is synonymous with 400, and bold is synonymous with 700. Keywords other than normal and bold have been shown to be often confused with font names and a numerical scale was therefore chosen for the 9-value list.",
+          "href": "https://drafts.csswg.org/css2/#valdef-font-weight-normal",
+          "type": "value",
+          "value": "normal"
+        },
+        {
+          "name": "bold",
+          "prose": "The font-weight property selects the weight of the font. The values 100 to 900 form an ordered sequence, where each number indicates a weight that is at least as dark as its predecessor. The keyword normal is synonymous with 400, and bold is synonymous with 700. Keywords other than normal and bold have been shown to be often confused with font names and a numerical scale was therefore chosen for the 9-value list.",
+          "href": "https://drafts.csswg.org/css2/#valdef-font-weight-bold",
+          "type": "value",
+          "value": "bold"
+        },
+        {
+          "name": "bolder",
+          "prose": "The bolder and lighter values select font weights that are relative to the weight inherited from the parent:",
+          "href": "https://drafts.csswg.org/css2/#valdef-font-weight-bolder",
+          "type": "value",
+          "value": "bolder"
+        },
+        {
+          "name": "lighter",
+          "prose": "The bolder and lighter values select font weights that are relative to the weight inherited from the parent:",
+          "href": "https://drafts.csswg.org/css2/#valdef-font-weight-lighter",
+          "type": "value",
+          "value": "lighter"
+        }
+      ],
+      "styleDeclaration": [
+        "font-weight",
+        "fontWeight"
+      ]
+    },
+    {
+      "name": "font-size",
+      "href": "https://drafts.csswg.org/css2/#propdef-font-size",
+      "value": "<absolute-size> | <relative-size> | <length> | <percentage> | inherit",
+      "initial": "medium",
+      "appliesTo": "*",
+      "inherited": "yes",
+      "percentages": "refer to inherited font size",
+      "computedValue": "absolute length",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "values": [
+        {
+          "name": "xx-small",
+          "prose": "[ xx-small | x-small | small | medium | large | x-large | xx-large ]",
+          "href": "https://drafts.csswg.org/css2/#valdef-font-size-xx-small",
+          "type": "value",
+          "value": "xx-small"
+        },
+        {
+          "name": "x-small",
+          "prose": "[ xx-small | x-small | small | medium | large | x-large | xx-large ]",
+          "href": "https://drafts.csswg.org/css2/#valdef-font-size-x-small",
+          "type": "value",
+          "value": "x-small"
+        },
+        {
+          "name": "small",
+          "prose": "[ xx-small | x-small | small | medium | large | x-large | xx-large ]",
+          "href": "https://drafts.csswg.org/css2/#valdef-font-size-small",
+          "type": "value",
+          "value": "small"
+        },
+        {
+          "name": "medium",
+          "prose": "[ xx-small | x-small | small | medium | large | x-large | xx-large ]",
+          "href": "https://drafts.csswg.org/css2/#valdef-font-size-medium",
+          "type": "value",
+          "value": "medium"
+        },
+        {
+          "name": "large",
+          "prose": "[ xx-small | x-small | small | medium | large | x-large | xx-large ]",
+          "href": "https://drafts.csswg.org/css2/#valdef-font-size-large",
+          "type": "value",
+          "value": "large"
+        },
+        {
+          "name": "x-large",
+          "prose": "[ xx-small | x-small | small | medium | large | x-large | xx-large ]",
+          "href": "https://drafts.csswg.org/css2/#valdef-font-size-x-large",
+          "type": "value",
+          "value": "x-large"
+        },
+        {
+          "name": "xx-large",
+          "prose": "[ xx-small | x-small | small | medium | large | x-large | xx-large ]",
+          "href": "https://drafts.csswg.org/css2/#valdef-font-size-xx-large",
+          "type": "value",
+          "value": "xx-large"
+        }
+      ],
+      "styleDeclaration": [
+        "font-size",
+        "fontSize"
+      ]
+    },
+    {
+      "name": "font",
+      "href": "https://drafts.csswg.org/css2/#propdef-font",
+      "value": "[ [ <'font-style'> || <'font-variant'> || <'font-weight'> ]? <'font-size'> [ / <'line-height'> ]? <'font-family'> ] | caption | icon | menu | message-box | small-caption | status-bar | inherit",
+      "initial": "see individual properties",
+      "appliesTo": "*",
+      "inherited": "yes",
+      "percentages": "see individual properties",
+      "computedValue": "see individual properties",
+      "animationType": "see individual properties",
+      "canonicalOrder": "per grammar",
+      "media": "visual",
+      "values": [
+        {
+          "name": "caption",
+          "prose": "The font used for captioned controls (e.g., buttons, drop-downs, etc.).",
+          "href": "https://drafts.csswg.org/css2/#valdef-font-caption",
+          "type": "value",
+          "value": "caption"
+        },
+        {
+          "name": "icon",
+          "prose": "The font used to label icons.",
+          "href": "https://drafts.csswg.org/css2/#valdef-font-icon",
+          "type": "value",
+          "value": "icon"
+        },
+        {
+          "name": "menu",
+          "prose": "The font used in menus (e.g., dropdown menus and menu lists).",
+          "href": "https://drafts.csswg.org/css2/#valdef-font-menu",
+          "type": "value",
+          "value": "menu"
+        },
+        {
+          "name": "message-box",
+          "prose": "The font used in dialog boxes.",
+          "href": "https://drafts.csswg.org/css2/#valdef-font-message-box",
+          "type": "value",
+          "value": "message-box"
+        },
+        {
+          "name": "small-caption",
+          "prose": "The font used for labeling small controls.",
+          "href": "https://drafts.csswg.org/css2/#valdef-font-small-caption",
+          "type": "value",
+          "value": "small-caption"
+        },
+        {
+          "name": "status-bar",
+          "prose": "The font used in window status bars.",
+          "href": "https://drafts.csswg.org/css2/#valdef-font-status-bar",
+          "type": "value",
+          "value": "status-bar"
+        }
+      ],
+      "styleDeclaration": [
+        "font"
+      ]
+    },
+    {
+      "name": "text-indent",
+      "href": "https://drafts.csswg.org/css2/#propdef-text-indent",
+      "value": "<length> | <percentage> | inherit",
+      "initial": "0",
+      "appliesTo": "block containers",
+      "inherited": "yes",
+      "percentages": "refer to width of containing block",
+      "computedValue": "the percentage as specified or the absolute length",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "styleDeclaration": [
+        "text-indent",
+        "textIndent"
+      ]
+    },
+    {
+      "name": "text-align",
+      "href": "https://drafts.csswg.org/css2/#propdef-text-align",
+      "value": "left | right | center | justify | inherit",
+      "initial": "a nameless value that acts as left if direction is ltr, right if direction is rtl",
+      "appliesTo": "block containers",
+      "inherited": "yes",
+      "percentages": "N/A",
+      "computedValue": "the initial value or as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "values": [
+        {
+          "name": "left",
+          "prose": "Left, right, center, and justify text, respectively, as described in the section on inline formatting.",
+          "href": "https://drafts.csswg.org/css2/#valdef-text-align-left",
+          "type": "value",
+          "value": "left"
+        },
+        {
+          "name": "right",
+          "prose": "Left, right, center, and justify text, respectively, as described in the section on inline formatting.",
+          "href": "https://drafts.csswg.org/css2/#valdef-text-align-right",
+          "type": "value",
+          "value": "right"
+        },
+        {
+          "name": "center",
+          "prose": "Left, right, center, and justify text, respectively, as described in the section on inline formatting.",
+          "href": "https://drafts.csswg.org/css2/#valdef-text-align-center",
+          "type": "value",
+          "value": "center"
+        },
+        {
+          "name": "justify",
+          "prose": "Left, right, center, and justify text, respectively, as described in the section on inline formatting.",
+          "href": "https://drafts.csswg.org/css2/#valdef-text-align-justify",
+          "type": "value",
+          "value": "justify"
+        }
+      ],
+      "styleDeclaration": [
+        "text-align",
+        "textAlign"
+      ]
+    },
+    {
+      "name": "text-decoration",
+      "href": "https://drafts.csswg.org/css2/#propdef-text-decoration",
+      "value": "none | [ underline || overline || line-through || blink ] | inherit",
+      "initial": "none",
+      "appliesTo": "*",
+      "inherited": "no (see prose)",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "values": [
+        {
+          "name": "none",
+          "prose": "Produces no text decoration.",
+          "href": "https://drafts.csswg.org/css2/#valdef-text-decoration-none",
+          "type": "value",
+          "value": "none"
+        },
+        {
+          "name": "underline",
+          "prose": "Each line of text is underlined.",
+          "href": "https://drafts.csswg.org/css2/#valdef-text-decoration-underline",
+          "type": "value",
+          "value": "underline"
+        },
+        {
+          "name": "overline",
+          "prose": "Each line of text has a line above it.",
+          "href": "https://drafts.csswg.org/css2/#valdef-text-decoration-overline",
+          "type": "value",
+          "value": "overline"
+        },
+        {
+          "name": "line-through",
+          "prose": "Each line of text has a line through the middle.",
+          "href": "https://drafts.csswg.org/css2/#valdef-text-decoration-line-through",
+          "type": "value",
+          "value": "line-through"
+        },
+        {
+          "name": "blink",
+          "prose": "Text blinks (alternates between visible and invisible). Conforming user agents may simply not blink the text. Note that not blinking the text is one technique to satisfy checkpoint 3.3 of WAI-UAAG.",
+          "href": "https://drafts.csswg.org/css2/#valdef-text-decoration-blink",
+          "type": "value",
+          "value": "blink"
+        }
+      ],
+      "styleDeclaration": [
+        "text-decoration",
+        "textDecoration"
+      ]
+    },
+    {
+      "name": "letter-spacing",
+      "href": "https://drafts.csswg.org/css2/#propdef-letter-spacing",
+      "value": "normal | <length> | inherit",
+      "initial": "normal",
+      "appliesTo": "*",
+      "inherited": "yes",
+      "percentages": "N/A",
+      "computedValue": "normal or absolute length",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "values": [
+        {
+          "name": "normal",
+          "prose": "The spacing is the normal spacing for the current font. This value allows the user agent to alter the space between characters in order to justify text.",
+          "href": "https://drafts.csswg.org/css2/#valdef-letter-spacing-normal",
+          "type": "value",
+          "value": "normal"
+        }
+      ],
+      "styleDeclaration": [
+        "letter-spacing",
+        "letterSpacing"
+      ]
+    },
+    {
+      "name": "word-spacing",
+      "href": "https://drafts.csswg.org/css2/#propdef-word-spacing",
+      "value": "normal | <length> | inherit",
+      "initial": "normal",
+      "appliesTo": "*",
+      "inherited": "yes",
+      "percentages": "N/A",
+      "computedValue": "for normal the value 0; otherwise the absolute length",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "values": [
+        {
+          "name": "normal",
+          "prose": "The normal inter-word space, as defined by the current font and/or the UA.",
+          "href": "https://drafts.csswg.org/css2/#valdef-word-spacing-normal",
+          "type": "value",
+          "value": "normal"
+        }
+      ],
+      "styleDeclaration": [
+        "word-spacing",
+        "wordSpacing"
+      ]
+    },
+    {
+      "name": "text-transform",
+      "href": "https://drafts.csswg.org/css2/#propdef-text-transform",
+      "value": "capitalize | uppercase | lowercase | none | inherit",
+      "initial": "none",
+      "appliesTo": "*",
+      "inherited": "yes",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "values": [
+        {
+          "name": "capitalize",
+          "prose": "Puts the first character of each word in uppercase; other characters are unaffected.",
+          "href": "https://drafts.csswg.org/css2/#valdef-text-transform-capitalize",
+          "type": "value",
+          "value": "capitalize"
+        },
+        {
+          "name": "uppercase",
+          "prose": "Puts all characters of each word in uppercase.",
+          "href": "https://drafts.csswg.org/css2/#valdef-text-transform-uppercase",
+          "type": "value",
+          "value": "uppercase"
+        },
+        {
+          "name": "lowercase",
+          "prose": "Puts all characters of each word in lowercase.",
+          "href": "https://drafts.csswg.org/css2/#valdef-text-transform-lowercase",
+          "type": "value",
+          "value": "lowercase"
+        },
+        {
+          "name": "none",
+          "prose": "No capitalization effects.",
+          "href": "https://drafts.csswg.org/css2/#valdef-text-transform-none",
+          "type": "value",
+          "value": "none"
+        }
+      ],
+      "styleDeclaration": [
+        "text-transform",
+        "textTransform"
+      ]
+    },
+    {
+      "name": "white-space",
+      "href": "https://drafts.csswg.org/css2/#propdef-white-space",
+      "value": "normal | pre | nowrap | pre-wrap | pre-line | inherit",
+      "initial": "normal",
+      "appliesTo": "*",
+      "inherited": "yes",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "values": [
+        {
+          "name": "normal",
+          "prose": "This value directs user agents to collapse sequences of white space, and break lines as necessary to fill line boxes.",
+          "href": "https://drafts.csswg.org/css2/#valdef-white-space-normal",
+          "type": "value",
+          "value": "normal"
+        },
+        {
+          "name": "pre",
+          "prose": "This value prevents user agents from collapsing sequences of white space. Lines are only broken at preserved newline characters.",
+          "href": "https://drafts.csswg.org/css2/#valdef-white-space-pre",
+          "type": "value",
+          "value": "pre"
+        },
+        {
+          "name": "nowrap",
+          "prose": "This value collapses white space as for normal, but suppresses line breaks within text.",
+          "href": "https://drafts.csswg.org/css2/#valdef-white-space-nowrap",
+          "type": "value",
+          "value": "nowrap"
+        },
+        {
+          "name": "pre-wrap",
+          "prose": "This value prevents user agents from collapsing sequences of white space. Lines are broken at preserved newline characters, and as necessary to fill line boxes.",
+          "href": "https://drafts.csswg.org/css2/#valdef-white-space-pre-wrap",
+          "type": "value",
+          "value": "pre-wrap"
+        },
+        {
+          "name": "pre-line",
+          "prose": "This value directs user agents to collapse sequences of white space. Lines are broken at preserved newline characters, and as necessary to fill line boxes.",
+          "href": "https://drafts.csswg.org/css2/#valdef-white-space-pre-line",
+          "type": "value",
+          "value": "pre-line"
+        }
+      ],
+      "styleDeclaration": [
+        "white-space",
+        "whiteSpace"
+      ]
+    },
+    {
+      "name": "caption-side",
+      "href": "https://drafts.csswg.org/css2/#propdef-caption-side",
+      "value": "top | bottom | inherit",
+      "initial": "top",
+      "appliesTo": "table-caption elements",
+      "inherited": "yes",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "values": [
+        {
+          "name": "top",
+          "prose": "Positions the caption box above the table grid box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-caption-side-top",
+          "type": "value",
+          "value": "top"
+        },
+        {
+          "name": "bottom",
+          "prose": "Positions the caption box below the table grid box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-caption-side-bottom",
+          "type": "value",
+          "value": "bottom"
+        }
+      ],
+      "styleDeclaration": [
+        "caption-side",
+        "captionSide"
+      ]
+    },
+    {
+      "name": "table-layout",
+      "href": "https://drafts.csswg.org/css2/#propdef-table-layout",
+      "value": "auto | fixed | inherit",
+      "initial": "auto",
+      "appliesTo": "table and inline-table elements",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "values": [
+        {
+          "name": "fixed",
+          "prose": "Use the fixed table layout algorithm",
+          "href": "https://drafts.csswg.org/css2/#valdef-table-layout-fixed",
+          "type": "value",
+          "value": "fixed"
+        },
+        {
+          "name": "auto",
+          "prose": "Use any automatic table layout algorithm",
+          "href": "https://drafts.csswg.org/css2/#valdef-table-layout-auto",
+          "type": "value",
+          "value": "auto"
+        }
+      ],
+      "styleDeclaration": [
+        "table-layout",
+        "tableLayout"
+      ]
+    },
+    {
+      "name": "border-collapse",
+      "href": "https://drafts.csswg.org/css2/#propdef-border-collapse",
+      "value": "collapse | separate | inherit",
+      "initial": "separate",
+      "appliesTo": "table and inline-table elements",
+      "inherited": "yes",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "values": [
+        {
+          "name": "separate",
+          "prose": "This property selects a table’s border model. The value separate selects the separated borders border model. The value collapse selects the collapsing borders model. The models are described below.",
+          "href": "https://drafts.csswg.org/css2/#valdef-border-collapse-separate",
+          "type": "value",
+          "value": "separate"
+        },
+        {
+          "name": "collapse",
+          "prose": "This property selects a table’s border model. The value separate selects the separated borders border model. The value collapse selects the collapsing borders model. The models are described below.",
+          "href": "https://drafts.csswg.org/css2/#valdef-border-collapse-collapse",
+          "type": "value",
+          "value": "collapse"
+        }
+      ],
+      "styleDeclaration": [
+        "border-collapse",
+        "borderCollapse"
+      ]
+    },
+    {
+      "name": "border-spacing",
+      "href": "https://drafts.csswg.org/css2/#propdef-border-spacing",
+      "value": "<length> <length>? | inherit",
+      "initial": "0",
+      "appliesTo": "table and inline-table elements*",
+      "inherited": "yes",
+      "percentages": "N/A",
+      "computedValue": "two absolute lengths",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual",
+      "styleDeclaration": [
+        "border-spacing",
+        "borderSpacing"
+      ]
+    },
+    {
+      "name": "empty-cells",
+      "href": "https://drafts.csswg.org/css2/#propdef-empty-cells",
+      "value": "show | hide | inherit",
+      "initial": "show",
+      "appliesTo": "table-cell elements",
+      "inherited": "yes",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "discrete",
+      "media": "visual",
+      "values": [
+        {
+          "name": "show",
+          "prose": "When this property has the value show, borders and backgrounds are drawn around/behind empty cells (like normal cells).",
+          "href": "https://drafts.csswg.org/css2/#valdef-empty-cells-show",
+          "type": "value",
+          "value": "show"
+        },
+        {
+          "name": "hide",
+          "prose": "A value of hide means that no borders or backgrounds are drawn around/behind empty cells (see point 6 in 17.5.1). Furthermore, if all the cells in a row have a value of hide and have no visible content, then the row has zero height and there is vertical border-spacing on only one side of the row.",
+          "href": "https://drafts.csswg.org/css2/#valdef-empty-cells-hide",
+          "type": "value",
+          "value": "hide"
+        }
+      ],
+      "styleDeclaration": [
+        "empty-cells",
+        "emptyCells"
+      ]
+    },
+    {
+      "name": "cursor",
+      "href": "https://drafts.csswg.org/css2/#propdef-cursor",
+      "value": "[ [<uri> ,]* [ auto | crosshair | default | pointer | move | e-resize | ne-resize | nw-resize | n-resize | se-resize | sw-resize | s-resize | w-resize | text | wait | help | progress ] ] | inherit",
+      "initial": "auto",
+      "appliesTo": "*",
+      "inherited": "yes",
+      "percentages": "N/A",
+      "computedValue": "as specified, except with any relative URLs converted to absolute",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual, interactive",
+      "values": [
+        {
+          "name": "auto",
+          "prose": "The UA determines the cursor to display based on the current context.",
+          "href": "https://drafts.csswg.org/css2/#valdef-cursor-auto",
+          "type": "value",
+          "value": "auto"
+        },
+        {
+          "name": "crosshair",
+          "prose": "A simple crosshair (e.g., short line segments resembling a \"+\" sign).",
+          "href": "https://drafts.csswg.org/css2/#valdef-cursor-crosshair",
+          "type": "value",
+          "value": "crosshair"
+        },
+        {
+          "name": "default",
+          "prose": "The platform-dependent default cursor. Often rendered as an arrow.",
+          "href": "https://drafts.csswg.org/css2/#valdef-cursor-default",
+          "type": "value",
+          "value": "default"
+        },
+        {
+          "name": "pointer",
+          "prose": "The cursor is a pointer that indicates a link.",
+          "href": "https://drafts.csswg.org/css2/#valdef-cursor-pointer",
+          "type": "value",
+          "value": "pointer"
+        },
+        {
+          "name": "move",
+          "prose": "Indicates something is to be moved.",
+          "href": "https://drafts.csswg.org/css2/#valdef-cursor-move",
+          "type": "value",
+          "value": "move"
+        },
+        {
+          "name": "e-resize",
+          "prose": "Indicate that some edge is to be moved. For example, the se-resize cursor is used when the movement starts from the south-east corner of the box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-cursor-e-resize",
+          "type": "value",
+          "value": "e-resize"
+        },
+        {
+          "name": "ne-resize",
+          "prose": "Indicate that some edge is to be moved. For example, the se-resize cursor is used when the movement starts from the south-east corner of the box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-cursor-ne-resize",
+          "type": "value",
+          "value": "ne-resize"
+        },
+        {
+          "name": "nw-resize",
+          "prose": "Indicate that some edge is to be moved. For example, the se-resize cursor is used when the movement starts from the south-east corner of the box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-cursor-nw-resize",
+          "type": "value",
+          "value": "nw-resize"
+        },
+        {
+          "name": "n-resize",
+          "prose": "Indicate that some edge is to be moved. For example, the se-resize cursor is used when the movement starts from the south-east corner of the box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-cursor-n-resize",
+          "type": "value",
+          "value": "n-resize"
+        },
+        {
+          "name": "se-resize",
+          "prose": "Indicate that some edge is to be moved. For example, the se-resize cursor is used when the movement starts from the south-east corner of the box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-cursor-se-resize",
+          "type": "value",
+          "value": "se-resize"
+        },
+        {
+          "name": "sw-resize",
+          "prose": "Indicate that some edge is to be moved. For example, the se-resize cursor is used when the movement starts from the south-east corner of the box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-cursor-sw-resize",
+          "type": "value",
+          "value": "sw-resize"
+        },
+        {
+          "name": "s-resize",
+          "prose": "Indicate that some edge is to be moved. For example, the se-resize cursor is used when the movement starts from the south-east corner of the box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-cursor-s-resize",
+          "type": "value",
+          "value": "s-resize"
+        },
+        {
+          "name": "w-resize",
+          "prose": "Indicate that some edge is to be moved. For example, the se-resize cursor is used when the movement starts from the south-east corner of the box.",
+          "href": "https://drafts.csswg.org/css2/#valdef-cursor-w-resize",
+          "type": "value",
+          "value": "w-resize"
+        },
+        {
+          "name": "text",
+          "prose": "Indicates text that may be selected. Often rendered as an I-beam.",
+          "href": "https://drafts.csswg.org/css2/#valdef-cursor-text",
+          "type": "value",
+          "value": "text"
+        },
+        {
+          "name": "wait",
+          "prose": "Indicates that the program is busy and the user should wait. Often rendered as a watch or hourglass.",
+          "href": "https://drafts.csswg.org/css2/#valdef-cursor-wait",
+          "type": "value",
+          "value": "wait"
+        },
+        {
+          "name": "progress",
+          "prose": "A progress indicator. The program is performing some processing, but is different from wait in that the user may still interact with the program. Often rendered as a spinning beach ball, or an arrow with a watch or hourglass.",
+          "href": "https://drafts.csswg.org/css2/#valdef-cursor-progress",
+          "type": "value",
+          "value": "progress"
+        },
+        {
+          "name": "help",
+          "prose": "Help is available for the object under the cursor. Often rendered as a question mark or a balloon.",
+          "href": "https://drafts.csswg.org/css2/#valdef-cursor-help",
+          "type": "value",
+          "value": "help"
+        }
+      ],
+      "styleDeclaration": [
+        "cursor"
+      ]
+    },
+    {
+      "name": "outline",
+      "href": "https://drafts.csswg.org/css2/#propdef-outline",
+      "value": "[ <'outline-color'> || <'outline-style'> || <'outline-width'> ] | inherit",
+      "initial": "see individual properties",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "see individual properties",
+      "animationType": "see individual properties",
+      "canonicalOrder": "per grammar",
+      "media": "visual, interactive",
+      "styleDeclaration": [
+        "outline"
+      ]
+    },
+    {
+      "name": "outline-width",
+      "href": "https://drafts.csswg.org/css2/#propdef-outline-width",
+      "value": "<border-width> | inherit",
+      "initial": "medium",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "absolute length; 0 if the outline style is none",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual, interactive",
+      "styleDeclaration": [
+        "outline-width",
+        "outlineWidth"
+      ]
+    },
+    {
+      "name": "outline-style",
+      "href": "https://drafts.csswg.org/css2/#propdef-outline-style",
+      "value": "<border-style> | inherit",
+      "initial": "none",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual, interactive",
+      "styleDeclaration": [
+        "outline-style",
+        "outlineStyle"
+      ]
+    },
+    {
+      "name": "outline-color",
+      "href": "https://drafts.csswg.org/css2/#propdef-outline-color",
+      "value": "<color> | invert | inherit",
+      "initial": "invert",
+      "appliesTo": "*",
+      "inherited": "no",
+      "percentages": "N/A",
+      "computedValue": "as specified",
+      "canonicalOrder": "per grammar",
+      "animationType": "by computed value type",
+      "media": "visual, interactive",
+      "values": [
+        {
+          "name": "invert",
+          "prose": "The outline-color accepts all colors, as well as the keyword invert. invert is expected to perform a color inversion on the pixels on the screen. This is a common trick to ensure the focus border is visible, regardless of color background.",
+          "href": "https://drafts.csswg.org/css2/#value-def-invert",
+          "type": "value",
+          "value": "invert"
+        }
+      ],
+      "styleDeclaration": [
+        "outline-color",
+        "outlineColor"
+      ]
+    }
+  ],
+  "atrules": [
+    {
+      "name": "@import",
+      "prose": "The @import rule allows users to import style rules from other style sheets. In CSS 2, any @import rules must precede all other rules (except the @charset rule, if present). See the section on parsing for when user agents must ignore @import rules. The @import keyword must be followed by the URI of the style sheet to include. A string is also allowed; it will be interpreted as if it had url(...) around it.",
+      "href": "https://drafts.csswg.org/css2/#at-ruledef-import",
+      "descriptors": []
+    },
+    {
+      "name": "@media",
+      "href": "https://drafts.csswg.org/css2/#at-ruledef-media",
+      "descriptors": [],
+      "values": [
+        {
+          "name": "all",
+          "prose": "Suitable for all devices.",
+          "href": "https://drafts.csswg.org/css2/#valdef-media-all",
+          "type": "value",
+          "value": "all",
+          "values": [
+            {
+              "name": "inherit",
+              "href": "https://drafts.csswg.org/css2/#valdef-all-inherit",
+              "type": "value",
+              "value": "inherit"
+            }
+          ]
+        },
+        {
+          "name": "braille",
+          "prose": "Intended for braille tactile feedback devices.",
+          "href": "https://drafts.csswg.org/css2/#valdef-media-braille",
+          "type": "value",
+          "value": "braille"
+        },
+        {
+          "name": "embossed",
+          "prose": "Intended for paged braille printers.",
+          "href": "https://drafts.csswg.org/css2/#valdef-media-embossed",
+          "type": "value",
+          "value": "embossed"
+        },
+        {
+          "name": "handheld",
+          "prose": "Intended for handheld devices (typically small screen, limited bandwidth).",
+          "href": "https://drafts.csswg.org/css2/#valdef-media-handheld",
+          "type": "value",
+          "value": "handheld"
+        },
+        {
+          "name": "print",
+          "prose": "Intended for paged material and for documents viewed on screen in print preview mode. Please consult the section on paged media for information about formatting issues that are specific to paged media.",
+          "href": "https://drafts.csswg.org/css2/#valdef-media-print",
+          "type": "value",
+          "value": "print"
+        },
+        {
+          "name": "projection",
+          "prose": "Intended for projected presentations, for example projectors. Please consult the section on paged media for information about formatting issues that are specific to paged media.",
+          "href": "https://drafts.csswg.org/css2/#valdef-media-projection",
+          "type": "value",
+          "value": "projection"
+        },
+        {
+          "name": "screen",
+          "prose": "Intended primarily for color computer screens.",
+          "href": "https://drafts.csswg.org/css2/#valdef-media-screen",
+          "type": "value",
+          "value": "screen"
+        },
+        {
+          "name": "speech",
+          "prose": "Intended for speech synthesizers. Note: CSS2 (1998) had a similar media type called aural for this purpose.",
+          "href": "https://drafts.csswg.org/css2/#valdef-media-speech",
+          "type": "value",
+          "value": "speech"
+        },
+        {
+          "name": "tty",
+          "prose": "Intended for media using a fixed-pitch character grid (such as teletypes, terminals, or portable devices with limited display capabilities). Authors should not use pixel units with the \"tty\" media type.",
+          "href": "https://drafts.csswg.org/css2/#valdef-media-tty",
+          "type": "value",
+          "value": "tty"
+        },
+        {
+          "name": "tv",
+          "prose": "Intended for television-type devices (low resolution, color, limited-scrollability screens, sound available).",
+          "href": "https://drafts.csswg.org/css2/#valdef-media-tv",
+          "type": "value",
+          "value": "tv"
+        }
+      ]
+    },
+    {
+      "name": "@page",
+      "prose": "Authors can specify the margins of a page box inside an @page rule. An @page rule consists of the keyword \"@page\", followed by an optional page selector, followed by a block containing declarations and at-rules. Comments and white space are allowed, but optional, between the @page token and the page selector and between the page selector and the block. The declarations in an @page rule are said to be in the page context.",
+      "href": "https://drafts.csswg.org/css2/#at-ruledef-page",
+      "descriptors": []
+    }
+  ],
+  "selectors": [
+    {
+      "name": ":first-child",
+      "prose": "The :first-child pseudo-class matches an element that is the first child element of some other element.",
+      "href": "https://drafts.csswg.org/css2/#selectordef-first-child",
+      "value": ":first-child"
+    },
+    {
+      "name": ":link",
+      "href": "https://drafts.csswg.org/css2/#selectordef-link",
+      "value": ":link"
+    },
+    {
+      "name": ":visited",
+      "href": "https://drafts.csswg.org/css2/#selectordef-visited",
+      "value": ":visited"
+    },
+    {
+      "name": ":hover",
+      "href": "https://drafts.csswg.org/css2/#selectordef-hover",
+      "value": ":hover"
+    },
+    {
+      "name": ":active",
+      "href": "https://drafts.csswg.org/css2/#selectordef-active",
+      "value": ":active"
+    },
+    {
+      "name": ":focus",
+      "href": "https://drafts.csswg.org/css2/#selectordef-focus",
+      "value": ":focus"
+    },
+    {
+      "name": ":lang()",
+      "href": "https://drafts.csswg.org/css2/#selectordef-lang"
+    },
+    {
+      "name": ":first-line",
+      "href": "https://drafts.csswg.org/css2/#selectordef-first-line",
+      "value": ":first-line"
+    },
+    {
+      "name": ":first-letter",
+      "href": "https://drafts.csswg.org/css2/#selectordef-first-letter",
+      "value": ":first-letter"
+    },
+    {
+      "name": ":before",
+      "href": "https://drafts.csswg.org/css2/#selectordef-before",
+      "value": ":before"
+    },
+    {
+      "name": ":after",
+      "href": "https://drafts.csswg.org/css2/#selectordef-after",
+      "value": ":after"
+    },
+    {
+      "name": ":left",
+      "prose": "All pages are automatically classified by user agents into either the :left or :right pseudo-class. Whether the first page of a document is :left or :right depends on the major writing direction of the root element. For example, the first page of a document with a left-to-right major writing direction would be a :right page, and the first page of a document with a right-to-left major writing direction would be a :left page. To explicitly force a document to begin printing on a left or right page, authors can insert a page break before the first generated box.",
+      "href": "https://drafts.csswg.org/css2/#selectordef-left",
+      "value": ":left"
+    },
+    {
+      "name": ":right",
+      "prose": "All pages are automatically classified by user agents into either the :left or :right pseudo-class. Whether the first page of a document is :left or :right depends on the major writing direction of the root element. For example, the first page of a document with a left-to-right major writing direction would be a :right page, and the first page of a document with a right-to-left major writing direction would be a :left page. To explicitly force a document to begin printing on a left or right page, authors can insert a page break before the first generated box.",
+      "href": "https://drafts.csswg.org/css2/#selectordef-right",
+      "value": ":right"
+    },
+    {
+      "name": ":first",
+      "prose": "Authors may also specify style for the first page of a document with the :first pseudo-class:",
+      "href": "https://drafts.csswg.org/css2/#selectordef-first",
+      "value": ":first"
+    }
+  ],
+  "values": [
+    {
+      "name": "<identifier>",
+      "href": "https://drafts.csswg.org/css2/#value-def-identifier",
+      "type": "type"
+    },
+    {
+      "name": "<integer>",
+      "prose": "Some value types may have integer values (denoted by <integer>) or real number values (denoted by <number>). Real numbers and integers are specified in decimal notation only. An <integer> consists of one or more digits \"0\" to \"9\". A <number> can either be an <integer>, or it can be zero or more digits followed by a dot (.) followed by one or more digits. Both integers and real numbers may be preceded by a \"-\" or \"+\" to indicate the sign. \\-0 is equivalent to 0 and is not a negative number.",
+      "href": "https://drafts.csswg.org/css2/#value-def-integer",
+      "type": "type"
+    },
+    {
+      "name": "<number>",
+      "prose": "Some value types may have integer values (denoted by <integer>) or real number values (denoted by <number>). Real numbers and integers are specified in decimal notation only. An <integer> consists of one or more digits \"0\" to \"9\". A <number> can either be an <integer>, or it can be zero or more digits followed by a dot (.) followed by one or more digits. Both integers and real numbers may be preceded by a \"-\" or \"+\" to indicate the sign. \\-0 is equivalent to 0 and is not a negative number.",
+      "href": "https://drafts.csswg.org/css2/#value-def-number",
+      "type": "type"
+    },
+    {
+      "name": "<length>",
+      "prose": "The format of a length value (denoted by <length> in this specification) is a <number> (with or without a decimal point) immediately followed by a unit identifier (e.g., px, em, etc.). After a zero length, the unit identifier is optional.",
+      "href": "https://drafts.csswg.org/css2/#value-def-length",
+      "type": "type",
+      "values": [
+        {
+          "name": "em",
+          "prose": "The em unit is equal to the computed value of the font-size property of the element on which it is used. The exception is when em occurs in the value of the font-size property itself, in which case it refers to the font size of the parent element. It may be used for vertical or horizontal measurement. (This unit is also sometimes called the quad-width in typographic texts.)",
+          "href": "https://drafts.csswg.org/css2/#em-width",
+          "type": "value",
+          "value": "em"
+        },
+        {
+          "name": "ex",
+          "prose": "The ex unit is defined by the element’s first available font. The exception is when ex occurs in the value of the font-size property, in which case it refers to the ex of the parent element.",
+          "href": "https://drafts.csswg.org/css2/#ex",
+          "type": "value",
+          "value": "ex"
+        },
+        {
+          "name": "in",
+          "href": "https://drafts.csswg.org/css2/#valdef-length-in",
+          "type": "value",
+          "value": "in"
+        },
+        {
+          "name": "cm",
+          "href": "https://drafts.csswg.org/css2/#valdef-length-cm",
+          "type": "value",
+          "value": "cm"
+        },
+        {
+          "name": "mm",
+          "href": "https://drafts.csswg.org/css2/#valdef-length-mm",
+          "type": "value",
+          "value": "mm"
+        },
+        {
+          "name": "pt",
+          "href": "https://drafts.csswg.org/css2/#valdef-length-pt",
+          "type": "value",
+          "value": "pt"
+        },
+        {
+          "name": "pc",
+          "href": "https://drafts.csswg.org/css2/#valdef-length-pc",
+          "type": "value",
+          "value": "pc"
+        },
+        {
+          "name": "px",
+          "href": "https://drafts.csswg.org/css2/#valdef-length-px",
+          "type": "value",
+          "value": "px"
+        }
+      ]
+    },
+    {
+      "name": "<percentage>",
+      "prose": "The format of a percentage value (denoted by <percentage> in this specification) is a <number> immediately followed by %.",
+      "href": "https://drafts.csswg.org/css2/#value-def-percentage",
+      "type": "type"
+    },
+    {
+      "name": "<uri>",
+      "prose": "URI values (Uniform Resource Identifiers, see [RFC3986], which includes URLs, URNs, etc) in this specification are denoted by <uri>. The functional notation used to designate URIs in property values is \"url()\", as in:",
+      "href": "https://drafts.csswg.org/css2/#value-def-uri",
+      "type": "type"
+    },
+    {
+      "name": "<counter>",
+      "prose": "Counters are denoted by case-sensitive identifiers (see the counter-increment and counter-reset properties). To refer to the value of a counter, the notation counter(<identifier>) or 'counter(<identifier>, <list-style-type>)', with optional white space separating the tokens, is used. The default style is decimal.",
+      "href": "https://drafts.csswg.org/css2/#value-def-counter",
+      "type": "type"
+    },
+    {
+      "name": "counter()",
+      "value": "counter(<identifier>)",
+      "href": "https://drafts.csswg.org/css2/#funcdef-counter",
+      "type": "function"
+    },
+    {
+      "name": "counters()",
+      "value": "counters(<identifier>, <string>)",
+      "href": "https://drafts.csswg.org/css2/#funcdef-counters",
+      "type": "function"
+    },
+    {
+      "name": "<color>",
+      "prose": "A <color> is either a keyword or a numerical RGB specification.",
+      "href": "https://drafts.csswg.org/css2/#value-def-color",
+      "type": "type",
+      "values": [
+        {
+          "name": "aqua",
+          "prose": "The list of color keywords is: aqua, black, blue, fuchsia, gray, green, lime, maroon, navy, olive, orange, purple, red, silver, teal, white, and yellow. These 17 colors have the following values:",
+          "href": "https://drafts.csswg.org/css2/#valdef-color-aqua",
+          "type": "value",
+          "value": "aqua"
+        },
+        {
+          "name": "black",
+          "prose": "The list of color keywords is: aqua, black, blue, fuchsia, gray, green, lime, maroon, navy, olive, orange, purple, red, silver, teal, white, and yellow. These 17 colors have the following values:",
+          "href": "https://drafts.csswg.org/css2/#valdef-color-black",
+          "type": "value",
+          "value": "black"
+        },
+        {
+          "name": "blue",
+          "prose": "The list of color keywords is: aqua, black, blue, fuchsia, gray, green, lime, maroon, navy, olive, orange, purple, red, silver, teal, white, and yellow. These 17 colors have the following values:",
+          "href": "https://drafts.csswg.org/css2/#valdef-color-blue",
+          "type": "value",
+          "value": "blue"
+        },
+        {
+          "name": "fuchsia",
+          "prose": "The list of color keywords is: aqua, black, blue, fuchsia, gray, green, lime, maroon, navy, olive, orange, purple, red, silver, teal, white, and yellow. These 17 colors have the following values:",
+          "href": "https://drafts.csswg.org/css2/#valdef-color-fuchsia",
+          "type": "value",
+          "value": "fuchsia"
+        },
+        {
+          "name": "gray",
+          "prose": "The list of color keywords is: aqua, black, blue, fuchsia, gray, green, lime, maroon, navy, olive, orange, purple, red, silver, teal, white, and yellow. These 17 colors have the following values:",
+          "href": "https://drafts.csswg.org/css2/#valdef-color-gray",
+          "type": "value",
+          "value": "gray"
+        },
+        {
+          "name": "green",
+          "prose": "The list of color keywords is: aqua, black, blue, fuchsia, gray, green, lime, maroon, navy, olive, orange, purple, red, silver, teal, white, and yellow. These 17 colors have the following values:",
+          "href": "https://drafts.csswg.org/css2/#valdef-color-green",
+          "type": "value",
+          "value": "green"
+        },
+        {
+          "name": "lime",
+          "prose": "The list of color keywords is: aqua, black, blue, fuchsia, gray, green, lime, maroon, navy, olive, orange, purple, red, silver, teal, white, and yellow. These 17 colors have the following values:",
+          "href": "https://drafts.csswg.org/css2/#valdef-color-lime",
+          "type": "value",
+          "value": "lime"
+        },
+        {
+          "name": "maroon",
+          "prose": "The list of color keywords is: aqua, black, blue, fuchsia, gray, green, lime, maroon, navy, olive, orange, purple, red, silver, teal, white, and yellow. These 17 colors have the following values:",
+          "href": "https://drafts.csswg.org/css2/#valdef-color-maroon",
+          "type": "value",
+          "value": "maroon"
+        },
+        {
+          "name": "navy",
+          "prose": "The list of color keywords is: aqua, black, blue, fuchsia, gray, green, lime, maroon, navy, olive, orange, purple, red, silver, teal, white, and yellow. These 17 colors have the following values:",
+          "href": "https://drafts.csswg.org/css2/#valdef-color-navy",
+          "type": "value",
+          "value": "navy"
+        },
+        {
+          "name": "olive",
+          "prose": "The list of color keywords is: aqua, black, blue, fuchsia, gray, green, lime, maroon, navy, olive, orange, purple, red, silver, teal, white, and yellow. These 17 colors have the following values:",
+          "href": "https://drafts.csswg.org/css2/#valdef-color-olive",
+          "type": "value",
+          "value": "olive"
+        },
+        {
+          "name": "orange",
+          "prose": "The list of color keywords is: aqua, black, blue, fuchsia, gray, green, lime, maroon, navy, olive, orange, purple, red, silver, teal, white, and yellow. These 17 colors have the following values:",
+          "href": "https://drafts.csswg.org/css2/#valdef-color-orange",
+          "type": "value",
+          "value": "orange"
+        },
+        {
+          "name": "purple",
+          "prose": "The list of color keywords is: aqua, black, blue, fuchsia, gray, green, lime, maroon, navy, olive, orange, purple, red, silver, teal, white, and yellow. These 17 colors have the following values:",
+          "href": "https://drafts.csswg.org/css2/#valdef-color-purple",
+          "type": "value",
+          "value": "purple"
+        },
+        {
+          "name": "red",
+          "prose": "The list of color keywords is: aqua, black, blue, fuchsia, gray, green, lime, maroon, navy, olive, orange, purple, red, silver, teal, white, and yellow. These 17 colors have the following values:",
+          "href": "https://drafts.csswg.org/css2/#valdef-color-red",
+          "type": "value",
+          "value": "red"
+        },
+        {
+          "name": "silver",
+          "prose": "The list of color keywords is: aqua, black, blue, fuchsia, gray, green, lime, maroon, navy, olive, orange, purple, red, silver, teal, white, and yellow. These 17 colors have the following values:",
+          "href": "https://drafts.csswg.org/css2/#valdef-color-silver",
+          "type": "value",
+          "value": "silver"
+        },
+        {
+          "name": "teal",
+          "prose": "The list of color keywords is: aqua, black, blue, fuchsia, gray, green, lime, maroon, navy, olive, orange, purple, red, silver, teal, white, and yellow. These 17 colors have the following values:",
+          "href": "https://drafts.csswg.org/css2/#valdef-color-teal",
+          "type": "value",
+          "value": "teal"
+        },
+        {
+          "name": "white",
+          "prose": "The list of color keywords is: aqua, black, blue, fuchsia, gray, green, lime, maroon, navy, olive, orange, purple, red, silver, teal, white, and yellow. These 17 colors have the following values:",
+          "href": "https://drafts.csswg.org/css2/#valdef-color-white",
+          "type": "value",
+          "value": "white"
+        },
+        {
+          "name": "yellow",
+          "prose": "The list of color keywords is: aqua, black, blue, fuchsia, gray, green, lime, maroon, navy, olive, orange, purple, red, silver, teal, white, and yellow. These 17 colors have the following values:",
+          "href": "https://drafts.csswg.org/css2/#valdef-color-yellow",
+          "type": "value",
+          "value": "yellow"
+        }
+      ]
+    },
+    {
+      "name": "<string>",
+      "prose": "Strings can either be written with double quotes or with single quotes. Double quotes cannot occur inside double quotes, unless escaped (e.g., as \\\" or as \\22). Analogously for single quotes (e.g., \"'\" or \"\\27\").",
+      "href": "https://drafts.csswg.org/css2/#value-def-string",
+      "type": "type"
+    },
+    {
+      "name": "<margin-width>",
+      "prose": "The properties defined in this section refer to the <margin-width> value type, which may take one of the following values:",
+      "href": "https://drafts.csswg.org/css2/#value-def-margin-width",
+      "type": "type"
+    },
+    {
+      "name": "<padding-width>",
+      "prose": "The properties defined in this section refer to the <padding-width> value type, which may take one of the following values:",
+      "href": "https://drafts.csswg.org/css2/#value-def-padding-width",
+      "type": "type",
+      "values": [
+        {
+          "name": "<length>",
+          "prose": "Specifies a fixed width.",
+          "href": "https://drafts.csswg.org/css2/#valdef-padding-width-length",
+          "type": "value",
+          "value": "<length>"
+        },
+        {
+          "name": "<percentage>",
+          "prose": "The percentage is calculated with respect to the width of the generated box’s containing block, even for padding-top and padding-bottom. If the containing block’s width depends on this element, then the resulting layout is undefined in CSS 2.",
+          "href": "https://drafts.csswg.org/css2/#valdef-padding-width-percentage",
+          "type": "value",
+          "value": "<percentage>"
+        }
+      ]
+    },
+    {
+      "name": "<border-width>",
+      "prose": "The border width properties specify the width of the border area. The properties defined in this section refer to the <border-width> value type, which may take one of the following values:",
+      "href": "https://drafts.csswg.org/css2/#value-def-border-width",
+      "type": "type",
+      "values": [
+        {
+          "name": "thin",
+          "prose": "A thin border.",
+          "href": "https://drafts.csswg.org/css2/#valdef-border-width-thin",
+          "type": "value",
+          "value": "thin"
+        },
+        {
+          "name": "medium",
+          "prose": "A medium border.",
+          "href": "https://drafts.csswg.org/css2/#valdef-border-width-medium",
+          "type": "value",
+          "value": "medium"
+        },
+        {
+          "name": "thick",
+          "prose": "A thick border.",
+          "href": "https://drafts.csswg.org/css2/#valdef-border-width-thick",
+          "type": "value",
+          "value": "thick"
+        },
+        {
+          "name": "<length>",
+          "prose": "The border’s thickness has an explicit value. Explicit border widths cannot be negative.",
+          "href": "https://drafts.csswg.org/css2/#valdef-border-width-length",
+          "type": "value",
+          "value": "<length>"
+        }
+      ]
+    },
+    {
+      "name": "<border-style>",
+      "prose": "The border style properties specify the line style of a box’s border (solid, double, dashed, etc.). The properties defined in this section refer to the <border-style> value type, which may take one of the following values:",
+      "href": "https://drafts.csswg.org/css2/#value-def-border-style",
+      "type": "type",
+      "values": [
+        {
+          "name": "none",
+          "prose": "No border; the computed border width is zero.",
+          "href": "https://drafts.csswg.org/css2/#value-def-bo-none",
+          "type": "value",
+          "value": "none"
+        },
+        {
+          "name": "hidden",
+          "prose": "Same as none, except in terms of border conflict resolution for table elements.",
+          "href": "https://drafts.csswg.org/css2/#value-def-hidden",
+          "type": "value",
+          "value": "hidden"
+        },
+        {
+          "name": "dotted",
+          "prose": "The border is a series of dots.",
+          "href": "https://drafts.csswg.org/css2/#value-def-dotted",
+          "type": "value",
+          "value": "dotted"
+        },
+        {
+          "name": "dashed",
+          "prose": "The border is a series of short line segments.",
+          "href": "https://drafts.csswg.org/css2/#value-def-dashed",
+          "type": "value",
+          "value": "dashed"
+        },
+        {
+          "name": "solid",
+          "prose": "The border is a single line segment.",
+          "href": "https://drafts.csswg.org/css2/#value-def-solid",
+          "type": "value",
+          "value": "solid"
+        },
+        {
+          "name": "double",
+          "prose": "The border is two solid lines. The sum of the two lines and the space between them equals the value of border-width.",
+          "href": "https://drafts.csswg.org/css2/#value-def-double",
+          "type": "value",
+          "value": "double"
+        },
+        {
+          "name": "groove",
+          "prose": "The border looks as though it were carved into the canvas.",
+          "href": "https://drafts.csswg.org/css2/#value-def-groove",
+          "type": "value",
+          "value": "groove"
+        },
+        {
+          "name": "ridge",
+          "prose": "The opposite of groove: the border looks as though it were coming out of the canvas.",
+          "href": "https://drafts.csswg.org/css2/#value-def-ridge",
+          "type": "value",
+          "value": "ridge"
+        },
+        {
+          "name": "inset",
+          "prose": "The border makes the box look as though it were embedded in the canvas.",
+          "href": "https://drafts.csswg.org/css2/#value-def-inset",
+          "type": "value",
+          "value": "inset"
+        },
+        {
+          "name": "outset",
+          "prose": "The opposite of inset: the border makes the box look as though it were coming out of the canvas.",
+          "href": "https://drafts.csswg.org/css2/#value-def-outset",
+          "type": "value",
+          "value": "outset"
+        }
+      ]
+    },
+    {
+      "name": "<shape>",
+      "prose": "In CSS 2, the only valid <shape> value is: rect(<top>, <right>, <bottom>, <left>) where <top> and <bottom> specify offsets from the top border edge of the box, and <right>, and <left> specify offsets from the left border edge of the box. Authors should separate offset values with commas. User agents must support separation with commas, but may also support separation without commas (but not a combination), because a previous revision of this specification was ambiguous in this respect. <top>, <right>, <bottom>, and <left> may either have a <length> value or auto. Negative lengths are permitted. The value auto means that a given edge of the clipping region will be the same as the edge of the element’s generated border box (i.e., auto means the same as 0 for <top> and <left>, the same as the used value of the height plus the sum of vertical padding and border widths for <bottom>, and the same as the used value of the width plus the sum of the horizontal padding and border widths for <right>, such that four auto values result in the clipping region being the same as the element’s border box). When coordinates are rounded to pixel coordinates, care should be taken that no pixels remain visible when <left> and <right> have the same value (or <top> and <bottom> have the same value), and conversely that no pixels within the element’s border box remain hidden when these values are auto.",
+      "href": "https://drafts.csswg.org/css2/#value-def-shape",
+      "type": "type"
+    },
+    {
+      "name": "<top>",
+      "prose": "<top>, <right>, <bottom>, and <left> may either have a <length> value or auto. Negative lengths are permitted. The value auto means that a given edge of the clipping region will be the same as the edge of the element’s generated border box (i.e., auto means the same as 0 for <top> and <left>, the same as the used value of the height plus the sum of vertical padding and border widths for <bottom>, and the same as the used value of the width plus the sum of the horizontal padding and border widths for <right>, such that four auto values result in the clipping region being the same as the element’s border box).",
+      "href": "https://drafts.csswg.org/css2/#value-def-top",
+      "type": "type",
+      "values": [
+        {
+          "name": "auto",
+          "prose": "<top>, <right>, <bottom>, and <left> may either have a <length> value or auto. Negative lengths are permitted. The value auto means that a given edge of the clipping region will be the same as the edge of the element’s generated border box (i.e., auto means the same as 0 for <top> and <left>, the same as the used value of the height plus the sum of vertical padding and border widths for <bottom>, and the same as the used value of the width plus the sum of the horizontal padding and border widths for <right>, such that four auto values result in the clipping region being the same as the element’s border box).",
+          "href": "https://drafts.csswg.org/css2/#valdef-top-auto%E2%91%A0",
+          "type": "value",
+          "value": "auto"
+        }
+      ]
+    },
+    {
+      "name": "<right>",
+      "prose": "<top>, <right>, <bottom>, and <left> may either have a <length> value or auto. Negative lengths are permitted. The value auto means that a given edge of the clipping region will be the same as the edge of the element’s generated border box (i.e., auto means the same as 0 for <top> and <left>, the same as the used value of the height plus the sum of vertical padding and border widths for <bottom>, and the same as the used value of the width plus the sum of the horizontal padding and border widths for <right>, such that four auto values result in the clipping region being the same as the element’s border box).",
+      "href": "https://drafts.csswg.org/css2/#value-def-right",
+      "type": "type",
+      "values": [
+        {
+          "name": "auto",
+          "prose": "<top>, <right>, <bottom>, and <left> may either have a <length> value or auto. Negative lengths are permitted. The value auto means that a given edge of the clipping region will be the same as the edge of the element’s generated border box (i.e., auto means the same as 0 for <top> and <left>, the same as the used value of the height plus the sum of vertical padding and border widths for <bottom>, and the same as the used value of the width plus the sum of the horizontal padding and border widths for <right>, such that four auto values result in the clipping region being the same as the element’s border box).",
+          "href": "https://drafts.csswg.org/css2/#valdef-top-auto%E2%91%A0",
+          "type": "value",
+          "value": "auto"
+        }
+      ]
+    },
+    {
+      "name": "<bottom>",
+      "prose": "<top>, <right>, <bottom>, and <left> may either have a <length> value or auto. Negative lengths are permitted. The value auto means that a given edge of the clipping region will be the same as the edge of the element’s generated border box (i.e., auto means the same as 0 for <top> and <left>, the same as the used value of the height plus the sum of vertical padding and border widths for <bottom>, and the same as the used value of the width plus the sum of the horizontal padding and border widths for <right>, such that four auto values result in the clipping region being the same as the element’s border box).",
+      "href": "https://drafts.csswg.org/css2/#value-def-bottom",
+      "type": "type",
+      "values": [
+        {
+          "name": "auto",
+          "prose": "<top>, <right>, <bottom>, and <left> may either have a <length> value or auto. Negative lengths are permitted. The value auto means that a given edge of the clipping region will be the same as the edge of the element’s generated border box (i.e., auto means the same as 0 for <top> and <left>, the same as the used value of the height plus the sum of vertical padding and border widths for <bottom>, and the same as the used value of the width plus the sum of the horizontal padding and border widths for <right>, such that four auto values result in the clipping region being the same as the element’s border box).",
+          "href": "https://drafts.csswg.org/css2/#valdef-top-auto%E2%91%A0",
+          "type": "value",
+          "value": "auto"
+        }
+      ]
+    },
+    {
+      "name": "<left>",
+      "prose": "<top>, <right>, <bottom>, and <left> may either have a <length> value or auto. Negative lengths are permitted. The value auto means that a given edge of the clipping region will be the same as the edge of the element’s generated border box (i.e., auto means the same as 0 for <top> and <left>, the same as the used value of the height plus the sum of vertical padding and border widths for <bottom>, and the same as the used value of the width plus the sum of the horizontal padding and border widths for <right>, such that four auto values result in the clipping region being the same as the element’s border box).",
+      "href": "https://drafts.csswg.org/css2/#value-def-left",
+      "type": "type",
+      "values": [
+        {
+          "name": "auto",
+          "prose": "<top>, <right>, <bottom>, and <left> may either have a <length> value or auto. Negative lengths are permitted. The value auto means that a given edge of the clipping region will be the same as the edge of the element’s generated border box (i.e., auto means the same as 0 for <top> and <left>, the same as the used value of the height plus the sum of vertical padding and border widths for <bottom>, and the same as the used value of the width plus the sum of the horizontal padding and border widths for <right>, such that four auto values result in the clipping region being the same as the element’s border box).",
+          "href": "https://drafts.csswg.org/css2/#valdef-top-auto%E2%91%A0",
+          "type": "value",
+          "value": "auto"
+        }
+      ]
+    },
+    {
+      "name": "<family-name>",
+      "prose": "The name of a font family of choice. In the last example, \"Gill\" and \"Helvetica\" are font families.",
+      "href": "https://drafts.csswg.org/css2/#value-def-family-name",
+      "type": "type"
+    },
+    {
+      "name": "<generic-family>",
+      "prose": "In the example above, the last value is a generic family name. The following generic families are defined: serif (e.g., Times) sans-serif (e.g., Helvetica) cursive (e.g., Zapf-Chancery) fantasy (e.g., Western) monospace (e.g., Courier) Style sheet designers are encouraged to offer a generic font family as a last alternative. Generic font family names are keywords and must NOT be quoted.",
+      "href": "https://drafts.csswg.org/css2/#value-def-generic-family",
+      "type": "type",
+      "values": [
+        {
+          "name": "serif",
+          "href": "https://drafts.csswg.org/css2/#valdef-generic-family-serif",
+          "type": "value",
+          "value": "serif"
+        },
+        {
+          "name": "sans-serif",
+          "href": "https://drafts.csswg.org/css2/#valdef-generic-family-sans-serif",
+          "type": "value",
+          "value": "sans-serif"
+        },
+        {
+          "name": "cursive",
+          "href": "https://drafts.csswg.org/css2/#valdef-generic-family-cursive",
+          "type": "value",
+          "value": "cursive"
+        },
+        {
+          "name": "fantasy",
+          "href": "https://drafts.csswg.org/css2/#valdef-generic-family-fantasy",
+          "type": "value",
+          "value": "fantasy"
+        },
+        {
+          "name": "monospace",
+          "href": "https://drafts.csswg.org/css2/#valdef-generic-family-monospace",
+          "type": "value",
+          "value": "monospace"
+        }
+      ]
+    },
+    {
+      "name": "<absolute-size>",
+      "href": "https://drafts.csswg.org/css2/#value-def-absolute-size",
+      "type": "type"
+    },
+    {
+      "name": "<relative-size>",
+      "href": "https://drafts.csswg.org/css2/#value-def-relative-size",
+      "type": "type"
+    }
+  ]
+}

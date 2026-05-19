@@ -2,8 +2,11 @@ using FluentAssertions;
 using Tessera.Css.Selectors;
 using Tessera.Dom;
 using Xunit;
+using Starling.Spec;
 
 namespace Tessera.Css.Tests;
+
+[Spec("css-pseudo-4", "https://www.w3.org/TR/css-pseudo-4/")]
 
 public sealed class PseudoElementTests
 {

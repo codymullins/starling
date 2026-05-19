@@ -3,8 +3,11 @@ using Tessera.Css.Parser;
 using Tessera.Css.Properties;
 using Tessera.Css.Values;
 using Xunit;
+using Starling.Spec;
 
 namespace Tessera.Css.Tests;
+
+[Spec("css-flexbox-1", "https://www.w3.org/TR/css-flexbox-1/")]
 
 public sealed class FlexPropertyTests
 {

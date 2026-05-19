@@ -5,8 +5,11 @@ using Tessera.Css.Properties;
 using Tessera.Css.Values;
 using Tessera.Dom;
 using Xunit;
+using Starling.Spec;
 
 namespace Tessera.Css.Tests;
+
+[Spec("css-cascade-5", "https://www.w3.org/TR/css-cascade-5/")]
 
 public sealed class CascadeLayersTests
 {
