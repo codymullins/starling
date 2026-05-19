@@ -9,6 +9,7 @@ depends_on: []
 subsystem: Starling.Css
 plan_refs:
   - browser-plan/06_CSS.md
+completed_at: "2026-05-19T15:41:29Z"
 ---
 
 # wp:M5-css-11-per-keyframe-timing — animation-timing-function inside a @keyframes block
@@ -64,3 +65,4 @@ starting at that keyframe**, not to the whole animation
   * 2 new tests in `PerKeyframeTimingTests`; full Css suite 478 green;
     sln build green.
 - 2026-05-19T15:39:22Z — claimed by agent-copilot-claude-opus-4.7, working on main
+- 2026-05-19T15:41:29Z — merged; complete
