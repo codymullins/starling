@@ -339,7 +339,7 @@ public sealed partial class JsCompiler
         foreach (var p in ps)
         {
             if (p is SpreadElement) break;
-            if (p is AssignmentExpression) break;
+            if (p is AssignmentExpression or AssignmentPattern) break;
             n++;
         }
         return n;
@@ -445,6 +445,21 @@ public sealed partial class JsCompiler
                 }
                 return;
             case AssignmentExpression a when a.Op == "=": PreallocateCapturedInPattern(a.Target); return;
+            case AssignmentPattern a: PreallocateCapturedInPattern(a.Target); return;
+            case ArrayPattern arr:
+                foreach (var el in arr.Elements)
+                {
+                    switch (el)
+                    {
+                        case ArrayPatternBindingElement binding: PreallocateCapturedInPattern(binding.Target); break;
+                        case ArrayPatternRestElement rest: PreallocateCapturedInPattern(rest.Target); break;
+                    }
+                }
+                return;
+            case ObjectPattern obj:
+                foreach (var prop in obj.Properties) PreallocateCapturedInPattern(prop.Target);
+                if (obj.Rest is not null) PreallocateCapturedInPattern(obj.Rest.Argument);
+                return;
             case ArrayExpression arr:
                 foreach (var el in arr.Elements)
                 {
@@ -460,6 +475,7 @@ public sealed partial class JsCompiler
                 }
                 return;
             case SpreadElement spread: PreallocateCapturedInPattern(spread.Argument); return;
+            case RestElement rest: PreallocateCapturedInPattern(rest.Argument); return;
         }
     }
 
@@ -1866,7 +1882,9 @@ public sealed partial class JsCompiler
     {
         ArrayExpression => true,
         ObjectExpression => true,
+        BindingPattern => true,
         AssignmentExpression { Op: "=" } a => IsPattern(a.Target),
+        AssignmentPattern a => IsPattern(a.Target),
         _ => false,
     };
 
@@ -1949,6 +1967,27 @@ public sealed partial class JsCompiler
             case AssignmentExpression { Op: "=" } a:
                 DeclarePatternBindings(a.Target);
                 return;
+            case AssignmentPattern a:
+                DeclarePatternBindings(a.Target);
+                return;
+            case ArrayPattern arr:
+                foreach (var element in arr.Elements)
+                {
+                    switch (element)
+                    {
+                        case ArrayPatternBindingElement binding:
+                            DeclarePatternBindings(binding.Target);
+                            break;
+                        case ArrayPatternRestElement rest:
+                            DeclarePatternBindings(rest.Target);
+                            break;
+                    }
+                }
+                return;
+            case ObjectPattern obj:
+                foreach (var prop in obj.Properties) DeclarePatternBindings(prop.Target);
+                if (obj.Rest is not null) DeclarePatternBindings(obj.Rest.Argument);
+                return;
             case ArrayExpression arr:
                 foreach (var element in arr.Elements)
                 {
@@ -1988,6 +2027,15 @@ public sealed partial class JsCompiler
             case AssignmentExpression { Op: "=" } a:
                 EmitDefaultedPattern(a.Target, a.Value, isDeclaration);
                 return;
+            case AssignmentPattern a:
+                EmitDefaultedPattern(a.Target, a.Default, isDeclaration);
+                return;
+            case ArrayPattern arr:
+                EmitArrayPattern(arr, isDeclaration);
+                return;
+            case ObjectPattern obj:
+                EmitObjectPattern(obj, isDeclaration);
+                return;
             case ArrayExpression arr:
                 EmitArrayPattern(arr, isDeclaration);
                 return;
@@ -1996,6 +2044,9 @@ public sealed partial class JsCompiler
                 return;
             case SpreadElement spread:
                 EmitPatternFromStack(spread.Argument, isDeclaration);
+                return;
+            case RestElement rest:
+                EmitPatternFromStack(rest.Argument, isDeclaration);
                 return;
             default:
                 throw new NotSupportedException($"invalid destructuring target '{pattern.GetType().Name}'");
@@ -2061,6 +2112,32 @@ public sealed partial class JsCompiler
         }
     }
 
+    private void EmitArrayPattern(ArrayPattern arr, bool isDeclaration)
+    {
+        var srcSlot = _b.ReserveLocal();
+        _b.Emit(Opcode.StoreLocal, (byte)srcSlot);
+        for (var i = 0; i < arr.Elements.Count; i++)
+        {
+            switch (arr.Elements[i])
+            {
+                case ArrayPatternHole:
+                    continue;
+                case ArrayPatternRestElement rest:
+                    _b.Emit(Opcode.LoadLocal, (byte)srcSlot);
+                    _b.EmitU16(Opcode.RestArray, i);
+                    EmitPatternFromStack(rest.Target, isDeclaration);
+                    return;
+                case ArrayPatternBindingElement binding:
+                    _b.Emit(Opcode.LoadLocal, (byte)srcSlot);
+                    _b.EmitU16(Opcode.LoadConst, _b.AddConstant((double)i));
+                    _b.Emit(Opcode.LoadComputed);
+                    if (binding.Default is null) EmitPatternFromStack(binding.Target, isDeclaration);
+                    else EmitDefaultedPattern(binding.Target, binding.Default, isDeclaration);
+                    break;
+            }
+        }
+    }
+
     private void EmitObjectPattern(ObjectExpression obj, bool isDeclaration)
     {
         var srcSlot = _b.ReserveLocal();
@@ -2070,38 +2147,65 @@ public sealed partial class JsCompiler
         {
             if (prop.Value is SpreadElement spread)
             {
-                _b.Emit(Opcode.LoadLocal, (byte)srcSlot);
-                foreach (var ex in exclusions)
-                {
-                    if (ex.Kind == RestExclusionKind.Constant)
-                        _b.EmitU16(Opcode.LoadConst, _b.AddConstant(ex.Name!));
-                    else
-                        _b.Emit(Opcode.LoadLocal, (byte)ex.Slot);
-                }
-                _b.EmitU16(Opcode.RestObject, exclusions.Count);
-                EmitPatternFromStack(spread.Argument, isDeclaration);
+                EmitObjectRest(srcSlot, exclusions, spread.Argument, isDeclaration);
                 continue;
             }
 
-            if (prop.Computed)
-            {
-                var keySlot = _b.ReserveLocal();
-                EmitExpression(prop.Key);
-                _b.Emit(Opcode.StoreLocal, (byte)keySlot);
-                _b.Emit(Opcode.LoadLocal, (byte)srcSlot);
-                _b.Emit(Opcode.LoadLocal, (byte)keySlot);
-                _b.Emit(Opcode.LoadComputed);
-                exclusions.Add(new RestExclusion(RestExclusionKind.Local, null, keySlot));
-            }
-            else
-            {
-                var name = PropertyName(prop.Key);
-                _b.Emit(Opcode.LoadLocal, (byte)srcSlot);
-                _b.EmitU16(Opcode.LoadProperty, _b.AddConstant(name));
-                exclusions.Add(new RestExclusion(RestExclusionKind.Constant, name, -1));
-            }
+            EmitObjectPatternPropertyLoad(srcSlot, prop.Key, prop.Computed, exclusions);
             EmitPatternFromStack(prop.Value, isDeclaration);
         }
+    }
+
+    private void EmitObjectPattern(ObjectPattern obj, bool isDeclaration)
+    {
+        var srcSlot = _b.ReserveLocal();
+        _b.Emit(Opcode.StoreLocal, (byte)srcSlot);
+        var exclusions = new List<RestExclusion>();
+        foreach (var prop in obj.Properties)
+        {
+            EmitObjectPatternPropertyLoad(srcSlot, prop.Key, prop.Computed, exclusions);
+            if (prop.Default is null) EmitPatternFromStack(prop.Target, isDeclaration);
+            else EmitDefaultedPattern(prop.Target, prop.Default, isDeclaration);
+        }
+        if (obj.Rest is not null)
+        {
+            EmitObjectRest(srcSlot, exclusions, obj.Rest.Argument, isDeclaration);
+        }
+    }
+
+    private void EmitObjectPatternPropertyLoad(int srcSlot, Expression key, bool computed, List<RestExclusion> exclusions)
+    {
+        if (computed)
+        {
+            var keySlot = _b.ReserveLocal();
+            EmitExpression(key);
+            _b.Emit(Opcode.StoreLocal, (byte)keySlot);
+            _b.Emit(Opcode.LoadLocal, (byte)srcSlot);
+            _b.Emit(Opcode.LoadLocal, (byte)keySlot);
+            _b.Emit(Opcode.LoadComputed);
+            exclusions.Add(new RestExclusion(RestExclusionKind.Local, null, keySlot));
+        }
+        else
+        {
+            var name = PropertyName(key);
+            _b.Emit(Opcode.LoadLocal, (byte)srcSlot);
+            _b.EmitU16(Opcode.LoadProperty, _b.AddConstant(name));
+            exclusions.Add(new RestExclusion(RestExclusionKind.Constant, name, -1));
+        }
+    }
+
+    private void EmitObjectRest(int srcSlot, List<RestExclusion> exclusions, Expression target, bool isDeclaration)
+    {
+        _b.Emit(Opcode.LoadLocal, (byte)srcSlot);
+        foreach (var ex in exclusions)
+        {
+            if (ex.Kind == RestExclusionKind.Constant)
+                _b.EmitU16(Opcode.LoadConst, _b.AddConstant(ex.Name!));
+            else
+                _b.Emit(Opcode.LoadLocal, (byte)ex.Slot);
+        }
+        _b.EmitU16(Opcode.RestObject, exclusions.Count);
+        EmitPatternFromStack(target, isDeclaration);
     }
 
     private void EmitArrayLiteral(ArrayExpression ae)

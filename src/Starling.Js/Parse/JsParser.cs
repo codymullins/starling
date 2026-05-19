@@ -19,6 +19,7 @@ public sealed partial class JsParser
 {
     private readonly JsLexer _lex;
     private JsToken _current;
+    private int _disallowInDepth;
 
     public JsParser(string source)
         : this(new JsLexer(source)) { }
@@ -200,7 +201,8 @@ public sealed partial class JsParser
             var op = _current.Lexeme;
             Advance();
             var right = ParseAssignment(); // right-associative
-            return new AssignmentExpression(op, left, right, left.Start, right.End);
+            var target = op == "=" ? ReinterpretAssignmentTarget(left) : left;
+            return new AssignmentExpression(op, target, right, target.Start, right.End);
         }
         return left;
     }
@@ -275,46 +277,29 @@ public sealed partial class JsParser
 
     /// <summary>Turn a parenthesized expression list (already parsed as a
     /// grouping or <see cref="SequenceExpression"/>) back into an arrow
-    /// parameter list. Today: identifiers only — destructuring patterns land
-    /// in B1b-2.</summary>
+    /// parameter list, reinterpreting cover literals as binding patterns.</summary>
     private static List<Expression> LiftArrowParams(Expression expr)
     {
         var list = new List<Expression>();
         switch (expr)
         {
             case SequenceExpression seq:
-                foreach (var e in seq.Expressions) list.Add(LiftSingleParam(e));
-                break;
-            case Identifier:
-            case ArrayExpression:
-            case ObjectExpression:
-            case AssignmentExpression { Op: "=" }:
-                list.Add(LiftSingleParam(expr));
+                foreach (var e in seq.Expressions) list.Add(ReinterpretBindingParameter(e));
                 break;
             default:
-                throw new JsParseException(
-                    "arrow parameter list must be identifiers or destructuring patterns", expr.Start);
+                list.Add(ReinterpretBindingParameter(expr));
+                break;
         }
         return list;
     }
 
-    private static Expression LiftSingleParam(Expression e) => e switch
-    {
-        Identifier => e,
-        ArrayExpression => e,
-        ObjectExpression => e,
-        AssignmentExpression { Op: "=" } a when IsBindingPattern(a.Target) => e,
-        _ => throw new JsParseException(
-            "arrow parameter list must be identifiers or destructuring patterns", e.Start),
-    };
-
     private static bool IsBindingPattern(Expression e) => e switch
     {
         Identifier => true,
-        ArrayExpression => true,
-        ObjectExpression => true,
-        AssignmentExpression { Op: "=" } a => IsBindingPattern(a.Target),
+        BindingPattern => true,
+        AssignmentPattern { Target: var target } => IsBindingPattern(target),
         SpreadElement { Argument: var inner } => IsBindingPattern(inner),
+        RestElement { Argument: var inner } => IsBindingPattern(inner),
         _ => false,
     };
 
@@ -399,7 +384,8 @@ public sealed partial class JsParser
         var left = ParseShift();
         while (_current.Kind is JsTokenKind.Lt or JsTokenKind.Gt
                                 or JsTokenKind.LtEq or JsTokenKind.GtEq
-                                or JsTokenKind.Instanceof or JsTokenKind.In)
+                                or JsTokenKind.Instanceof
+               || (_current.Kind == JsTokenKind.In && _disallowInDepth == 0))
         {
             var op = _current.Lexeme; Advance();
             var right = ParseShift();
@@ -936,8 +922,7 @@ public sealed partial class JsParser
         {
             while (true)
             {
-                var pTok = Expect(JsTokenKind.Identifier, "expected parameter identifier");
-                parameters.Add(new Identifier(pTok.Lexeme, pTok.Start, pTok.End));
+                parameters.Add(ParseParameter());
                 if (!Match(JsTokenKind.Comma)) break;
             }
         }

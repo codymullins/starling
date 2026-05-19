@@ -75,6 +75,7 @@ structure).
 
 | ID | Status | Owner | Subsystem |
 |---|---|---|---|
+| [wp:M3-02d-js-parser-destructuring](M3/wp-M3-02d-js-parser-destructuring.md) | 🟡 claimed | agent-copilot-claude-opus-4.7-destruct | Starling.Js |
 | [wp:M3-06-native-interop-pivot](M3/wp-M3-06-native-interop-pivot.md) | 🟢 complete | agent-claude-cody | build |
 | [wp:M3-06a-native-scaffold](M3/wp-M3-06a-native-scaffold.md) | 🟢 complete | agent-claude-cody-native | build |
 | [wp:M3-06b-native-build](M3/wp-M3-06b-native-build.md) | 🟢 complete | agent-claude-cody-native | build |

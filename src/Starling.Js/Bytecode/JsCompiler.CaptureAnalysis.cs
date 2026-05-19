@@ -154,6 +154,8 @@ internal static class CaptureAnalysis
             case UnaryExpression u: WalkExpressionInOuter(u.Argument, captured); return;
             case UpdateExpression up: WalkExpressionInOuter(up.Argument, captured); return;
             case AssignmentExpression a: WalkExpressionInOuter(a.Target, captured); WalkExpressionInOuter(a.Value, captured); return;
+            case AssignmentPattern a: WalkExpressionInOuter(a.Target, captured); WalkExpressionInOuter(a.Default, captured); return;
+            case RestElement rest: WalkExpressionInOuter(rest.Argument, captured); return;
             case ConditionalExpression c:
                 WalkExpressionInOuter(c.Test, captured);
                 WalkExpressionInOuter(c.Consequent, captured);
@@ -167,6 +169,30 @@ internal static class CaptureAnalysis
             case NewExpression ne:
                 WalkExpressionInOuter(ne.Callee, captured);
                 foreach (var arg in ne.Arguments) WalkExpressionInOuter(arg, captured);
+                return;
+            case ArrayPattern ap:
+                foreach (var el in ap.Elements)
+                {
+                    switch (el)
+                    {
+                        case ArrayPatternBindingElement binding:
+                            WalkExpressionInOuter(binding.Target, captured);
+                            WalkExpressionInOuter(binding.Default, captured);
+                            break;
+                        case ArrayPatternRestElement rest:
+                            WalkExpressionInOuter(rest.Target, captured);
+                            break;
+                    }
+                }
+                return;
+            case ObjectPattern op:
+                foreach (var prop in op.Properties)
+                {
+                    if (prop.Computed) WalkExpressionInOuter(prop.Key, captured);
+                    WalkExpressionInOuter(prop.Target, captured);
+                    WalkExpressionInOuter(prop.Default, captured);
+                }
+                if (op.Rest is not null) WalkExpressionInOuter(op.Rest.Argument, captured);
                 return;
             case ArrayExpression ae:
                 foreach (var el in ae.Elements) WalkExpressionInOuter(el, captured);
@@ -333,6 +359,21 @@ internal static class CaptureAnalysis
         {
             case Identifier id: scope.Add(id.Name); return;
             case AssignmentExpression a when a.Op == "=": AddBindingNames(a.Target, scope); return;
+            case AssignmentPattern a: AddBindingNames(a.Target, scope); return;
+            case ArrayPattern arr:
+                foreach (var el in arr.Elements)
+                {
+                    switch (el)
+                    {
+                        case ArrayPatternBindingElement binding: AddBindingNames(binding.Target, scope); break;
+                        case ArrayPatternRestElement rest: AddBindingNames(rest.Target, scope); break;
+                    }
+                }
+                return;
+            case ObjectPattern obj:
+                foreach (var prop in obj.Properties) AddBindingNames(prop.Target, scope);
+                if (obj.Rest is not null) AddBindingNames(obj.Rest.Argument, scope);
+                return;
             case ArrayExpression arr:
                 foreach (var el in arr.Elements)
                 {
@@ -497,6 +538,37 @@ internal static class CaptureAnalysis
             case NewExpression ne:
                 InnerExpression(ne.Callee, scopes, outerCaptured);
                 foreach (var arg in ne.Arguments) InnerExpression(arg, scopes, outerCaptured);
+                return;
+            case ArrayPattern ap:
+                foreach (var el in ap.Elements)
+                {
+                    switch (el)
+                    {
+                        case ArrayPatternBindingElement binding:
+                            InnerExpression(binding.Target, scopes, outerCaptured);
+                            InnerExpression(binding.Default, scopes, outerCaptured);
+                            break;
+                        case ArrayPatternRestElement rest:
+                            InnerExpression(rest.Target, scopes, outerCaptured);
+                            break;
+                    }
+                }
+                return;
+            case ObjectPattern op:
+                foreach (var prop in op.Properties)
+                {
+                    if (prop.Computed) InnerExpression(prop.Key, scopes, outerCaptured);
+                    InnerExpression(prop.Target, scopes, outerCaptured);
+                    InnerExpression(prop.Default, scopes, outerCaptured);
+                }
+                if (op.Rest is not null) InnerExpression(op.Rest.Argument, scopes, outerCaptured);
+                return;
+            case AssignmentPattern ap:
+                InnerExpression(ap.Target, scopes, outerCaptured);
+                InnerExpression(ap.Default, scopes, outerCaptured);
+                return;
+            case RestElement rest:
+                InnerExpression(rest.Argument, scopes, outerCaptured);
                 return;
             case ArrayExpression ae:
                 foreach (var el in ae.Elements) InnerExpression(el, scopes, outerCaptured);

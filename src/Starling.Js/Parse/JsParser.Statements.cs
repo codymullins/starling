@@ -17,7 +17,7 @@ public sealed partial class JsParser
         var body = new List<Statement>();
         while (!Check(JsTokenKind.EndOfFile))
         {
-            body.Add(ParseStatement());
+            body.Add(ParseProgramStatement());
         }
         var end = _current.End;
         return new Program(body, start, end);
@@ -193,12 +193,23 @@ public sealed partial class JsParser
             }
             else
             {
-                var expr = ParseExpressionNoEof();
-                if (Check(JsTokenKind.In))
-                    return FinishForIn(start, expr);
-                if (IsContextualOf())
-                    return FinishForOf(start, expr);
-                init = new ExpressionStatement(expr, expr.Start, expr.End);
+                if (Check(JsTokenKind.LBracket) || Check(JsTokenKind.LBrace))
+                {
+                    var cover = ParseLeftHandSide();
+                    if (Check(JsTokenKind.In)) return FinishForIn(start, cover);
+                    if (IsContextualOf()) return FinishForOf(start, cover);
+                    var exprInit = cover;
+                    init = new ExpressionStatement(exprInit, exprInit.Start, exprInit.End);
+                }
+                else
+                {
+                    var expr = ParseExpressionNoIn();
+                    if (Check(JsTokenKind.In))
+                        return FinishForIn(start, expr);
+                    if (IsContextualOf())
+                        return FinishForOf(start, expr);
+                    init = new ExpressionStatement(expr, expr.Start, expr.End);
+                }
             }
         }
         Expect(JsTokenKind.Semicolon, "expected ';' in for-loop init");
@@ -219,6 +230,7 @@ public sealed partial class JsParser
 
     private ForInStatement FinishForIn(JsPosition start, AstNode left)
     {
+        if (left is Expression expr) left = ReinterpretAssignmentTarget(expr);
         Advance(); // 'in'
         var right = ParseExpressionNoEof();
         Expect(JsTokenKind.RParen, "expected ')' after for-in head");
@@ -228,6 +240,7 @@ public sealed partial class JsParser
 
     private ForOfStatement FinishForOf(JsPosition start, AstNode left)
     {
+        if (left is Expression expr) left = ReinterpretAssignmentTarget(expr);
         Advance(); // contextual 'of'
         var right = ParseExpressionNoEof();
         Expect(JsTokenKind.RParen, "expected ')' after for-of head");
@@ -314,8 +327,7 @@ public sealed partial class JsParser
             Expression? param = null;
             if (Match(JsTokenKind.LParen))
             {
-                var pt = Expect(JsTokenKind.Identifier, "expected catch parameter name");
-                param = new Identifier(pt.Lexeme, pt.Start, pt.End);
+                param = ParseBindingTarget();
                 Expect(JsTokenKind.RParen, "expected ')' after catch parameter");
             }
             var body = ParseBlock();
@@ -463,26 +475,6 @@ public sealed partial class JsParser
     // Helpers
     // -----------------------------------------------------------------------
 
-    /// <summary>Parse an identifier or destructuring binding pattern. Binding
-    /// patterns are represented with the same ArrayExpression/ObjectExpression
-    /// cover nodes used for literals; the compiler interprets them per
-    /// ECMA-262 §14.3.3.</summary>
-    private Expression ParseBindingTarget()
-    {
-        if (Check(JsTokenKind.LBracket)) return ParseArrayLiteral();
-        if (Check(JsTokenKind.LBrace)) return ParseObjectLiteral();
-        var id = Expect(JsTokenKind.Identifier, "expected binding name or pattern");
-        return new Identifier(id.Lexeme, id.Start, id.End);
-    }
-
-    private Expression ParseParameter()
-    {
-        var target = ParseBindingTarget();
-        if (!Match(JsTokenKind.Eq)) return target;
-        var fallback = ParseAssignment();
-        return new AssignmentExpression("=", target, fallback, target.Start, fallback.End);
-    }
-
     private List<Expression> ParseParameterList()
     {
         var parameters = new List<Expression>();
@@ -517,6 +509,19 @@ public sealed partial class JsParser
             expr = new SequenceExpression(parts, parts[0].Start, parts[^1].End);
         }
         return expr;
+    }
+
+    private Expression ParseExpressionNoIn()
+    {
+        _disallowInDepth++;
+        try
+        {
+            return ParseExpressionNoEof();
+        }
+        finally
+        {
+            _disallowInDepth--;
+        }
     }
 
     /// <summary>
