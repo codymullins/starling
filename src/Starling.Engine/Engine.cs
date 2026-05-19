@@ -140,7 +140,7 @@ public sealed class StarlingEngine
         using (_diag.Span("engine", "fetch_resources"))
         {
             await Task.WhenAll(
-                images.FetchAllAsync(doc, baseUrl: u, ct),
+                images.FetchAllAsync(doc, baseUrl: u, options.Viewport.Width, options.FontSize, ct),
                 stylesheets.FetchAllAsync(doc, baseUrl: u, ct)
             ).ConfigureAwait(false);
         }
@@ -192,7 +192,7 @@ public sealed class StarlingEngine
                 using (_diag.Span("engine", "fetch_resources_post_js"))
                 {
                     await Task.WhenAll(
-                        images.FetchAllAsync(doc, baseUrl: u, ct),
+                        images.FetchAllAsync(doc, baseUrl: u, options.Viewport.Width, options.FontSize, ct),
                         stylesheets.FetchAllAsync(doc, baseUrl: u, ct)
                     ).ConfigureAwait(false);
                 }
@@ -332,7 +332,7 @@ public sealed class StarlingEngine
         try
         {
             await Task.WhenAll(
-                images.FetchAllAsync(doc, baseUrl: u, ct),
+                images.FetchAllAsync(doc, baseUrl: u, options.Viewport.Width, options.FontSize, ct),
                 stylesheets.FetchAllAsync(doc, baseUrl: u, ct)
             ).ConfigureAwait(false);
 
@@ -355,7 +355,7 @@ public sealed class StarlingEngine
                     var layoutHost = new BoxLayoutHost(preRoot, preStyle);
                     await RunScriptsAsync(doc, u, scripts.Scripts, layoutHost, ct).ConfigureAwait(false);
                     await Task.WhenAll(
-                        images.FetchAllAsync(doc, baseUrl: u, ct),
+                        images.FetchAllAsync(doc, baseUrl: u, options.Viewport.Width, options.FontSize, ct),
                         stylesheets.FetchAllAsync(doc, baseUrl: u, ct)
                     ).ConfigureAwait(false);
                 }

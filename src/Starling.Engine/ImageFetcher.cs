@@ -60,6 +60,21 @@ internal sealed class ImageFetcher : IImageResolver, IDisposable
     }
 
     public async Task FetchAllAsync(Document document, StarlingUrl? baseUrl, CancellationToken ct)
+        => await FetchAllAsync(document, baseUrl, viewportWidthCssPx: 0, fontSizeCssPx: 16, ct).ConfigureAwait(false);
+
+    /// <summary>
+    /// Fetch every <c>&lt;img&gt;</c> in the document. When an element has
+    /// <c>srcset</c> (and optionally <c>sizes</c>), pick the best candidate
+    /// for the supplied viewport and record the
+    /// <see href="https://html.spec.whatwg.org/multipage/images.html#density-corrected-intrinsic-width-and-height">
+    /// density-corrected intrinsic dimensions</see> so layout sizes the image
+    /// against the sizes-derived CSS width instead of the source bitmap's
+    /// pixel dimensions.
+    /// </summary>
+    public async Task FetchAllAsync(
+        Document document, StarlingUrl? baseUrl,
+        double viewportWidthCssPx, double fontSizeCssPx,
+        CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(document);
 
@@ -68,19 +83,41 @@ internal sealed class ImageFetcher : IImageResolver, IDisposable
             ct.ThrowIfCancellationRequested();
 
             var src = img.GetAttribute("src");
-            if (string.IsNullOrWhiteSpace(src)) continue;
+            var srcset = img.GetAttribute("srcset");
+            var sizes = img.GetAttribute("sizes");
 
-            var absolute = ResolveAbsolute(src, baseUrl);
+            var (selectedUrl, correctedW, correctedH) = Srcset.Select(
+                srcset, sizes, src, viewportWidthCssPx, fontSizeCssPx);
+
+            if (string.IsNullOrWhiteSpace(selectedUrl)) continue;
+
+            var absolute = ResolveAbsolute(selectedUrl, baseUrl);
             if (absolute is null)
             {
-                _diag.Log(DiagLevel.Warn, "engine", $"Could not resolve <img src='{src}'>");
+                _diag.Log(DiagLevel.Warn, "engine", $"Could not resolve <img src='{selectedUrl}'>");
                 continue;
             }
 
             var decoded = await FetchAndDecodeAsync(absolute, ct).ConfigureAwait(false);
             if (decoded is null) continue;
 
-            _byElement[img] = new ResolvedImage(decoded.Width, decoded.Height, decoded);
+            // density-corrected intrinsic: if sizes gave us a CSS-px width,
+            // scale height proportionally to preserve the source aspect
+            // ratio. Otherwise fall back to source pixel dims.
+            double intrinsicW, intrinsicH;
+            if (correctedW > 0 && decoded.Width > 0 && decoded.Height > 0)
+            {
+                intrinsicW = correctedW;
+                intrinsicH = correctedH > 0
+                    ? correctedH
+                    : correctedW * decoded.Height / decoded.Width;
+            }
+            else
+            {
+                intrinsicW = decoded.Width;
+                intrinsicH = decoded.Height;
+            }
+            _byElement[img] = new ResolvedImage(intrinsicW, intrinsicH, decoded);
         }
     }
 
