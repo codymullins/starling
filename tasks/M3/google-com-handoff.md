@@ -3,7 +3,7 @@ id: "handoff:google-com-search"
 milestone: "M3 → M7"
 status: "in-progress"
 created_at: "2026-05-18"
-last_updated: "2026-05-18"
+last_updated: "2026-05-19"
 plan_refs:
   - "browser-plan/13_MILESTONES.md"
   - "browser-plan/09_JS_ENGINE.md"
@@ -50,6 +50,7 @@ blocker; defer to M6 wp:M3-09.
 | B0 — JS runtime foundations | ✅ | `src/Starling.Js/Runtime/{PropertyDescriptor,JsObject,JsRealm,AbstractOperations,JsBoundFunction,JsRuntime,JsVm}.cs` |
 | B1a — Lexer hardening | ✅ | `src/Starling.Js/Lex/{JsLexer,JsTokenKind,JsLexError}.cs` |
 | B1b-1 — Modern syntax slice | ✅ | `src/Starling.Js/{Ast/Expressions.cs,Parse/JsParser.cs,Bytecode/{JsCompiler,Opcode}.cs,Runtime/JsVm.cs}` |
+| B1b-2b — Destructuring | ✅ | `src/Starling.Js/{Ast/Expressions.cs,Parse/JsParser*.cs,Bytecode/{JsCompiler,Opcode}.cs,Runtime/JsVm.cs}`, `tests/Starling.Js.Tests/Runtime/JsDestructuringTests.cs` |
 | B2-1 — Object intrinsic | ✅ | `src/Starling.Js/Intrinsics/ObjectCtor.cs`, `tests/Starling.Js.Tests/Intrinsics/ObjectTests.cs`, `src/Starling.Js/Runtime/JsRealm.cs` (+`ObjectConstructor`) |
 | B2-5 — String intrinsic | ✅ | `src/Starling.Js/Intrinsics/StringCtor.cs`, `tests/Starling.Js.Tests/Intrinsics/StringTests.cs` |
 | B2-6 — Number/Boolean/globals | ✅ | `src/Starling.Js/Intrinsics/{NumberCtor,BooleanCtor,Globals}.cs`, `tests/Starling.Js.Tests/Intrinsics/{NumberTests,BooleanTests,GlobalsTests}.cs` |
@@ -119,7 +120,7 @@ session. Other rows in the queue are free for other agents/sessions.
 | **B2-3** Error hierarchy | claude-cody (agent) | in progress (2026-05-18) |
 | **B3-4** Promise + microtasks | claude-cody (agent) | in progress (2026-05-18) |
 | **B6-2** position: absolute / fixed | claude-cody (agent) | in progress (2026-05-18) |
-| **B1b-2b** Destructuring | claude-cody (agent, lane-A) | in progress (2026-05-18) |
+| **B1b-2b** Destructuring | claude-cody (agent, lane-A) | complete (2026-05-19) |
 | **B3-1** Symbol + well-known symbols | claude-cody (agent, lane-D) | in progress (2026-05-18) |
 | **B4-5** TypedArray/ArrayBuffer/DataView | claude-cody (agent, lane-E) | in progress (2026-05-18) |
 

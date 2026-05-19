@@ -123,7 +123,7 @@ public sealed record SpreadElement(
 /// </summary>
 public sealed record FunctionExpression(
     Identifier? Name,
-    IReadOnlyList<Expression> Params,
+    IReadOnlyList<Expression> Params, // Identifier or destructuring binding pattern (ES2024 §14.3.3)
     BlockStatement Body,
     bool Generator,
     JsPosition Start, JsPosition End)
@@ -137,7 +137,7 @@ public sealed record FunctionExpression(
 /// block-body forms.
 /// </summary>
 public sealed record ArrowFunctionExpression(
-    IReadOnlyList<Expression> Params,
+    IReadOnlyList<Expression> Params, // Identifier or destructuring binding pattern (ES2024 §14.3.3)
     AstNode Body,                // BlockStatement or Expression
     bool IsExpression,           // true => Body is an Expression (concise body)
     bool Async,

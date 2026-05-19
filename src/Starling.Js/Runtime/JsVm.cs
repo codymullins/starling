@@ -415,6 +415,50 @@ public sealed class JsVm
                     break;
                 }
 
+                case Opcode.RestArray:
+                {
+                    var start = ReadU16();
+                    var src = Pop();
+                    var result = _runtime.Realm.NewOrdinaryObject();
+                    var srcObj = src.IsObject ? src.AsObject : (!src.IsNullish ? AbstractOperations.ToObject(_runtime.Realm, src) : null);
+                    var len = 0;
+                    if (srcObj is not null)
+                        len = Math.Max(0, (int)Math.Truncate(JsValue.ToNumber(srcObj.Get("length"))));
+                    var outIndex = 0;
+                    if (srcObj is not null)
+                    {
+                        for (var i = start; i < len; i++)
+                            result.Set((outIndex++).ToString(System.Globalization.CultureInfo.InvariantCulture), srcObj.Get(i.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+                    }
+                    result.Set("length", JsValue.Number(outIndex));
+                    Push(JsValue.Object(result));
+                    break;
+                }
+
+                case Opcode.RestObject:
+                {
+                    var excludedCount = ReadU16();
+                    var excluded = new HashSet<string>(StringComparer.Ordinal);
+                    for (var i = 0; i < excludedCount; i++)
+                        excluded.Add(AbstractOperations.ToPropertyKey(Pop()));
+                    var src = Pop();
+                    var result = _runtime.Realm.NewOrdinaryObject();
+                    if (src.IsObject)
+                    {
+                        var srcObj = src.AsObject;
+                        foreach (var key in srcObj.EnumerableKeys())
+                            if (!excluded.Contains(key)) result.Set(key, srcObj.Get(key));
+                    }
+                    else if (!src.IsNullish)
+                    {
+                        var srcObj = AbstractOperations.ToObject(_runtime.Realm, src);
+                        foreach (var key in srcObj.EnumerableKeys())
+                            if (!excluded.Contains(key)) result.Set(key, srcObj.Get(key));
+                    }
+                    Push(JsValue.Object(result));
+                    break;
+                }
+
                 default:
                     throw new InvalidOperationException($"opcode {op} not implemented in VM");
             }

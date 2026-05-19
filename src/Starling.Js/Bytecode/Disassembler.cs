@@ -37,6 +37,8 @@ public static class Disassembler
                 case Opcode.StoreGlobal:
                 case Opcode.LoadProperty:
                 case Opcode.StoreProperty:
+                case Opcode.RestArray:
+                case Opcode.RestObject:
                 {
                     var idx = BinaryPrimitives.ReadUInt16LittleEndian(code.AsSpan(i, 2));
                     i += 2;

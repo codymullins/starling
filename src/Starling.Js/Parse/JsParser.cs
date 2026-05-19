@@ -147,12 +147,15 @@ public sealed partial class JsParser
             case SequenceExpression seq:
                 foreach (var e in seq.Expressions) list.Add(LiftSingleParam(e));
                 break;
-            case Identifier id:
-                list.Add(id);
+            case Identifier:
+            case ArrayExpression:
+            case ObjectExpression:
+            case AssignmentExpression { Op: "=" }:
+                list.Add(LiftSingleParam(expr));
                 break;
             default:
                 throw new JsParseException(
-                    "arrow parameter list must be identifiers (destructuring lands in B1b-2)", expr.Start);
+                    "arrow parameter list must be identifiers or destructuring patterns", expr.Start);
         }
         return list;
     }
@@ -160,8 +163,21 @@ public sealed partial class JsParser
     private static Expression LiftSingleParam(Expression e) => e switch
     {
         Identifier => e,
+        ArrayExpression => e,
+        ObjectExpression => e,
+        AssignmentExpression { Op: "=" } a when IsBindingPattern(a.Target) => e,
         _ => throw new JsParseException(
-            "arrow parameter list must be identifiers (destructuring lands in B1b-2)", e.Start),
+            "arrow parameter list must be identifiers or destructuring patterns", e.Start),
+    };
+
+    private static bool IsBindingPattern(Expression e) => e switch
+    {
+        Identifier => true,
+        ArrayExpression => true,
+        ObjectExpression => true,
+        AssignmentExpression { Op: "=" } a => IsBindingPattern(a.Target),
+        SpreadElement { Argument: var inner } => IsBindingPattern(inner),
+        _ => false,
     };
 
     private static bool IsAssignmentOp(JsTokenKind k) => k is
@@ -695,10 +711,21 @@ public sealed partial class JsParser
             return new ObjectProperty(key, value,
                 Shorthand: false, Computed: computed, start, value.End);
         }
-        // Shorthand: { foo } where foo is an identifier.
-        if (!computed && key is Identifier id)
+        // Shorthand binding default: { foo = expr }. This is only valid when
+        // the object literal is later reinterpreted as a destructuring pattern
+        // (ECMA-262 §13.15 / §14.3.3), but accepting the cover form here keeps
+        // assignment and binding-pattern parsing single-pass.
+        if (!computed && key is Identifier id && Match(JsTokenKind.Eq))
         {
-            return new ObjectProperty(key, id,
+            var fallback = ParseAssignment();
+            var target = new AssignmentExpression("=", id, fallback, id.Start, fallback.End);
+            return new ObjectProperty(key, target,
+                Shorthand: true, Computed: false, start, fallback.End);
+        }
+        // Shorthand: { foo } where foo is an identifier.
+        if (!computed && key is Identifier id2)
+        {
+            return new ObjectProperty(key, id2,
                 Shorthand: true, Computed: false, start, key.End);
         }
         throw new JsParseException(

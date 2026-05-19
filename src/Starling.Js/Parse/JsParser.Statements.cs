@@ -390,13 +390,12 @@ public sealed partial class JsParser
         while (true)
         {
             var dstart = _current.Start;
-            var id = Expect(JsTokenKind.Identifier, "expected variable name");
-            var idNode = new Identifier(id.Lexeme, id.Start, id.End);
+            var idNode = ParseBindingTarget();
             Expression? init = null;
             if (Match(JsTokenKind.Eq))
                 init = ParseAssignment();
             decls.Add(new VariableDeclarator(idNode, init, dstart,
-                (init ?? (Expression)idNode).End));
+                (init ?? idNode).End));
             if (!Match(JsTokenKind.Comma)) break;
         }
         var end = decls[^1].End;
@@ -421,23 +420,7 @@ public sealed partial class JsParser
             name = new Identifier(tok.Lexeme, tok.Start, tok.End);
         }
         Expect(JsTokenKind.LParen, "( expected after function expression");
-        var parameters = new List<Expression>();
-        while (!Check(JsTokenKind.RParen))
-        {
-            if (Check(JsTokenKind.Ellipsis))
-            {
-                var sstart = _current.Start;
-                Advance();
-                var inner = Expect(JsTokenKind.Identifier, "rest parameter name expected");
-                parameters.Add(new SpreadElement(
-                    new Identifier(inner.Lexeme, inner.Start, inner.End),
-                    sstart, inner.End));
-                break;
-            }
-            var pt = Expect(JsTokenKind.Identifier, "parameter name expected");
-            parameters.Add(new Identifier(pt.Lexeme, pt.Start, pt.End));
-            if (!Match(JsTokenKind.Comma)) break;
-        }
+        var parameters = ParseParameterList();
         Expect(JsTokenKind.RParen, "expected ')'");
         var body = ParseBlock();
         return new FunctionExpression(name, parameters, body, generator, start, body.End);
@@ -451,23 +434,7 @@ public sealed partial class JsParser
         var nameTok = Expect(JsTokenKind.Identifier, "function name expected");
         var name = new Identifier(nameTok.Lexeme, nameTok.Start, nameTok.End);
         Expect(JsTokenKind.LParen, "( expected after function name");
-        var parameters = new List<Expression>();
-        while (!Check(JsTokenKind.RParen))
-        {
-            if (Check(JsTokenKind.Ellipsis))
-            {
-                var sstart = _current.Start;
-                Advance();
-                var inner = Expect(JsTokenKind.Identifier, "rest parameter name expected");
-                parameters.Add(new SpreadElement(
-                    new Identifier(inner.Lexeme, inner.Start, inner.End),
-                    sstart, inner.End));
-                break;
-            }
-            var pt = Expect(JsTokenKind.Identifier, "parameter name expected");
-            parameters.Add(new Identifier(pt.Lexeme, pt.Start, pt.End));
-            if (!Match(JsTokenKind.Comma)) break;
-        }
+        var parameters = ParseParameterList();
         Expect(JsTokenKind.RParen, "expected ')'");
         var body = ParseBlock();
         return new FunctionDeclaration(name, parameters, body, generator, start, body.End);
@@ -476,6 +443,45 @@ public sealed partial class JsParser
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
+
+    /// <summary>Parse an identifier or destructuring binding pattern. Binding
+    /// patterns are represented with the same ArrayExpression/ObjectExpression
+    /// cover nodes used for literals; the compiler interprets them per
+    /// ECMA-262 §14.3.3.</summary>
+    private Expression ParseBindingTarget()
+    {
+        if (Check(JsTokenKind.LBracket)) return ParseArrayLiteral();
+        if (Check(JsTokenKind.LBrace)) return ParseObjectLiteral();
+        var id = Expect(JsTokenKind.Identifier, "expected binding name or pattern");
+        return new Identifier(id.Lexeme, id.Start, id.End);
+    }
+
+    private Expression ParseParameter()
+    {
+        var target = ParseBindingTarget();
+        if (!Match(JsTokenKind.Eq)) return target;
+        var fallback = ParseAssignment();
+        return new AssignmentExpression("=", target, fallback, target.Start, fallback.End);
+    }
+
+    private List<Expression> ParseParameterList()
+    {
+        var parameters = new List<Expression>();
+        while (!Check(JsTokenKind.RParen))
+        {
+            if (Check(JsTokenKind.Ellipsis))
+            {
+                var sstart = _current.Start;
+                Advance();
+                var inner = ParseBindingTarget();
+                parameters.Add(new SpreadElement(inner, sstart, inner.End));
+                break;
+            }
+            parameters.Add(ParseParameter());
+            if (!Match(JsTokenKind.Comma)) break;
+        }
+        return parameters;
+    }
 
     /// <summary>
     /// Like <see cref="ParseExpression"/> but doesn't require EOF afterwards.

@@ -81,5 +81,7 @@ public enum Opcode : byte
     TypeOf,
     Throw,
     SpreadInto,     // pop src and dst objects, copy own enumerable props from src onto dst (object-literal spread)
+    RestArray,      // [u16 start] pop src, push Array-like object with src[start..length)
+    RestObject,     // [u16 excludedCount] pop N keys + src, push own-enumerable copy excluding keys
     Halt,           // end-of-program sentinel
 }

@@ -182,9 +182,13 @@ public sealed class JsCompiler
 
     private static int CountSimpleParams(IReadOnlyList<Expression> ps)
     {
-        // Spread/rest doesn't add to arity for first-cut binding.
         var n = 0;
-        foreach (var p in ps) if (p is Identifier) n++;
+        foreach (var p in ps)
+        {
+            if (p is SpreadElement) break;
+            if (p is AssignmentExpression) break;
+            n++;
+        }
         return n;
     }
 
@@ -194,17 +198,7 @@ public sealed class JsCompiler
     {
         // Reserve a local slot per simple-identifier parameter so the
         // callee sees args in slots 0..N-1.
-        foreach (var p in fd.Params)
-        {
-            if (p is Identifier id)
-            {
-                var slot = _b.ReserveLocal();
-                _scopes[^1][id.Name] = slot;
-                // Parameters arrive in their slots before the body runs;
-                // no DeclareLocal needed.
-            }
-            // SpreadElement (rest params) deferred to M3-04c.
-        }
+        BindFunctionParameters(fd.Params);
         foreach (var inner in fd.Body.Body) EmitStatement(inner);
         // Implicit `return undefined` if the body didn't return.
         _b.Emit(Opcode.ReturnUndefined);
@@ -285,15 +279,25 @@ public sealed class JsCompiler
     {
         foreach (var d in vd.Declarations)
         {
-            if (d.Id is not Identifier id)
-                throw new NotSupportedException("destructuring patterns deferred to wp:M3-02d");
-            var slot = _b.ReserveLocal();
-            _scopes[^1][id.Name] = slot;
-            _b.Emit(Opcode.DeclareLocal, (byte)slot);
+            // ECMA-262 §14.3.3 BindingPattern: declarations reserve all
+            // binding names first, then initialize by walking the pattern.
+            DeclarePatternBindings(d.Id);
             if (d.Init is not null)
             {
-                EmitExpression(d.Init);
-                _b.Emit(Opcode.StoreLocal, (byte)slot);
+                if (d.Id is Identifier id)
+                {
+                    EmitExpression(d.Init);
+                    if (!TryResolveLocal(id.Name, out var slot))
+                        throw new InvalidOperationException($"missing declared local '{id.Name}'");
+                    _b.Emit(Opcode.StoreLocal, (byte)slot);
+                }
+                else
+                {
+                    var srcSlot = _b.ReserveLocal();
+                    EmitExpression(d.Init);
+                    _b.Emit(Opcode.StoreLocal, (byte)srcSlot);
+                    EmitPatternFromLocal(d.Id, srcSlot, isDeclaration: true);
+                }
             }
         }
     }
@@ -391,6 +395,9 @@ public sealed class JsCompiler
                 return;
             case ObjectExpression oe:
                 EmitObjectLiteral(oe);
+                return;
+            case ArrayExpression ae:
+                EmitArrayLiteral(ae);
                 return;
             case FunctionExpression fe:
                 EmitFunctionExpression(fe);
@@ -567,6 +574,18 @@ public sealed class JsCompiler
 
     private void EmitAssignment(AssignmentExpression a)
     {
+        if (IsPattern(a.Target))
+        {
+            if (a.Op != "=") throw new NotSupportedException("compound destructuring assignment is not supported");
+            // ECMA-262 §13.15 destructuring assignment evaluates the RHS once,
+            // performs the pattern writes, and the whole expression returns the RHS.
+            var rhsSlot = _b.ReserveLocal();
+            EmitExpression(a.Value);
+            _b.Emit(Opcode.StoreLocal, (byte)rhsSlot);
+            EmitPatternFromLocal(a.Target, rhsSlot, isDeclaration: false);
+            _b.Emit(Opcode.LoadLocal, (byte)rhsSlot);
+            return;
+        }
         if (a.Target is Identifier id)
         {
             if (a.Op != "=")
@@ -667,17 +686,13 @@ public sealed class JsCompiler
         // free identifiers can be lazily resolved as upvalues captured
         // from this scope.
         var sub = new JsCompiler(parent: this);
-        foreach (var p in fe.Params)
-        {
-            if (p is Identifier id)
-            {
-                var slot = sub._b.ReserveLocal();
-                sub._scopes[^1][id.Name] = slot;
-            }
-        }
+        sub.BindFunctionParameters(fe.Params);
         foreach (var s in fe.Body.Body) sub.EmitStatement(s);
         sub._b.Emit(Opcode.ReturnUndefined);
-        var name = fe.Name?.Name ?? "<anonymous>";
+        // Per ES2024 §15.2 NamedEvaluation, anonymous FunctionExpression
+        // produces `name === ""` (not "<anonymous>"); B2-2's Function intrinsic
+        // surfaces this through the new-instance `name` slot.
+        var name = fe.Name?.Name ?? "";
         var chunk = sub._b.Build(name);
         EmitFunctionConstructor(name, chunk, CountSimpleParams(fe.Params), sub._upvalues);
     }
@@ -723,6 +738,249 @@ public sealed class JsCompiler
             _b.Emit(Opcode.Pop); // [obj]
         }
     }
+
+
+
+    private enum RestExclusionKind { Constant, Local }
+    private readonly record struct RestExclusion(RestExclusionKind Kind, string? Name, int Slot);
+
+    private static bool IsPattern(Expression e) => e switch
+    {
+        ArrayExpression => true,
+        ObjectExpression => true,
+        AssignmentExpression { Op: "=" } a => IsPattern(a.Target),
+        _ => false,
+    };
+
+    private void BindFunctionParameters(IReadOnlyList<Expression> parameters)
+    {
+        var argSlots = new int[parameters.Count];
+        Array.Fill(argSlots, -1);
+
+        // VM argument copying fills local slots 0..argc-1, so reserve every
+        // positional parameter slot before declaring destructured binding locals.
+        for (var i = 0; i < parameters.Count; i++)
+        {
+            if (parameters[i] is SpreadElement) break;
+            argSlots[i] = _b.ReserveLocal();
+        }
+
+        for (var i = 0; i < parameters.Count; i++)
+        {
+            var param = parameters[i];
+            if (param is SpreadElement spread)
+            {
+                DeclarePatternBindings(spread.Argument);
+                // Full rest-parameter collection is a later iterator/Array task;
+                // leave the binding undefined rather than corrupting following args.
+                continue;
+            }
+
+            if (param is Identifier id)
+            {
+                _scopes[^1][id.Name] = argSlots[i];
+                continue;
+            }
+
+            DeclarePatternBindings(param);
+            EmitPatternFromLocal(param, argSlots[i], isDeclaration: true);
+        }
+    }
+
+    private void DeclarePatternBindings(Expression pattern)
+    {
+        switch (pattern)
+        {
+            case Identifier id:
+                if (!_scopes[^1].ContainsKey(id.Name))
+                {
+                    var slot = _b.ReserveLocal();
+                    _scopes[^1][id.Name] = slot;
+                    _b.Emit(Opcode.DeclareLocal, (byte)slot);
+                }
+                return;
+            case AssignmentExpression { Op: "=" } a:
+                DeclarePatternBindings(a.Target);
+                return;
+            case ArrayExpression arr:
+                foreach (var element in arr.Elements)
+                {
+                    if (element is null) continue;
+                    DeclarePatternBindings(element is SpreadElement spread ? spread.Argument : element);
+                }
+                return;
+            case ObjectExpression obj:
+                foreach (var prop in obj.Properties)
+                {
+                    if (prop.Value is SpreadElement spread) DeclarePatternBindings(spread.Argument);
+                    else DeclarePatternBindings(prop.Value);
+                }
+                return;
+            case SpreadElement spread:
+                DeclarePatternBindings(spread.Argument);
+                return;
+        }
+    }
+
+    private void EmitPatternFromLocal(Expression pattern, int sourceSlot, bool isDeclaration)
+    {
+        _b.Emit(Opcode.LoadLocal, (byte)sourceSlot);
+        EmitPatternFromStack(pattern, isDeclaration);
+    }
+
+    private void EmitPatternFromStack(Expression pattern, bool isDeclaration)
+    {
+        switch (pattern)
+        {
+            case Identifier id:
+                StoreBindingIdentifier(id.Name);
+                return;
+            case MemberExpression me:
+                StoreMemberTarget(me);
+                return;
+            case AssignmentExpression { Op: "=" } a:
+                EmitDefaultedPattern(a.Target, a.Value, isDeclaration);
+                return;
+            case ArrayExpression arr:
+                EmitArrayPattern(arr, isDeclaration);
+                return;
+            case ObjectExpression obj:
+                EmitObjectPattern(obj, isDeclaration);
+                return;
+            case SpreadElement spread:
+                EmitPatternFromStack(spread.Argument, isDeclaration);
+                return;
+            default:
+                throw new NotSupportedException($"invalid destructuring target '{pattern.GetType().Name}'");
+        }
+    }
+
+    private void EmitDefaultedPattern(Expression target, Expression fallback, bool isDeclaration)
+    {
+        var valueSlot = _b.ReserveLocal();
+        _b.Emit(Opcode.StoreLocal, (byte)valueSlot);
+        _b.Emit(Opcode.LoadLocal, (byte)valueSlot);
+        _b.Emit(Opcode.LoadUndefined);
+        _b.Emit(Opcode.StrictEq);
+        var skipDefault = _b.EmitJump(Opcode.JumpIfFalse);
+        EmitExpression(fallback);
+        _b.Emit(Opcode.StoreLocal, (byte)valueSlot);
+        _b.PatchJump(skipDefault);
+        EmitPatternFromLocal(target, valueSlot, isDeclaration);
+    }
+
+    private void StoreBindingIdentifier(string name)
+    {
+        if (TryResolveLocal(name, out var slot))
+            _b.Emit(Opcode.StoreLocal, (byte)slot);
+        else
+            _b.EmitU16(Opcode.StoreGlobal, _b.AddConstant(name));
+    }
+
+    private void StoreMemberTarget(MemberExpression me)
+    {
+        var valueSlot = _b.ReserveLocal();
+        _b.Emit(Opcode.StoreLocal, (byte)valueSlot);
+        EmitExpression(me.Object);
+        if (me.Computed) EmitExpression(me.Property);
+        _b.Emit(Opcode.LoadLocal, (byte)valueSlot);
+        if (me.Computed) _b.Emit(Opcode.StoreComputed);
+        else _b.EmitU16(Opcode.StoreProperty, _b.AddConstant(((Identifier)me.Property).Name));
+        _b.Emit(Opcode.Pop);
+    }
+
+    private void EmitArrayPattern(ArrayExpression arr, bool isDeclaration)
+    {
+        var srcSlot = _b.ReserveLocal();
+        _b.Emit(Opcode.StoreLocal, (byte)srcSlot);
+        for (var i = 0; i < arr.Elements.Count; i++)
+        {
+            var element = arr.Elements[i];
+            if (element is null) continue;
+            if (element is SpreadElement spread)
+            {
+                _b.Emit(Opcode.LoadLocal, (byte)srcSlot);
+                _b.EmitU16(Opcode.RestArray, i);
+                EmitPatternFromStack(spread.Argument, isDeclaration);
+                break;
+            }
+            _b.Emit(Opcode.LoadLocal, (byte)srcSlot);
+            _b.EmitU16(Opcode.LoadConst, _b.AddConstant((double)i));
+            _b.Emit(Opcode.LoadComputed);
+            EmitPatternFromStack(element, isDeclaration);
+        }
+    }
+
+    private void EmitObjectPattern(ObjectExpression obj, bool isDeclaration)
+    {
+        var srcSlot = _b.ReserveLocal();
+        _b.Emit(Opcode.StoreLocal, (byte)srcSlot);
+        var exclusions = new List<RestExclusion>();
+        foreach (var prop in obj.Properties)
+        {
+            if (prop.Value is SpreadElement spread)
+            {
+                _b.Emit(Opcode.LoadLocal, (byte)srcSlot);
+                foreach (var ex in exclusions)
+                {
+                    if (ex.Kind == RestExclusionKind.Constant)
+                        _b.EmitU16(Opcode.LoadConst, _b.AddConstant(ex.Name!));
+                    else
+                        _b.Emit(Opcode.LoadLocal, (byte)ex.Slot);
+                }
+                _b.EmitU16(Opcode.RestObject, exclusions.Count);
+                EmitPatternFromStack(spread.Argument, isDeclaration);
+                continue;
+            }
+
+            if (prop.Computed)
+            {
+                var keySlot = _b.ReserveLocal();
+                EmitExpression(prop.Key);
+                _b.Emit(Opcode.StoreLocal, (byte)keySlot);
+                _b.Emit(Opcode.LoadLocal, (byte)srcSlot);
+                _b.Emit(Opcode.LoadLocal, (byte)keySlot);
+                _b.Emit(Opcode.LoadComputed);
+                exclusions.Add(new RestExclusion(RestExclusionKind.Local, null, keySlot));
+            }
+            else
+            {
+                var name = PropertyName(prop.Key);
+                _b.Emit(Opcode.LoadLocal, (byte)srcSlot);
+                _b.EmitU16(Opcode.LoadProperty, _b.AddConstant(name));
+                exclusions.Add(new RestExclusion(RestExclusionKind.Constant, name, -1));
+            }
+            EmitPatternFromStack(prop.Value, isDeclaration);
+        }
+    }
+
+    private void EmitArrayLiteral(ArrayExpression ae)
+    {
+        _b.Emit(Opcode.NewObject);
+        for (var i = 0; i < ae.Elements.Count; i++)
+        {
+            var element = ae.Elements[i];
+            if (element is null) continue;
+            if (element is SpreadElement)
+                throw new NotSupportedException("array literal spread waits for iterator protocol");
+            _b.Emit(Opcode.Dup);
+            EmitExpression(element);
+            _b.EmitU16(Opcode.StoreProperty, _b.AddConstant(i.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+            _b.Emit(Opcode.Pop);
+        }
+        _b.Emit(Opcode.Dup);
+        _b.EmitU16(Opcode.LoadConst, _b.AddConstant((double)ae.Elements.Count));
+        _b.EmitU16(Opcode.StoreProperty, _b.AddConstant("length"));
+        _b.Emit(Opcode.Pop);
+    }
+
+    private static string PropertyName(Expression key) => key switch
+    {
+        Identifier id => id.Name,
+        StringLiteral s => s.Value,
+        NumericLiteral n => JsValue.ToStringValue(JsValue.Number(n.Value)),
+        _ => throw new NotSupportedException($"object pattern key kind '{key.GetType().Name}'"),
+    };
 
     private void EmitNew(NewExpression ne)
     {
