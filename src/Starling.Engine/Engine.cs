@@ -167,9 +167,23 @@ public sealed class TesseraEngine
             }
             if (scripts.Scripts.Count > 0)
             {
+                // Snapshot layout against the pre-script DOM so JS can call
+                // getBoundingClientRect / offsetWidth / getComputedStyle
+                // and receive real numbers. Stale wrt post-script mutations
+                // — measure-after-mutate is a known follow-up.
+                ILayoutHost? layoutHost = null;
+                using (_diag.Span("engine", "prelayout_for_js"))
+                {
+                    var viewport = new LayoutSize(options.Viewport.Width, options.Viewport.Height);
+                    var (root, style) = _painter.LayoutDocumentWithStyle(
+                        doc, viewport, options.FontSize, images, stylesheets.Resolve, webFonts,
+                        colorScheme: options.PreferredColorScheme);
+                    layoutHost = new BoxLayoutHost(root, style);
+                }
+
                 using (_diag.Span("engine", "run_scripts"))
                 {
-                    await RunScriptsAsync(doc, u, scripts.Scripts, ct).ConfigureAwait(false);
+                    await RunScriptsAsync(doc, u, scripts.Scripts, layoutHost, ct).ConfigureAwait(false);
                 }
                 // Scripts may have added <img> or new stylesheet links;
                 // re-run the resource fetch so the post-script DOM is
@@ -334,7 +348,12 @@ public sealed class TesseraEngine
                 await scripts.FetchAllAsync(doc, baseUrl: u, ct).ConfigureAwait(false);
                 if (scripts.Scripts.Count > 0)
                 {
-                    await RunScriptsAsync(doc, u, scripts.Scripts, ct).ConfigureAwait(false);
+                    var preViewport = new LayoutSize(options.Viewport.Width, options.Viewport.Height);
+                    var (preRoot, preStyle) = _painter.LayoutDocumentWithStyle(
+                        doc, preViewport, options.FontSize, images, stylesheets.Resolve, webFonts,
+                        colorScheme: options.PreferredColorScheme);
+                    var layoutHost = new BoxLayoutHost(preRoot, preStyle);
+                    await RunScriptsAsync(doc, u, scripts.Scripts, layoutHost, ct).ConfigureAwait(false);
                     await Task.WhenAll(
                         images.FetchAllAsync(doc, baseUrl: u, ct),
                         stylesheets.FetchAllAsync(doc, baseUrl: u, ct)
@@ -413,7 +432,8 @@ public sealed class TesseraEngine
     /// <c>setTimeout</c> bootstrappers settle within a wall-clock budget.
     /// </remarks>
     private async Task RunScriptsAsync(
-        Document document, TesseraUrl baseUrl, IReadOnlyList<LoadedScript> scripts, CancellationToken ct)
+        Document document, TesseraUrl baseUrl, IReadOnlyList<LoadedScript> scripts,
+        ILayoutHost? layoutHost, CancellationToken ct)
     {
         var runtime = new JsRuntime();
         var consoleErrors = 0;
@@ -434,7 +454,8 @@ public sealed class TesseraEngine
         using var http = _httpFactory();
         WindowBinding.Install(runtime, document, new WindowInstallOptions(
             DocumentUrl: baseUrl.ToString(),
-            HttpClient: http));
+            HttpClient: http,
+            LayoutHost: layoutHost));
 
         // setTimeout / setInterval ride on a simulated WebEventLoop clock.
         // PumpPendingAsync advances it in small steps after each microtask

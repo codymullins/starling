@@ -219,6 +219,73 @@ public sealed class EngineJsExecutionTests
     }
 
     [Fact]
+    public async Task getBoundingClientRect_returns_nonzero_dimensions_for_styled_box()
+    {
+        // The engine pre-lays-out the document before running scripts, so
+        // getBoundingClientRect should report the styled width/height of
+        // the target div (not 0/0 like a never-laid-out doc would).
+        var html = @"<!doctype html><html>
+          <head><style>#probe { display:block; width:140px; height:60px; background:#abc; }</style></head>
+          <body>
+            <div id='probe'>probe</div>
+            <p id='out'>?</p>
+            <script>
+                var r = document.getElementById('probe').getBoundingClientRect();
+                document.getElementById('out').textContent =
+                    'w=' + Math.round(r.width) + ' h=' + Math.round(r.height);
+            </script>
+          </body></html>";
+
+        var outcome = await RenderHtmlAsync(html);
+        outcome.DisplayText.Should().Contain("w=140");
+        outcome.DisplayText.Should().Contain("h=60");
+    }
+
+    [Fact]
+    public async Task offsetWidth_and_offsetHeight_track_layout()
+    {
+        var html = @"<!doctype html><html>
+          <head><style>#probe { display:block; width:80px; height:30px; }</style></head>
+          <body>
+            <div id='probe'></div>
+            <p id='out'>?</p>
+            <script>
+                var probe = document.getElementById('probe');
+                document.getElementById('out').textContent =
+                    'ow=' + probe.offsetWidth + ' oh=' + probe.offsetHeight;
+            </script>
+          </body></html>";
+
+        var outcome = await RenderHtmlAsync(html);
+        outcome.DisplayText.Should().Contain("ow=80");
+        outcome.DisplayText.Should().Contain("oh=30");
+    }
+
+    [Fact]
+    public async Task getComputedStyle_returns_resolved_css_property_value()
+    {
+        // The cascade snapshot the engine builds before scripts run feeds
+        // getComputedStyle. The kebab-case getter and the camelCase
+        // accessor should both report the styled value.
+        var html = @"<!doctype html><html>
+          <head><style>#probe { color:#ff0000; font-size:24px; display:block; }</style></head>
+          <body>
+            <div id='probe'>probe</div>
+            <p id='out'>?</p>
+            <script>
+                var cs = window.getComputedStyle(document.getElementById('probe'));
+                document.getElementById('out').textContent =
+                    'd=' + cs.getPropertyValue('display') +
+                    ' fs=' + cs.fontSize;
+            </script>
+          </body></html>";
+
+        var outcome = await RenderHtmlAsync(html);
+        outcome.DisplayText.Should().Contain("d=block");
+        outcome.DisplayText.Should().Contain("fs=24px");
+    }
+
+    [Fact]
     public async Task Module_and_unknown_type_scripts_are_skipped()
     {
         // type="module" is not yet supported; a stray module script must not

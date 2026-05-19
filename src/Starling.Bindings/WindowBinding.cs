@@ -142,12 +142,117 @@ public static class WindowBinding
         MutationObserverBinding.Install(runtime, document);
         IntersectionObserverBinding.Install(runtime, document);
         ResizeObserverBinding.Install(runtime, document);
+
+        // 8) getComputedStyle(el, pseudoElt?) — consults the optional
+        // ILayoutHost. Returns a CSSStyleDeclaration-shaped object backed
+        // by host.GetComputedProperty; with no host installed, every
+        // property reads as the empty string (matches an un-styled doc).
+        InstallGetComputedStyle(realm, global);
     }
 
     /// <summary>Resolve the runtime that backs the given realm. Returns null
     /// if <see cref="Install"/> was never called.</summary>
     internal static JsRuntime? RuntimeForRealm(JsRealm realm)
         => RealmToRuntime.TryGetValue(realm, out var r) ? r : null;
+
+    /// <summary>Resolve the optional layout host for the realm. Bindings
+    /// that surface layout-readback APIs (rect, offsets, computed style)
+    /// call this; a null result means no snapshot was supplied, and the
+    /// binding should fall back to spec-permitted defaults.</summary>
+    internal static ILayoutHost? LayoutHostForRealm(JsRealm realm)
+        => RealmToLayoutHost.TryGetValue(realm, out var h) ? h : null;
+
+    /// <summary>Install <c>window.getComputedStyle(el, pseudoElt?)</c>. The
+    /// returned object exposes a <c>getPropertyValue(name)</c> method plus
+    /// camel-case-keyed accessor properties for the resolved value of any
+    /// CSS property the host knows about. Pseudo-element argument is
+    /// currently ignored (the host doesn't yet expose pseudo-element
+    /// cascades) but accepted for API compatibility.</summary>
+    private static void InstallGetComputedStyle(JsRealm realm, JsObject global)
+    {
+        var fn = new JsNativeFunction(realm, "getComputedStyle", 1, (_, args) =>
+        {
+            var element = args.Length > 0 ? DomWrappers.UnwrapElement(args[0]) : null;
+            if (element is null)
+                throw new JsThrow(realm.NewTypeError("getComputedStyle requires an Element argument"));
+            return JsValue.Object(BuildComputedStyleDeclaration(realm, element));
+        }, isConstructor: false);
+        global.DefineOwnProperty("getComputedStyle",
+            PropertyDescriptor.Data(JsValue.Object(fn), writable: true, enumerable: false, configurable: true));
+    }
+
+    private static JsObject BuildComputedStyleDeclaration(JsRealm realm, Element element)
+    {
+        var host = LayoutHostForRealm(realm);
+        var decl = new JsObject(realm.ObjectPrototype);
+
+        EventTargetBinding.DefineMethod(realm, decl, "getPropertyValue", (_, args) =>
+        {
+            var name = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+            if (string.IsNullOrEmpty(name) || host is null) return JsValue.String("");
+            return JsValue.String(host.GetComputedProperty(element, name));
+        }, length: 1);
+        // setPropertyValue / removeProperty / cssText etc. are no-ops on a
+        // computed-style declaration per spec — they only mean something
+        // on the element's inline style object.
+        EventTargetBinding.DefineMethod(realm, decl, "setProperty",
+            (_, _) => JsValue.Undefined, length: 2);
+        EventTargetBinding.DefineMethod(realm, decl, "removeProperty",
+            (_, _) => JsValue.String(""), length: 1);
+
+        // Convenience: a small handful of common camelCase accessors so
+        // `cs.color`, `cs.fontSize` etc. round-trip without going through
+        // getPropertyValue. Real CSSStyleDeclaration exposes every known
+        // property; we settle for the heavy hitters until we automate the
+        // full property list.
+        foreach (var prop in CommonComputedStyleProps)
+        {
+            var camel = ToCamelCase(prop);
+            var capturedProp = prop;
+            EventTargetBinding.DefineAccessor(realm, decl, camel,
+                (_, _) => host is null
+                    ? JsValue.String("")
+                    : JsValue.String(host.GetComputedProperty(element, capturedProp)));
+            if (camel != prop)
+            {
+                // Spec also lets `cs['font-size']` work — fine since CSS
+                // property names are valid JS string keys.
+                EventTargetBinding.DefineAccessor(realm, decl, prop,
+                    (_, _) => host is null
+                        ? JsValue.String("")
+                        : JsValue.String(host.GetComputedProperty(element, capturedProp)));
+            }
+        }
+        return decl;
+    }
+
+    private static readonly string[] CommonComputedStyleProps =
+    [
+        "color", "background-color", "font-size", "font-family", "font-weight", "font-style",
+        "line-height", "letter-spacing", "text-align", "text-decoration",
+        "display", "position", "visibility", "opacity",
+        "width", "height", "min-width", "min-height", "max-width", "max-height",
+        "margin-top", "margin-right", "margin-bottom", "margin-left",
+        "padding-top", "padding-right", "padding-bottom", "padding-left",
+        "border-top-width", "border-right-width", "border-bottom-width", "border-left-width",
+        "top", "right", "bottom", "left", "z-index",
+        "flex-direction", "justify-content", "align-items", "flex-wrap", "gap",
+        "overflow", "overflow-x", "overflow-y",
+    ];
+
+    private static string ToCamelCase(string kebab)
+    {
+        if (kebab.IndexOf('-') < 0) return kebab;
+        var sb = new System.Text.StringBuilder(kebab.Length);
+        var upper = false;
+        foreach (var c in kebab)
+        {
+            if (c == '-') { upper = true; continue; }
+            sb.Append(upper ? char.ToUpperInvariant(c) : c);
+            upper = false;
+        }
+        return sb.ToString();
+    }
 
     /// <summary>Build (or return cached) Location object for a document. The
     /// object is identity-stable per document so
@@ -264,7 +369,8 @@ public readonly record struct WindowInstallOptions(
     double InnerWidth = 0,
     double InnerHeight = 0,
     TesseraHttpClient? HttpClient = null,
-    CookieJar? CookieJar = null);
+    CookieJar? CookieJar = null,
+    ILayoutHost? LayoutHost = null);
 
 internal static class ConditionalWeakTableExtensions
 {

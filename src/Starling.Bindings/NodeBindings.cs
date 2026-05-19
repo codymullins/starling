@@ -307,6 +307,49 @@ public static class NodeBindings
             return JsValue.Undefined;
         }, length: 0);
 
+        // Layout-readback APIs — consult the realm's optional ILayoutHost
+        // snapshot. With no host (e.g. JS run outside the engine pipeline)
+        // they return spec-permitted zeros, matching a never-laid-out doc.
+        EventTargetBinding.DefineMethod(realm, elProto, "getBoundingClientRect", (thisV, _) =>
+        {
+            var host = WindowBinding.LayoutHostForRealm(realm);
+            if (DomWrappers.UnwrapElement(thisV) is { } e &&
+                host is not null && host.TryGetBoundingClientRect(e, out var r))
+            {
+                return JsValue.Object(BuildDomRect(realm, r));
+            }
+            return JsValue.Object(BuildDomRect(realm, default));
+        }, length: 0);
+        EventTargetBinding.DefineMethod(realm, elProto, "getClientRects", (thisV, _) =>
+        {
+            // Single-rect simplification — block boxes only return one
+            // rect, which covers most layout-readback paths. Inline flows
+            // that emit multiple line boxes would need the box tree walk.
+            var host = WindowBinding.LayoutHostForRealm(realm);
+            if (DomWrappers.UnwrapElement(thisV) is { } e &&
+                host is not null && host.TryGetBoundingClientRect(e, out var r))
+            {
+                return MakeArray(realm, new[] { JsValue.Object(BuildDomRect(realm, r)) });
+            }
+            return MakeArray(realm, Array.Empty<JsValue>());
+        }, length: 0);
+        EventTargetBinding.DefineAccessor(realm, elProto, "offsetWidth",
+            (thisV, _) => ReadOffsetMetric(realm, thisV, m => m.OffsetWidth));
+        EventTargetBinding.DefineAccessor(realm, elProto, "offsetHeight",
+            (thisV, _) => ReadOffsetMetric(realm, thisV, m => m.OffsetHeight));
+        EventTargetBinding.DefineAccessor(realm, elProto, "offsetTop",
+            (thisV, _) => ReadOffsetMetric(realm, thisV, m => m.OffsetTop));
+        EventTargetBinding.DefineAccessor(realm, elProto, "offsetLeft",
+            (thisV, _) => ReadOffsetMetric(realm, thisV, m => m.OffsetLeft));
+        EventTargetBinding.DefineAccessor(realm, elProto, "clientWidth",
+            (thisV, _) => ReadOffsetMetric(realm, thisV, m => m.ClientWidth));
+        EventTargetBinding.DefineAccessor(realm, elProto, "clientHeight",
+            (thisV, _) => ReadOffsetMetric(realm, thisV, m => m.ClientHeight));
+        EventTargetBinding.DefineAccessor(realm, elProto, "scrollWidth",
+            (thisV, _) => ReadOffsetMetric(realm, thisV, m => m.OffsetWidth));
+        EventTargetBinding.DefineAccessor(realm, elProto, "scrollHeight",
+            (thisV, _) => ReadOffsetMetric(realm, thisV, m => m.OffsetHeight));
+
         var elCtor = new JsNativeFunction(realm, "Element", 0, (_, _) =>
             throw new JsThrow(realm.NewTypeError("Illegal constructor")), isConstructor: false);
         elCtor.SetPrototypeOf(realm.NodeConstructor);
@@ -470,6 +513,35 @@ public static class NodeBindings
     {
         var fn = parentProto.Get(name);
         return AbstractOperations.Call(realm.ActiveVm, fn, thisV, args);
+    }
+
+    /// <summary>Build a plain DOMRect-shaped JS object from a snapshot rect.
+    /// Spec calls for a real <c>DOMRect</c> prototype; the bag here is
+    /// duck-compatible for the read-only paths every test we care about
+    /// touches (<c>r.width</c>, <c>r.top</c>, etc.).</summary>
+    internal static JsObject BuildDomRect(JsRealm realm, LayoutRect rect)
+    {
+        var o = new JsObject(realm.ObjectPrototype);
+        o.Set("x", JsValue.Number(rect.X));
+        o.Set("y", JsValue.Number(rect.Y));
+        o.Set("width", JsValue.Number(rect.Width));
+        o.Set("height", JsValue.Number(rect.Height));
+        o.Set("top", JsValue.Number(rect.Top));
+        o.Set("right", JsValue.Number(rect.Right));
+        o.Set("bottom", JsValue.Number(rect.Bottom));
+        o.Set("left", JsValue.Number(rect.Left));
+        return o;
+    }
+
+    private static JsValue ReadOffsetMetric(JsRealm realm, JsValue thisV, Func<OffsetMetrics, double> select)
+    {
+        var host = WindowBinding.LayoutHostForRealm(realm);
+        if (DomWrappers.UnwrapElement(thisV) is { } e &&
+            host is not null && host.TryGetOffsetMetrics(e, out var m))
+        {
+            return JsValue.Number(select(m));
+        }
+        return JsValue.Number(0);
     }
 
     private static int NodeTypeFromKind(NodeKind kind) => (int)kind;
