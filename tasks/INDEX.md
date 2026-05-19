@@ -111,6 +111,21 @@ structure).
 > builds are still pending, so those CI legs are honestly red until they exist.
 > Open follow-ups are listed in the parent WP's handoff log.
 
+## M5 — Avalonia shell + interactivity polish
+
+CSS-bucket follow-ups from M1 that were deliberately deferred. (Selector
+features previously listed as deferred — `:has`, `:nth-*`, `:is`, `:where`,
+`:scope` — are in fact already implemented in
+`src/Starling.Css/Selectors/SelectorMatcher.cs`.)
+
+| ID | Status | Owner | Subsystem |
+|---|---|---|---|
+| [wp:M5-css-01-transform-value](M5/wp-M5-css-01-transform-value.md) | 🟢 complete | agent-copilot-claude-opus-4.7 | Starling.Css |
+| [wp:M5-css-02-transform-paint](M5/wp-M5-css-02-transform-paint.md) | 🔵 available | — | Starling.Paint |
+| [wp:M5-css-03-keyframes-rule](M5/wp-M5-css-03-keyframes-rule.md) | 🟢 complete | agent-copilot-claude-opus-4.7 | Starling.Css |
+| [wp:M5-css-04-transitions-engine](M5/wp-M5-css-04-transitions-engine.md) | 🔵 available | — | Starling.Css |
+| [wp:M5-css-05-animations-engine](M5/wp-M5-css-05-animations-engine.md) | ⚫ blocked (on 04) | — | Starling.Css |
+
 ## Available right now (no dependencies pending)
 
 The M3-06 native interop pivot is closed. Remaining pivot follow-ups (win/linux
@@ -126,6 +141,7 @@ for any interactive demo.
 
 ## Recently completed
 
+- **wp:M5-css-01-transform-value** + **wp:M5-css-03-keyframes-rule** — agent-copilot-claude-opus-4.7, 2026-05-19. Pure-managed M5 CSS foundation work. New `Matrix2D` 2D affine struct + `CssTransform` typed value (translate/scale/rotate/skew/matrix, 3D variants fail-soft to identity, left-to-right composition per Transforms 1 §6.1) + `CssTransformParser` over the existing `CssFunctionValue` tree. New `KeyframesRule`/`Keyframe`/`KeyframeDeclaration` records + `KeyframesParser.ParseAll(StyleSheet)` mirroring the `FontFaceParser` pattern (handles `from`/`to`/`%`, grouped selectors, `-webkit-`/`-moz-` aliases, out-of-range pruning, stable offset sort). 21 new tests, all green. Application/timing/animation drivers split out to `wp:M5-css-02/04/05`.
 - **wp:M2-07b-live-https-fixture** — agent-claude-cody, 2026-05-13. Live `https://example.com` render test (env-gated `TESSERA_ALLOW_NETWORK=1`, runs in a dedicated `network-tests` CI job), snapshot-vendored `nginx.org` fixture rendered through a local stub HTTP server with byte-exact + SSIM ≥ 0.99 golden gate, and a pure-managed SSIM implementation in `src/Tessera.Common/Image/Ssim.cs`. Picked nginx.org over the originally-suggested anthropic.com per the fallback note (33 KB, 6 same-origin subresources, HTML4, zero JS).
 - **wp:M2-07c-http-keepalive-pool** — agent-claude-cody, 2026-05-13. Per-origin HTTP/1.1 connection pool (6 concurrent, LRU eviction, 60s idle timeout) with transparent stale-socket re-dial. New `ConnectionPool` + `IHttpTransport` + `PooledHttpTransport` + `OriginKey`; `TesseraHttpClient.Dispose` now drains the pool; `H1ResponseParser` surfaces `IndicatesKeepAlive` + `HasDefiniteBodyFraming` for pool-fate gating. End-to-end test asserts exactly one TCP accept across two sequential GETs to the same origin.
 - **wp:M2-07d-encoding-hardening** — agent-claude-cody, 2026-05-13. WHATWG label table in `Tessera.Common.Encoding.WhatwgEncodingLabels` becomes the single source of truth across HTTP header, meta-charset, and BOM sniffing. `CodePagesEncodingProvider` registered in `TesseraEngine`'s static ctor unlocks windows-1250…1258, ISO-8859-2…16 (most), Shift_JIS, GBK/gb18030, Big5, EUC-KR, KOI8-*, macintosh. WPT `encoding/` curated subset hits 43/43 (100%) on supported labels — well past the 95% gate. Documented follow-ups: ISO-8859-{10,14,16}, the `replacement` decoder, `x-user-defined`.
