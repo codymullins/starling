@@ -1,7 +1,7 @@
 ---
 id: wp:M5-css-10-engine-frame-loop
 milestone: M5
-status: "blocked"
+status: "available"
 claimed_by: null
 claimed_at: null
 branch: "main"
