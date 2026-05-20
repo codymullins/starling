@@ -72,14 +72,25 @@ internal sealed class PictureCache
     /// </summary>
     public bool TryServe(LayoutRect viewport, float scale, int pageVersion, out CacheBlit blit)
     {
+        if (!TryServeRaw(viewport, scale, pageVersion, out blit))
+            return false;
+        _diag.Counter("paint.cache.hit", 1);
+        return true;
+    }
+
+    /// <summary>
+    /// Same containment check + blit computation as <see cref="TryServe"/> but
+    /// without bumping <c>paint.cache.hit</c>. Used to assemble the output after a
+    /// seed/stitch on a MISS/PARTIAL frame, where the frame's outcome counter has
+    /// already been recorded and the serve must not also count as a hit.
+    /// </summary>
+    public bool TryServeRaw(LayoutRect viewport, float scale, int pageVersion, out CacheBlit blit)
+    {
         blit = default;
         var want = ToDeviceRect(viewport, scale);
 
         if (_pixels is null || pageVersion != _pageVersion || scale != _scale || !_bounds.Contains(want))
-        {
-            _diag.Counter("paint.cache.miss", 1);
             return false;
-        }
 
         blit = new CacheBlit(
             SourcePixels: _pixels,
@@ -90,7 +101,6 @@ internal sealed class PictureCache
             DestY: 0,
             Width: want.Width,
             Height: want.Height);
-        _diag.Counter("paint.cache.hit", 1);
         return true;
     }
 
@@ -122,30 +132,28 @@ internal sealed class PictureCache
 
     /// <summary>
     /// Stitches a freshly-painted edge strip into the cache, growing the cache
-    /// buffer to the union of its current bounds and the strip. If growth would
-    /// exceed the max-area budget the cache is evicted (<c>paint.cache.evict</c>)
-    /// and reset to just the strip's content. Emits the painted area as
-    /// <c>paint.cache.strip_area</c>.
+    /// buffer to the union of its current bounds and the strip. Emits the painted
+    /// area as <c>paint.cache.strip_area</c>. Returns <c>false</c> when growth
+    /// would exceed the max-area budget (or the key is stale): the caller must then
+    /// evict via <see cref="Invalidate"/> and reseed with a full-viewport raster,
+    /// because a single strip does not cover the whole request. Returns <c>true</c>
+    /// when the strip was stitched in place.
     /// </summary>
-    public void Stitch(DeviceRect stripBounds, RenderedBitmap stripPixels, float scale, int pageVersion)
+    public bool Stitch(DeviceRect stripBounds, RenderedBitmap stripPixels, float scale, int pageVersion)
     {
         ArgumentNullException.ThrowIfNull(stripPixels);
         _diag.Counter("paint.cache.strip_area", (double)stripBounds.Width * stripBounds.Height);
 
         // A version/scale mismatch slipping through here means the caller is
-        // stitching against a stale key — reseed wholesale rather than corrupt.
+        // stitching against a stale key — refuse so it reseeds wholesale.
         if (_pixels is null || pageVersion != _pageVersion || scale != _scale)
-        {
-            Reset(stripBounds, scale, pageVersion, stripPixels);
-            return;
-        }
+            return false;
 
         var grown = _bounds.Union(stripBounds);
         if ((long)grown.Width * grown.Height > _maxAreaPx)
         {
             _diag.Counter("paint.cache.evict", 1);
-            Reset(stripBounds, scale, pageVersion, stripPixels);
-            return;
+            return false;
         }
 
         var dest = new byte[checked(grown.Width * grown.Height * 4)];
@@ -157,6 +165,7 @@ internal sealed class PictureCache
 
         _pixels = dest;
         _bounds = grown;
+        return true;
     }
 
     /// <summary>Drops all cached content. The next render is a full MISS.</summary>

@@ -64,28 +64,48 @@ internal sealed class CachedPageRenderer
         // Full miss: one strip equal to the whole device rect. Paint it, seed,
         // and serve from the now-complete cache.
         if (strips.Count == 1 && strips[0].Equals(device))
-        {
-            using var full = PaintStrip(root, strips[0], scale, styleOverride, images);
-            // Seed against the raster's real device rect (origin + actual size);
-            // a fractional scale's ceil can differ from the request by a pixel.
-            var seedRect = new DeviceRect(device.X, device.Y, full.Width, full.Height);
-            _cache.Reset(seedRect, scale, pageVersion, full);
-            return ServeAfterFill(viewport, scale, pageVersion, device);
-        }
+            return SeedAndServe(root, viewport, scale, pageVersion, device, styleOverride, images);
 
-        // Partial: paint each newly-exposed strip and stitch it in.
+        // Partial: paint each newly-exposed strip and stitch it in. If a stitch
+        // refuses (the grown union would blow the area budget → eviction), the
+        // cache no longer covers the request, so fall back to a full repaint of
+        // the viewport and reseed. This keeps the served output correct after an
+        // eviction instead of leaving the cache holding only one edge strip.
         foreach (var strip in strips)
         {
             using var painted = PaintStrip(root, strip, scale, styleOverride, images);
             var actual = new DeviceRect(strip.X, strip.Y, painted.Width, painted.Height);
-            _cache.Stitch(actual, painted, scale, pageVersion);
+            if (!_cache.Stitch(actual, painted, scale, pageVersion))
+            {
+                _cache.Invalidate();
+                return SeedAndServe(root, viewport, scale, pageVersion, device, styleOverride, images);
+            }
         }
+        return ServeAfterFill(viewport, scale, pageVersion, device);
+    }
+
+    private RenderedBitmap SeedAndServe(
+        BlockBox root,
+        LayoutRect viewport,
+        float scale,
+        int pageVersion,
+        DeviceRect device,
+        Func<Box, ComputedStyle?>? styleOverride,
+        IImageResolver? images)
+    {
+        using var full = PaintStrip(root, device, scale, styleOverride, images);
+        // Reset against the raster's real device rect (origin + actual size); a
+        // fractional scale's ceil can differ from the request by a pixel.
+        var seedRect = new DeviceRect(device.X, device.Y, full.Width, full.Height);
+        _cache.Reset(seedRect, scale, pageVersion, full);
         return ServeAfterFill(viewport, scale, pageVersion, device);
     }
 
     private RenderedBitmap ServeAfterFill(LayoutRect viewport, float scale, int pageVersion, DeviceRect device)
     {
-        if (!_cache.TryServe(viewport, scale, pageVersion, out var blit))
+        // TryServeRaw (not TryServe): the frame's outcome was already counted as a
+        // miss/partial; assembling the output must not also bump the hit counter.
+        if (!_cache.TryServeRaw(viewport, scale, pageVersion, out var blit))
             throw new InvalidOperationException("Cache should fully cover the viewport after seed/stitch.");
         return Compose(blit, device.Width, device.Height);
     }
