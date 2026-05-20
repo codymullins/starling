@@ -42,6 +42,14 @@ public sealed class HtmlTreeBuilder
     private InsertionMode _originalMode = InsertionMode.Initial;
     private int _tokenCount;
 
+    /// <summary>
+    /// Non-null when this builder is running the HTML fragment parsing algorithm
+    /// (§13.4). The fragment's parsing context element steers initial tokenizer
+    /// state and insertion mode; the resulting nodes are the children of the
+    /// synthetic <c>html</c> root rather than the document tree.
+    /// </summary>
+    private readonly Element? _fragmentContext;
+
     public HtmlTreeBuilder(HtmlTokenizer tokenizer, IDiagnostics? diagnostics = null,
         CountingParseErrorSink? errorCounter = null)
     {
@@ -49,6 +57,13 @@ public sealed class HtmlTreeBuilder
         _tokenizer = tokenizer;
         _diag = diagnostics ?? NoopDiagnostics.Instance;
         _errorCounter = errorCounter;
+    }
+
+    private HtmlTreeBuilder(HtmlTokenizer tokenizer, Element fragmentContext, IDiagnostics? diagnostics,
+        CountingParseErrorSink? errorCounter)
+        : this(tokenizer, diagnostics, errorCounter)
+    {
+        _fragmentContext = fragmentContext;
     }
 
     public static Document Parse(string html, IDiagnostics? diagnostics = null)
@@ -61,6 +76,118 @@ public sealed class HtmlTreeBuilder
         tokenizer.EndOfInput();
         var builder = new HtmlTreeBuilder(tokenizer, diag, errorCounter);
         return builder.Run();
+    }
+
+    /// <summary>
+    /// HTML fragment parsing algorithm (§13.4). Parses <paramref name="markup"/>
+    /// in the context of <paramref name="contextElement"/> and returns the
+    /// resulting nodes as a detached <see cref="DocumentFragment"/> owned by
+    /// <paramref name="ownerDocument"/> (so the new nodes share the element's
+    /// document). The context element itself is not added to the output.
+    /// </summary>
+    public static DocumentFragment ParseFragment(string markup, Element contextElement,
+        Document ownerDocument, IDiagnostics? diagnostics = null)
+    {
+        ArgumentNullException.ThrowIfNull(markup);
+        ArgumentNullException.ThrowIfNull(contextElement);
+        ArgumentNullException.ThrowIfNull(ownerDocument);
+
+        var diag = diagnostics ?? NoopDiagnostics.Instance;
+        var errorCounter = new CountingParseErrorSink();
+        var tokenizer = new HtmlTokenizer(errorCounter);
+        // §13.4 step 4: set the tokenizer's state per the context element so RCDATA
+        // / RAWTEXT / script / plaintext contexts treat their contents as text.
+        tokenizer.SetState(InitialTokenizerStateFor(contextElement.LocalName));
+        tokenizer.Feed(markup);
+        tokenizer.EndOfInput();
+
+        var builder = new HtmlTreeBuilder(tokenizer, contextElement, diag, errorCounter);
+        return builder.RunFragment(ownerDocument);
+    }
+
+    private DocumentFragment RunFragment(Document ownerDocument)
+    {
+        using var _ = _diag.Span("html", "parse-fragment");
+
+        // §13.4 steps 5-7: create a synthetic <html> root, push it as the only
+        // open element, and reset the insertion mode appropriately for the
+        // context element so its children land in the right place.
+        var root = _document.CreateElement("html");
+        _document.AppendChild(root);
+        _openElements.Push(root);
+        ResetInsertionModeForContext(_fragmentContext!.LocalName);
+
+        while (_tokenizer.ReadToken() is { } token)
+        {
+            _tokenCount++;
+            HandleToken(token);
+            if (token is EndOfFileToken) break;
+        }
+        FlushText();
+
+        // §13.4 step 14: the fragment is the child nodes of the root element.
+        var fragment = ownerDocument.CreateDocumentFragment();
+        var child = root.FirstChild;
+        while (child is not null)
+        {
+            var next = child.NextSibling;
+            fragment.AppendChild(child); // re-parents into the fragment
+            child = next;
+        }
+        return fragment;
+    }
+
+    /// <summary>
+    /// §13.4 step 4 — the tokenizer state implied by the fragment's context
+    /// element. Most contexts use the Data state; the text-content elements
+    /// switch to RCDATA / RAWTEXT / script / plaintext.
+    /// </summary>
+    private static TokenizerState InitialTokenizerStateFor(string contextLocalName)
+        => contextLocalName.ToLowerInvariant() switch
+        {
+            "title" or "textarea" => TokenizerState.Rcdata,
+            "style" or "xmp" or "iframe" or "noembed" or "noframes" => TokenizerState.Rawtext,
+            "script" => TokenizerState.ScriptData,
+            "noscript" => TokenizerState.Rawtext, // scripting is enabled in this engine
+            "plaintext" => TokenizerState.Plaintext,
+            _ => TokenizerState.Data,
+        };
+
+    /// <summary>
+    /// §13.4 step 7 — pick the insertion mode for fragment parsing from the
+    /// context element. The common case (any descendant of body, or arbitrary
+    /// element) is InBody; head/text contexts get their own modes so that, e.g.,
+    /// parsing into a &lt;title&gt; produces a single text node.
+    /// </summary>
+    private void ResetInsertionModeForContext(string contextLocalName)
+    {
+        switch (contextLocalName.ToLowerInvariant())
+        {
+            case "head":
+                _mode = InsertionMode.InHead;
+                break;
+            case "html":
+                _mode = InsertionMode.BeforeHead;
+                break;
+            case "title":
+            case "textarea":
+            case "style":
+            case "xmp":
+            case "iframe":
+            case "noembed":
+            case "noframes":
+            case "noscript":
+            case "script":
+                // Text contexts: the contents are pure character data; route
+                // through the Text mode so the tokenizer's RCDATA/RAWTEXT output
+                // becomes a single coalesced text node under the root.
+                _originalMode = InsertionMode.InBody;
+                _mode = InsertionMode.Text;
+                break;
+            default:
+                _mode = InsertionMode.InBody;
+                break;
+        }
     }
 
     public Document Run()

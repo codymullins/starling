@@ -1,4 +1,6 @@
 using Starling.Dom;
+using Starling.Html;
+using Starling.Html.TreeBuilder;
 using Starling.Js.Runtime;
 
 namespace Starling.Bindings;
@@ -14,10 +16,14 @@ namespace Starling.Bindings;
 /// selector engine (<see cref="QuerySelectorEngine"/>), so compound selectors,
 /// combinators, attribute selectors, <c>:nth-*</c>, and <c>:is/:where/:not</c>
 /// all work. An unparseable selector throws a JS <c>SyntaxError</c>.</para>
-/// <para><b>innerHTML:</b> getter returns <see cref="Node.TextContent"/> — we
-/// don't have a tree-to-HTML serializer threaded here. Setter accepts only
-/// plain text (no HTML parsing) and replaces children with a single text node.
-/// The full parser path lands with B5-3 plumbing.</para>
+/// <para><b>innerHTML / outerHTML / insertAdjacentHTML:</b> these go through the
+/// real <c>Starling.Html</c> parser and serializer.
+/// <see cref="HtmlTreeBuilder.ParseFragment"/> runs the HTML fragment parsing
+/// algorithm (§13.4) against the element as context; <see cref="HtmlSerializer"/>
+/// renders the tree back to markup (§13.3). Adding the <c>Starling.Html</c>
+/// project reference introduced no cycle — nothing in that project's transitive
+/// dependency graph (Common / Dom / Url) refers back to Bindings — so the simpler
+/// direct-reference option was taken over a parser-capability seam.</para>
 /// </remarks>
 public static class NodeBindings
 {
@@ -184,13 +190,36 @@ public static class NodeBindings
                 return JsValue.Undefined;
             });
         EventTargetBinding.DefineAccessor(realm, elProto, "innerHTML",
-            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.String(e.TextContent) : JsValue.String(""),
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e
+                ? JsValue.String(HtmlSerializer.SerializeChildren(e)) : JsValue.String(""),
             (thisV, args) =>
             {
-                // Simplification: no HTML parser is reachable from this layer.
-                // Treat the assignment as a textContent replacement.
                 if (DomWrappers.UnwrapElement(thisV) is { } e)
-                    e.TextContent = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+                {
+                    var markup = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+                    var fragment = ParseFragment(e, markup);
+                    // Replace all existing children with the parsed nodes.
+                    while (e.FirstChild is not null) e.RemoveChild(e.FirstChild);
+                    e.AppendChild(fragment);
+                }
+                return JsValue.Undefined;
+            });
+        EventTargetBinding.DefineAccessor(realm, elProto, "outerHTML",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e
+                ? JsValue.String(HtmlSerializer.SerializeNode(e)) : JsValue.String(""),
+            (thisV, args) =>
+            {
+                if (DomWrappers.UnwrapElement(thisV) is not { } e) return JsValue.Undefined;
+                var parent = e.ParentNode;
+                if (parent is null)
+                    throw new JsThrow(realm.NewTypeError("Cannot set outerHTML on an element with no parent"));
+                // Parse the markup in the context of the element's parent (or the
+                // element itself if the parent is the document), then swap it in.
+                var context = parent as Element ?? e;
+                var markup = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+                var fragment = ParseFragment(context, markup);
+                parent.InsertBefore(fragment, e);
+                parent.RemoveChild(e);
                 return JsValue.Undefined;
             });
         EventTargetBinding.DefineAccessor(realm, elProto, "children", (thisV, _) =>
@@ -318,6 +347,47 @@ public static class NodeBindings
             if (DomWrappers.UnwrapElement(thisV) is { } e) e.RemoveFromParent();
             return JsValue.Undefined;
         }, length: 0);
+        EventTargetBinding.DefineMethod(realm, elProto, "insertAdjacentHTML", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is not { } e)
+                throw new JsThrow(realm.NewTypeError("insertAdjacentHTML called on a non-Element"));
+            if (args.Length < 2)
+                throw new JsThrow(realm.NewTypeError("insertAdjacentHTML requires (position, text)"));
+            var position = JsValue.ToStringValue(args[0]);
+            var markup = JsValue.ToStringValue(args[1]);
+
+            // §DOM-Parsing: beforebegin/afterend parse against the parent as
+            // context; afterbegin/beforeend parse against the element itself.
+            switch (position.ToLowerInvariant())
+            {
+                case "beforebegin":
+                {
+                    var parent = e.ParentNode;
+                    if (parent is null) return JsValue.Undefined; // no-op per spec
+                    var context = parent as Element ?? e;
+                    parent.InsertBefore(ParseFragment(context, markup), e);
+                    break;
+                }
+                case "afterbegin":
+                    e.InsertBefore(ParseFragment(e, markup), e.FirstChild);
+                    break;
+                case "beforeend":
+                    e.AppendChild(ParseFragment(e, markup));
+                    break;
+                case "afterend":
+                {
+                    var parent = e.ParentNode;
+                    if (parent is null) return JsValue.Undefined; // no-op per spec
+                    var context = parent as Element ?? e;
+                    parent.InsertBefore(ParseFragment(context, markup), e.NextSibling);
+                    break;
+                }
+                default:
+                    throw new JsThrow(realm.NewTypeError(
+                        $"insertAdjacentHTML: '{position}' is not a valid position"));
+            }
+            return JsValue.Undefined;
+        }, length: 2);
 
         // Layout-readback APIs — consult the realm's optional ILayoutHost
         // snapshot. With no host (e.g. JS run outside the engine pipeline)
@@ -515,6 +585,17 @@ public static class NodeBindings
     {
         var arr = new JsArray(realm, items);
         return JsValue.Object(arr);
+    }
+
+    /// <summary>Run the HTML fragment parsing algorithm for <paramref name="markup"/>
+    /// using <paramref name="context"/> as the parsing context element, returning a
+    /// <see cref="DocumentFragment"/> whose nodes share the context element's
+    /// document. Falls back to a throwaway <see cref="Document"/> for detached
+    /// elements that have no owner document yet.</summary>
+    private static DocumentFragment ParseFragment(Element context, string markup)
+    {
+        var ownerDocument = context.OwnerDocument ?? new Document();
+        return HtmlTreeBuilder.ParseFragment(markup, context, ownerDocument);
     }
 
     /// <summary>Lookup a method on a parent prototype and call it bound to
