@@ -10,6 +10,7 @@ using Starling.Css;
 using Starling.Css.Parser;
 using Starling.Dom;
 using Starling.Js.Bytecode;
+using Starling.Js.Modules;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
 using Starling.Loop;
@@ -165,7 +166,7 @@ public sealed class StarlingEngine
             {
                 await scripts.FetchAllAsync(doc, baseUrl: u, ct).ConfigureAwait(false);
             }
-            if (scripts.Scripts.Count > 0)
+            if (scripts.Scripts.Count > 0 || scripts.ModuleScripts.Count > 0)
             {
                 // Lay out against the pre-script DOM so JS can call
                 // getBoundingClientRect / offsetWidth / getComputedStyle and
@@ -350,7 +351,7 @@ public sealed class StarlingEngine
             using (var scripts = new ScriptFetcher(_diag, _httpFactory))
             {
                 await scripts.FetchAllAsync(doc, baseUrl: u, ct).ConfigureAwait(false);
-                if (scripts.Scripts.Count > 0)
+                if (scripts.Scripts.Count > 0 || scripts.ModuleScripts.Count > 0)
                 {
                     var preViewport = new LayoutSize(options.Viewport.Width, options.Viewport.Height);
                     (Starling.Layout.Box.BlockBox Root, Starling.Css.Cascade.StyleEngine Style) Relayout() =>
@@ -438,7 +439,7 @@ public sealed class StarlingEngine
     /// <c>setTimeout</c> bootstrappers settle within a wall-clock budget.
     /// </remarks>
     private async Task RunScriptsAsync(
-        Document document, StarlingUrl baseUrl, ScriptFetcher fetcher,
+        Document document, StarlingUrl baseUrl, ScriptFetcher scriptFetcher,
         ILayoutHost? layoutHost, CancellationToken ct)
     {
         var runtime = new JsRuntime();
@@ -489,7 +490,7 @@ public sealed class StarlingEngine
         // runs the injected script synchronously on insertion (an acceptable
         // approximation — see browser-plan note in the test).
         document.NodeConnected = node =>
-            OnNodeConnected(node, runtime, fetcher, baseUrl, executed, ct);
+            OnNodeConnected(node, runtime, scriptFetcher, baseUrl, executed, ct);
 
         try
         {
@@ -497,8 +498,14 @@ public sealed class StarlingEngine
             // document order; async scripts run order-independently. We run the
             // ordered batch first, then the async batch — both before
             // DOMContentLoaded. See ScriptFetcher remarks (HTML §4.12.1).
-            RunOrderedScripts(runtime, fetcher.Scripts, executed, ct);
-            RunAsyncScripts(runtime, fetcher.Scripts, executed, ct);
+            RunOrderedScripts(runtime, scriptFetcher.Scripts, executed, ct);
+            RunAsyncScripts(runtime, scriptFetcher.Scripts, executed, ct);
+
+            // Module scripts (<script type="module">) run after the classic
+            // scripts, deferred and in document order (HTML §4.12.1). Each is the
+            // entry of its own import graph, loaded + linked + evaluated through
+            // the shared ModuleLoader, before DOMContentLoaded.
+            RunModuleScripts(runtime, baseUrl, scriptFetcher, ct);
 
             // §1: DOMContentLoaded — synchronous handlers see the parsed DOM.
             runtime.WithActiveVm(() => WindowBinding.FireDomContentLoaded(runtime));
@@ -619,6 +626,62 @@ public sealed class StarlingEngine
 
         if (loaded is null) return;
         ExecuteScript(runtime, loaded, executed, ct);
+    }
+
+    /// <summary>
+    /// Evaluate each <c>&lt;script type="module"&gt;</c> as the entry of its own
+    /// ES module graph. One <see cref="ModuleLoader"/> is shared across all
+    /// module scripts on the page so a module imported by two different entry
+    /// scripts is fetched, linked and evaluated once. Errors are logged through
+    /// the console sink (one bad module must not abort the render).
+    /// </summary>
+    private void RunModuleScripts(
+        JsRuntime runtime, StarlingUrl baseUrl, ScriptFetcher scriptFetcher, CancellationToken ct)
+    {
+        var moduleScripts = scriptFetcher.ModuleScripts;
+        if (moduleScripts.Count == 0) return;
+
+        var host = new EngineModuleHost(scriptFetcher, baseUrl, ct);
+        var loader = new ModuleLoader(runtime, host);
+
+        // Synthesize one inline-module entry per inline <script type=module>;
+        // external module scripts load from their src URL.
+        runtime.WithActiveVm(() =>
+        {
+            foreach (var script in moduleScripts)
+            {
+                ct.ThrowIfCancellationRequested();
+                var label = script.IsInline ? "<inline module>" : (script.BaseUrl?.ToString() ?? "<unknown>");
+                try
+                {
+                    if (script.IsInline)
+                    {
+                        // Inline modules have no URL of their own; register a
+                        // synthetic key whose source is the inline body and
+                        // whose import base is the document URL.
+                        var key = host.RegisterInlineModule(script.Source);
+                        loader.LoadAndEvaluate(key);
+                    }
+                    else
+                    {
+                        loader.LoadAndEvaluate(script.BaseUrl!.ToString());
+                    }
+                    _diag.Counter("engine.module.ok", 1);
+                }
+                catch (JsThrow ex)
+                {
+                    _diag.Counter("engine.module.failed", 1);
+                    _diag.Log(DiagLevel.Warn, "engine.js",
+                        $"Uncaught module error ({label}): {JsValue.ToStringValue(ex.Value)}");
+                }
+                catch (Exception ex)
+                {
+                    _diag.Counter("engine.module.failed", 1);
+                    _diag.Log(DiagLevel.Warn, "engine.js",
+                        $"Module compile/run failure ({label}): {ex.Message}");
+                }
+            }
+        });
     }
 
     /// <summary>
