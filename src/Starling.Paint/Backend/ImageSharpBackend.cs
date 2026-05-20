@@ -13,6 +13,7 @@ using Starling.Common.Diagnostics;
 using Starling.Common.Image;
 using Starling.Css.Values;
 using Starling.Layout.Text;
+using Starling.Paint.DisplayList;
 using Starling.Paint.Interop;
 using LayoutRect = Starling.Layout.Rect;
 using LayoutSize = Starling.Layout.Size;
@@ -263,7 +264,11 @@ internal sealed class ImageSharpBackend : IPaintBackend
             case DisplayList.FillRect fill:
                 if (fill.Bounds.Width <= 0 || fill.Bounds.Height <= 0) return;
                 _diag.Counter("paint.fill_rect", 1);
-                canvas.Fill(Brushes.Solid(ToColor(fill.Color)), ToDeviceRectPath(fill.Bounds, scale));
+                var rectPath = fill.PixelAlignment == FillRectPixelAlignment.SnapToDevicePixels
+                    ? ToSnappedDeviceRectPath(fill.Bounds, scale)
+                    : ToDeviceRectPath(fill.Bounds, scale);
+
+                canvas.Fill(Brushes.Solid(ToColor(fill.Color)), rectPath);
                 break;
             case DisplayList.StrokeRect stroke:
                 _diag.Counter("paint.stroke_rect", 1);
@@ -383,8 +388,21 @@ internal sealed class ImageSharpBackend : IPaintBackend
             (float)(r.Height * s));
     }
 
+    private static RectangleF ToSnappedDeviceRectF(LayoutRect r, float scale)
+    {
+        var s = scale > 0 ? scale : 1f;
+        var x0 = (float)Math.Round(r.X * s);
+        var y0 = (float)Math.Round(r.Y * s);
+        var x1 = (float)Math.Round((r.X + r.Width) * s);
+        var y1 = (float)Math.Round((r.Y + r.Height) * s);
+        return new RectangleF(x0, y0, x1 - x0, y1 - y0);
+    }
+
     private static RectanglePolygon ToDeviceRectPath(LayoutRect r, float scale)
         => new(ToDeviceRectF(r, scale));
+
+    private static RectanglePolygon ToSnappedDeviceRectPath(LayoutRect r, float scale)
+        => new(ToSnappedDeviceRectF(r, scale));
 
     private static Color ToColor(CssColor c)
         => Color.FromPixel(new Rgba32(c.R, c.G, c.B, c.A));

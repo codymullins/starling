@@ -12,7 +12,13 @@ namespace Starling.Paint.DisplayList;
 /// </summary>
 public abstract record DisplayItem;
 
-public sealed record FillRect(Rect Bounds, CssColor Color) : DisplayItem;
+public enum FillRectPixelAlignment
+{
+    Preserve,
+    SnapToDevicePixels,
+}
+
+public sealed record FillRect(Rect Bounds, CssColor Color, FillRectPixelAlignment PixelAlignment) : DisplayItem;
 
 public sealed record StrokeRect(Rect Bounds, CssColor Color, double Width) : DisplayItem;
 

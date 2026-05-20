@@ -147,7 +147,7 @@ public sealed class ImageSharpBackendTests
     public void Oversized_viewport_falls_back_to_cpu_instead_of_aborting()
     {
         var list = new PaintList();
-        list.Add(new DisplayList.FillRect(new LayoutRect(0, 0, 100, 100), new Starling.Css.Values.CssColor(0, 0, 255, 255)));
+        list.Add(new FillRect(new LayoutRect(0, 0, 100, 100), new Starling.Css.Values.CssColor(0, 0, 255, 255), FillRectPixelAlignment.Preserve));
 
         using var backend = new ImageSharpBackend(FontResolver.Default, webFonts: null, diagnostics: null, useWebGpu: true);
 

@@ -81,7 +81,7 @@ public sealed class EndToEndRenderTests
     private static Starling.Paint.DisplayList.DisplayList SolidFillList(CssColor color)
     {
         var list = new Starling.Paint.DisplayList.DisplayList();
-        list.Add(new FillRect(new LayoutRect(0, 0, 32, 32), color));
+        list.Add(new FillRect(new LayoutRect(0, 0, 32, 32), color, FillRectPixelAlignment.Preserve));
         return list;
     }
 }

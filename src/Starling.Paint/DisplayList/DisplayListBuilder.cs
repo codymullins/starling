@@ -73,7 +73,7 @@ public sealed class DisplayListBuilder
             var bg = style.GetColor(PropertyId.BackgroundColor);
             if (bg is { A: > 0 })
             {
-                list.Add(new FillRect(new Rect(frameX, frameY, box.Frame.Width, box.Frame.Height), bg));
+                list.Add(new FillRect(new Rect(frameX, frameY, box.Frame.Width, box.Frame.Height), bg, FillRectPixelAlignment.Preserve));
             }
 
             // CSS Backgrounds 3 §3 — background-image paints inside the
@@ -296,13 +296,13 @@ public sealed class DisplayListBuilder
         var leftColor = style.GetColor(PropertyId.BorderLeftColor);
 
         if (top > 0 && topColor.A > 0)
-            list.Add(new FillRect(new Rect(x, y, box.Frame.Width, top), topColor));
+            list.Add(new FillRect(new Rect(x, y, box.Frame.Width, top), topColor, FillRectPixelAlignment.Preserve));
         if (right > 0 && rightColor.A > 0)
-            list.Add(new FillRect(new Rect(x + box.Frame.Width - right, y, right, box.Frame.Height), rightColor));
+            list.Add(new FillRect(new Rect(x + box.Frame.Width - right, y, right, box.Frame.Height), rightColor, FillRectPixelAlignment.Preserve));
         if (bottom > 0 && bottomColor.A > 0)
-            list.Add(new FillRect(new Rect(x, y + box.Frame.Height - bottom, box.Frame.Width, bottom), bottomColor));
+            list.Add(new FillRect(new Rect(x, y + box.Frame.Height - bottom, box.Frame.Width, bottom), bottomColor, FillRectPixelAlignment.Preserve));
         if (left > 0 && leftColor.A > 0)
-            list.Add(new FillRect(new Rect(x, y, left, box.Frame.Height), leftColor));
+            list.Add(new FillRect(new Rect(x, y, left, box.Frame.Height), leftColor, FillRectPixelAlignment.Preserve));
     }
 
     private static void EmitTextFragments(TextBox text, double x, double y, DisplayList list, Func<Box, ComputedStyle?>? styleOverride)
@@ -333,11 +333,15 @@ public sealed class DisplayListBuilder
 
             if (IsUnderlined(style))
             {
-                var underlineY = y + frag.Y + frag.Baseline + Math.Max(1d, fontSize * 0.08d);
+                // TODO: Underline position and thickness are font-dependent
+                // as are overline and strikethrough.
+                // Investigate whether browsers actually use the font metric or just eyeball it.
+                var underlineY = y + frag.Y + frag.Baseline;
                 var underlineHeight = Math.Max(1d, Math.Round(fontSize / 16d));
                 list.Add(new FillRect(
                     new Rect(x + frag.X, underlineY, frag.Width, underlineHeight),
-                    color));
+                    color,
+                    FillRectPixelAlignment.SnapToDevicePixels));
             }
         }
     }
