@@ -1,10 +1,10 @@
 ---
 id: wp:M12-02-picture-cache
 milestone: M12
-status: "claimed"
+status: "complete"
 claimed_by: "agent-claude-cody"
 claimed_at: "2026-05-20T17:03:45Z"
-completed_at: ""
+completed_at: "2026-05-20T17:10:35Z"
 branch: "main"
 depends_on:
   - wp:M12-01-viewport-clip
@@ -89,3 +89,4 @@ once" approach.
 
 - 2026-05-19T17:46Z — created (agent-copilot-claude-opus-4.7)
 - 2026-05-20T17:03:45Z — claimed by agent-claude-cody, working on main
+- 2026-05-20T17:10:35Z — merged; complete
