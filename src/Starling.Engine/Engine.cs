@@ -187,7 +187,7 @@ public sealed class StarlingEngine
 
                 using (_diag.Span("engine", "run_scripts"))
                 {
-                    await RunScriptsAsync(doc, u, scripts.Scripts, layoutHost, ct).ConfigureAwait(false);
+                    await RunScriptsAsync(doc, u, scripts, layoutHost, ct).ConfigureAwait(false);
                 }
                 // Scripts may have added <img> or new stylesheet links;
                 // re-run the resource fetch so the post-script DOM is
@@ -359,7 +359,7 @@ public sealed class StarlingEngine
                             colorScheme: options.PreferredColorScheme);
                     var (preRoot, preStyle) = Relayout();
                     var layoutHost = new BoxLayoutHost(preRoot, preStyle, doc, Relayout);
-                    await RunScriptsAsync(doc, u, scripts.Scripts, layoutHost, ct).ConfigureAwait(false);
+                    await RunScriptsAsync(doc, u, scripts, layoutHost, ct).ConfigureAwait(false);
                     await Task.WhenAll(
                         images.FetchAllAsync(doc, baseUrl: u, options.Viewport.Width, options.FontSize, ct),
                         stylesheets.FetchAllAsync(doc, baseUrl: u, ct)
@@ -438,7 +438,7 @@ public sealed class StarlingEngine
     /// <c>setTimeout</c> bootstrappers settle within a wall-clock budget.
     /// </remarks>
     private async Task RunScriptsAsync(
-        Document document, StarlingUrl baseUrl, IReadOnlyList<LoadedScript> scripts,
+        Document document, StarlingUrl baseUrl, ScriptFetcher fetcher,
         ILayoutHost? layoutHost, CancellationToken ct)
     {
         var runtime = new JsRuntime();
@@ -474,44 +474,151 @@ public sealed class StarlingEngine
         TimersBinding.Install(runtime, loop);
         AnimationFrameBinding.Install(runtime, loop);
 
-        foreach (var script in scripts)
+        // Track which <script> elements have already executed so the
+        // runtime-injection hook never double-runs a parser-found script and
+        // an injected script can't be re-run if it is moved within the tree.
+        var executed = new HashSet<Element>(ReferenceEqualityComparer.Instance);
+
+        // Wire the runtime-injection hook: when JS appends a freshly created
+        // <script> to the connected DOM, fetch (for src) + execute it through
+        // the same compile+run path. Parser-inserted vs script-inserted async
+        // defaults: a <script> created via createElement and connected at
+        // runtime is "non-parser-inserted", so the spec defaults it to async;
+        // the headless engine has no streaming parser to overlap with, so it
+        // honours the element's async/defer attributes verbatim and otherwise
+        // runs the injected script synchronously on insertion (an acceptable
+        // approximation — see browser-plan note in the test).
+        document.NodeConnected = node =>
+            OnNodeConnected(node, runtime, fetcher, baseUrl, executed, ct);
+
+        try
         {
-            ct.ThrowIfCancellationRequested();
-            var label = script.IsInline ? "<inline>" : (script.BaseUrl?.ToString() ?? "<unknown>");
-            try
-            {
-                var program = new JsParser(script.Source).ParseProgram();
-                var chunk = JsCompiler.Compile(program);
-                new JsVm(runtime).Run(chunk);
-                _diag.Counter("engine.script.ok", 1);
-            }
-            catch (JsThrow ex)
-            {
-                _diag.Counter("engine.script.failed", 1);
-                _diag.Log(DiagLevel.Warn, "engine.js", $"Uncaught script error ({label}): {JsValue.ToStringValue(ex.Value)}");
-            }
-            catch (Exception ex)
-            {
-                _diag.Counter("engine.script.failed", 1);
-                _diag.Log(DiagLevel.Warn, "engine.js", $"Script compile/run failure ({label}): {ex.Message}");
-            }
+            // §0: ordered scripts (neither async nor defer, then defer) run in
+            // document order; async scripts run order-independently. We run the
+            // ordered batch first, then the async batch — both before
+            // DOMContentLoaded. See ScriptFetcher remarks (HTML §4.12.1).
+            RunOrderedScripts(runtime, fetcher.Scripts, executed, ct);
+            RunAsyncScripts(runtime, fetcher.Scripts, executed, ct);
+
+            // §1: DOMContentLoaded — synchronous handlers see the parsed DOM.
+            runtime.WithActiveVm(() => WindowBinding.FireDomContentLoaded(runtime));
+
+            // §2: pump any in-flight async work (fetch / XHR completing on a
+            // worker thread, microtasks chained off those completions, timer
+            // callbacks waiting on simulated time) until quiescent or budget.
+            await PumpPendingAsync(runtime, loop, ct).ConfigureAwait(false);
+
+            // §3: load event after subresources have settled. Listeners that
+            // schedule more work get one more drain pass before we return.
+            runtime.WithActiveVm(() => WindowBinding.FireLoad(runtime));
+            await PumpPendingAsync(runtime, loop, ct, idleMs: 50, maxMs: 500).ConfigureAwait(false);
         }
-
-        // §1: DOMContentLoaded — synchronous handlers see the parsed DOM.
-        runtime.WithActiveVm(() => WindowBinding.FireDomContentLoaded(runtime));
-
-        // §2: pump any in-flight async work (fetch / XHR completing on a
-        // worker thread, microtasks chained off those completions, timer
-        // callbacks waiting on simulated time) until quiescent or budget.
-        await PumpPendingAsync(runtime, loop, ct).ConfigureAwait(false);
-
-        // §3: load event after subresources have settled. Listeners that
-        // schedule more work get one more drain pass before we return.
-        runtime.WithActiveVm(() => WindowBinding.FireLoad(runtime));
-        await PumpPendingAsync(runtime, loop, ct, idleMs: 50, maxMs: 500).ConfigureAwait(false);
+        finally
+        {
+            // Detach the hook so the document is inert again once scripting is
+            // done — a later layout/paint mutation must not re-enter the VM.
+            document.NodeConnected = null;
+        }
 
         if (consoleErrors > 0)
             _diag.Counter("engine.script.console_errors", consoleErrors);
+    }
+
+    /// <summary>Run the non-<c>async</c> classic scripts in document order: the
+    /// scripts with neither attribute first, then the <c>defer</c> scripts, both
+    /// in source order (HTML §4.12.1). Inline scripts are always
+    /// <see cref="ScriptDisposition.None"/>.</summary>
+    private void RunOrderedScripts(
+        JsRuntime runtime, IReadOnlyList<LoadedScript> scripts, HashSet<Element> executed, CancellationToken ct)
+    {
+        foreach (var script in scripts)
+        {
+            if (script.Disposition == ScriptDisposition.None)
+                ExecuteScript(runtime, script, executed, ct);
+        }
+        foreach (var script in scripts)
+        {
+            if (script.Disposition == ScriptDisposition.Defer)
+                ExecuteScript(runtime, script, executed, ct);
+        }
+    }
+
+    /// <summary>Run the <c>async</c> classic scripts. Order is unspecified
+    /// (HTML §4.12.1 "as soon as it is available"); the headless engine has
+    /// already fetched them, so it runs them in source order, which is one
+    /// permitted ordering.</summary>
+    private void RunAsyncScripts(
+        JsRuntime runtime, IReadOnlyList<LoadedScript> scripts, HashSet<Element> executed, CancellationToken ct)
+    {
+        foreach (var script in scripts)
+        {
+            if (script.Disposition == ScriptDisposition.Async)
+                ExecuteScript(runtime, script, executed, ct);
+        }
+    }
+
+    /// <summary>Compile and run a single classic script against
+    /// <paramref name="runtime"/>, deduping on the source <see cref="Element"/>
+    /// so a script can never execute twice. Failures are fail-soft (logged via
+    /// diagnostics), matching the document-order batch behaviour.</summary>
+    private void ExecuteScript(
+        JsRuntime runtime, LoadedScript script, HashSet<Element> executed, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (!executed.Add(script.Element)) return;
+
+        var label = script.IsInline ? "<inline>" : (script.BaseUrl?.ToString() ?? "<unknown>");
+        try
+        {
+            var program = new JsParser(script.Source).ParseProgram();
+            var chunk = JsCompiler.Compile(program);
+            new JsVm(runtime).Run(chunk);
+            _diag.Counter("engine.script.ok", 1);
+        }
+        catch (JsThrow ex)
+        {
+            _diag.Counter("engine.script.failed", 1);
+            _diag.Log(DiagLevel.Warn, "engine.js", $"Uncaught script error ({label}): {JsValue.ToStringValue(ex.Value)}");
+        }
+        catch (Exception ex)
+        {
+            _diag.Counter("engine.script.failed", 1);
+            _diag.Log(DiagLevel.Warn, "engine.js", $"Script compile/run failure ({label}): {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Tree-mutation hook: when JS connects a node to the document, fetch and
+    /// execute any classic <c>&lt;script&gt;</c> it brings in. Runs synchronously
+    /// on the insertion (we are inside a VM frame), so the injected script's
+    /// side effects are visible to the code that appended it once control
+    /// returns. An external <c>src</c> is fetched here; the wait is bounded by
+    /// the fetcher's per-URL cache and the engine's overall cancellation token.
+    /// </summary>
+    private void OnNodeConnected(
+        Node node, JsRuntime runtime, ScriptFetcher fetcher, StarlingUrl baseUrl,
+        HashSet<Element> executed, CancellationToken ct)
+    {
+        if (node is not Element { LocalName: "script" } script) return;
+        if (executed.Contains(script)) return;
+
+        // Resolve relative src against the document's base URL. Block on the
+        // fetch: the headless engine has no streaming parser to overlap with,
+        // and the surrounding pump tolerates the synchronous wait.
+        LoadedScript? loaded;
+        try
+        {
+            loaded = fetcher.LoadAsync(script, baseUrl, ct).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            _diag.Counter("engine.script.failed", 1);
+            _diag.Log(DiagLevel.Warn, "engine.js", $"Injected script load failure: {ex.Message}");
+            return;
+        }
+
+        if (loaded is null) return;
+        ExecuteScript(runtime, loaded, executed, ct);
     }
 
     /// <summary>

@@ -6,6 +6,9 @@
     <!-- The HTML tree builder mutates Document state (e.g. QuirksMode) that
          is internal to the Dom layer to keep it off the public API surface. -->
     <InternalsVisibleTo Include="Starling.Html" />
+    <!-- The engine subscribes to Document.NodeConnected to fetch + run
+         <script> elements injected at runtime, kept off the public surface. -->
+    <InternalsVisibleTo Include="Starling.Engine" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Starling.Common\Starling.Common.csproj" />

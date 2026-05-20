@@ -23,9 +23,12 @@ namespace Starling.Engine;
 ///   <item>Only classic scripts run. <c>type="module"</c>, <c>importmap</c>,
 ///   and anything with a non-empty unrecognised <c>type</c> attribute is
 ///   skipped (HTML §4.12.1 "script type").</item>
-///   <item><c>async</c> and <c>defer</c> are not distinguished; every script
-///   runs after parse in document order. Real-browser ordering nuance lands
-///   alongside incremental parsing.</item>
+///   <item><c>async</c> and <c>defer</c> are honoured per HTML §4.12.1
+///   "execute the script element": a <c>defer</c> (no <c>async</c>) script runs
+///   after parsing in document order; an <c>async</c> script runs as soon as it
+///   is available, order-independent; a script with neither attribute runs in
+///   document order. (An external <c>async</c> <i>and</i> <c>defer</c> script is
+///   treated as <c>async</c>, matching the spec precedence.)</item>
 ///   <item>Fetch failures are fail-soft (mirroring <see cref="StylesheetFetcher"/>):
 ///   the script is dropped with a diag warning and the rest of the run
 ///   continues.</item>
@@ -59,26 +62,54 @@ internal sealed class ScriptFetcher : IDisposable
             ct.ThrowIfCancellationRequested();
             if (!IsClassicJavascript(script)) continue;
 
-            var src = script.GetAttribute("src");
-            if (string.IsNullOrWhiteSpace(src))
-            {
-                var inline = script.TextContent;
-                if (string.IsNullOrWhiteSpace(inline)) continue;
-                _scripts.Add(new LoadedScript(script, inline, baseUrl, IsInline: true));
-                continue;
-            }
-
-            var absolute = ResolveAbsolute(src, baseUrl);
-            if (absolute is null)
-            {
-                _diag.Log(DiagLevel.Warn, "engine", $"Could not resolve <script src='{src}'>");
-                continue;
-            }
-
-            var source = await FetchAsync(absolute, ct).ConfigureAwait(false);
-            if (source is null) continue;
-            _scripts.Add(new LoadedScript(script, source, absolute, IsInline: false));
+            var loaded = await LoadAsync(script, baseUrl, ct).ConfigureAwait(false);
+            if (loaded is not null) _scripts.Add(loaded);
         }
+    }
+
+    /// <summary>
+    /// Resolve and (for an external <c>src</c>) fetch a single classic
+    /// <c>&lt;script&gt;</c> into a <see cref="LoadedScript"/>, or return
+    /// <c>null</c> if it is not runnable (non-classic type, empty inline, or a
+    /// fetch failure). Shared by the document-order collection pass and the
+    /// runtime-injection path so both flow through the same resolve/fetch logic.
+    /// </summary>
+    public async Task<LoadedScript?> LoadAsync(Element script, StarlingUrl? baseUrl, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(script);
+        if (!IsClassicJavascript(script)) return null;
+
+        var disposition = ClassifyDisposition(script);
+        var src = script.GetAttribute("src");
+        if (string.IsNullOrWhiteSpace(src))
+        {
+            var inline = script.TextContent;
+            if (string.IsNullOrWhiteSpace(inline)) return null;
+            // Inline scripts have no fetch, so async/defer never delay them.
+            return new LoadedScript(script, inline, baseUrl, IsInline: true, ScriptDisposition.None);
+        }
+
+        var absolute = ResolveAbsolute(src, baseUrl);
+        if (absolute is null)
+        {
+            _diag.Log(DiagLevel.Warn, "engine", $"Could not resolve <script src='{src}'>");
+            return null;
+        }
+
+        var source = await FetchAsync(absolute, ct).ConfigureAwait(false);
+        if (source is null) return null;
+        return new LoadedScript(script, source, absolute, IsInline: false, disposition);
+    }
+
+    /// <summary>HTML §4.12.1: <c>async</c> takes precedence over <c>defer</c>;
+    /// an external script with only <c>defer</c> runs after parse in document
+    /// order. Both flags are ignored for inline scripts (no fetch to gate on),
+    /// which is handled by <see cref="LoadAsync"/>.</summary>
+    private static ScriptDisposition ClassifyDisposition(Element script)
+    {
+        if (script.HasAttribute("async")) return ScriptDisposition.Async;
+        if (script.HasAttribute("defer")) return ScriptDisposition.Defer;
+        return ScriptDisposition.None;
     }
 
     /// <summary>HTML §4.12.1: an empty / absent <c>type</c> (or <c>"text/javascript"</c>
@@ -233,5 +264,21 @@ internal sealed class ScriptFetcher : IDisposable
 }
 
 /// <summary>One <c>&lt;script&gt;</c>'s source text plus the URL syntax errors
-/// should be reported against.</summary>
-internal sealed record LoadedScript(Element Element, string Source, StarlingUrl? BaseUrl, bool IsInline);
+/// should be reported against, and how its execution is ordered relative to
+/// document parsing (<see cref="ScriptDisposition"/>).</summary>
+internal sealed record LoadedScript(
+    Element Element, string Source, StarlingUrl? BaseUrl, bool IsInline, ScriptDisposition Disposition);
+
+/// <summary>HTML §4.12.1 classic-script execution ordering.</summary>
+internal enum ScriptDisposition
+{
+    /// <summary>Neither <c>async</c> nor <c>defer</c>: runs in document order.</summary>
+    None,
+
+    /// <summary><c>async</c>: runs as soon as it is fetched, order-independent.</summary>
+    Async,
+
+    /// <summary><c>defer</c> (without <c>async</c>): runs after parsing
+    /// completes, in document order, before <c>DOMContentLoaded</c>.</summary>
+    Defer,
+}

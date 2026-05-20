@@ -20,6 +20,20 @@ public sealed class Document : Node
 
     internal void BumpMutationVersion() => MutationVersion++;
 
+    /// <summary>
+    /// Host hook fired when a node is connected into this document's tree (via
+    /// <see cref="Node.InsertBefore"/>). The engine subscribes to this so that
+    /// <c>&lt;script&gt;</c> elements created and appended at runtime by JS are
+    /// fetched and executed through the same compile+run path as parser-found
+    /// scripts. Null when no host is attached (pure-DOM usage). Kept off the
+    /// public surface — only the engine wires it during script execution.
+    /// </summary>
+    internal Action<Node>? NodeConnected { get; set; }
+
+    /// <summary>Raise <see cref="NodeConnected"/> for <paramref name="node"/>
+    /// if a host has subscribed. Called from the tree-mutation path.</summary>
+    internal void NotifyNodeConnected(Node node) => NodeConnected?.Invoke(node);
+
     public DocumentType? DocType
     {
         get

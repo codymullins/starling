@@ -90,7 +90,23 @@ public abstract class Node : EventTarget
         }
 
         OnTreeMutated();
+        NotifyConnected(child);
         return child;
+    }
+
+    /// <summary>If <paramref name="inserted"/> is now connected to a document
+    /// that has a host hook attached, raise the connection notification for the
+    /// inserted node and every descendant. The engine uses this to discover
+    /// <c>&lt;script&gt;</c> elements injected at runtime; pure-DOM callers pay
+    /// only a null check.</summary>
+    private void NotifyConnected(Node inserted)
+    {
+        var document = OwnerDocument ?? (this as Document);
+        if (document?.NodeConnected is null) return;
+
+        document.NotifyNodeConnected(inserted);
+        foreach (var descendant in inserted.Descendants())
+            document.NotifyNodeConnected(descendant);
     }
 
     public Node ReplaceChild(Node newChild, Node oldChild)
