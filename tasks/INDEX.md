@@ -151,7 +151,7 @@ quality monotonically improves at every step.
 |---|---|---|---|
 | [wp:M12-01-viewport-clip](M12/wp-M12-01-viewport-clip.md) | 🔵 available | — | Starling.Paint |
 | [wp:M12-02-picture-cache](M12/wp-M12-02-picture-cache.md) | ⚫ blocked | — | Starling.Paint |
-| [wp:M12-03-stacking-contexts](M12/wp-M12-03-stacking-contexts.md) | 🔵 available | — | Starling.Layout |
+| [wp:M12-03-stacking-contexts](M12/wp-M12-03-stacking-contexts.md) | 🟢 complete | — | Starling.Layout |
 | [wp:M12-04-layer-tree](M12/wp-M12-04-layer-tree.md) | ⚫ blocked | — | Starling.Paint |
 | [wp:M12-05-tile-grid](M12/wp-M12-05-tile-grid.md) | ⚫ blocked | — | Starling.Paint |
 | [wp:M12-06-invalidation](M12/wp-M12-06-invalidation.md) | ⚫ blocked | — | Starling.Paint |

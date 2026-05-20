@@ -80,3 +80,14 @@ frame.
 
 - 2026-05-19T17:46Z — created (agent-copilot-claude-opus-4.7)
 - 2026-05-20T02:21:12Z — claimed by agent-claude-cody, working on main
+- 2026-05-20T02:35Z — shipped (agent-claude-cody). Added `Starling.Layout.Compositor.LayerHint`
+  flags enum, `StackingContextResolver.Resolve(box, style, isRoot)` encoding the
+  CSS-Position-3 §9 + CSS-Transforms-1 §5 rules verbatim, `Box.Hints` on the base
+  `Box`, population in `BoxTreeBuilder` (root tagged `Root`; block/inline boxes
+  resolved), and the `LayerCandidates.EnumerateLayerCandidates(root)` debug walker
+  (returns `LayerCandidate` records). Tests under
+  `tests/Starling.Layout.Tests/StackingContexts/` cover every enum bit at unit
+  level (against `Resolve`) and integration level (through `LayoutDocument` +
+  the walker), including all WP acceptance scenarios. Layout project: 136/136
+  pass; full solution builds and the whole suite is green. No paint behavior
+  changed — this only tags boxes. Unblocks `wp:M12-04-layer-tree`.
