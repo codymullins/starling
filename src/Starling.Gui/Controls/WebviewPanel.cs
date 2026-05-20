@@ -73,11 +73,15 @@ internal sealed class WebviewPanel : UserControl, IDisposable
 
         _pageImage = new Image
         {
-            // The backend renders the visible viewport region at device px;
-            // BitmapBridge tags the WriteableBitmap with the render DPI so
-            // Avalonia maps it 1:1 to CSS px. The image is sized to the
-            // viewport and repositioned to the scroll offset on every scroll.
-            Stretch = Stretch.None,
+            // The backend renders the visible viewport region at device px and
+            // BitmapBridge leaves the WriteableBitmap at 96 DPI, so its logical
+            // size equals its device-pixel size. The image is given the CSS
+            // (DIP) viewport Width/Height and Stretch.Uniform downscales the
+            // device-pixel bitmap to fit — a crisp 1:1 device mapping on Retina.
+            // (Stretch.None would draw the device-pixel bitmap at its full DIP
+            // size, i.e. scale× too big on any non-1.0 RenderScaling display.)
+            // It is repositioned to the scroll offset on every scroll.
+            Stretch = Stretch.Uniform,
             HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Left,
             VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Top,
             IsVisible = false,
