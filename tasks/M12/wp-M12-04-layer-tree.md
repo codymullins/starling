@@ -1,9 +1,9 @@
 ---
 id: wp:M12-04-layer-tree
 milestone: M12
-status: "available"
-claimed_by: ""
-claimed_at: ""
+status: "claimed"
+claimed_by: "agent-claude-cody"
+claimed_at: "2026-05-20T17:13:50Z"
 completed_at: ""
 branch: "main"
 depends_on:
@@ -100,3 +100,4 @@ effective transform / opacity / clip applied per layer.
 ## Handoff log
 
 - 2026-05-19T17:46Z — created (agent-copilot-claude-opus-4.7)
+- 2026-05-20T17:13:50Z — claimed by agent-claude-cody, working on main
