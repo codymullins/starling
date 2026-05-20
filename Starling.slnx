@@ -13,6 +13,7 @@
     <Project Path="tests/Starling.Codecs.Tests/Starling.Codecs.Tests.csproj" />
     <Project Path="tests/Starling.Css.Spec.Tests/Starling.Css.Spec.Tests.csproj" />
     <Project Path="tests/Starling.Gui.Tests/Starling.Gui.Tests.csproj" />
+    <Project Path="tests/Starling.Gui.Headless.Tests/Starling.Gui.Headless.Tests.csproj" />
     <Project Path="tests/Starling.Spec.Common/Starling.Spec.Common.csproj" />
   </Folder>
   <Folder Name="/tools/">

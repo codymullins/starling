@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!-- This project runs on xUnit v3 (native Microsoft Testing Platform), not
+         MSTest, so disable the MSTest runner the repo's Directory.Build.props
+         turns on for test projects. xUnit v3 requires an executable host. -->
+    <OutputType>Exe</OutputType>
+    <EnableMSTestRunner>false</EnableMSTestRunner>
+    <!-- Run under Microsoft Testing Platform via `dotnet test` (xUnit v3 ships
+         the MTP host); without this dotnet test falls back to VSTest and looks
+         for a testhost.dll that an MTP-only project doesn't produce. -->
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Avalonia.Headless.XUnit" />
+    <!-- Skia render backend so CaptureRenderedFrame() rasterizes a real frame. -->
+    <PackageReference Include="Avalonia.Skia" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="AwesomeAssertions" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Starling.Gui\Starling.Gui.csproj" />
+  </ItemGroup>
+</Project>

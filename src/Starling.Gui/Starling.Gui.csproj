@@ -18,6 +18,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The GUI is an Exe with mostly internal controls; the headless test
+         project constructs them directly (e.g. WebviewPanel) under a headless
+         Avalonia app. -->
+    <InternalsVisibleTo Include="Starling.Gui.Headless.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Avalonia" />
     <PackageReference Include="Avalonia.Desktop" />
     <PackageReference Include="Avalonia.Themes.Fluent" />

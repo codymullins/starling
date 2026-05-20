@@ -24,6 +24,10 @@
     <PackageVersion Include="Avalonia.Desktop"       Version="12.0.3" />
     <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.0.3" />
     <PackageVersion Include="Avalonia.Skia"          Version="12.0.3" />
+    <!-- Headless platform + xUnit adapter for GUI control/render tests
+         (must match the Avalonia core version). -->
+    <PackageVersion Include="Avalonia.Headless"       Version="12.0.3" />
+    <PackageVersion Include="Avalonia.Headless.XUnit" Version="12.0.3" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.7" />
 
     <!-- Crypto: pure-managed TLS support (consumed from M2 onward) -->
@@ -48,6 +52,9 @@
          Microsoft.NET.Test.Sdk reference is needed under MTP. -->
     <PackageVersion Include="MSTest"                       Version="4.2.3" />
     <PackageVersion Include="MSTest.TestFramework"         Version="4.2.3" />
+    <!-- xUnit v3 (native Microsoft Testing Platform) for the Avalonia headless
+         GUI tests; Avalonia.Headless.XUnit 12.0.3 targets xunit.v3. -->
+    <PackageVersion Include="xunit.v3"                     Version="3.2.2" />
     <PackageVersion Include="AwesomeAssertions"             Version="9.4.0" />
     <PackageVersion Include="BenchmarkDotNet"              Version="0.14.0" />
 
