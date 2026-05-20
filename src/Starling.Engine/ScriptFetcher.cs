@@ -40,6 +40,7 @@ internal sealed class ScriptFetcher : IDisposable
     private readonly Func<StarlingHttpClient> _httpFactory;
     private readonly Dictionary<string, string> _byUrl = new(StringComparer.Ordinal);
     private readonly List<LoadedScript> _scripts = new();
+    private readonly List<LoadedScript> _moduleScripts = new();
     private StarlingHttpClient? _sharedHttp;
 
     public ScriptFetcher(IDiagnostics diag, Func<StarlingHttpClient> httpFactory)
@@ -53,6 +54,15 @@ internal sealed class ScriptFetcher : IDisposable
     /// fetched from (so syntax errors can be located precisely).</summary>
     public IReadOnlyList<LoadedScript> Scripts => _scripts;
 
+    /// <summary>Module scripts (<c>&lt;script type="module"&gt;</c>) collected in
+    /// document order. Per HTML §4.12.1 these execute deferred — after the
+    /// document is parsed, in document order — so the engine runs them through a
+    /// <c>ModuleLoader</c> after the classic scripts. Inline modules carry their
+    /// source text directly; external modules carry their fetched <c>src</c> URL
+    /// (the loader fetches the body itself so the import graph is resolved
+    /// through one mechanism).</summary>
+    public IReadOnlyList<LoadedScript> ModuleScripts => _moduleScripts;
+
     public async Task FetchAllAsync(Document document, StarlingUrl? baseUrl, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(document);
@@ -60,6 +70,15 @@ internal sealed class ScriptFetcher : IDisposable
         foreach (var script in document.GetElementsByTagName("script"))
         {
             ct.ThrowIfCancellationRequested();
+
+            // Module scripts take a separate branch: their src/inline source is
+            // collected but evaluated via the ModuleLoader, not the classic VM.
+            if (IsModuleScript(script))
+            {
+                await CollectModuleScriptAsync(script, baseUrl, ct).ConfigureAwait(false);
+                continue;
+            }
+
             if (!IsClassicJavascript(script)) continue;
 
             var loaded = await LoadAsync(script, baseUrl, ct).ConfigureAwait(false);
@@ -111,6 +130,52 @@ internal sealed class ScriptFetcher : IDisposable
         if (script.HasAttribute("defer")) return ScriptDisposition.Defer;
         return ScriptDisposition.None;
     }
+
+    /// <summary>HTML §4.12.1: <c>type="module"</c> (case-insensitively) selects
+    /// a module script. Module type takes precedence over the classic-script
+    /// MIME check.</summary>
+    private static bool IsModuleScript(Element script)
+    {
+        var type = script.GetAttribute("type");
+        return type is not null && type.Trim().Equals("module", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Collect a <c>&lt;script type="module"&gt;</c>. Inline modules
+    /// keep their source and the document base URL; external modules record
+    /// their resolved <c>src</c> URL so the loader can fetch + parse the import
+    /// graph rooted there. Module scripts are deferred (run after parse via the
+    /// <c>ModuleLoader</c>), so they carry <see cref="ScriptDisposition.Defer"/>.</summary>
+    private async Task CollectModuleScriptAsync(Element script, StarlingUrl? baseUrl, CancellationToken ct)
+    {
+        var src = script.GetAttribute("src");
+        if (string.IsNullOrWhiteSpace(src))
+        {
+            var inline = script.TextContent;
+            if (string.IsNullOrWhiteSpace(inline)) return;
+            _moduleScripts.Add(new LoadedScript(script, inline, baseUrl, IsInline: true, ScriptDisposition.Defer));
+            return;
+        }
+
+        var absolute = ResolveAbsolute(src, baseUrl);
+        if (absolute is null)
+        {
+            _diag.Log(DiagLevel.Warn, "engine", $"Could not resolve <script type=module src='{src}'>");
+            return;
+        }
+
+        // Pre-warm the fetch cache so the loader's host can reuse the body. We
+        // still record the URL (not the body) so the loader treats it as the
+        // entry module and resolves its imports relative to it.
+        var source = await FetchAsync(absolute, ct).ConfigureAwait(false);
+        if (source is null) return;
+        _moduleScripts.Add(new LoadedScript(script, source, absolute, IsInline: false, ScriptDisposition.Defer));
+    }
+
+    /// <summary>Fetch a module's source through the engine's shared script-fetch
+    /// path (file:// + http), reusing the URL cache. Exposed for the engine's
+    /// <c>ModuleLoader</c> host so the whole import graph flows through one
+    /// mechanism.</summary>
+    public Task<string?> FetchModuleSourceAsync(StarlingUrl url, CancellationToken ct) => FetchAsync(url, ct);
 
     /// <summary>HTML §4.12.1: an empty / absent <c>type</c> (or <c>"text/javascript"</c>
     /// case-insensitively, plus the historical aliases) is a classic script.
@@ -258,6 +323,7 @@ internal sealed class ScriptFetcher : IDisposable
     {
         _byUrl.Clear();
         _scripts.Clear();
+        _moduleScripts.Clear();
         _sharedHttp?.Dispose();
         _sharedHttp = null;
     }

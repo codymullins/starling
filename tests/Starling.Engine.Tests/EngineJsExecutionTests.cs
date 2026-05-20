@@ -347,10 +347,11 @@ public sealed class EngineJsExecutionTests
     }
 
     [TestMethod]
-    public async Task Module_and_unknown_type_scripts_are_skipped()
+    public async Task Module_runs_deferred_after_classic_and_data_block_is_skipped()
     {
-        // type="module" is not yet supported; a stray module script must not
-        // crash the pipeline and the classic sibling must still run.
+        // HTML §4.12.1: classic scripts run during parse; type="module" runs
+        // deferred (after parse), so the module's write wins over the classic
+        // sibling. A non-JS data block (application/ld+json) never executes.
         var html = @"<!doctype html><html><body>
             <p id='out'>start</p>
             <script type='module'>document.getElementById('out').textContent = 'module-ran';</script>
@@ -359,8 +360,9 @@ public sealed class EngineJsExecutionTests
         </body></html>";
 
         var outcome = await RenderHtmlAsync(html);
-        outcome.DisplayText.Should().Contain("classic-ran");
-        outcome.DisplayText.Should().NotContain("module-ran");
+        // The deferred module runs last, overwriting the classic result.
+        outcome.DisplayText.Should().Contain("module-ran");
+        outcome.DisplayText.Should().NotContain("bogus");
     }
 
     [TestMethod]
