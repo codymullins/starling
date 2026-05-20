@@ -21,10 +21,18 @@
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
     <InvariantGlobalization>true</InvariantGlobalization>
 
-    <!-- Point Six Labors license validation at the repo-root sixlabors.lic so
-         every consumer project finds it; the targets glob is rooted at each
-         project dir and won't walk up. ImageSharp.Drawing 3 + Fonts 3 + image
-         codec licensing require this. -->
+    <!-- CI supplies the license via the SIXLABORS_LICENSE_KEY secret (exposed
+         as an env var on the build jobs). MSBuild surfaces env vars as
+         properties, but only when the names match exactly — the SixLabors
+         targets read $(SixLaborsLicenseKey), so bridge the secret's name here.
+         When the key is set, the targets ignore the license-file glob below,
+         so this takes precedence over the repo-root sixlabors.lic on CI. -->
+    <SixLaborsLicenseKey Condition="'$(SixLaborsLicenseKey)' == ''">$(SIXLABORS_LICENSE_KEY)</SixLaborsLicenseKey>
+
+    <!-- Local dev: point Six Labors license validation at the repo-root
+         sixlabors.lic so every consumer project finds it; the targets glob is
+         rooted at each project dir and won't walk up. ImageSharp.Drawing 3 +
+         Fonts 3 + image codec licensing require this. -->
     <SixLaborsLicenseFile Condition="'$(SixLaborsLicenseFile)' == '' And Exists('$(MSBuildThisFileDirectory)sixlabors.lic')">$(MSBuildThisFileDirectory)sixlabors.lic</SixLaborsLicenseFile>
 
     <!--

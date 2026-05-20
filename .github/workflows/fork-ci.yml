@@ -1,0 +1,76 @@
+# Secret-bearing CI for pull requests from FORKS.
+#
+# Why this exists: a normal `pull_request` run from a fork never receives
+# secrets (GitHub withholds them so a malicious PR cannot echo them out), so
+# the license-gated build in ci.yml is skipped for forks. This workflow uses
+# `pull_request_target`, which DOES have secret access, and gates the
+# secret-bearing job behind the `fork-ci` environment's required reviewer.
+#
+# SECURITY MODEL — read before editing:
+#   * `pull_request_target` runs this workflow file from the DEFAULT BRANCH,
+#     not from the PR. A fork cannot alter what runs here; changes take effect
+#     only once merged to main.
+#   * The job checks out and BUILDS the contributor's code with the license
+#     key in scope. `dotnet restore`/`build` execute arbitrary MSBuild from the
+#     PR (targets, source generators, restore hooks), so this is equivalent to
+#     running untrusted code with the secret available.
+#   * The ONLY thing standing between an attacker and the secret is the
+#     required-reviewer approval on the `fork-ci` environment. Approving is an
+#     explicit statement that you reviewed THIS commit — including build files
+#     and dependency changes — and it is safe. Re-review after every push.
+#   * Token is pinned to least privilege (contents: read) and checkout creds
+#     are not persisted, so the run cannot push or tamper with the repo even if
+#     the fork code tries.
+name: fork-ci
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+# Least privilege: the checked-out fork code must not be able to write to the
+# repo, open releases, etc. Do not widen this without a specific reason.
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: build-and-test (fork PR, gated)
+    # Same-repo PRs and pushes are covered by ci.yml with the repo secret;
+    # this gated path is only for forks.
+    if: github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-24.04
+    # Required-reviewer gate. The job will not start — and the secret below is
+    # not in scope — until a reviewer approves the run for this commit.
+    environment: fork-ci
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Build the exact reviewed commit, not a moving ref. pull_request_target
+          # defaults to the base branch, so the PR head must be requested
+          # explicitly.
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install native codec libs (Linux)
+        # Mirrors ci.yml: Starling.Codecs' Linux decoder tests dlopen these.
+        run: sudo apt-get update && sudo apt-get install -y libpng16-16 libjpeg-turbo8 libwebp7
+      - name: Restore (locked)
+        env:
+          SIXLABORS_LICENSE_KEY: ${{ secrets.SIXLABORS_LICENSE_KEY }}
+        run: dotnet restore --locked-mode
+      - name: Build
+        env:
+          SIXLABORS_LICENSE_KEY: ${{ secrets.SIXLABORS_LICENSE_KEY }}
+        run: dotnet build --no-restore -c Release
+      - name: Test (unit)
+        run: dotnet test --no-build -c Release --logger "trx;LogFileName=test.trx"
+      - name: Test (golden-image)
+        run: dotnet test --no-build -c Release --filter Category=GoldenImage
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fork-ci-test-results
+          path: '**/*.trx'

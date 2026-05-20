@@ -8,11 +8,17 @@ on:
 jobs:
   build:
     name: build-and-test (${{ matrix.os }})
+    # Fork PRs get no secrets here, so the license-gated build can't pass.
+    # They are handled by the gated fork-ci.yml instead; run this only for
+    # pushes and same-repo PRs.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     strategy:
       matrix:
         os: [ubuntu-24.04, macos-15, windows-2025]
       fail-fast: false
     runs-on: ${{ matrix.os }}
+    env:
+      SIXLABORS_LICENSE_KEY: ${{ secrets.SIXLABORS_LICENSE_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -41,12 +47,17 @@ jobs:
   lint:
     name: lint (formatting + interop policy)
     runs-on: ubuntu-24.04
+    env:
+      SIXLABORS_LICENSE_KEY: ${{ secrets.SIXLABORS_LICENSE_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
       - name: dotnet format
+        # Compiles, so needs the SixLabors license — skip on fork PRs (no
+        # secret). The interop-policy grep below needs no build and still runs.
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         run: dotnet format --verify-no-changes
       - name: interop seam policy — confine native interop
         # Interop seam policy: native LibraryImport/DllImport is confined to the
@@ -79,9 +90,13 @@ jobs:
   # testdata/golden/live/example.com.png is pinned to one rasteriser.
   network-tests:
     name: network-tests (live HTTPS smoke)
+    # License-gated build + live network: skip for fork PRs (no secrets); the
+    # gated fork-ci.yml validates fork builds after review.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     env:
       STARLING_ALLOW_NETWORK: "1"
+      SIXLABORS_LICENSE_KEY: ${{ secrets.SIXLABORS_LICENSE_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
