@@ -56,6 +56,7 @@ internal sealed class ImageSharpBackend : IPaintBackend
     private readonly bool _useWebGpu;
     private readonly FontCollection _fontCollection;
     private readonly ConcurrentDictionary<FontCacheKey, Font> _fontCache = new();
+    private static readonly Lazy<WebGPUEnvironmentError> _webGpuAvailability = new(WebGPUEnvironment.ProbeAvailability);
 
     public ImageSharpBackend(FontResolver fonts, FontFaceRegistry? webFonts, IDiagnostics? diagnostics = null, bool useWebGpu = false)
     {
@@ -124,15 +125,15 @@ internal sealed class ImageSharpBackend : IPaintBackend
         using (_diag.Span("paint", "raster.surface_alloc"))
             image = new Image<Rgba32>(width, height, new Rgba32(255, 255, 255, 255));
 
-        // Image sources used by DrawImage outlive the canvas closure: the
-        // DrawingCanvas records commands and rasterizes them when the
-        // Mutate/Paint scope unwinds, so disposing image sources inside the
-        // closure throws ObjectDisposedException from ImageBrushRenderer.
-        // Stage them in a list and dispose after the mutation completes.
-        var pendingImageSources = new List<IDisposable>();
-
-        try
+        using (image)
         {
+            // Image sources used by DrawImage outlive the canvas closure: the
+            // DrawingCanvas records commands and rasterizes them when the
+            // Mutate/Paint scope unwinds, so disposing image sources inside
+            // the closure throws ObjectDisposedException from ImageBrushRenderer.
+            // Stage them in a bag that is disposed after rasterization/readback.
+            using var pendingImageSources = new DisposableBag();
+
             using (_diag.Span("paint", "raster.command_record"))
             {
                 Activity.Current?.SetTag("raster.items", list.Items.Count);
@@ -142,9 +143,15 @@ internal sealed class ImageSharpBackend : IPaintBackend
                 {
                     var transforms = new Stack<Matrix2D>();
                     transforms.Push(Matrix2D.Identity);
+                    canvas.Save(new DrawingOptions
+                    {
+                        Transform = ToCanvasMatrix(Matrix2D.Identity, scale),
+                    });
 
                     foreach (var item in list.Items)
                         Apply(canvas, item, scale, pendingImageSources, transforms);
+
+                    canvas.Restore();
                 }));
             }
 
@@ -156,11 +163,6 @@ internal sealed class ImageSharpBackend : IPaintBackend
             }
 
             return new RenderedBitmap(width, height, pixels);
-        }
-        finally
-        {
-            foreach (var src in pendingImageSources) src.Dispose();
-            image.Dispose();
         }
     }
 
@@ -175,7 +177,7 @@ internal sealed class ImageSharpBackend : IPaintBackend
         // sandboxed Catalyst process surfaces as a clear actionable error
         // rather than the generic "failed to initialize webgpu runtime" the
         // constructor would otherwise throw.
-        var probe = WebGPUEnvironment.ProbeAvailability();
+        var probe = _webGpuAvailability.Value;
         if (probe != WebGPUEnvironmentError.Success)
             throw new InvalidOperationException(
                 $"WebGPU paint backend requested via STARLING_PAINT_BACKEND=imagesharp-webgpu, " +
@@ -194,14 +196,15 @@ internal sealed class ImageSharpBackend : IPaintBackend
         using (_diag.Span("paint", "raster.context_init"))
             target = new WebGPURenderTarget(width, height);
 
-        try
+        using (target)
         {
+            using var pendingImageSources = new DisposableBag();
+
             DrawingCanvas canvas;
             using (_diag.Span("paint", "raster.surface_alloc"))
                 canvas = target.CreateCanvas();
 
-            var pendingImageSources = new List<IDisposable>();
-            try
+            using (canvas)
             {
                 using (_diag.Span("paint", "raster.command_record"))
                 {
@@ -209,9 +212,16 @@ internal sealed class ImageSharpBackend : IPaintBackend
                     canvas.Clear(Brushes.Solid(Color.White), new Rectangle(0, 0, width, height));
                     var transforms = new Stack<Matrix2D>();
                     transforms.Push(Matrix2D.Identity);
+                    canvas.Save(new DrawingOptions
+                    {
+                        Transform = ToCanvasMatrix(Matrix2D.Identity, scale),
+                    });
 
                     foreach (var item in list.Items)
                         Apply(canvas, item, scale, pendingImageSources, transforms);
+
+                    canvas.Restore();
+
                     // Flush seals queued commands into the canvas timeline so
                     // the GPU pipeline executes before ReadbackImage samples
                     // the texture. Without it, readback races the (un)submitted
@@ -219,11 +229,6 @@ internal sealed class ImageSharpBackend : IPaintBackend
                     using (_diag.Span("paint", "raster.flush"))
                         canvas.Flush();
                 }
-            }
-            finally
-            {
-                canvas.Dispose();
-                foreach (var src in pendingImageSources) src.Dispose();
             }
 
             byte[] pixels;
@@ -236,23 +241,19 @@ internal sealed class ImageSharpBackend : IPaintBackend
 
             return new RenderedBitmap(width, height, pixels);
         }
-        finally
-        {
-            target.Dispose();
-        }
     }
 
-    private void Apply(DrawingCanvas canvas, DisplayList.DisplayItem item, float scale, List<IDisposable> pendingImageSources, Stack<Matrix2D> transforms)
+    private void Apply(DrawingCanvas canvas, DisplayItem item, float scale, DisposableBag pendingImageSources, Stack<Matrix2D> transforms)
     {
         switch (item)
         {
-            case DisplayList.PushTransform push:
+            case PushTransform push:
                 var matrix = transforms.Peek().Multiply(push.Matrix);
                 transforms.Push(matrix);
                 canvas.Save(new DrawingOptions
                 {
-                    Transform = ToDeviceMatrix(matrix, scale),
-                }, []);
+                    Transform = ToCanvasMatrix(matrix, scale),
+                });
 
                 _diag.Counter("paint.push_transform", 1);
                 break;
@@ -261,47 +262,47 @@ internal sealed class ImageSharpBackend : IPaintBackend
                 transforms.Pop();
                 _diag.Counter("paint.pop_transform", 1);
                 break;
-            case DisplayList.FillRect fill:
+            case FillRect fill:
                 if (fill.Bounds.Width <= 0 || fill.Bounds.Height <= 0) return;
                 _diag.Counter("paint.fill_rect", 1);
                 var rectPath = fill.PixelAlignment == FillRectPixelAlignment.SnapToDevicePixels
-                    ? ToSnappedDeviceRectPath(fill.Bounds, scale)
-                    : ToDeviceRectPath(fill.Bounds, scale);
+                    ? ToSnappedLayoutRectPath(fill.Bounds, scale)
+                    : ToRectPath(fill.Bounds);
 
                 canvas.Fill(Brushes.Solid(ToColor(fill.Color)), rectPath);
                 break;
-            case DisplayList.StrokeRect stroke:
+            case StrokeRect stroke:
                 _diag.Counter("paint.stroke_rect", 1);
                 {
-                    var penWidth = (float)stroke.Width * scale;
+                    var penWidth = (float)stroke.Width;
                     var pen = Pens.Solid(ToColor(stroke.Color), penWidth);
-                    var r = ToDeviceRectPath(stroke.Bounds, scale);
+                    var r = ToRectPath(stroke.Bounds);
                     canvas.Draw(pen, r);
                 }
                 break;
-            case DisplayList.DrawText text:
+            case DrawText text:
                 _diag.Counter("paint.draw_text", 1);
-                DrawText(canvas, text, scale);
+                DrawText(canvas, text);
                 break;
-            case DisplayList.DrawImage img:
+            case DrawImage img:
                 _diag.Counter("paint.draw_image", 1);
-                DrawImage(canvas, img, scale, pendingImageSources);
+                DrawImage(canvas, img, pendingImageSources);
                 break;
         }
     }
 
-    private void DrawText(DrawingCanvas canvas, DisplayList.DrawText text, float scale)
+    private void DrawText(DrawingCanvas canvas, DrawText text)
     {
         if (string.IsNullOrEmpty(text.Text)) return;
 
         var spec = FontSpecFromDrawText(text);
-        var size = (float)text.FontSize * scale;
+        var size = (float)text.FontSize;
         var probe = FirstCodepoint(text.Text);
         var font = ResolveFont(spec, probe, size);
         var color = ToColor(text.Color);
 
-        var originX = (float)text.X * scale;
-        var originY = (float)text.Y * scale;
+        var originX = (float)text.X;
+        var originY = (float)text.Y;
         var brush = Brushes.Solid(color);
 
         var textBlock = text.Shaped is ImageSharpShapedRun shaped && shaped.Font.Size == size
@@ -311,7 +312,7 @@ internal sealed class ImageSharpBackend : IPaintBackend
         canvas.DrawText(textBlock, new PointF(originX, originY), -1, brush, null);
     }
 
-    private static void DrawImage(DrawingCanvas canvas, DisplayList.DrawImage item, float scale, List<IDisposable> pendingImageSources)
+    private static void DrawImage(DrawingCanvas canvas, DrawImage item, DisposableBag pendingImageSources)
     {
         if (item.Bounds.Width <= 0 || item.Bounds.Height <= 0) return;
         var decoded = item.Source;
@@ -342,13 +343,13 @@ internal sealed class ImageSharpBackend : IPaintBackend
         {
             sourceRect = new Rectangle(0, 0, decoded.Width, decoded.Height);
         }
-        var destRect = ToDeviceRectF(item.Bounds, scale);
+        var destRect = ToRectF(item.Bounds);
         canvas.DrawImage(src, sourceRect, destRect, KnownResamplers.Bicubic);
     }
 
     private readonly record struct FontCacheKey(FontSpec Spec, float Size, int Probe);
 
-    private static FontSpec FontSpecFromDrawText(DisplayList.DrawText text)
+    private static FontSpec FontSpecFromDrawText(DrawText text)
         => new(text.FontFamilies, text.Bold, text.Italic);
 
     private static int FirstCodepoint(string text)
@@ -365,47 +366,53 @@ internal sealed class ImageSharpBackend : IPaintBackend
     private Font CreateFont(FontSpec spec, float size)
         => ImageSharpFontLookup.CreateFont(_fontCollection, spec, size);
 
-    private static Matrix4x4 ToDeviceMatrix(Matrix2D m, float scale)
+    private static Matrix4x4 ToCanvasMatrix(Matrix2D m, float scale)
     {
         var s = scale > 0 ? scale : 1f;
-        // Draw commands are converted to device-pixel coordinates before they
-        // reach the canvas. The transform's linear terms still apply to those
-        // coordinates directly; only CSS-pixel translation has to be scaled.
+        // Display-list commands stay in CSS pixels. The canvas transform maps
+        // the composed CSS transform into device pixels for the output surface.
         return new Matrix4x4(
-            (float)m.A, (float)m.B, 0f, 0f,
-            (float)m.C, (float)m.D, 0f, 0f,
+            (float)(m.A * s), (float)(m.B * s), 0f, 0f,
+            (float)(m.C * s), (float)(m.D * s), 0f, 0f,
             0f, 0f, 1f, 0f,
             (float)(m.E * s), (float)(m.F * s), 0f, 1f);
     }
 
-    private static RectangleF ToDeviceRectF(LayoutRect r, float scale)
-    {
-        var s = scale > 0 ? scale : 1f;
-        return new RectangleF(
-            (float)(r.X * s),
-            (float)(r.Y * s),
-            (float)(r.Width * s),
-            (float)(r.Height * s));
-    }
+    private static RectangleF ToRectF(LayoutRect r)
+        => new((float)r.X, (float)r.Y, (float)r.Width, (float)r.Height);
 
-    private static RectangleF ToSnappedDeviceRectF(LayoutRect r, float scale)
+    private static RectangleF ToSnappedLayoutRectF(LayoutRect r, float scale)
     {
         var s = scale > 0 ? scale : 1f;
-        var x0 = (float)Math.Round(r.X * s);
-        var y0 = (float)Math.Round(r.Y * s);
-        var x1 = (float)Math.Round((r.X + r.Width) * s);
-        var y1 = (float)Math.Round((r.Y + r.Height) * s);
+        var x0 = (float)(Math.Round(r.X * s) / s);
+        var y0 = (float)(Math.Round(r.Y * s) / s);
+        var x1 = (float)(Math.Round((r.X + r.Width) * s) / s);
+        var y1 = (float)(Math.Round((r.Y + r.Height) * s) / s);
         return new RectangleF(x0, y0, x1 - x0, y1 - y0);
     }
 
-    private static RectanglePolygon ToDeviceRectPath(LayoutRect r, float scale)
-        => new(ToDeviceRectF(r, scale));
+    private static RectanglePolygon ToRectPath(LayoutRect r)
+        => new(ToRectF(r));
 
-    private static RectanglePolygon ToSnappedDeviceRectPath(LayoutRect r, float scale)
-        => new(ToSnappedDeviceRectF(r, scale));
+    private static RectanglePolygon ToSnappedLayoutRectPath(LayoutRect r, float scale)
+        => new(ToSnappedLayoutRectF(r, scale));
 
     private static Color ToColor(CssColor c)
         => Color.FromPixel(new Rgba32(c.R, c.G, c.B, c.A));
+
+    private sealed class DisposableBag : IDisposable
+    {
+        private readonly List<IDisposable> _items = [];
+
+        public void Add(IDisposable item)
+            => _items.Add(item);
+
+        public void Dispose()
+        {
+            foreach (var item in _items)
+                item.Dispose();
+        }
+    }
 
     public void Dispose()
     {
