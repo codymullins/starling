@@ -1,10 +1,10 @@
 ---
 id: wp:M12-04-layer-tree
 milestone: M12
-status: "claimed"
+status: "complete"
 claimed_by: "agent-claude-cody"
 claimed_at: "2026-05-20T17:13:50Z"
-completed_at: ""
+completed_at: "2026-05-20T17:24:01Z"
 branch: "main"
 depends_on:
   - wp:M12-02-picture-cache
@@ -122,3 +122,4 @@ effective transform / opacity / clip applied per layer.
   (≥ 0.99); opacity blend, z-index order, and per-layer cache-isolation tests all
   green. Full solution builds; FULL suite green (Engine 112/112 golden+SSIM,
   Paint 107/107, Gui 82/82, plus all others). Unblocks M12-05 + M12-06.
+- 2026-05-20T17:24:01Z — merged; complete
