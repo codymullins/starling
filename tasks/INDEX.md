@@ -171,10 +171,25 @@ artifact restore, **and re-attempting the SslStream TLS migration after
 diagnosing the macOS TLS 1.3 caveat that drove the `939f3a5` revert — or
 formally re-blessing BouncyCastle as the long-term TLS path**) are catalogued
 in `wp:M3-06-native-interop-pivot`'s handoff log — file them as new WPs when
-picked up. Otherwise the next high-impact work is the JS engine: M3-02 sub-tasks
-(02c classes/modules, 02d destructuring, 02e Test262 ≥ 80%) are unfiled but
-available, and an M3-05 (intrinsics) ticket is the single largest gating piece
-for any interactive demo.
+picked up.
+
+Otherwise the next high-impact work toward "view any site with JS" is at the
+DOM/HTML-integration seam, **not** the language core — the JS engine already
+ships intrinsics, Promise + microtasks, async/await, classes, generators, and
+destructuring in declarations/parameters. Ranked (file as WPs when picked up):
+
+1. ~~Full-grammar `querySelector`/`querySelectorAll`/`matches`/`closest`~~ —
+   **done**; the JS bindings now delegate to the `Starling.Css` selector engine.
+2. Destructuring **assignment** + computed class member keys in the bytecode
+   compiler (`JsCompiler.cs`) — one unsupported node aborts a whole script.
+3. `innerHTML`/`outerHTML` parse + serialize (thread the `Starling.Html`
+   fragment parser into the binding layer).
+4. ES modules — compile `import`/`export` + a module loader + run
+   `<script type="module">`.
+5. Dynamic `<script>` execution + `async`/`defer` ordering.
+6. Incremental re-layout / live geometry reads after JS mutations.
+
+Still measured separately: Test262 ≥ 80% (`wp:M3-02e`).
 
 ## Recently completed
 
