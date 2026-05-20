@@ -9,7 +9,7 @@ using PaintList = Starling.Paint.DisplayList.DisplayList;
 namespace Starling.Paint.Tests;
 
 /// <summary>
-/// Locks down the <see cref="DisplayListBuilder.Build"/> style-override hook
+/// Locks down the <see cref="DisplayListBuilder.Build(Starling.Layout.Box.BlockBox, System.Func{Starling.Layout.Box.Box, Starling.Css.Cascade.ComputedStyle?}?, Starling.Layout.Tree.IImageResolver?)"/> style-override hook
 /// the Avalonia GUI uses to re-paint <c>a:hover</c> rules without re-laying
 /// out. Without the hook, hover repaint had to either ship a misleading
 /// translucent tint overlay (the M2-era MAUI approach) or trigger a full
