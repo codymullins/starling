@@ -192,6 +192,10 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         _currentPage?.Dispose();
         _currentPage = page;
 
+        // New laid-out page = new display-list version; drop any cached pixels
+        // from the previous page so the first render is a clean full repaint.
+        _renderer.InvalidateCache();
+
         // Reset interaction state.
         ClearSelection();
         ClearFindHighlight();
@@ -411,11 +415,24 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         // pointer move, not the paint cost.
         if (!OverridesDifferFromBaseline(newOverrides))
         {
+            // If we were previously showing hover pixels, the display list just
+            // reverted to the baseline: drop the hover-painted cache and repaint.
+            var hadOverrides = _hoverOverrides is not null;
             _hoverOverrides = null;
+            if (hadOverrides)
+            {
+                _renderer.InvalidateCache();
+                RenderViewportRegion();
+            }
             return;
         }
 
+        // The override set changes the display list without changing the page
+        // version, so the picture cache must be dropped or it would blit stale
+        // (non-hover) pixels. Wholesale invalidation matches the WP: any
+        // display-list change is a full miss (smarter is wp:M12-06).
         _hoverOverrides = newOverrides;
+        _renderer.InvalidateCache();
         RenderViewportRegion();
     }
 
@@ -486,7 +503,7 @@ internal sealed class WebviewPanel : UserControl, IDisposable
 
         RenderedBitmap rendered;
         using (_diag.Span("gui", "render"))
-            rendered = _renderer.Render(_currentPage.Root, (float)_currentScale, styleOverride, _currentPage.ImageResolver, viewport);
+            rendered = _renderer.Render(_currentPage.Root, (float)_currentScale, styleOverride, _currentPage.ImageResolver, viewport, _currentPage.DisplayListVersion);
         WriteableBitmap bmp;
         using (rendered)
             bmp = BitmapBridge.ToWriteableBitmap(rendered, _currentScale);

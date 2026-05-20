@@ -20,6 +20,13 @@ namespace Starling.Engine;
 /// </remarks>
 public sealed class LaidOutPage : IDisposable
 {
+    // Process-wide monotonic source for DisplayListVersion. Each fresh layout
+    // produces a new LaidOutPage and therefore a new version, so a re-layout /
+    // re-style invalidates the picture cache wholesale (wp:M12-02). A scroll
+    // reuses the same page object — same version — so its render can hit the
+    // cache. Smarter partial invalidation is wp:M12-06.
+    private static int _nextVersion;
+
     private readonly ImageFetcher _images;
     private readonly StylesheetFetcher _stylesheets;
     private readonly FontFaceRegistry _webFonts;
@@ -47,10 +54,20 @@ public sealed class LaidOutPage : IDisposable
         _stylesheets = stylesheets;
         _webFonts = webFonts;
         DefaultFontSize = defaultFontSize;
+        DisplayListVersion = System.Threading.Interlocked.Increment(ref _nextVersion);
     }
 
     public BlockBox Root { get; }
     public Document Document { get; }
+
+    /// <summary>
+    /// Monotonic version of this page's display list, assigned once at
+    /// construction. The picture cache (wp:M12-02) keys on it: a render against a
+    /// version different from the cached one is a full miss. Because every fresh
+    /// layout is a new <see cref="LaidOutPage"/>, re-layout / re-style bumps the
+    /// version automatically while a scroll (same page) leaves it stable.
+    /// </summary>
+    public int DisplayListVersion { get; }
 
     /// <summary>
     /// The style engine that produced <see cref="Root"/>. Interactive shells
