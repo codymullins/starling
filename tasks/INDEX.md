@@ -58,10 +58,13 @@ order: milestone, then numeric id, then sub-letter.
 
 > **M2 exit checklist closed.** All of M2 is complete. The MVP demo
 > `starling render https://example.com -o out.png` is gated in CI via the
-> `network-tests` job (07b). The next focus is M3 (JS engine intrinsics +
-> async + RegExp + modules) and M4 (DOM bindings + interactive demo). See
-> `browser-plan/14_AGENT_TASKS.md` and `browser-plan/13_MILESTONES.md` for
-> the M3+ catalog; `tasks/README.md` is the workflow contract.
+> `network-tests` job (07b). M3's JS engine is largely landed — full ES2024
+> parser, bytecode VM, intrinsics, Promise + microtasks, and async/await all
+> ship. The remaining gap toward "view any site with JS" is at the DOM/HTML
+> integration seam plus a few compiler completeness items (see "Available right
+> now" below) and M4 (interactive demo). See `browser-plan/14_AGENT_TASKS.md`
+> and `browser-plan/13_MILESTONES.md` for the M3+ catalog; `tasks/README.md` is
+> the workflow contract.
 
 ## M3 — Native interop pivot
 
