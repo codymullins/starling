@@ -101,3 +101,24 @@ effective transform / opacity / clip applied per layer.
 
 - 2026-05-19T17:46Z — created (agent-copilot-claude-opus-4.7)
 - 2026-05-20T17:13:50Z — claimed by agent-claude-cody, working on main
+- 2026-05-20 — completed (agent-claude-cody). Added
+  `Starling.Paint.Compositor.CompositorLayer` (page-coord Bounds + slice Items +
+  Matrix2D Transform + Opacity + Rect? Clip + paint-ordered Children + per-layer
+  PictureCache), `LayerTreeBuilder.Build(BlockBox) → CompositorLayer` (root layer
+  always present; opens a layer at every `Hints != None` box; routes display
+  items into the deepest enclosing layer; z-index paint-order sort per
+  CSS-Position-3 §9 done at build time), and `Compositor.Render(viewport, scale,
+  pageVersion)` (per-layer slice rastered into its own cache, then top-down
+  alpha-over composite applying composed transform/opacity/clip via a pure-managed
+  inverse-mapped bilinear sampler). DisplayListBuilder refactor was option (b):
+  threaded an optional layer-boundary predicate + `BuildLayerSlice` through the
+  EXISTING `Visit`/`PaintBoxAndChildren` recursion (null on the flat path → flat
+  `Build` is byte-identical for all current callers); promoted layer roots skip
+  their own transform bracket (layer carries it), non-promoted transformed boxes
+  keep push/pop. Added a transparent-background `Render` overload to
+  `ImageSharpBackend`/`IPaintBackend` (default stays opaque white) so layer slices
+  composite correctly. Wired `PageRendererHost.RenderViaLayerTree` as the new
+  entry point; flat path untouched. Acceptance: transform-parity SSIM = 0.998
+  (≥ 0.99); opacity blend, z-index order, and per-layer cache-isolation tests all
+  green. Full solution builds; FULL suite green (Engine 112/112 golden+SSIM,
+  Paint 107/107, Gui 82/82, plus all others). Unblocks M12-05 + M12-06.
