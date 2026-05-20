@@ -1,10 +1,10 @@
 ---
 id: wp:M12-03-stacking-contexts
 milestone: M12
-status: "claimed"
+status: "complete"
 claimed_by: "agent-claude-cody"
 claimed_at: "2026-05-20T02:21:12Z"
-completed_at: ""
+completed_at: "2026-05-20T02:24:18Z"
 branch: "main"
 depends_on: []
 blocks:
@@ -91,3 +91,4 @@ frame.
   the walker), including all WP acceptance scenarios. Layout project: 136/136
   pass; full solution builds and the whole suite is green. No paint behavior
   changed — this only tags boxes. Unblocks `wp:M12-04-layer-tree`.
+- 2026-05-20T02:24:18Z — merged; complete
