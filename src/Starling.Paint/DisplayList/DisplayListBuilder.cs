@@ -323,7 +323,7 @@ public sealed class DisplayListBuilder
             list.Add(new DrawText(
                 frag.Text,
                 x + frag.X,
-                y + frag.Y + frag.Baseline,
+                y + frag.Y,
                 fontSize,
                 color,
                 spec.Families,

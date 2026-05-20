@@ -85,11 +85,7 @@ public sealed class ImageSharpTextMeasurer : ITextMeasurer, IDisposable
             return hit;
 
         var font = GetFont(size, spec);
-        var options = new TextOptions(font)
-        {
-            TextAlignment = TextAlignment.Start,
-            VerticalAlignment = VerticalAlignment.Bottom,
-        };
+        var options = new TextOptions(font);
         var textBlock = new TextBlock(text, options);
         var measured = textBlock.Measure(-1);
         var metrics = measured.GetGlyphMetrics().Span;
@@ -199,11 +195,7 @@ internal sealed class ImageSharpShapedRun : ShapedRun
     {
         var (glyphs, advance) = SliceGlyphs(Glyphs, Advance, startGlyph, endGlyph);
         var sliceText = Text.Substring(startGlyph, endGlyph - startGlyph);
-        var textBlock = new TextBlock(sliceText, new TextOptions(Font)
-        {
-            TextAlignment = TextAlignment.Start,
-            VerticalAlignment = VerticalAlignment.Bottom,
-        });
+        var textBlock = new TextBlock(sliceText, new TextOptions(Font));
 
         return new ImageSharpShapedRun(sliceText, Font, textBlock, glyphs, advance);
     }
