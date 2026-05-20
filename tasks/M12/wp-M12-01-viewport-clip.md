@@ -1,9 +1,9 @@
 ---
 id: wp:M12-01-viewport-clip
 milestone: M12
-status: "available"
-claimed_by: ""
-claimed_at: ""
+status: "claimed"
+claimed_by: "agent-claude-cody"
+claimed_at: "2026-05-20T16:52:08Z"
 completed_at: ""
 branch: "main"
 depends_on: []
@@ -91,3 +91,4 @@ permanent fix for the netclaw.dev / wgpu 8192 px texture crash class
 - 2026-05-19T17:46Z — created (agent-copilot-claude-opus-4.7) after the
   netclaw.dev crash investigation surfaced the "render whole page in one
   bitmap" architectural limit.
+- 2026-05-20T16:52:08Z — claimed by agent-claude-cody, working on main
