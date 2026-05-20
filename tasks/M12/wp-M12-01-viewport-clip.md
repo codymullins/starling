@@ -92,3 +92,39 @@ permanent fix for the netclaw.dev / wgpu 8192 px texture crash class
   netclaw.dev crash investigation surfaced the "render whole page in one
   bitmap" architectural limit.
 - 2026-05-20T16:52:08Z — claimed by agent-claude-cody, working on main
+- 2026-05-20 — implemented (agent-claude-cody). Summary:
+  - `IPaintBackend.Render` gained a `Rect viewport` overload (page-coord
+    X/Y = scroll offset, W/H = visible size); the old `Size` overload is a
+    default-interface delegate with X=Y=0. `ImageSharpBackend` sizes the
+    bitmap to viewport.W×H and translates the device canvas by
+    (-viewport.X, -viewport.Y) (post-transform for transformed items, via
+    the coordinate-conversion helpers + `CurrentInDeviceSpace`).
+  - `DisplayListBuilder.Build(root, Rect? viewport, …)` culls items whose
+    POST-transform page AABB misses the viewport (expanded by a 64 px
+    `OverdrawMargin`). Transformed subtrees are painted into a scratch list
+    and only bracketed with Push/Pop if they produced visible items, so the
+    list stays balanced and O(on-screen). `viewport: null` reproduces the
+    legacy emit-everything behavior exactly.
+  - `Painter.RenderDocument` / `RenderWithStyle` and
+    `PageRendererHost.Render` take an optional clip-viewport `Rect?`; null =
+    full-page (headless PNG path unchanged).
+  - Deliverable #4: the WebGPU→CPU oversize fallback is RETAINED as a
+    minimal guard, NOT deleted. Reason: the headless full-page screenshot
+    path and the no-viewport GUI render both legitimately ask for surfaces
+    >8192 px and the CPU rasterizer must handle them; only the *unbounded*
+    path can reach WebGPU oversize. The viewport-clipped scrolling path is
+    bounded by window size and never trips the guard, so
+    `paint.webgpu.fallback_cpu.oversize` stays at zero in a session — the
+    acceptance criterion is met without risking a wgpu abort() on the
+    full-page path.
+  - `WebviewPanel` rewritten to a ScrollViewer over a page-sized virtual
+    `Canvas` (scroll extent) with a viewport-sized `Image` repositioned to
+    the scroll offset and re-rendered on `ScrollChanged`. NOTE: this GUI
+    path is compile-checked only — Avalonia scroll behavior was not
+    runtime-verified (headless env).
+  - Tests: `tests/Starling.Paint.Tests/ViewportClipTests.cs` (6 cases:
+    viewport sizing on a ~200000 px page, O(on-screen) culling,
+    transform-onto/off-viewport culling with balanced brackets, viewport
+    offset translation, null-viewport == legacy). Full solution builds;
+    full suite green (Paint.Tests 94/94, all projects 0 failures).
+  - Unblocks wp:M12-02-picture-cache (its only dep).
