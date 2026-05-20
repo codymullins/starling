@@ -71,6 +71,9 @@ internal sealed class ImageSharpBackend : IPaintBackend
     public string Name => _useWebGpu ? "imagesharp-webgpu" : "imagesharp";
 
     public RenderedBitmap Render(PaintList list, LayoutSize viewport, float scale = 1.0f)
+        => Render(list, new LayoutRect(0, 0, viewport.Width, viewport.Height), scale);
+
+    public RenderedBitmap Render(PaintList list, LayoutRect viewport, float scale = 1.0f)
     {
         ArgumentNullException.ThrowIfNull(list);
         if (viewport.Width <= 0 || viewport.Height <= 0)
@@ -80,6 +83,13 @@ internal sealed class ImageSharpBackend : IPaintBackend
 
         var width = (int)Math.Ceiling(viewport.Width * scale);
         var height = (int)Math.Ceiling(viewport.Height * scale);
+
+        // viewport.X/Y is the page-coordinate scroll offset of the visible
+        // region: a page-coord item at (viewport.X, viewport.Y) must land at
+        // device (0,0). Express it as the outermost (ancestor) CSS-space
+        // transform so it composes with per-item transforms and is folded into
+        // the canvas matrix alongside the device scale by ToCanvasMatrix.
+        var viewportTransform = Matrix2D.Translate(-viewport.X, -viewport.Y);
 
         Activity.Current?.SetTag("raster.width", width);
         Activity.Current?.SetTag("raster.height", height);
@@ -99,12 +109,12 @@ internal sealed class ImageSharpBackend : IPaintBackend
             // next frame if the page reflows back under the limit.
             _diag.Counter("paint.webgpu.fallback_cpu.oversize", 1);
             Activity.Current?.SetTag("raster.webgpu.fallback_reason", "exceeds_max_texture_dimension");
-            return RenderCpu(list, width, height, scale, webGpuFallbackReason: "exceeds_max_texture_dimension");
+            return RenderCpu(list, width, height, scale, viewportTransform, webGpuFallbackReason: "exceeds_max_texture_dimension");
         }
 
         return _useWebGpu
-            ? RenderWebGpu(list, width, height, scale)
-            : RenderCpu(list, width, height, scale);
+            ? RenderWebGpu(list, width, height, scale, viewportTransform)
+            : RenderCpu(list, width, height, scale, viewportTransform);
     }
 
     // 8192 is WebGPU's guaranteed minimum maxTextureDimension2D. Larger
@@ -113,7 +123,7 @@ internal sealed class ImageSharpBackend : IPaintBackend
     // anything, so detect the overflow before allocating a texture.
     private const int MaxWebGpuTextureDimension = 8192;
 
-    private RenderedBitmap RenderCpu(PaintList list, int width, int height, float scale, string? webGpuFallbackReason = null)
+    private RenderedBitmap RenderCpu(PaintList list, int width, int height, float scale, Matrix2D viewportTransform, string? webGpuFallbackReason = null)
     {
         using (_diag.Span("paint", "raster.context_init"))
         {
@@ -142,10 +152,10 @@ internal sealed class ImageSharpBackend : IPaintBackend
                 image.Mutate(x => x.Paint(canvas =>
                 {
                     var transforms = new Stack<Matrix2D>();
-                    transforms.Push(Matrix2D.Identity);
+                    transforms.Push(viewportTransform);
                     canvas.Save(new DrawingOptions
                     {
-                        Transform = ToCanvasMatrix(Matrix2D.Identity, scale),
+                        Transform = ToCanvasMatrix(viewportTransform, scale),
                     });
 
                     foreach (var item in list.Items)
@@ -170,7 +180,7 @@ internal sealed class ImageSharpBackend : IPaintBackend
     // the same DrawingCanvas API as the CPU path, so display-list replay stays
     // shared. The target starts transparent, so clear it to opaque white to
     // match the CPU image allocation.
-    private RenderedBitmap RenderWebGpu(PaintList list, int width, int height, float scale)
+    private RenderedBitmap RenderWebGpu(PaintList list, int width, int height, float scale, Matrix2D viewportTransform)
     {
         // Probe the WebGPU environment before constructing a render target so a
         // missing/broken wgpu-native binary, no compatible GPU adapter, or a
@@ -211,10 +221,10 @@ internal sealed class ImageSharpBackend : IPaintBackend
                     Activity.Current?.SetTag("raster.items", list.Items.Count);
                     canvas.Clear(Brushes.Solid(Color.White), new Rectangle(0, 0, width, height));
                     var transforms = new Stack<Matrix2D>();
-                    transforms.Push(Matrix2D.Identity);
+                    transforms.Push(viewportTransform);
                     canvas.Save(new DrawingOptions
                     {
-                        Transform = ToCanvasMatrix(Matrix2D.Identity, scale),
+                        Transform = ToCanvasMatrix(viewportTransform, scale),
                     });
 
                     foreach (var item in list.Items)
