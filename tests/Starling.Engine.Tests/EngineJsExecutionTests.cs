@@ -363,13 +363,86 @@ public sealed class EngineJsExecutionTests
         outcome.DisplayText.Should().NotContain("module-ran");
     }
 
+    [TestMethod]
+    public async Task Deferred_scripts_execute_after_inline_in_document_order()
+    {
+        // Two external `defer` scripts plus an inline script. Per HTML §4.12.1
+        // the inline (non-deferred) script runs first, then the deferred ones
+        // in document order. Each appends its tag to #log so the final string
+        // pins the relative ordering: inline, then defer-1, then defer-2.
+        await using var dir = TempDir.Create();
+        dir.WriteFile("defer-a.js", "log('defer-1');");
+        dir.WriteFile("defer-b.js", "log('defer-2');");
+        var html = @"<!doctype html><html><body>
+            <p id='log'></p>
+            <script>
+                function log(tag) {
+                    var p = document.getElementById('log');
+                    p.textContent = p.textContent + tag + ' ';
+                }
+            </script>
+            <script defer src='defer-a.js'></script>
+            <script defer src='defer-b.js'></script>
+            <script>log('inline');</script>
+        </body></html>";
+
+        var outcome = await RenderHtmlAsync(html, dir);
+        // Inline scripts (the two non-deferred ones) run in document order
+        // first; the deferred externals run afterward, still in document order.
+        outcome.DisplayText.Should().Contain("inline defer-1 defer-2");
+    }
+
+    [TestMethod]
+    public async Task Async_script_executes_during_render()
+    {
+        // An external `async` script runs as soon as it is fetched
+        // (order-independent). Pin only that its side effect is observed.
+        await using var dir = TempDir.Create();
+        dir.WriteFile("async.js",
+            "document.getElementById('out').textContent = 'async-ran';");
+        var html = @"<!doctype html><html><body>
+            <p id='out'>before-async</p>
+            <script async src='async.js'></script>
+        </body></html>";
+
+        var outcome = await RenderHtmlAsync(html, dir);
+        outcome.DisplayText.Should().Contain("async-ran");
+        outcome.DisplayText.Should().NotContain("before-async");
+    }
+
+    [TestMethod]
+    public async Task Inline_script_injecting_a_script_element_runs_the_injected_script()
+    {
+        // The page's inline script creates a <script> via createElement, sets
+        // its inline source, and appends it to the DOM. The engine's
+        // runtime-injection hook must fetch/compile/run it through the same
+        // path, so the injected script's mutation is visible after render.
+        var html = @"<!doctype html><html><body>
+            <p id='out'>not-injected</p>
+            <script>
+                var s = document.createElement('script');
+                s.textContent = ""document.getElementById('out').textContent = 'injected-ran';"";
+                document.body.appendChild(s);
+            </script>
+        </body></html>";
+
+        var outcome = await RenderHtmlAsync(html);
+        outcome.DisplayText.Should().Contain("injected-ran");
+        outcome.DisplayText.Should().NotContain("not-injected");
+    }
+
     // -------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------
 
-    private static async Task<RenderOutcome> RenderHtmlAsync(string html)
+    private static Task<RenderOutcome> RenderHtmlAsync(string html) => RenderHtmlAsync(html, dir: null);
+
+    private static async Task<RenderOutcome> RenderHtmlAsync(string html, TempDir? dir)
     {
-        var tempHtml = Path.Combine(Path.GetTempPath(), $"starling-js-{Guid.NewGuid():N}.html");
+        // Place the HTML inside the companion dir (when supplied) so relative
+        // <script src> attributes resolve against the sibling .js files.
+        var baseDir = dir?.Path ?? Path.GetTempPath();
+        var tempHtml = Path.Combine(baseDir, $"starling-js-{Guid.NewGuid():N}.html");
         var tempPng = Path.Combine(Path.GetTempPath(), $"starling-js-{Guid.NewGuid():N}.png");
         await File.WriteAllTextAsync(tempHtml, html, CancellationToken.None);
         try
@@ -392,6 +465,34 @@ public sealed class EngineJsExecutionTests
     {
         try { if (File.Exists(path)) File.Delete(path); }
         catch { /* best-effort */ }
+    }
+
+    /// <summary>A throwaway directory for tests that need companion files
+    /// (e.g. external <c>&lt;script src&gt;</c> resources) resolvable via
+    /// <c>file://</c> relative URLs. Deleted on dispose.</summary>
+    private sealed class TempDir : IAsyncDisposable
+    {
+        public string Path { get; }
+
+        private TempDir(string path) => Path = path;
+
+        public static TempDir Create()
+        {
+            var path = System.IO.Path.Combine(
+                System.IO.Path.GetTempPath(), $"starling-js-dir-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(path);
+            return new TempDir(path);
+        }
+
+        public void WriteFile(string name, string contents)
+            => File.WriteAllText(System.IO.Path.Combine(Path, name), contents);
+
+        public ValueTask DisposeAsync()
+        {
+            try { Directory.Delete(Path, recursive: true); }
+            catch { /* best-effort */ }
+            return ValueTask.CompletedTask;
+        }
     }
 
     /// <summary>HttpListener-backed JSON endpoint shared by the fetch test.</summary>
