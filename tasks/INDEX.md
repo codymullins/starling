@@ -150,9 +150,9 @@ quality monotonically improves at every step.
 | ID | Status | Owner | Subsystem |
 |---|---|---|---|
 | [wp:M12-01-viewport-clip](M12/wp-M12-01-viewport-clip.md) | 🟢 complete | agent-claude-cody | Starling.Paint |
-| [wp:M12-02-picture-cache](M12/wp-M12-02-picture-cache.md) | 🔵 available | — | Starling.Paint |
+| [wp:M12-02-picture-cache](M12/wp-M12-02-picture-cache.md) | 🟢 complete | agent-claude-cody | Starling.Paint |
 | [wp:M12-03-stacking-contexts](M12/wp-M12-03-stacking-contexts.md) | 🟢 complete | — | Starling.Layout |
-| [wp:M12-04-layer-tree](M12/wp-M12-04-layer-tree.md) | ⚫ blocked | — | Starling.Paint |
+| [wp:M12-04-layer-tree](M12/wp-M12-04-layer-tree.md) | 🔵 available | — | Starling.Paint |
 | [wp:M12-05-tile-grid](M12/wp-M12-05-tile-grid.md) | ⚫ blocked | — | Starling.Paint |
 | [wp:M12-06-invalidation](M12/wp-M12-06-invalidation.md) | ⚫ blocked | — | Starling.Paint |
 | [wp:M12-07-compositor-thread](M12/wp-M12-07-compositor-thread.md) | ⚫ blocked | — | Starling.Paint |
