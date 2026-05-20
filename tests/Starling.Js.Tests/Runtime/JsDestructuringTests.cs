@@ -89,6 +89,63 @@ public class JsDestructuringTests
     }
 
     [TestMethod]
+    public void Assignment_patterns_cover_holes_renames_computed_keys_and_nested_targets()
+    {
+        // Array assignment: holes and array-in-array nesting writing existing bindings.
+        Eval("var a = 0; [, a] = [1, 2]; a;").AsNumber.Should().Be(2);
+        Eval("var a = 0, b = 0; [[a], { b }] = [[1], { b: 2 }]; a * 10 + b;").AsNumber.Should().Be(12);
+        // Rest into an existing binding.
+        Eval("var a = 0, r; [a, ...r] = [1, 2, 3]; a * 100 + r.length * 10 + r[1];").AsNumber.Should().Be(123);
+        // Object assignment: rename + default + computed key targeting existing bindings.
+        Eval("var x1 = 0; ({ a: x1 } = { a: 7 }); x1;").AsNumber.Should().Be(7);
+        Eval("var a = 0; ({ a = 9 } = {}); a;").AsNumber.Should().Be(9);
+        Eval("var k = 'z', v = 0; ({ [k]: v } = { z: 4 }); v;").AsNumber.Should().Be(4);
+        Eval("var a = 0, r; ({ a, ...r } = { a: 1, b: 2, c: 3 }); a * 100 + r.b * 10 + r.c;").AsNumber.Should().Be(123);
+        // Short RHS yields undefined for missing elements.
+        Eval("var a = 0, b = 0, c = 0; [a, b, c] = [1, 2]; (c === undefined ? 1 : 0) * 100 + a * 10 + b;").AsNumber.Should().Be(112);
+    }
+
+    [TestMethod]
+    public void Assignment_pattern_member_targets_cover_dotted_and_computed_forms()
+    {
+        // Mixed identifier + dotted-member + computed-member targets in one array pattern.
+        Eval("var obj = {}, arr = [], i = 0; [obj.a, arr[i]] = [5, 6]; obj.a * 10 + arr[0];").AsNumber.Should().Be(56);
+        // Computed-member target inside an array pattern, with a hole before it.
+        Eval("var arr = [], i = 1; [, arr[i]] = [9, 8]; arr[1];").AsNumber.Should().Be(8);
+        // Object pattern writing through a member target (renamed key -> member).
+        Eval("var obj = {}; ({ p: obj.a } = { p: 8 }); obj.a;").AsNumber.Should().Be(8);
+        // Nested array pattern under an object property, target with default, writing a member.
+        Eval("var o = {}; ({ x: [o.a = 3] } = { x: [] }); o.a;").AsNumber.Should().Be(3);
+    }
+
+    [TestMethod]
+    public void Assignment_pattern_evaluation_order_is_left_to_right()
+    {
+        // §13.15.5: member-target reference (base + computed key) is resolved in
+        // source order as each element is processed, left to right.
+        Eval("var log = ''; function L(n) { log += n; return {}; } [L('a').p, L('b').q] = [1, 2]; log;")
+            .AsString.Should().Be("ab");
+        // Computed-key member target evaluates the key expression.
+        Eval("var log = ''; var o = {}; function K() { log += 'k'; return 'p'; } [o[K()]] = [5]; log + o.p;")
+            .AsString.Should().Be("k5");
+        // The destructuring assignment expression evaluates to (and returns) the RHS itself.
+        Eval("var rhs = { a: 1 }; var x = 0; var res = ({ a: x } = rhs); res === rhs;").AsBool.Should().BeTrue();
+        Eval("var a = 0, b = 0; var rhs = [3, 4]; var res = ([a, b] = rhs); res === rhs;").AsBool.Should().BeTrue();
+    }
+
+    [TestMethod]
+    public void Compound_operator_with_destructuring_target_is_rejected()
+    {
+        // §13.15.1: a destructuring pattern only pairs with the plain `=` operator.
+        var compile = () =>
+        {
+            var program = new JsParser("var a = 0; [a] += [1];").ParseProgram();
+            JsCompiler.CompileForEval(program);
+        };
+        compile.Should().Throw<NotSupportedException>();
+    }
+
+    [TestMethod]
     public void Arrow_this_binding_gap_is_pinned_for_follow_up_work()
     {
         Eval("var o = { x: 3, m() { var f = () => this.x; return f(); } }; o.m() === undefined;").AsBool.Should().BeTrue();

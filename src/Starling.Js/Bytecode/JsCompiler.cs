@@ -1531,7 +1531,10 @@ public sealed partial class JsCompiler
     {
         if (IsPattern(a.Target))
         {
-            if (a.Op != "=") throw new NotSupportedException("compound destructuring assignment is not supported");
+            // §13.15.1: a destructuring (array/object) assignment target only
+            // pairs with the plain `=` operator — a compound operator such as
+            // `[a] += x` is an early SyntaxError.
+            if (a.Op != "=") throw new NotSupportedException("compound assignment with a destructuring target is a SyntaxError");
             // ECMA-262 §13.15 destructuring assignment evaluates the RHS once,
             // performs the pattern writes, and the whole expression returns the RHS.
             var rhsSlot = _b.ReserveLocal();
@@ -1626,7 +1629,11 @@ public sealed partial class JsCompiler
             else _b.EmitU16(Opcode.StoreProperty, _b.AddConstant(((Identifier)me.Property).Name));
             return;
         }
-        throw new NotSupportedException("destructuring assignment is wp:M3-02d work");
+        // Array/object destructuring assignment targets are handled by the
+        // IsPattern branch above; member and identifier targets by the branches
+        // in between. Anything reaching here (e.g. `f() = x`, `1 = x`) is an
+        // invalid assignment target — §13.15.1 makes these early SyntaxErrors.
+        throw new NotSupportedException($"invalid assignment target '{a.Target.GetType().Name}'");
     }
 
     private void EmitMemberLoad(MemberExpression m)
