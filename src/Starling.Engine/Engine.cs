@@ -167,18 +167,22 @@ public sealed class StarlingEngine
             }
             if (scripts.Scripts.Count > 0)
             {
-                // Snapshot layout against the pre-script DOM so JS can call
-                // getBoundingClientRect / offsetWidth / getComputedStyle
-                // and receive real numbers. Stale wrt post-script mutations
-                // — measure-after-mutate is a known follow-up.
+                // Lay out against the pre-script DOM so JS can call
+                // getBoundingClientRect / offsetWidth / getComputedStyle and
+                // receive real numbers. The host is handed a recompute
+                // delegate keyed on the document's mutation version, so a read
+                // issued after a DOM mutation in the same script run lazily
+                // re-runs layout and reflects the post-mutation geometry.
                 ILayoutHost? layoutHost = null;
                 using (_diag.Span("engine", "prelayout_for_js"))
                 {
                     var viewport = new LayoutSize(options.Viewport.Width, options.Viewport.Height);
-                    var (root, style) = _painter.LayoutDocumentWithStyle(
-                        doc, viewport, options.FontSize, images, stylesheets.Resolve, webFonts,
-                        colorScheme: options.PreferredColorScheme);
-                    layoutHost = new BoxLayoutHost(root, style);
+                    (Starling.Layout.Box.BlockBox Root, Starling.Css.Cascade.StyleEngine Style) Relayout() =>
+                        _painter.LayoutDocumentWithStyle(
+                            doc, viewport, options.FontSize, images, stylesheets.Resolve, webFonts,
+                            colorScheme: options.PreferredColorScheme);
+                    var (root, style) = Relayout();
+                    layoutHost = new BoxLayoutHost(root, style, doc, Relayout);
                 }
 
                 using (_diag.Span("engine", "run_scripts"))
@@ -349,10 +353,12 @@ public sealed class StarlingEngine
                 if (scripts.Scripts.Count > 0)
                 {
                     var preViewport = new LayoutSize(options.Viewport.Width, options.Viewport.Height);
-                    var (preRoot, preStyle) = _painter.LayoutDocumentWithStyle(
-                        doc, preViewport, options.FontSize, images, stylesheets.Resolve, webFonts,
-                        colorScheme: options.PreferredColorScheme);
-                    var layoutHost = new BoxLayoutHost(preRoot, preStyle);
+                    (Starling.Layout.Box.BlockBox Root, Starling.Css.Cascade.StyleEngine Style) Relayout() =>
+                        _painter.LayoutDocumentWithStyle(
+                            doc, preViewport, options.FontSize, images, stylesheets.Resolve, webFonts,
+                            colorScheme: options.PreferredColorScheme);
+                    var (preRoot, preStyle) = Relayout();
+                    var layoutHost = new BoxLayoutHost(preRoot, preStyle, doc, Relayout);
                     await RunScriptsAsync(doc, u, scripts.Scripts, layoutHost, ct).ConfigureAwait(false);
                     await Task.WhenAll(
                         images.FetchAllAsync(doc, baseUrl: u, options.Viewport.Width, options.FontSize, ct),

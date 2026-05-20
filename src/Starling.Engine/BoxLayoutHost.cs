@@ -6,29 +6,64 @@ using Starling.Layout.Box;
 namespace Starling.Engine;
 
 /// <summary>
-/// <see cref="ILayoutHost"/> implementation backed by a single
-/// <c>Painter.LayoutDocumentWithStyle</c> pass. The engine snapshots layout against the parsed (pre-script) DOM,
-/// hands the host to <c>WindowBinding</c>, and the bindings answer rect /
-/// offset / computed-style queries from this snapshot for the duration of
-/// script execution.
+/// <see cref="ILayoutHost"/> implementation backed by
+/// <c>Painter.LayoutDocumentWithStyle</c>. The engine builds the host against
+/// the parsed (pre-script) DOM, hands it to <c>WindowBinding</c>, and the
+/// bindings answer rect / offset / computed-style queries from it for the
+/// duration of script execution.
 /// </summary>
 /// <remarks>
-/// Pre-script snapshot is a deliberate simplification — scripts that mutate
-/// then measure get stale numbers. Replacing this with a true on-demand
-/// "flush layout" path (re-run cascade + layout from inside a binding) is
-/// the follow-up that lets bundlers' measure-after-mutate idioms work.
+/// <para><b>Incremental re-layout:</b> the host tracks the document's
+/// <see cref="Document.MutationVersion"/>. Each readback first checks whether a
+/// DOM mutation has bumped the version since the last layout; if so it lazily
+/// re-runs the cascade + layout via the recompute delegate and rebuilds its
+/// element→box index before answering. This makes mutate-then-measure idioms
+/// (append sized content, then read <c>getBoundingClientRect</c> /
+/// <c>offsetTop</c> on the new node or a following sibling) reflect the
+/// post-mutation layout rather than the pre-script snapshot. Layout runs at
+/// most once per quiescent batch of mutations because the version only advances
+/// on the next mutation.</para>
 /// </remarks>
 internal sealed class BoxLayoutHost : ILayoutHost
 {
     private readonly Dictionary<Element, Box> _boxByElement = new(ReferenceEqualityComparer.Instance);
-    private readonly StyleEngine _style;
+    private readonly Document? _document;
+    private readonly Func<(BlockBox Root, StyleEngine Style)>? _relayout;
+    private StyleEngine _style;
+    private int _laidOutVersion;
 
-    public BoxLayoutHost(BlockBox root, StyleEngine style)
+    /// <summary>
+    /// Build a host over an already-computed layout. Without a
+    /// <paramref name="document"/>/<paramref name="relayout"/> pair the host is
+    /// a static snapshot — DOM mutations are not reflected.
+    /// </summary>
+    public BoxLayoutHost(BlockBox root, StyleEngine style,
+        Document? document = null, Func<(BlockBox Root, StyleEngine Style)>? relayout = null)
     {
         ArgumentNullException.ThrowIfNull(root);
         ArgumentNullException.ThrowIfNull(style);
         _style = style;
+        _document = document;
+        _relayout = relayout;
+        _laidOutVersion = document?.MutationVersion ?? 0;
         Index(root);
+    }
+
+    /// <summary>
+    /// If a DOM mutation has advanced the document's mutation version since the
+    /// last layout, re-run layout and rebuild the element→box index. No-op for a
+    /// static snapshot (no recompute delegate) or when nothing has mutated.
+    /// </summary>
+    private void EnsureFresh()
+    {
+        if (_document is null || _relayout is null) return;
+        if (_document.MutationVersion == _laidOutVersion) return;
+
+        var (root, style) = _relayout();
+        _style = style;
+        _boxByElement.Clear();
+        Index(root);
+        _laidOutVersion = _document.MutationVersion;
     }
 
     private void Index(Box box)
@@ -39,6 +74,7 @@ internal sealed class BoxLayoutHost : ILayoutHost
 
     public bool TryGetBoundingClientRect(Element element, out LayoutRect rect)
     {
+        EnsureFresh();
         if (_boxByElement.TryGetValue(element, out var box))
         {
             var frame = box.Frame;
@@ -51,6 +87,7 @@ internal sealed class BoxLayoutHost : ILayoutHost
 
     public bool TryGetOffsetMetrics(Element element, out OffsetMetrics metrics)
     {
+        EnsureFresh();
         if (_boxByElement.TryGetValue(element, out var box))
         {
             var frame = box.Frame;
@@ -76,6 +113,7 @@ internal sealed class BoxLayoutHost : ILayoutHost
     public string GetComputedProperty(Element element, string propertyName)
     {
         if (string.IsNullOrEmpty(propertyName)) return string.Empty;
+        EnsureFresh();
         try
         {
             var computed = _style.Compute(element);

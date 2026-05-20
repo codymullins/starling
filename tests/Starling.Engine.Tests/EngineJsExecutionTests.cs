@@ -285,6 +285,68 @@ public sealed class EngineJsExecutionTests
     }
 
     [TestMethod]
+    public async Task getBoundingClientRect_reflects_element_appended_in_same_script_run()
+    {
+        // Live re-layout: a script appends a sized element, then immediately
+        // reads its geometry. The read must trigger a lazy re-layout and
+        // report the new element's box, not the pre-script snapshot (which had
+        // no such element and would yield 0/0).
+        var html = @"<!doctype html><html>
+          <head><style>.sized { display:block; width:120px; height:40px; }</style></head>
+          <body>
+            <p id='out'>?</p>
+            <script>
+                var d = document.createElement('div');
+                d.id = 'fresh';
+                d.className = 'sized';
+                document.body.appendChild(d);
+                var r = document.getElementById('fresh').getBoundingClientRect();
+                document.getElementById('out').textContent =
+                    'w=' + Math.round(r.width) + ' h=' + Math.round(r.height);
+            </script>
+          </body></html>";
+
+        var outcome = await RenderHtmlAsync(html);
+        outcome.DisplayText.Should().Contain("w=120");
+        outcome.DisplayText.Should().Contain("h=40");
+    }
+
+    [TestMethod]
+    public async Task offsetTop_of_following_sibling_reflects_content_inserted_before_it()
+    {
+        // Live re-layout: inserting a sized block before an existing element
+        // pushes that element down. Reading its offsetTop after the mutation
+        // must reflect the new layout, not the pre-script position.
+        var html = @"<!doctype html><html>
+          <head><style>.spacer { display:block; height:50px; } #anchor { display:block; }</style></head>
+          <body>
+            <div id='anchor'>anchor</div>
+            <p id='out'>?</p>
+            <script>
+                var anchor = document.getElementById('anchor');
+                var before = anchor.offsetTop;
+                var s = document.createElement('div');
+                s.className = 'spacer';
+                document.body.insertBefore(s, anchor);
+                var after = anchor.offsetTop;
+                document.getElementById('out').textContent =
+                    'before=' + Math.round(before) + ' after=' + Math.round(after);
+            </script>
+          </body></html>";
+
+        var outcome = await RenderHtmlAsync(html);
+        // The spacer is 50px tall, so the anchor moves down by 50px after the
+        // insertion. The exact "before" depends on body margins; the load-
+        // bearing assertion is that "after" is 50px greater than "before".
+        var match = System.Text.RegularExpressions.Regex.Match(
+            outcome.DisplayText, @"before=(\d+) after=(\d+)");
+        match.Success.Should().BeTrue($"display text was '{outcome.DisplayText}'");
+        var before = int.Parse(match.Groups[1].Value);
+        var after = int.Parse(match.Groups[2].Value);
+        (after - before).Should().Be(50);
+    }
+
+    [TestMethod]
     public async Task Module_and_unknown_type_scripts_are_skipped()
     {
         // type="module" is not yet supported; a stray module script must not
