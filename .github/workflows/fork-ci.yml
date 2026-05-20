@@ -42,8 +42,6 @@ jobs:
     # Required-reviewer gate. The job will not start — and the secret below is
     # not in scope — until a reviewer approves the run for this commit.
     environment: fork-ci
-    env:
-      SIXLABORS_LICENSE_KEY: ${{ secrets.SIXLABORS_LICENSE_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -59,8 +57,12 @@ jobs:
         # Mirrors ci.yml: Starling.Codecs' Linux decoder tests dlopen these.
         run: sudo apt-get update && sudo apt-get install -y libpng16-16 libjpeg-turbo8 libwebp7
       - name: Restore (locked)
+        env:
+          SIXLABORS_LICENSE_KEY: ${{ secrets.SIXLABORS_LICENSE_KEY }}
         run: dotnet restore --locked-mode
       - name: Build
+        env:
+          SIXLABORS_LICENSE_KEY: ${{ secrets.SIXLABORS_LICENSE_KEY }}
         run: dotnet build --no-restore -c Release
       - name: Test (unit)
         run: dotnet test --no-build -c Release --logger "trx;LogFileName=test.trx"
