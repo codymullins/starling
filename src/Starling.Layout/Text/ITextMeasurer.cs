@@ -239,7 +239,7 @@ public interface ITextMeasurer
     /// total advance. Implementations without real font support (e.g.
     /// <see cref="DefaultTextMeasurer"/>) may return an empty
     /// <see cref="ShapedRun.Glyphs"/> array with a heuristic advance — the
-    /// paint backend treats that as "fall back to legacy shaping".
+    /// paint backend treats that as "shape at paint time".
     /// </summary>
     ShapedRun Shape(string text, double fontSize, FontSpec spec);
 
@@ -273,11 +273,11 @@ public sealed class DefaultTextMeasurer : ITextMeasurer
 
     /// <summary>
     /// The heuristic has no real glyphs to emit; return an empty
-    /// <see cref="ShapedRun.Glyphs"/> array so the paint backend falls back to
-    /// its legacy shaping path. The advance is the heuristic width.
+    /// <see cref="ShapedRun.Glyphs"/> array so the paint backend shapes at
+    /// paint time. The advance is the heuristic width.
     /// </summary>
     public ShapedRun Shape(string text, double fontSize, FontSpec spec)
-        => new(Array.Empty<ShapedGlyph>(), MeasureWidth(text, fontSize, spec));
+        => new GlyphShapedRun(Array.Empty<ShapedGlyph>(), MeasureWidth(text, fontSize, spec));
 
     public double NormalLineHeight(double fontSize, FontSpec spec) => fontSize * 1.2;
 

@@ -24,14 +24,16 @@ public sealed class ImageSharpTextMeasurer : ITextMeasurer, IDisposable
     private readonly FontCollection _collection;
     private readonly ConcurrentDictionary<FontCacheKey, Font> _fontCache = new();
     // Per-measurer shape cache, mirroring the cache the original
-    // SkiaTextMeasurer carried (commit 499ce3d). SixLabors.Fonts shapes content-
-    // only — no contextual kerning across run boundaries — so the same
-    // (text, size, spec) deterministically produces the same glyph advances
-    // relative to (0,0). ShapedRun is immutable, so the same instance can
-    // safely back many TextFragments. Article-class pages repeat common tokens
-    // ("the", " ", ",", digits) hundreds of times; without the cache, every
-    // InlineLayout.LayoutInlineRun call re-shapes the run and then re-shapes
-    // each word inside it.
+    // SkiaTextMeasurer carried (commit 499ce3d). SixLabors.Fonts applies
+    // kerning and contextual shaping within the text passed to one Shape call;
+    // separate Starling layout runs are shaped independently, so no adjustment
+    // can cross those boundaries. With the font collection and text options
+    // fixed for this measurer, the same (text, size, spec) produces the same
+    // origin-relative glyph advances. Layout and paint treat the cached run as
+    // read-only, so the same instance can back many TextFragments.
+    // Article-class pages repeat common tokens ("the", " ", ",", digits)
+    // hundreds of times; without the cache, those repeated runs and fallback
+    // per-word shapes would re-enter SixLabors.Fonts each time.
     private readonly ConcurrentDictionary<ShapeCacheKey, ShapedRun> _shapeCache = new();
     private bool _disposed;
 
@@ -75,7 +77,7 @@ public sealed class ImageSharpTextMeasurer : ITextMeasurer, IDisposable
     {
         ArgumentNullException.ThrowIfNull(text);
         if (text.Length == 0 || fontSize <= 0)
-            return new ShapedRun(Array.Empty<ShapedGlyph>(), 0d);
+            return new GlyphShapedRun(Array.Empty<ShapedGlyph>(), 0d);
 
         var size = (float)fontSize;
         var key = new ShapeCacheKey(text, size, spec);
@@ -83,9 +85,14 @@ public sealed class ImageSharpTextMeasurer : ITextMeasurer, IDisposable
             return hit;
 
         var font = GetFont(size, spec);
-        var options = new TextOptions(font);
-        var advance = TextMeasurer.MeasureAdvance(text, options);
-        var metrics = TextMeasurer.GetGlyphMetrics(text, options).Span;
+        var options = new TextOptions(font)
+        {
+            TextAlignment = TextAlignment.Start,
+            VerticalAlignment = VerticalAlignment.Bottom,
+        };
+        var textBlock = new TextBlock(text, options);
+        var measured = textBlock.Measure(-1);
+        var metrics = measured.GetGlyphMetrics().Span;
 
         var glyphs = new ShapedGlyph[metrics.Length];
         var pen = 0f;
@@ -96,7 +103,7 @@ public sealed class ImageSharpTextMeasurer : ITextMeasurer, IDisposable
             pen += gm.Advance.Width;
         }
 
-        var shaped = new ShapedRun(glyphs, advance.Width);
+        var shaped = new ImageSharpShapedRun(text, font, textBlock, glyphs, measured.Advance.Width);
         _shapeCache[key] = shaped;
         return shaped;
     }
@@ -150,5 +157,54 @@ public sealed class ImageSharpTextMeasurer : ITextMeasurer, IDisposable
         _disposed = true;
         _fontCache.Clear();
         _shapeCache.Clear();
+    }
+}
+
+/// <summary>
+/// ImageSharp-backed shaped run that carries the prepared SixLabors text block
+/// through layout into paint.
+/// </summary>
+internal sealed class ImageSharpShapedRun : ShapedRun
+{
+    /// <summary>
+    /// Initializes an ImageSharp-backed shaped run.
+    /// </summary>
+    public ImageSharpShapedRun(string text, Font font, TextBlock textBlock, ShapedGlyph[] glyphs, double advance)
+        : base(glyphs, advance)
+    {
+        Text = text;
+        Font = font;
+        TextBlock = textBlock;
+    }
+
+    /// <summary>
+    /// The text represented by this shaped run.
+    /// </summary>
+    public string Text { get; }
+
+    /// <summary>
+    /// The concrete ImageSharp font used to prepare <see cref="TextBlock"/>.
+    /// </summary>
+    public Font Font { get; }
+
+    /// <summary>
+    /// The prepared SixLabors text block consumed by the ImageSharp renderer.
+    /// </summary>
+    public TextBlock TextBlock { get; }
+
+    /// <summary>
+    /// Carves a backend-preserving sub-run from a 1:1 glyph/character run.
+    /// </summary>
+    public override ShapedRun Slice(int startGlyph, int endGlyph)
+    {
+        var (glyphs, advance) = SliceGlyphs(Glyphs, Advance, startGlyph, endGlyph);
+        var sliceText = Text.Substring(startGlyph, endGlyph - startGlyph);
+        var textBlock = new TextBlock(sliceText, new TextOptions(Font)
+        {
+            TextAlignment = TextAlignment.Start,
+            VerticalAlignment = VerticalAlignment.Bottom,
+        });
+
+        return new ImageSharpShapedRun(sliceText, Font, textBlock, glyphs, advance);
     }
 }

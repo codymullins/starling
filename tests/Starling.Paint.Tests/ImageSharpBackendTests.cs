@@ -1,6 +1,4 @@
-using System.Collections.Concurrent;
 using AwesomeAssertions;
-using Starling.Common.Diagnostics;
 using Starling.Common.Image;
 using Starling.Css.Values;
 using Starling.Paint.Backend;
@@ -113,6 +111,30 @@ public sealed class ImageSharpBackendTests
     }
 
     /// <summary>
+    /// Image draws honor the display-list transform stack through the
+    /// ImageSharp canvas state. A translated blit must move away from its
+    /// original bounds instead of painting at the untransformed rectangle.
+    /// </summary>
+    [TestMethod]
+    public void Translated_image_uses_canvas_transform()
+    {
+        using var red = DecodedImage.CreatePooled(10, 10, span => Fill(span, 255, 0, 0, 255));
+
+        var list = new PaintList();
+        list.Add(new PushTransform(Matrix2D.Translate(30, 10)));
+        list.Add(new DrawImage(new LayoutRect(0, 0, 10, 10), red));
+        list.Add(PopTransform.Instance);
+
+        using var backend = new ImageSharpBackend(FontResolver.Default, webFonts: null);
+        using var bmp = backend.Render(list, new LayoutSize(80, 40));
+
+        bmp.GetPixel(5, 5).Should().Be(((byte)255, (byte)255, (byte)255, (byte)255),
+            "the untransformed image bounds should remain untouched");
+        bmp.GetPixel(35, 15).Should().Be(((byte)255, (byte)0, (byte)0, (byte)255),
+            "the canvas transform should translate the image before rasterization");
+    }
+
+    /// <summary>
     /// Pages that exceed wgpu's <c>maxTextureDimension2D</c> default (8192 px)
     /// must not crash the host: the GPU path falls back to the CPU rasterizer
     /// for that frame because wgpu's default uncaptured-error handler turns
@@ -138,13 +160,10 @@ public sealed class ImageSharpBackendTests
     }
 
     /// <summary>
-    /// Regression: identity-transform <c>DrawText</c> previously routed through
-    /// <c>canvas.DrawText(RichTextOptions, ...)</c>, which re-shapes the run
-    /// inside the paint backend. The fix swaps that for a cached glyph-outline
-    /// path via <c>TextBuilder.GenerateGlyphs</c> + per-call translation. This
-    /// test pins the visible side: identity-transform text must still leave
-    /// non-background pixels on the canvas, so a future refactor of the cache
-    /// path cannot silently turn rendering into a no-op.
+    /// Identity-transform text renders through ImageSharp's prepared text
+    /// path so color/layered glyphs keep their own paints. This pins the
+    /// visible side: text must still leave non-background pixels on the
+    /// canvas, so a future text-path refactor cannot silently become a no-op.
     /// </summary>
     [TestMethod]
     public void Identity_transform_text_paints_visible_pixels()
@@ -164,71 +183,8 @@ public sealed class ImageSharpBackendTests
         using var bmp = backend.Render(list, new LayoutSize(200, 60));
 
         BitmapPixels.CountNonWhite(bmp).Should().BeGreaterThan(0,
-            "identity-transform text must produce visible glyphs; an empty canvas would mean the cached-outline path is broken");
+            "identity-transform text must produce visible glyphs; an empty canvas would mean the prepared-text path is broken");
     }
-
-    /// <summary>
-    /// Regression and fix-pin: with N copies of the same <c>(text, size,
-    /// FontSpec)</c> in a display list the backend's outline cache must
-    /// shape+outline that token exactly once and hit-cache for the remaining
-    /// N-1 draws. If the cache is bypassed or the key is wrong, every draw
-    /// runs <c>TextBuilder.GenerateGlyphs</c> from scratch — the regression
-    /// path inside <c>command_record</c>.
-    /// </summary>
-    [TestMethod]
-    public void Repeated_identical_text_items_hit_glyph_outline_cache()
-    {
-        const int Repeats = 8;
-        var list = new PaintList();
-        for (var i = 0; i < Repeats; i++)
-        {
-            list.Add(new DrawText(
-                Text: "lorem",
-                X: 10,
-                Y: 20 + i * 24,
-                FontSize: 16,
-                Color: new CssColor(0, 0, 0, 255),
-                FontFamilies: new[] { "sans-serif" },
-                Bold: false,
-                Italic: false));
-        }
-
-        var diag = new RecordingDiagnostics();
-        using var backend = new ImageSharpBackend(FontResolver.Default, webFonts: null, diagnostics: diag);
-        using var bmp = backend.Render(list, new LayoutSize(200, 240));
-
-        diag.CountOf("paint.draw_text").Should().Be(Repeats);
-        diag.CountOf("paint.draw_text.glyph_cache.miss").Should().Be(1,
-            "the cache should populate on the first draw and hit for the remaining N-1");
-        diag.CountOf("paint.draw_text.glyph_cache.hit").Should().Be(Repeats - 1);
-    }
-
-    /// <summary>
-    /// Different (size, FontSpec) combinations must produce independent cache
-    /// entries — same word at two font sizes is a miss for each size, not a
-    /// shared hit.
-    /// </summary>
-    [TestMethod]
-    public void Glyph_outline_cache_key_includes_size_and_spec()
-    {
-        var list = new PaintList();
-        list.Add(MakeText("hello", x: 10, y: 30, size: 16));
-        list.Add(MakeText("hello", x: 10, y: 60, size: 16));            // hit
-        list.Add(MakeText("hello", x: 10, y: 100, size: 28));           // miss (different size)
-        list.Add(MakeText("hello", x: 10, y: 140, size: 28));           // hit
-        list.Add(MakeText("hello", x: 10, y: 180, size: 16, bold: true)); // miss (different spec)
-
-        var diag = new RecordingDiagnostics();
-        using var backend = new ImageSharpBackend(FontResolver.Default, webFonts: null, diagnostics: diag);
-        using var bmp = backend.Render(list, new LayoutSize(200, 220));
-
-        diag.CountOf("paint.draw_text.glyph_cache.miss").Should().Be(3);
-        diag.CountOf("paint.draw_text.glyph_cache.hit").Should().Be(2);
-    }
-
-    private static DrawText MakeText(string text, double x, double y, double size, bool bold = false)
-        => new(text, x, y, size, new CssColor(0, 0, 0, 255),
-            new[] { "sans-serif" }, bold, Italic: false);
 
     private static void Fill(Span<byte> span, byte r, byte g, byte b, byte a)
     {
@@ -241,30 +197,5 @@ public sealed class ImageSharpBackendTests
         }
     }
 
-    /// <summary>
-    /// Minimal in-memory <see cref="IDiagnostics"/> for counter assertions.
-    /// Threads on the canvas may concurrently bump counters during deferred
-    /// rasterisation, so the underlying store is concurrent.
-    /// </summary>
-    private sealed class RecordingDiagnostics : IDiagnostics
-    {
-        private readonly ConcurrentDictionary<string, double> _counters = new();
-
-        public double CountOf(string name) => _counters.TryGetValue(name, out var v) ? v : 0d;
-
-        public void Counter(string name, double value)
-            => _counters.AddOrUpdate(name, value, (_, prev) => prev + value);
-
-        public IDisposable Span(string area, string operation) => NoopSpan.Instance;
-        public void Log(DiagLevel level, string area, string message) { }
-        public void Snapshot(string label, ReadOnlySpan<byte> bytes) { }
-        public void LogException(string area, Exception exception, string? message = null) { }
-
-        private sealed class NoopSpan : IDisposable
-        {
-            public static readonly NoopSpan Instance = new();
-            public void Dispose() { }
-        }
-    }
 }
 

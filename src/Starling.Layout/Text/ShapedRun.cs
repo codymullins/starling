@@ -4,9 +4,7 @@ namespace Starling.Layout.Text;
 
 /// <summary>
 /// One shaped glyph in a run: a glyph id and its pen position relative to the
-/// run origin (0,0). The memory layout matches the native shim's TsGlyph
-/// (sequential uint+float+float) so a <see cref="ShapedRun"/>'s buffer can be
-/// reinterpreted as TsGlyph[] at the paint/interop boundary without copying.
+/// run origin (0,0).
 /// </summary>
 [StructLayout(LayoutKind.Sequential)]
 public readonly record struct ShapedGlyph(uint GlyphId, float X, float Y);
@@ -14,21 +12,33 @@ public readonly record struct ShapedGlyph(uint GlyphId, float X, float Y);
 /// <summary>
 /// A pre-shaped text run. Produced by <see cref="ITextMeasurer.Shape"/> at
 /// layout time and carried unchanged through the display list to the paint
-/// backend, which draws the glyphs directly without re-shaping. This is the
-/// Blink/WebRender pattern — shape once, store the result on the layout tree,
-/// reuse at paint.
+/// backend. Layout consumes only glyph positions and total advance; concrete
+/// implementations may carry renderer-specific data as well.
 /// </summary>
-/// <param name="Glyphs">
-/// The shaped glyphs, with pen positions relative to (0, 0) along the run's
-/// baseline. The paint backend translates them by the fragment's (X, Y).
-/// </param>
-/// <param name="Advance">
-/// The post-run pen advance — the total width of the shaped text. Replaces
-/// the sentinel-reshape trick that <see cref="ITextMeasurer.MeasureWidth"/>
-/// used to recover.
-/// </param>
-public sealed record ShapedRun(ShapedGlyph[] Glyphs, double Advance)
+public abstract class ShapedRun
 {
+    /// <summary>
+    /// Initializes a shaped run from origin-relative glyph positions and an
+    /// advance width.
+    /// </summary>
+    protected ShapedRun(ShapedGlyph[] glyphs, double advance)
+    {
+        Glyphs = glyphs;
+        Advance = advance;
+    }
+
+    /// <summary>
+    /// The shaped glyphs, with pen positions relative to (0, 0) along the
+    /// run's baseline. Layout uses these to slice simple runs without
+    /// re-entering the shaper.
+    /// </summary>
+    public ShapedGlyph[] Glyphs { get; }
+
+    /// <summary>
+    /// The post-run pen advance — the total width of the shaped text.
+    /// </summary>
+    public double Advance { get; }
+
     /// <summary>
     /// Carve a sub-run out of an already-shaped run. Used by inline layout to
     /// shape a whole text run once and then split the result per-word for the
@@ -47,26 +57,60 @@ public sealed record ShapedRun(ShapedGlyph[] Glyphs, double Advance)
     /// <param name="endGlyph">Exclusive end glyph index. <c>endGlyph == Glyphs.Length</c>
     /// means "to the end of the run"; the slice's advance then uses this run's
     /// <see cref="Advance"/> as the trailing pen-X.</param>
-    public ShapedRun Slice(int startGlyph, int endGlyph)
+    public abstract ShapedRun Slice(int startGlyph, int endGlyph);
+
+    /// <summary>
+    /// Slices the backend-neutral glyph data shared by all shaped-run
+    /// implementations.
+    /// </summary>
+    protected static (ShapedGlyph[] Glyphs, double Advance) SliceGlyphs(
+        ShapedGlyph[] glyphs,
+        double advance,
+        int startGlyph,
+        int endGlyph)
     {
-        if (startGlyph < 0 || endGlyph > Glyphs.Length || startGlyph > endGlyph)
+        if (startGlyph < 0 || endGlyph > glyphs.Length || startGlyph > endGlyph)
             throw new ArgumentOutOfRangeException(nameof(startGlyph));
 
         if (startGlyph == endGlyph)
-            return new ShapedRun(Array.Empty<ShapedGlyph>(), 0d);
+            return (Array.Empty<ShapedGlyph>(), 0d);
 
-        var startX = Glyphs[startGlyph].X;
+        var startX = glyphs[startGlyph].X;
         // The pen-X just past the slice's last glyph: either the next glyph's
         // origin (intermediate slice) or the whole run's total advance (slice
         // touches the run's tail). Both are computed without a re-shape.
-        var endX = endGlyph < Glyphs.Length ? Glyphs[endGlyph].X : (float)Advance;
+        var endX = endGlyph < glyphs.Length ? glyphs[endGlyph].X : (float)advance;
 
         var sliced = new ShapedGlyph[endGlyph - startGlyph];
         for (var i = 0; i < sliced.Length; i++)
         {
-            var g = Glyphs[startGlyph + i];
+            var g = glyphs[startGlyph + i];
             sliced[i] = new ShapedGlyph(g.GlyphId, g.X - startX, g.Y);
         }
-        return new ShapedRun(sliced, endX - startX);
+
+        return (sliced, endX - startX);
+    }
+}
+
+/// <summary>
+/// Backend-neutral shaped run containing only glyph positions and advance.
+/// </summary>
+public sealed class GlyphShapedRun : ShapedRun
+{
+    /// <summary>
+    /// Initializes a backend-neutral shaped run.
+    /// </summary>
+    public GlyphShapedRun(ShapedGlyph[] glyphs, double advance)
+        : base(glyphs, advance)
+    {
+    }
+
+    /// <summary>
+    /// Carves a backend-neutral sub-run from a 1:1 glyph/character run.
+    /// </summary>
+    public override ShapedRun Slice(int startGlyph, int endGlyph)
+    {
+        var (glyphs, advance) = SliceGlyphs(Glyphs, Advance, startGlyph, endGlyph);
+        return new GlyphShapedRun(glyphs, advance);
     }
 }

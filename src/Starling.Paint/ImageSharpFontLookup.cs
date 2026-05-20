@@ -15,7 +15,7 @@ internal static class ImageSharpFontLookup
     /// <summary>
     /// Loads every embedded TTF/OTF resource from <c>Starling.Paint.dll</c>,
     /// every system-installed family, and every <c>@font-face</c>-registered
-    /// SFNT from <paramref name="webFonts"/> into a single
+    /// font from <paramref name="webFonts"/> into a single
     /// <see cref="FontCollection"/>. Registration order is bundled →
     /// web-fonts → system, so an author's <c>@font-face</c> stylesheet wins
     /// over a same-named system face but cannot override the bundled
@@ -141,27 +141,14 @@ internal static class ImageSharpFontLookup
     }
 
     /// <summary>
-    /// Folds every SFNT registered via <c>@font-face</c> into
-    /// <paramref name="collection"/>. Each face is wrapped in a fresh
-    /// <see cref="MemoryStream"/> because SixLabors.Fonts reads the stream
-    /// during <c>Add</c> and we cannot share a single rewind. Malformed
-    /// entries are logged-and-skipped to match the rest of the loader's
-    /// fail-soft policy.
+    /// Folds every font registered via <c>@font-face</c> into
+    /// <paramref name="collection"/>. Validation happens at registration time
+    /// so CSS Fonts fallback can continue to later <c>src</c> entries when a
+    /// downloaded font is unreadable.
     /// </summary>
     private static void AddRegisteredWebFonts(FontCollection collection, FontFaceRegistry? webFonts)
     {
         if (webFonts is null) return;
-        foreach (var sfnt in webFonts.EnumerateRegisteredSfnt())
-        {
-            try
-            {
-                using var stream = new MemoryStream(sfnt.ToArray(), writable: false);
-                collection.Add(stream);
-            }
-            catch (Exception ex) when (ex is not OutOfMemoryException)
-            {
-                // Malformed face; bundled + system fonts still cover the fallback.
-            }
-        }
+        webFonts.AddTo(collection);
     }
 }

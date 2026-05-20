@@ -2,18 +2,17 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Numerics;
 using SixLabors.Fonts;
+using SixLabors.Fonts.Unicode;
 using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Drawing;
 using SixLabors.ImageSharp.Drawing.Processing;
 using SixLabors.ImageSharp.Drawing.Processing.Backends;
-using SixLabors.ImageSharp.Drawing.Text;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using Starling.Common.Diagnostics;
-using Starling.Paint.Interop;
 using Starling.Common.Image;
 using Starling.Css.Values;
 using Starling.Layout.Text;
+using Starling.Paint.Interop;
 using LayoutRect = Starling.Layout.Rect;
 using LayoutSize = Starling.Layout.Size;
 using PaintList = Starling.Paint.DisplayList.DisplayList;
@@ -36,13 +35,11 @@ namespace Starling.Paint.Backend;
 /// predictable background regardless of viewport size.
 /// </para>
 /// <para>
-/// Text path: identity-transform text runs through
-/// <c>TextBuilder.GenerateGlyphs</c> with a per-backend outline cache keyed
-/// on <c>(text, size, FontSpec)</c>. The cached glyphs are positioned at
-/// origin (0,0) and translated per call via <c>GlyphPathCollection.Transform</c>,
-/// so a page with many repeats of short tokens shapes+outlines each token
-/// exactly once. Transformed text goes through the same primitive — it can't
-/// share the identity-origin cache because the matrix is non-translative.
+/// Text path: identity-transform text renders through
+/// <see cref="TextBlock"/> when layout supplied one in the shaped run. That
+/// keeps SixLabors' rich glyph renderer in the loop so layered/color glyph
+/// paints are honored. Transformed text uses the same prepared block under a
+/// canvas state transform.
 /// </para>
 /// <para>
 /// Fonts: the backend loads every <c>*.ttf</c>/<c>*.otf</c> embedded resource
@@ -60,17 +57,6 @@ internal sealed class ImageSharpBackend : IPaintBackend
     private readonly bool _useWebGpu;
     private readonly FontCollection _fontCollection;
     private readonly ConcurrentDictionary<FontCacheKey, Font> _fontCache = new();
-    // Per-backend glyph-outline cache. TextBuilder.GenerateGlyphs is the
-    // expensive part of canvas.DrawText — it shapes the run with SixLabors.Fonts
-    // and then converts each glyph to a Bezier outline. Both stages are
-    // content-only (same (text, size, spec) → same outlines at the same
-    // origin), so we generate at Origin=(0,0) once and translate the cached
-    // collection per call. Identity-transform text on a page repeats common
-    // tokens ("the", " ", digits) hundreds of times — this cache turns each
-    // repeat into a Matrix4x4 translate + Fill instead of a full shape+outline.
-    private readonly ConcurrentDictionary<GlyphCacheKey, GlyphPathCollection[]> _glyphCache = new();
-
-    private readonly record struct GlyphCacheKey(string Text, float Size, FontSpec Spec);
 
     public ImageSharpBackend(FontResolver fonts, FontFaceRegistry? webFonts, IDiagnostics? diagnostics = null, bool useWebGpu = false)
     {
@@ -156,7 +142,9 @@ internal sealed class ImageSharpBackend : IPaintBackend
                     Activity.Current?.SetTag("raster.webgpu.fallback_reason", webGpuFallbackReason);
                 image.Mutate(x => x.Paint(canvas =>
                 {
-                    var transforms = new TransformStack();
+                    var transforms = new Stack<Matrix2D>();
+                    transforms.Push(Matrix2D.Identity);
+
                     foreach (var item in list.Items)
                         Apply(canvas, item, scale, pendingImageSources, transforms);
                 }));
@@ -224,7 +212,9 @@ internal sealed class ImageSharpBackend : IPaintBackend
                 {
                     Activity.Current?.SetTag("raster.items", list.Items.Count);
                     canvas.Fill(Brushes.Solid(Color.White), new Rectangle(0, 0, width, height));
-                    var transforms = new TransformStack();
+                    var transforms = new Stack<Matrix2D>();
+                    transforms.Push(Matrix2D.Identity);
+
                     foreach (var item in list.Items)
                         Apply(canvas, item, scale, pendingImageSources, transforms);
                     // Flush seals queued commands into the canvas timeline so
@@ -257,60 +247,51 @@ internal sealed class ImageSharpBackend : IPaintBackend
         }
     }
 
-    private void Apply(DrawingCanvas canvas, DisplayList.DisplayItem item, float scale, List<IDisposable> pendingImageSources, TransformStack transforms)
+    private void Apply(DrawingCanvas canvas, DisplayList.DisplayItem item, float scale, List<IDisposable> pendingImageSources, Stack<Matrix2D> transforms)
     {
         switch (item)
         {
             case DisplayList.PushTransform push:
-                transforms.Push(push.Matrix);
+                var matrix = transforms.Peek().Multiply(push.Matrix);
+                transforms.Push(matrix);
+                canvas.Save(new DrawingOptions
+                {
+                    Transform = ToDeviceMatrix(matrix, scale),
+                }, []);
+
                 _diag.Counter("paint.push_transform", 1);
                 break;
             case DisplayList.PopTransform:
+                canvas.Restore();
                 transforms.Pop();
                 _diag.Counter("paint.pop_transform", 1);
                 break;
             case DisplayList.FillRect fill:
                 if (fill.Bounds.Width <= 0 || fill.Bounds.Height <= 0) return;
                 _diag.Counter("paint.fill_rect", 1);
-                if (transforms.IsIdentity)
-                    canvas.Fill(Brushes.Solid(ToColor(fill.Color)), ToDeviceRect(fill.Bounds, scale));
-                else
-                    canvas.Fill(Brushes.Solid(ToColor(fill.Color)), BuildTransformedRectPath(fill.Bounds, scale, transforms.Current));
+                canvas.Fill(Brushes.Solid(ToColor(fill.Color)), ToDeviceRect(fill.Bounds, scale));
                 break;
             case DisplayList.StrokeRect stroke:
                 _diag.Counter("paint.stroke_rect", 1);
                 {
                     var penWidth = (float)stroke.Width * scale;
                     var pen = Pens.Solid(ToColor(stroke.Color), penWidth);
-                    if (transforms.IsIdentity)
-                    {
-                        var r = ToDeviceRectF(stroke.Bounds, scale);
-                        canvas.Draw(pen, new RectanglePolygon(r));
-                    }
-                    else
-                    {
-                        canvas.Draw(pen, BuildTransformedRectPath(stroke.Bounds, scale, transforms.Current));
-                    }
+                    var r = ToDeviceRect(stroke.Bounds, scale);
+                    canvas.Draw(pen, r);
                 }
                 break;
             case DisplayList.DrawText text:
                 _diag.Counter("paint.draw_text", 1);
-                DrawText(canvas, text, scale, transforms);
+                DrawText(canvas, text, scale);
                 break;
             case DisplayList.DrawImage img:
                 _diag.Counter("paint.draw_image", 1);
-                // Transformed <img> elements paint at their untransformed
-                // bounds — DrawingCanvas.DrawImage takes no DrawingOptions and
-                // ImageSharp's AffineTransformBuilder path would require
-                // re-rasterising the source per frame. Logged so a real
-                // dependency on transformed images surfaces in metrics.
-                if (!transforms.IsIdentity) _diag.Counter("paint.draw_image.transform_skipped", 1);
                 DrawImage(canvas, img, scale, pendingImageSources);
                 break;
         }
     }
 
-    private void DrawText(DrawingCanvas canvas, DisplayList.DrawText text, float scale, TransformStack transforms)
+    private void DrawText(DrawingCanvas canvas, DisplayList.DrawText text, float scale)
     {
         if (string.IsNullOrEmpty(text.Text)) return;
 
@@ -324,71 +305,15 @@ internal sealed class ImageSharpBackend : IPaintBackend
         var baselineY = SnapToPixel((float)text.Y, scale) * scale;
         var brush = Brushes.Solid(color);
 
-        // Outline cache hit → reuse shaped+outlined glyphs and translate them
-        // to this draw's origin. Miss → run TextBuilder.GenerateGlyphs once at
-        // Origin=(0,0) and store the result for the next call with the same
-        // (text, size, spec). Both branches end up in the same DrawGlyphs-style
-        // Fill loop the transformed path uses, so the rendering codepath is
-        // shared between identity and transformed text.
-        if (transforms.IsIdentity)
-        {
-            var cached = GetOrBuildGlyphs(text.Text, size, spec, font);
-            var translation = Matrix4x4.CreateTranslation(originX, baselineY, 0);
-            foreach (var glyph in cached)
+        var textBlock = text.Shaped is ImageSharpShapedRun shaped && shaped.Font.Size == size
+            ? shaped.TextBlock
+            : new TextBlock(text.Text, new TextOptions(font)
             {
-                var translated = glyph.Transform(translation);
-                foreach (var path in translated.PathList)
-                    canvas.Fill(brush, path);
-            }
-            return;
-        }
+                TextAlignment = TextAlignment.Start,
+                VerticalAlignment = VerticalAlignment.Bottom,
+            });
 
-        // Transformed text: generate per-glyph outlines at the un-transformed
-        // origin, then apply the (CSS-space) transform composed with the
-        // device-scale matrix to each glyph's path. DrawGlyphs replays the
-        // transformed outlines without re-running the text shaper.
-        var textOptions = new TextOptions(font)
-        {
-            Origin = new PointF(originX, baselineY),
-            TextAlignment = TextAlignment.Start,
-            VerticalAlignment = VerticalAlignment.Bottom,
-        };
-        var glyphs = TextBuilder.GenerateGlyphs(text.Text, textOptions);
-        // The display-list transform is in CSS px space; primitives are
-        // emitted in CSS px and scaled to device px at the call site. Glyphs
-        // here are already in device px (Origin was scaled), so we apply just
-        // the transform — but the transform's translate components are in
-        // CSS px and need to be scaled too. Build a "device-space" version
-        // of the current matrix: scale only the (e,f) translation by `scale`,
-        // leaving (a,b,c,d) intact since they are dimensionless.
-        var deviceMatrix = transforms.CurrentInDeviceSpace(scale);
-        foreach (var glyph in glyphs)
-        {
-            var transformed = glyph.Transform(deviceMatrix);
-            foreach (var path in transformed.PathList)
-                canvas.Fill(brush, path);
-        }
-    }
-
-    /// <summary>
-    /// Builds a 4-point polygon for the axis-aligned <paramref name="rect"/>
-    /// in CSS px, transforms each corner through <paramref name="cssMatrix"/>
-    /// (still in CSS px space), then scales the result into device-pixel
-    /// space for submission to the canvas. Used by the transform-aware Fill
-    /// / Draw paths when the current transform stack is non-identity.
-    /// </summary>
-    private static Polygon BuildTransformedRectPath(LayoutRect rect, float scale, Matrix2D cssMatrix)
-    {
-        var s = scale > 0 ? scale : 1f;
-        var (x0, y0) = cssMatrix.Transform(rect.X, rect.Y);
-        var (x1, y1) = cssMatrix.Transform(rect.X + rect.Width, rect.Y);
-        var (x2, y2) = cssMatrix.Transform(rect.X + rect.Width, rect.Y + rect.Height);
-        var (x3, y3) = cssMatrix.Transform(rect.X, rect.Y + rect.Height);
-        return new Polygon(new LinearLineSegment(
-            new PointF((float)(x0 * s), (float)(y0 * s)),
-            new PointF((float)(x1 * s), (float)(y1 * s)),
-            new PointF((float)(x2 * s), (float)(y2 * s)),
-            new PointF((float)(x3 * s), (float)(y3 * s))));
+        canvas.DrawText(textBlock, new PointF(originX, baselineY), -1, brush, null);
     }
 
     private static void DrawImage(DrawingCanvas canvas, DisplayList.DrawImage item, float scale, List<IDisposable> pendingImageSources)
@@ -405,7 +330,7 @@ internal sealed class ImageSharpBackend : IPaintBackend
         // DrawingCanvas.DrawImage signature is (image, sourceRect, destinationRect, resampler) —
         // sourceRect is the integer crop inside the source image and
         // destinationRect is the float-precision target on the canvas.
-        SixLabors.ImageSharp.Rectangle sourceRect;
+        Rectangle sourceRect;
         if (item.SourceRect is { } sr)
         {
             // Clamp to the source dimensions so a slice that overruns the
@@ -416,11 +341,11 @@ internal sealed class ImageSharpBackend : IPaintBackend
             var w = Math.Clamp((int)Math.Round(sr.Width), 0, decoded.Width - x);
             var h = Math.Clamp((int)Math.Round(sr.Height), 0, decoded.Height - y);
             if (w <= 0 || h <= 0) return;
-            sourceRect = new SixLabors.ImageSharp.Rectangle(x, y, w, h);
+            sourceRect = new Rectangle(x, y, w, h);
         }
         else
         {
-            sourceRect = new SixLabors.ImageSharp.Rectangle(0, 0, decoded.Width, decoded.Height);
+            sourceRect = new Rectangle(0, 0, decoded.Width, decoded.Height);
         }
         var destRect = ToDeviceRectF(item.Bounds, scale);
         canvas.DrawImage(src, sourceRect, destRect, KnownResamplers.Bicubic);
@@ -433,10 +358,10 @@ internal sealed class ImageSharpBackend : IPaintBackend
 
     private static int FirstCodepoint(string text)
     {
-        if (string.IsNullOrEmpty(text)) return 0;
-        if (char.IsHighSurrogate(text[0]) && text.Length > 1 && char.IsLowSurrogate(text[1]))
-            return char.ConvertToUtf32(text[0], text[1]);
-        return text[0];
+        foreach (var codePoint in text.EnumerateCodePoints())
+            return codePoint.Value;
+
+        return 0;
     }
 
     private Font ResolveFont(FontSpec spec, int probeCodepoint, float size)
@@ -445,55 +370,33 @@ internal sealed class ImageSharpBackend : IPaintBackend
     private Font CreateFont(FontSpec spec, float size)
         => ImageSharpFontLookup.CreateFont(_fontCollection, spec, size);
 
-    // Generate glyph outlines once at the un-translated origin, materialize
-    // into an array so the cache value is GC-stable, and reuse on subsequent
-    // calls. The caller translates per draw via Matrix4x4.CreateTranslation.
-    // Hit/miss counters give tests and dashboards a direct signal that the
-    // cache is engaged on text-heavy pages.
-    private GlyphPathCollection[] GetOrBuildGlyphs(string text, float size, FontSpec spec, Font font)
+    private static Matrix4x4 ToDeviceMatrix(Matrix2D m, float scale)
     {
-        var key = new GlyphCacheKey(text, size, spec);
-        if (_glyphCache.TryGetValue(key, out var hit))
-        {
-            _diag.Counter("paint.draw_text.glyph_cache.hit", 1);
-            return hit;
-        }
-
-        _diag.Counter("paint.draw_text.glyph_cache.miss", 1);
-        var options = new TextOptions(font)
-        {
-            Origin = new PointF(0, 0),
-            TextAlignment = TextAlignment.Start,
-            VerticalAlignment = VerticalAlignment.Bottom,
-        };
-        var built = TextBuilder.GenerateGlyphs(text, options).ToArray();
-        _glyphCache[key] = built;
-        return built;
+        var s = scale > 0 ? scale : 1f;
+        // Matrix2D stores CSS px translation; geometry has already been scaled
+        // to device px, so only the translation terms need scaling here.
+        return new Matrix4x4(
+            (float)m.A, (float)m.B, 0f, 0f,
+            (float)m.C, (float)m.D, 0f, 0f,
+            0f, 0f, 1f, 0f,
+            (float)(m.E * s), (float)(m.F * s), 0f, 1f);
     }
 
-    // ImageSharp.Drawing 3.0 dropped canvas-level transforms (no Scale/Translate),
-    // so layout-space coordinates are pre-multiplied by `scale` at the call site.
+    // Layout-space coordinates are pre-multiplied by `scale` at the call site.
     // SnapRect rounds in the post-scale (device-pixel) space and returns the
     // device-pixel rect directly.
-    private static SixLabors.ImageSharp.RectangleF ToDeviceRectF(LayoutRect r, float scale)
+    private static RectangleF ToDeviceRectF(LayoutRect r, float scale)
     {
         var s = scale > 0 ? scale : 1f;
         var x0 = (float)Math.Round(r.X * s);
         var y0 = (float)Math.Round(r.Y * s);
         var x1 = (float)Math.Round((r.X + r.Width) * s);
         var y1 = (float)Math.Round((r.Y + r.Height) * s);
-        return new SixLabors.ImageSharp.RectangleF(x0, y0, x1 - x0, y1 - y0);
+        return new RectangleF(x0, y0, x1 - x0, y1 - y0);
     }
 
-    private static SixLabors.ImageSharp.Rectangle ToDeviceRect(LayoutRect r, float scale)
-    {
-        var s = scale > 0 ? scale : 1f;
-        var x0 = (int)Math.Round(r.X * s);
-        var y0 = (int)Math.Round(r.Y * s);
-        var x1 = (int)Math.Round((r.X + r.Width) * s);
-        var y1 = (int)Math.Round((r.Y + r.Height) * s);
-        return new SixLabors.ImageSharp.Rectangle(x0, y0, x1 - x0, y1 - y0);
-    }
+    private static Rectangle ToDeviceRect(LayoutRect r, float scale)
+        => (Rectangle)ToDeviceRectF(r, scale);
 
     private static float SnapToPixel(float value, float scale)
     {
@@ -511,52 +414,5 @@ internal sealed class ImageSharpBackend : IPaintBackend
         _fontCache.Clear();
         _ = _fonts;
         _ = _webFonts;
-    }
-
-    /// <summary>
-    /// Per-render transform stack for the CSS <c>transform</c> property.
-    /// ImageSharp.Drawing 3's <see cref="DrawingCanvas"/> has no built-in
-    /// transform ops (no Save(matrix)/Scale/Translate/Concat), so the backend
-    /// keeps its own stack of <see cref="Matrix2D"/> in CSS px and threads
-    /// the composed current matrix into every transformed primitive. The
-    /// matrix on the bottom of the stack is identity; <see cref="Push"/>
-    /// post-multiplies so nested transforms compose left-to-right
-    /// (CSS Transforms 1 §6.1: <c>transform: A B</c> applies B then A,
-    /// equivalently the outer ancestor's transform "wraps" descendants).
-    /// </summary>
-    private sealed class TransformStack
-    {
-        private readonly Stack<Matrix2D> _stack = new();
-        public TransformStack() { _stack.Push(Matrix2D.Identity); }
-        public Matrix2D Current => _stack.Peek();
-        public bool IsIdentity => Current.IsIdentity;
-        public void Push(Matrix2D m) => _stack.Push(Current.Multiply(m));
-        public void Pop()
-        {
-            // Defensive: a stray Pop without a matching Push would underflow
-            // and corrupt subsequent primitive coordinates. Builder always
-            // emits balanced pairs; treat extras as no-ops.
-            if (_stack.Count > 1) _stack.Pop();
-        }
-
-        /// <summary>
-        /// Returns the current CSS-space matrix lifted to <see cref="Matrix4x4"/>
-        /// with the translate components scaled by <paramref name="scale"/>
-        /// so it composes with primitives whose origin is already in device
-        /// pixels (the DrawText path, where the glyph layout is generated at
-        /// the device-pixel baseline).
-        /// </summary>
-        public Matrix4x4 CurrentInDeviceSpace(float scale)
-        {
-            var m = Current;
-            var s = scale > 0 ? scale : 1f;
-            // Row 0: (a, b, 0, 0); Row 1: (c, d, 0, 0); Row 2: identity;
-            // Row 3: (e*s, f*s, 0, 1) — translate scaled to device px.
-            return new Matrix4x4(
-                (float)m.A, (float)m.B, 0f, 0f,
-                (float)m.C, (float)m.D, 0f, 0f,
-                0f,         0f,         1f, 0f,
-                (float)(m.E * s), (float)(m.F * s), 0f, 1f);
-        }
     }
 }

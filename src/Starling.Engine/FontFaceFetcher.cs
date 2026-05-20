@@ -102,14 +102,12 @@ internal sealed class FontFaceFetcher : IDisposable
 
     private static bool IsLikelyReadableFormat(string? format)
     {
-        // We unwrap WOFF / WOFF2 in FontFaceRegistry.TryAdd (Brotli is in
-        // System.IO.Compression). WOFF2 files using the glyf/loca transform
-        // still fail — declare a TTF/OTF fallback in your src list if your
-        // visitor base needs the modern format. SVG fonts are skipped — the
-        // format is obsolete and the rasterizer can't consume them.
+        // Keep this as a coarse fetch filter only; FontFaceRegistry.TryAdd
+        // asks SixLabors.Fonts to validate the actual bytes and fall through
+        // to the next src entry when the advertised format is misleading.
         if (string.IsNullOrEmpty(format)) return true;
         var f = format.Trim().ToLowerInvariant();
-        return f is "truetype" or "opentype" or "ttf" or "otf" or "woff" or "woff2";
+        return f is "truetype" or "opentype" or "ttf" or "otf" or "woff" or "woff2" or "svg";
     }
 
     private async Task<byte[]?> FetchBytesAsync(string href, StarlingUrl? baseUrl, CancellationToken ct)

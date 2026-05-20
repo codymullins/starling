@@ -1,5 +1,5 @@
+using SixLabors.Fonts;
 using Starling.Css.FontFace;
-using Starling.Paint.WebFonts;
 
 namespace Starling.Paint;
 
@@ -28,13 +28,10 @@ public sealed class FontFaceRegistry : IDisposable
 
     /// <summary>
     /// Loads <paramref name="fontBytes"/> as a face and registers it for
-    /// <paramref name="family"/>. Sniffs WOFF / WOFF2 magic bytes and unwraps
-    /// them in-process so a font fetched from any of the common web-font
-    /// formats lands here as raw SFNT bytes. <paramref name="unicodeRange"/>
-    /// (optional) restricts which codepoints the face applies to; when null
-    /// the face covers everything. Returns <c>false</c> if the bytes are
-    /// unrecognisable or the WOFF2 container uses transforms we don't yet
-    /// support; fail-soft to match the stylesheet/image fetchers.
+    /// <paramref name="family"/>. <paramref name="unicodeRange"/> (optional)
+    /// restricts which codepoints the face applies to; when null the face
+    /// covers everything. Returns <c>false</c> if the bytes are unrecognisable;
+    /// fail-soft to match the stylesheet/image fetchers.
     /// </summary>
     public bool TryAdd(
         string family,
@@ -47,21 +44,15 @@ public sealed class FontFaceRegistry : IDisposable
         ArgumentException.ThrowIfNullOrEmpty(family);
         if (fontBytes.Length == 0) return false;
 
-        byte[] sfnt;
+        var bytes = fontBytes.ToArray();
         try
         {
-            if (Woff2Decoder.IsWoff2(fontBytes))
-                sfnt = Woff2Decoder.Decode(fontBytes);
-            else if (WoffDecoder.IsWoff(fontBytes))
-                sfnt = WoffDecoder.Decode(fontBytes);
-            else
-                sfnt = fontBytes.ToArray();
+            // Registration is the boundary where bad src entries must fail so
+            // CSS Fonts fallback can continue to the next source.
+            using var stream = new MemoryStream(bytes, writable: false);
+            _ = new FontCollection().Add(stream);
         }
-        catch (InvalidDataException)
-        {
-            return false;
-        }
-        catch (Woff2UnsupportedTransformException)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             return false;
         }
@@ -71,46 +62,50 @@ public sealed class FontFaceRegistry : IDisposable
             faces = [];
             _byFamily[family] = faces;
         }
-        faces.Add(new RegisteredFace(bold, italic, unicodeRange, sfnt));
+        faces.Add(new RegisteredFace(bold, italic, unicodeRange, bytes));
         return true;
     }
 
     /// <summary>
-    /// Enumerates every registered face as raw SFNT bytes. Used by the paint
-    /// backend (<see cref="ImageSharpFontLookup.LoadCollection(FontFaceRegistry?)"/>)
+    /// Adds every registered face to <paramref name="collection"/>. Used by
+    /// the paint backend (<see cref="ImageSharpFontLookup.LoadCollection(FontFaceRegistry?)"/>)
     /// to fold web fonts into the per-render <c>FontCollection</c> snapshot.
     /// <para>
-    /// The CSS family name from the <c>@font-face</c> rule is intentionally
-    /// not returned alongside the bytes — SixLabors.Fonts identifies families
-    /// from each SFNT's own <c>name</c> table on <c>FontCollection.Add</c>,
-    /// not from an externally-supplied alias. In practice this works because
-    /// authors keep the <c>@font-face</c> <c>font-family</c> descriptor in
-    /// sync with the font's internal family name; a stylesheet that uses a
-    /// renamed family will still register the bytes but only resolve by the
-    /// SFNT's own name.
+    /// SixLabors.Fonts identifies families from each font's own
+    /// <c>name</c> table on <c>FontCollection.Add</c>, not from an
+    /// externally-supplied alias. In practice this works because authors keep
+    /// the <c>@font-face</c> <c>font-family</c> descriptor in sync with the
+    /// font's internal family name; a stylesheet that uses a renamed family
+    /// will still register the font but only resolve by the font's own name.
     /// </para>
     /// </summary>
-    public IEnumerable<ReadOnlyMemory<byte>> EnumerateRegisteredSfnt()
+    internal void AddTo(FontCollection collection)
     {
-        if (_disposed) yield break;
+        if (_disposed) return;
+
         foreach (var faces in _byFamily.Values)
+        {
             foreach (var face in faces)
-                yield return face.SfntBytes;
+            {
+                using var stream = new MemoryStream(face.FontBytes, writable: false);
+                collection.Add(stream);
+            }
+        }
     }
 
     /// <summary>
-    /// Returns the registered SFNT bytes for the given family / weight / style,
+    /// Returns the registered font bytes for the given family / weight / style,
     /// honouring <c>unicode-range</c> when <paramref name="probeCodepoint"/>
     /// is provided. Exact bold/italic match wins; otherwise the first
     /// covering face wins. Used by tests that exercise the registry directly;
     /// the paint backend consumes the registry via
-    /// <see cref="EnumerateRegisteredSfnt"/>.
+    /// <see cref="AddTo"/>.
     /// </summary>
-    internal bool TryGet(string family, bool bold, bool italic, int? probeCodepoint, out byte[] sfntBytes)
+    internal bool TryGet(string family, bool bold, bool italic, int? probeCodepoint, out byte[] fontBytes)
     {
         if (_disposed || !_byFamily.TryGetValue(family, out var faces) || faces.Count == 0)
         {
-            sfntBytes = [];
+            fontBytes = [];
             return false;
         }
 
@@ -122,21 +117,25 @@ public sealed class FontFaceRegistry : IDisposable
             firstCovering ??= f;
             if (f.Bold == bold && f.Italic == italic)
             {
-                sfntBytes = f.SfntBytes;
+                fontBytes = f.FontBytes;
                 return true;
             }
         }
 
         if (firstCovering is { } any)
         {
-            sfntBytes = any.SfntBytes;
+            fontBytes = any.FontBytes;
             return true;
         }
 
-        sfntBytes = [];
+        fontBytes = [];
         return false;
     }
 
+    /// <summary>
+    /// Disposes the registry; subsequent registrations throw and no registered
+    /// faces are exposed to paint backends.
+    /// </summary>
     public void Dispose()
     {
         if (_disposed) return;
@@ -144,9 +143,22 @@ public sealed class FontFaceRegistry : IDisposable
         _byFamily.Clear();
     }
 
-    private readonly record struct RegisteredFace(
-        bool Bold,
-        bool Italic,
-        UnicodeRangeSet? UnicodeRange,
-        byte[] SfntBytes);
+    private readonly struct RegisteredFace
+    {
+        public RegisteredFace(bool bold, bool italic, UnicodeRangeSet? unicodeRange, byte[] fontBytes)
+        {
+            Bold = bold;
+            Italic = italic;
+            UnicodeRange = unicodeRange;
+            FontBytes = fontBytes;
+        }
+
+        public bool Bold { get; }
+
+        public bool Italic { get; }
+
+        public UnicodeRangeSet? UnicodeRange { get; }
+
+        public byte[] FontBytes { get; }
+    }
 }

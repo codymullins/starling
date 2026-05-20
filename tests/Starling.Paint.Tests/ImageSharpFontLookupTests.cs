@@ -171,11 +171,11 @@ public sealed class ImageSharpFontLookupTests
     }
     /// <summary>
     /// Locks down the <c>FontFaceRegistry</c> → <c>FontCollection</c> wiring:
-    /// SFNT bytes registered through the per-document registry must appear in
+    /// font bytes registered through the per-document registry must appear in
     /// the collection returned by <see cref="ImageSharpFontLookup.LoadCollection(FontFaceRegistry?)"/>.
-    /// Re-uses the bundled OpenSans bytes as a known-good SFNT — the
+    /// Re-uses the bundled OpenSans bytes as a known-good font — the
     /// assertion is on the registry round-trip, not on which family ends up
-    /// in the collection (that depends on what the SFNT's own name table
+    /// in the collection (that depends on what the font's own name table
     /// reports, which SixLabors.Fonts uses verbatim during
     /// <c>FontCollection.Add</c>).
     /// </summary>
@@ -186,18 +186,29 @@ public sealed class ImageSharpFontLookupTests
         var fontResource = asm.GetManifestResourceNames()
             .First(n => n.EndsWith("OpenSans-Regular.ttf", StringComparison.OrdinalIgnoreCase));
         using var stream = asm.GetManifestResourceStream(fontResource)!;
-        var sfnt = new byte[stream.Length];
-        stream.ReadExactly(sfnt);
+        var fontBytes = new byte[stream.Length];
+        stream.ReadExactly(fontBytes);
 
         using var registry = new FontFaceRegistry();
-        registry.TryAdd("WebProbe", bold: false, italic: false, sfnt).Should().BeTrue(
-            "the bundled OpenSans is valid SFNT and should register cleanly");
-        registry.EnumerateRegisteredSfnt().Should().ContainSingle(
-            "one face was registered; enumerator surfaces every registered SFNT");
+        registry.TryAdd("WebProbe", bold: false, italic: false, fontBytes).Should().BeTrue(
+            "the bundled OpenSans is valid font data and should register cleanly");
 
         var collection = ImageSharpFontLookup.LoadCollection(registry);
         collection.TryGet("Open Sans", out _).Should().BeTrue(
-            "the registry-fed SFNT identifies itself as 'Open Sans' via its name table, so LoadCollection must surface it");
+            "the registry-fed font identifies itself as 'Open Sans' via its name table, so LoadCollection must surface it");
+    }
+
+    /// <summary>
+    /// Invalid downloaded font data must fail during registration so the
+    /// <c>@font-face</c> loader can keep trying later <c>src</c> entries.
+    /// </summary>
+    [TestMethod]
+    public void Registry_rejects_unreadable_font_bytes()
+    {
+        using var registry = new FontFaceRegistry();
+
+        registry.TryAdd("BrokenWebFont", bold: false, italic: false, [0x77, 0x4F, 0x46, 0x46])
+            .Should().BeFalse("unreadable font data must not claim a CSS src slot");
     }
 
     /// <summary>
