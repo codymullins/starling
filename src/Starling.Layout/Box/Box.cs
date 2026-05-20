@@ -1,6 +1,7 @@
 using Starling.Common.Image;
 using Starling.Css.Cascade;
 using Starling.Dom;
+using Starling.Layout.Compositor;
 
 namespace Starling.Layout.Box;
 
@@ -33,6 +34,14 @@ public abstract class Box
     public List<Box> Children { get; } = [];
 
     public Rect Frame { get; internal set; }
+
+    /// <summary>
+    /// Why this box is a compositor layer candidate, populated during the
+    /// box-tree build pass by <see cref="StackingContextResolver"/>. Pure
+    /// metadata: it does not affect layout or paint in this work package.
+    /// </summary>
+    public LayerHint Hints { get; internal set; }
+
     public Edges Margin { get; internal set; }
     public Edges Padding { get; internal set; }
     public Edges Border { get; internal set; }

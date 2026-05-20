@@ -3,6 +3,7 @@ using Starling.Css.Properties;
 using Starling.Css.Values;
 using Starling.Dom;
 using Starling.Layout.Box;
+using Starling.Layout.Compositor;
 
 namespace Starling.Layout.Tree;
 
@@ -49,6 +50,7 @@ internal sealed class BoxTreeBuilder
         _style.PrecomputeTree(root, cache);
         var rootStyle = Compute(root, cache);
         var rootBox = new BlockBox(rootStyle, root);
+        rootBox.Hints = StackingContextResolver.Resolve(rootBox, rootStyle, isRoot: true);
         BuildChildren(root, rootStyle, rootBox, cache);
         WrapInlinesInAnonymousBlocks(rootBox);
         return rootBox;
@@ -88,6 +90,7 @@ internal sealed class BoxTreeBuilder
                     Box.Box box = display == "inline" || display == "inline-block"
                         ? new InlineBox(elementStyle, element)
                         : new BlockBox(elementStyle, element);
+                    box.Hints = StackingContextResolver.Resolve(box, elementStyle);
                     parentBox.AppendChild(box);
                     BuildChildren(element, elementStyle, box, cache);
                     // <input> is a void element with no DOM children — synthesize
