@@ -74,6 +74,16 @@ internal sealed class ImageSharpBackend : IPaintBackend
         => Render(list, new LayoutRect(0, 0, viewport.Width, viewport.Height), scale);
 
     public RenderedBitmap Render(PaintList list, LayoutRect viewport, float scale = 1.0f)
+        => Render(list, viewport, scale, opaqueBackground: true);
+
+    /// <summary>
+    /// Renders <paramref name="list"/> over a transparent canvas when
+    /// <paramref name="opaqueBackground"/> is false — used by the compositor to
+    /// rasterize a layer's slice into its own bitmap so unpainted regions stay
+    /// see-through for alpha-over compositing. The default (true) clears to
+    /// opaque white, the behavior every other caller relies on.
+    /// </summary>
+    public RenderedBitmap Render(PaintList list, LayoutRect viewport, float scale, bool opaqueBackground)
     {
         ArgumentNullException.ThrowIfNull(list);
         if (viewport.Width <= 0 || viewport.Height <= 0)
@@ -109,12 +119,12 @@ internal sealed class ImageSharpBackend : IPaintBackend
             // next frame if the page reflows back under the limit.
             _diag.Counter("paint.webgpu.fallback_cpu.oversize", 1);
             Activity.Current?.SetTag("raster.webgpu.fallback_reason", "exceeds_max_texture_dimension");
-            return RenderCpu(list, width, height, scale, viewportTransform, webGpuFallbackReason: "exceeds_max_texture_dimension");
+            return RenderCpu(list, width, height, scale, viewportTransform, opaqueBackground, webGpuFallbackReason: "exceeds_max_texture_dimension");
         }
 
         return _useWebGpu
-            ? RenderWebGpu(list, width, height, scale, viewportTransform)
-            : RenderCpu(list, width, height, scale, viewportTransform);
+            ? RenderWebGpu(list, width, height, scale, viewportTransform, opaqueBackground)
+            : RenderCpu(list, width, height, scale, viewportTransform, opaqueBackground);
     }
 
     // 8192 is WebGPU's guaranteed minimum maxTextureDimension2D. Larger
@@ -123,7 +133,7 @@ internal sealed class ImageSharpBackend : IPaintBackend
     // anything, so detect the overflow before allocating a texture.
     private const int MaxWebGpuTextureDimension = 8192;
 
-    private RenderedBitmap RenderCpu(PaintList list, int width, int height, float scale, Matrix2D viewportTransform, string? webGpuFallbackReason = null)
+    private RenderedBitmap RenderCpu(PaintList list, int width, int height, float scale, Matrix2D viewportTransform, bool opaqueBackground = true, string? webGpuFallbackReason = null)
     {
         using (_diag.Span("paint", "raster.context_init"))
         {
@@ -133,7 +143,7 @@ internal sealed class ImageSharpBackend : IPaintBackend
 
         Image<Rgba32> image;
         using (_diag.Span("paint", "raster.surface_alloc"))
-            image = new Image<Rgba32>(width, height, new Rgba32(255, 255, 255, 255));
+            image = new Image<Rgba32>(width, height, opaqueBackground ? new Rgba32(255, 255, 255, 255) : new Rgba32(0, 0, 0, 0));
 
         using (image)
         {
@@ -179,8 +189,9 @@ internal sealed class ImageSharpBackend : IPaintBackend
     // GPU path: WebGPURenderTarget allocates an offscreen surface and exposes
     // the same DrawingCanvas API as the CPU path, so display-list replay stays
     // shared. The target starts transparent, so clear it to opaque white to
-    // match the CPU image allocation.
-    private RenderedBitmap RenderWebGpu(PaintList list, int width, int height, float scale, Matrix2D viewportTransform)
+    // match the CPU image allocation (skipped when opaqueBackground is false so
+    // compositor layer slices keep a see-through background).
+    private RenderedBitmap RenderWebGpu(PaintList list, int width, int height, float scale, Matrix2D viewportTransform, bool opaqueBackground = true)
     {
         // Probe the WebGPU environment before constructing a render target so a
         // missing/broken wgpu-native binary, no compatible GPU adapter, or a
@@ -219,13 +230,15 @@ internal sealed class ImageSharpBackend : IPaintBackend
                 using (_diag.Span("paint", "raster.command_record"))
                 {
                     Activity.Current?.SetTag("raster.items", list.Items.Count);
-                    canvas.Clear(Brushes.Solid(Color.White), new Rectangle(0, 0, width, height));
+                    if (opaqueBackground)
+                        canvas.Clear(Brushes.Solid(Color.White), new Rectangle(0, 0, width, height));
                     var transforms = new Stack<Matrix2D>();
                     transforms.Push(viewportTransform);
                     canvas.Save(new DrawingOptions
                     {
                         Transform = ToCanvasMatrix(viewportTransform, scale),
                     });
+
 
                     foreach (var item in list.Items)
                         Apply(canvas, item, scale, pendingImageSources, transforms);

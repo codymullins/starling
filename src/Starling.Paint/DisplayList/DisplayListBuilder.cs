@@ -55,15 +55,78 @@ public sealed class DisplayListBuilder
         Rect? cull = viewport is { } v
             ? new Rect(v.X - OverdrawMargin, v.Y - OverdrawMargin, v.Width + 2 * OverdrawMargin, v.Height + 2 * OverdrawMargin)
             : null;
-        Visit(box: root, list, originX: 0, originY: 0, current: Matrix2D.Identity, cull, styleOverride, images);
+        Visit(box: root, list, originX: 0, originY: 0, current: Matrix2D.Identity, cull, styleOverride, images, slice: null);
         return list;
     }
+
+    /// <summary>
+    /// Builds the display-list <em>slice</em> for a single compositor layer
+    /// rooted at <paramref name="sliceRoot"/>: the items <paramref name="sliceRoot"/>
+    /// and its subtree paint, EXCLUDING any box (other than the slice root
+    /// itself) for which <paramref name="isLayerBoundary"/> returns true — those
+    /// boxes are descendant layers and the <see cref="Compositor.LayerTreeBuilder"/>
+    /// emits them into their own slices. <paramref name="originX"/> /
+    /// <paramref name="originY"/> are the page-coord content origin of the slice
+    /// root's PARENT (i.e. the same origin its enclosing <see cref="Visit"/> call
+    /// would have used), so a slice is painted in the SAME page coordinate space
+    /// as the flat build — the layer's transform/opacity are applied later, at
+    /// composite time, not baked into the slice.
+    /// <para>
+    /// When <paramref name="suppressRootTransform"/> is true the slice root's own
+    /// CSS <c>transform</c> bracket is skipped: the layer carries that transform
+    /// (<see cref="Compositor.CompositorLayer.Transform"/>) and applies it at
+    /// composite time, so the slice holds the untransformed (upright) content.
+    /// Nested non-promoted transformed descendants inside the slice still get
+    /// their normal push/pop brackets.
+    /// </para>
+    /// </summary>
+    internal DisplayList BuildLayerSlice(
+        Box sliceRoot,
+        double originX,
+        double originY,
+        Func<Box, bool> isLayerBoundary,
+        bool suppressRootTransform,
+        Func<Box, ComputedStyle?>? styleOverride = null,
+        IImageResolver? images = null)
+    {
+        ArgumentNullException.ThrowIfNull(sliceRoot);
+        ArgumentNullException.ThrowIfNull(isLayerBoundary);
+        var list = new DisplayList();
+        var slice = new LayerSlice(sliceRoot, isLayerBoundary);
+        if (suppressRootTransform)
+        {
+            // The slice root's transform is owned by its layer, so paint its
+            // own box + children directly (no transform bracket) in local space.
+            var frameX = originX + sliceRoot.Frame.X;
+            var frameY = originY + sliceRoot.Frame.Y;
+            PaintBoxAndChildren(sliceRoot, list, frameX, frameY, Matrix2D.Identity, cull: null, styleOverride, images, slice);
+        }
+        else
+        {
+            Visit(sliceRoot, list, originX, originY, Matrix2D.Identity, cull: null, styleOverride, images, slice);
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// Threaded through the recursion during a layer-slice build. Carries the
+    /// slice root (which is always emitted even though it is itself a layer
+    /// boundary) and the predicate identifying descendant layer boundaries to
+    /// exclude. Null on the flat full-document build, where every box is emitted.
+    /// </summary>
+    private sealed record LayerSlice(Box Root, Func<Box, bool> IsBoundary);
 
     private static ComputedStyle? EffectiveStyle(Box box, Func<Box, ComputedStyle?>? styleOverride)
         => styleOverride?.Invoke(box) ?? box.Style;
 
-    private static void Visit(Box box, DisplayList list, double originX, double originY, Matrix2D current, Rect? cull, Func<Box, ComputedStyle?>? styleOverride, IImageResolver? images)
+    private static void Visit(Box box, DisplayList list, double originX, double originY, Matrix2D current, Rect? cull, Func<Box, ComputedStyle?>? styleOverride, IImageResolver? images, LayerSlice? slice)
     {
+        // Layer-slice mode: a descendant that is itself a layer root paints into
+        // its OWN slice, not this one. The slice root is exempt — it is the box
+        // this slice is rooted at, so it must paint here.
+        if (slice is not null && !ReferenceEquals(box, slice.Root) && slice.IsBoundary(box))
+            return;
+
         var frameX = originX + box.Frame.X;
         var frameY = originY + box.Frame.Y;
 
@@ -85,7 +148,7 @@ public sealed class DisplayListBuilder
             // transformed subtree contributes nothing and stays O(on-screen).
             var composed = current.Multiply(transformMatrix!.Value);
             var scratch = new DisplayList();
-            PaintBoxAndChildren(box, scratch, frameX, frameY, composed, cull, styleOverride, images);
+            PaintBoxAndChildren(box, scratch, frameX, frameY, composed, cull, styleOverride, images, slice);
             if (scratch.Items.Count > 0)
             {
                 list.Add(new PushTransform(transformMatrix.Value));
@@ -96,7 +159,7 @@ public sealed class DisplayListBuilder
             return;
         }
 
-        PaintBoxAndChildren(box, list, frameX, frameY, current, cull, styleOverride, images);
+        PaintBoxAndChildren(box, list, frameX, frameY, current, cull, styleOverride, images, slice);
     }
 
     /// <summary>
@@ -128,7 +191,7 @@ public sealed class DisplayListBuilder
     private static bool Intersects(Rect a, Rect b)
         => a.X < b.Right && a.Right > b.X && a.Y < b.Bottom && a.Bottom > b.Y;
 
-    private static void PaintBoxAndChildren(Box box, DisplayList list, double frameX, double frameY, Matrix2D current, Rect? cull, Func<Box, ComputedStyle?>? styleOverride, IImageResolver? images)
+    private static void PaintBoxAndChildren(Box box, DisplayList list, double frameX, double frameY, Matrix2D current, Rect? cull, Func<Box, ComputedStyle?>? styleOverride, IImageResolver? images, LayerSlice? slice)
     {
         // Backgrounds and borders for box-bearing boxes. BlockContainer and
         // AnonymousBlock always qualify; InlineBox qualifies only when it is
@@ -180,7 +243,7 @@ public sealed class DisplayListBuilder
         var contentOriginX = frameX + box.Border.Left + box.Padding.Left;
         var contentOriginY = frameY + box.Border.Top + box.Padding.Top;
         foreach (var child in box.Children)
-            Visit(child, list, contentOriginX, contentOriginY, current, cull, styleOverride, images);
+            Visit(child, list, contentOriginX, contentOriginY, current, cull, styleOverride, images, slice);
     }
 
     /// <summary>
@@ -326,7 +389,7 @@ public sealed class DisplayListBuilder
     /// is a known limitation tracked in the WP follow-ups; full
     /// <c>transform-origin</c> value parsing is its own work item.
     /// </summary>
-    private static Matrix2D? TryGetTransformMatrix(Box box, Func<Box, ComputedStyle?>? styleOverride, double frameX, double frameY)
+    internal static Matrix2D? TryGetTransformMatrix(Box box, Func<Box, ComputedStyle?>? styleOverride, double frameX, double frameY)
     {
         if (box.Frame.Width <= 0 && box.Frame.Height <= 0) return null;
         var style = EffectiveStyle(box, styleOverride);

@@ -20,6 +20,17 @@ internal interface IPaintBackend : IDisposable
     RenderedBitmap Render(PaintList list, LayoutRect viewport, float scale = 1.0f);
 
     /// <summary>
+    /// Render <paramref name="list"/> into a <paramref name="viewport"/>-sized
+    /// bitmap, optionally over a transparent canvas
+    /// (<paramref name="opaqueBackground"/> = false). The compositor uses the
+    /// transparent path to rasterize a layer's slice so unpainted regions stay
+    /// see-through for alpha-over compositing. Defaults to the opaque-white
+    /// behavior of the primary overload.
+    /// </summary>
+    RenderedBitmap Render(PaintList list, LayoutRect viewport, float scale, bool opaqueBackground)
+        => Render(list, viewport, scale);
+
+    /// <summary>
     /// "Render everything" convenience: a <see cref="LayoutSize"/> with no
     /// offset (X=Y=0). Used by headless full-page screenshots and tests that
     /// pass an explicit surface size. Delegates to the rect overload.

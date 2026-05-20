@@ -143,7 +143,7 @@ public sealed class ViewportClipTests
         // A red rect spanning page-Y 10000..10100. Rendering a viewport that
         // starts at page-Y 10000 must place the red at the top of the bitmap.
         var list = new PaintList();
-        list.Add(new FillRect(new LayoutRect(0, 10000, 800, 100), new CssColor(255, 0, 0, 255)));
+        list.Add(new FillRect(new LayoutRect(0, 10000, 800, 100), new CssColor(255, 0, 0, 255), FillRectPixelAlignment.Preserve));
 
         using var backend = new ImageSharpBackend(FontResolver.Default, webFonts: null);
         var viewport = new LayoutRect(0, 10000, 800, 600);
