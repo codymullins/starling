@@ -35,8 +35,13 @@ internal sealed class BlockLayout
     {
         ResolveBoxModel(root, _viewport.Width);
         var contentWidth = _viewport.Width - root.Margin.Horizontal - root.Border.Horizontal - root.Padding.Horizontal;
-        var consumedHeight = LayoutChildren(root, contentWidth);
+        // The root's containing block is the viewport (CSS 2.1 §10.1). When the
+        // root has `height: auto` we still hand the viewport height down as the
+        // percentage basis for descendants — that matches the long-standing
+        // html/body special case browsers use so `body { height: 100% }` reaches
+        // the viewport instead of collapsing to 0.
         var explicitHeight = ResolveLength(root.Style, PropertyId.Height, _viewport.Height, _viewport, allowAuto: true);
+        var consumedHeight = LayoutChildren(root, contentWidth, explicitHeight ?? _viewport.Height);
         var contentHeight = explicitHeight ?? consumedHeight;
         root.Frame = new Rect(
             root.Margin.Left,
@@ -53,7 +58,7 @@ internal sealed class BlockLayout
     /// for an inline-block) compose the result into their own box model.
     /// </summary>
     internal double LayoutChildren(Box.Box parent, double containerWidth)
-        => LayoutChildren(parent, containerWidth, measure: false);
+        => LayoutChildren(parent, containerWidth, containerHeight: null, measure: false);
 
     /// <summary>
     /// Lay out children with the option of running in measurement mode, used
@@ -62,6 +67,18 @@ internal sealed class BlockLayout
     /// caller's <c>MeasureUsedWidth</c> walk sees natural pre-shift positions.
     /// </summary>
     internal double LayoutChildren(Box.Box parent, double containerWidth, bool measure)
+        => LayoutChildren(parent, containerWidth, containerHeight: null, measure);
+
+    internal double LayoutChildren(Box.Box parent, double containerWidth, double? containerHeight)
+        => LayoutChildren(parent, containerWidth, containerHeight, measure: false);
+
+    /// <summary>
+    /// Lay out children with an explicit containing-block height for resolving
+    /// percentage heights on descendants (CSS 2.1 §10.5). Pass <c>null</c> when
+    /// the containing block has indefinite height — percentage heights on
+    /// direct children then collapse to <c>auto</c> per spec.
+    /// </summary>
+    internal double LayoutChildren(Box.Box parent, double containerWidth, double? containerHeight, bool measure)
     {
         var cursorY = 0d;
         var prevBottomMargin = 0d;
@@ -86,7 +103,7 @@ internal sealed class BlockLayout
             var floatSide = GetFloatSide(child.Style);
             if (floatSide is not null)
             {
-                LayoutFloat(child, containerWidth, floats, floatSide, cursorY);
+                LayoutFloat(child, containerWidth, containerHeight, floats, floatSide, cursorY);
                 continue;
             }
 
@@ -105,7 +122,7 @@ internal sealed class BlockLayout
                 }
             }
 
-            LayoutBlock(child, containerWidth, ref cursorY, ref prevBottomMargin, ref first, measure);
+            LayoutBlock(child, containerWidth, containerHeight, ref cursorY, ref prevBottomMargin, ref first, measure);
         }
         // Grow the consumed height to enclose any floats that stick past the
         // last in-flow block (§10.6.7). Without this, a float-only container
@@ -135,7 +152,7 @@ internal sealed class BlockLayout
             : null;
     }
 
-    private void LayoutFloat(Box.Box child, double containerWidth, FloatContext floats, string side, double startY)
+    private void LayoutFloat(Box.Box child, double containerWidth, double? containerHeight, FloatContext floats, string side, double startY)
     {
         // Floats use the regular block sizing path (specified width, intrinsic
         // height from laid-out children) but are placed by the float context
@@ -146,7 +163,7 @@ internal sealed class BlockLayout
         ResolveBoxModel(child, containerWidth);
         var width = ContentWidth(child, containerWidth);
 
-        var explicitHeight = ResolveLength(child.Style, PropertyId.Height, _viewport.Height, _viewport, allowAuto: true);
+        var explicitHeight = ResolveHeight(child.Style, PropertyId.Height, containerHeight, _viewport, allowAuto: true);
         double childContentHeight;
         if (IsFlexContainer(child.Style))
         {
@@ -155,7 +172,7 @@ internal sealed class BlockLayout
         }
         else
         {
-            childContentHeight = LayoutChildren(child, width);
+            childContentHeight = LayoutChildren(child, width, explicitHeight, measure: false);
         }
 
         var resolvedHeight = explicitHeight ?? childContentHeight;
@@ -184,7 +201,7 @@ internal sealed class BlockLayout
             || string.Equals(name, "fixed", StringComparison.OrdinalIgnoreCase);
     }
 
-    private void LayoutBlock(Box.Box child, double containerWidth, ref double cursorY, ref double prevBottomMargin, ref bool first, bool measure = false)
+    private void LayoutBlock(Box.Box child, double containerWidth, double? containerHeight, ref double cursorY, ref double prevBottomMargin, ref bool first, bool measure = false)
     {
         if (child.Kind == BoxKind.AnonymousBlock)
         {
@@ -222,7 +239,7 @@ internal sealed class BlockLayout
         // Flex container: hand off to the flex formatting context. Flex sizes
         // its items inside the container's content box; the result replaces
         // what block stacking would have produced.
-        var explicitHeight = ResolveLength(child.Style, PropertyId.Height, _viewport.Height, _viewport, allowAuto: true);
+        var explicitHeight = ResolveHeight(child.Style, PropertyId.Height, containerHeight, _viewport, allowAuto: true);
         double childContentHeight;
         if (IsFlexContainer(child.Style))
         {
@@ -231,7 +248,7 @@ internal sealed class BlockLayout
         }
         else
         {
-            childContentHeight = LayoutChildren(child, width, measure);
+            childContentHeight = LayoutChildren(child, width, explicitHeight, measure);
         }
 
         var resolvedHeight = explicitHeight ?? childContentHeight;
@@ -399,6 +416,29 @@ internal sealed class BlockLayout
         var styleValue = style.Get(styleId);
         if (styleValue is CssKeyword k && k.Name == "none") return 0;
         return style.Get(widthId) is CssLength len ? ToPx(len, viewport) : 0;
+    }
+
+    /// <summary>
+    /// Height-axis variant of <see cref="ResolveLength(ComputedStyle?, PropertyId, double, Size?, bool)"/>.
+    /// CSS 2.1 §10.5: if the containing block's height is not specified
+    /// explicitly (the basis here is <c>null</c>), a percentage height
+    /// resolves as <c>auto</c> — returned as <c>null</c> when
+    /// <paramref name="allowAuto"/> is true, otherwise 0.
+    /// </summary>
+    internal static double? ResolveHeight(ComputedStyle? style, PropertyId property, double? containerHeight, Size? viewport, bool allowAuto = false)
+    {
+        if (style is null) return null;
+        var value = style.Get(property);
+        return value switch
+        {
+            CssLength len => ToPx(len, viewport),
+            CssPercentage when !containerHeight.HasValue => allowAuto ? null : 0,
+            CssPercentage pct => containerHeight!.Value * pct.Value / 100d,
+            CssNumber n => n.Value,
+            CssKeyword k when k.Name == "auto" => allowAuto ? null : 0,
+            CssKeyword k when k.Name == "none" => 0,
+            _ => null,
+        };
     }
 
     internal static double? ResolveLength(ComputedStyle? style, PropertyId property, double percentageBasis, bool allowAuto = false)

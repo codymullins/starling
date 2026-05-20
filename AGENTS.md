@@ -86,6 +86,35 @@ If `dotnet build` errors with permission-denied apphost deletions in a
 sandbox or container, pass `-p:UseAppHost=false`. This is a sandbox quirk
 only — CI runs without the flag.
 
+## Spec coverage & the bug-fix workflow
+
+Most bugs in this engine are a spec compliance gap wearing a disguise. Before
+you "just fix it", run this loop. It is **not optional** — a fix without a
+test is not done.
+
+1. **Check whether the behavior is covered by a spec.** Identify the spec and
+   section the buggy behavior belongs to (CSS 2.x / Sizing / Flexbox / DOM /
+   HTML / URL …). `tasks/SPEC_COVERAGE.md` is the map of where we stand;
+   `tasks/SPEC_CATALOG.md` is the upstream list of what each spec defines.
+2. **Check whether we already have a test for it.** Grep the `[Spec]` traits:
+   `dotnet test --filter "TestCategory~Spec:<spec-id>"`, or grep the source
+   for `[Spec("<spec-id>"`. If a `[PendingFact]` already documents this gap,
+   you're about to promote it — don't write a duplicate.
+3. **Reproduce with a failing test first.** When you report or start a bug,
+   write the test that demonstrates the failure *before* touching the fix.
+   Tag it `[Spec(id, url, section)]`. If you can't make it pass yet, commit it
+   as `[PendingFact]` with a `trackingWp`; if you're fixing it now, watch it
+   go red, then green.
+4. **Every fix ships with a test.** The test that reproduced the bug becomes
+   the regression test — promote it to `[SpecFact]` in the same change as the
+   fix. Put it where the exercised code is tested (e.g. layout behavior →
+   `Starling.Layout.Tests`), not in a catch-all. No "fixed it, trust me" —
+   the diff must contain a test that fails without your change.
+
+There is **one** way spec tests are tracked: real test methods tagged with
+`[Spec]` + `[SpecFact]`/`[PendingFact]` from `Starling.Spec.Common`. There is
+no stub generation. See `tests/Starling.Spec.Common/README.md`.
+
 ## Interop policy — managed-first, native at vetted seams
 
 Native interop (`[LibraryImport]`/`[DllImport]`) is confined to one

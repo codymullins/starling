@@ -8,6 +8,9 @@ namespace Starling.SpecGen;
 /// Commands:
 ///   catalog   Read testdata/webref/css/*.json, emit a flat summary of every
 ///             spec found (id, title, # properties, # at-rules, # selectors).
+///             This is the upstream "what the spec defines" map; conformance
+///             tests themselves are hand-written under tests/*.Tests/ and
+///             tagged with [Spec]/[SpecFact]/[PendingFact].
 ///   report    (stub) Will rebuild tasks/SPEC_COVERAGE.md from the catalog
 ///             plus discovered test traits. Not implemented yet.
 ///
@@ -23,15 +26,13 @@ public static class Program
 
         if (args.Length == 0 || args[0] is "help" or "--help" or "-h")
         {
-            Console.WriteLine("usage: starling-specgen <catalog|generate-stubs|report>");
+            Console.WriteLine("usage: starling-specgen <catalog|report>");
             return 0;
         }
 
         return args[0] switch
         {
             "catalog"        => RunCatalog(webrefCss),
-            "generate-stubs" => StubGenerator.Generate(webrefCss,
-                Path.Combine(repoRoot, "tests", "Starling.Css.Spec.Tests")),
             "report"         => RunReport(),
             _                => Fail($"unknown command: {args[0]}"),
         };
@@ -92,7 +93,9 @@ public static class Program
     private static string FindRepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Starling.sln")))
+        while (dir is not null
+               && !File.Exists(Path.Combine(dir.FullName, "Starling.slnx"))
+               && !File.Exists(Path.Combine(dir.FullName, "Starling.sln")))
         {
             dir = dir.Parent;
         }

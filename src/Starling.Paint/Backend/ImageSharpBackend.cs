@@ -36,11 +36,13 @@ namespace Starling.Paint.Backend;
 /// predictable background regardless of viewport size.
 /// </para>
 /// <para>
-/// Text path: ImageSharp.Drawing 3.0 does not expose a public way to paint a
-/// caller-supplied (pre-shaped) glyph run — all text APIs route through the
-/// internal text renderer, which re-shapes via SixLabors.Fonts.
-/// So the backend ignores <c>DrawText.Shaped</c> and re-shapes via
-/// <see cref="RichTextOptions"/>.
+/// Text path: identity-transform text runs through
+/// <c>TextBuilder.GenerateGlyphs</c> with a per-backend outline cache keyed
+/// on <c>(text, size, FontSpec)</c>. The cached glyphs are positioned at
+/// origin (0,0) and translated per call via <c>GlyphPathCollection.Transform</c>,
+/// so a page with many repeats of short tokens shapes+outlines each token
+/// exactly once. Transformed text goes through the same primitive — it can't
+/// share the identity-origin cache because the matrix is non-translative.
 /// </para>
 /// <para>
 /// Fonts: the backend loads every <c>*.ttf</c>/<c>*.otf</c> embedded resource
@@ -58,6 +60,17 @@ internal sealed class ImageSharpBackend : IPaintBackend
     private readonly bool _useWebGpu;
     private readonly FontCollection _fontCollection;
     private readonly ConcurrentDictionary<FontCacheKey, Font> _fontCache = new();
+    // Per-backend glyph-outline cache. TextBuilder.GenerateGlyphs is the
+    // expensive part of canvas.DrawText — it shapes the run with SixLabors.Fonts
+    // and then converts each glyph to a Bezier outline. Both stages are
+    // content-only (same (text, size, spec) → same outlines at the same
+    // origin), so we generate at Origin=(0,0) once and translate the cached
+    // collection per call. Identity-transform text on a page repeats common
+    // tokens ("the", " ", digits) hundreds of times — this cache turns each
+    // repeat into a Matrix4x4 translate + Fill instead of a full shape+outline.
+    private readonly ConcurrentDictionary<GlyphCacheKey, GlyphPathCollection[]> _glyphCache = new();
+
+    private readonly record struct GlyphCacheKey(string Text, float Size, FontSpec Spec);
 
     public ImageSharpBackend(FontResolver fonts, FontFaceRegistry? webFonts, IDiagnostics? diagnostics = null, bool useWebGpu = false)
     {
@@ -309,25 +322,24 @@ internal sealed class ImageSharpBackend : IPaintBackend
 
         var originX = (float)text.X * scale;
         var baselineY = SnapToPixel((float)text.Y, scale) * scale;
+        var brush = Brushes.Solid(color);
 
-        // No pre-shaped path: ImageSharp.Drawing 3.0 does not accept
-        // caller-shaped glyph runs through its public canvas surface, so the
-        // text.Shaped fast path is intentionally bypassed. See the class
-        // doc-comment for why and what this means for cross-backend diffs.
-        if (text.Shaped is { Glyphs.Length: > 0 })
-            _diag.Counter("paint.draw_text.reshaped", 1);
-        else
-            _diag.Counter("paint.draw_text.unshaped", 1);
-
+        // Outline cache hit → reuse shaped+outlined glyphs and translate them
+        // to this draw's origin. Miss → run TextBuilder.GenerateGlyphs once at
+        // Origin=(0,0) and store the result for the next call with the same
+        // (text, size, spec). Both branches end up in the same DrawGlyphs-style
+        // Fill loop the transformed path uses, so the rendering codepath is
+        // shared between identity and transformed text.
         if (transforms.IsIdentity)
         {
-            var richOptions = new RichTextOptions(font)
+            var cached = GetOrBuildGlyphs(text.Text, size, spec, font);
+            var translation = Matrix4x4.CreateTranslation(originX, baselineY, 0);
+            foreach (var glyph in cached)
             {
-                Origin = new PointF(originX, baselineY),
-                TextAlignment = TextAlignment.Start,
-                VerticalAlignment = VerticalAlignment.Bottom,
-            };
-            canvas.DrawText(richOptions, text.Text, Brushes.Solid(color), pen: null);
+                var translated = glyph.Transform(translation);
+                foreach (var path in translated.PathList)
+                    canvas.Fill(brush, path);
+            }
             return;
         }
 
@@ -350,7 +362,6 @@ internal sealed class ImageSharpBackend : IPaintBackend
         // of the current matrix: scale only the (e,f) translation by `scale`,
         // leaving (a,b,c,d) intact since they are dimensionless.
         var deviceMatrix = transforms.CurrentInDeviceSpace(scale);
-        var brush = Brushes.Solid(color);
         foreach (var glyph in glyphs)
         {
             var transformed = glyph.Transform(deviceMatrix);
@@ -433,6 +444,32 @@ internal sealed class ImageSharpBackend : IPaintBackend
 
     private Font CreateFont(FontSpec spec, float size)
         => ImageSharpFontLookup.CreateFont(_fontCollection, spec, size);
+
+    // Generate glyph outlines once at the un-translated origin, materialize
+    // into an array so the cache value is GC-stable, and reuse on subsequent
+    // calls. The caller translates per draw via Matrix4x4.CreateTranslation.
+    // Hit/miss counters give tests and dashboards a direct signal that the
+    // cache is engaged on text-heavy pages.
+    private GlyphPathCollection[] GetOrBuildGlyphs(string text, float size, FontSpec spec, Font font)
+    {
+        var key = new GlyphCacheKey(text, size, spec);
+        if (_glyphCache.TryGetValue(key, out var hit))
+        {
+            _diag.Counter("paint.draw_text.glyph_cache.hit", 1);
+            return hit;
+        }
+
+        _diag.Counter("paint.draw_text.glyph_cache.miss", 1);
+        var options = new TextOptions(font)
+        {
+            Origin = new PointF(0, 0),
+            TextAlignment = TextAlignment.Start,
+            VerticalAlignment = VerticalAlignment.Bottom,
+        };
+        var built = TextBuilder.GenerateGlyphs(text, options).ToArray();
+        _glyphCache[key] = built;
+        return built;
+    }
 
     // ImageSharp.Drawing 3.0 dropped canvas-level transforms (no Scale/Translate),
     // so layout-space coordinates are pre-multiplied by `scale` at the call site.

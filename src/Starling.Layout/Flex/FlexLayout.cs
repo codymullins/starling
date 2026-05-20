@@ -317,13 +317,18 @@ internal sealed class FlexLayout
     private void LayoutItemContents(Item item, FlexContainerProps props)
     {
         var child = item.Box;
-        var contentWidth = props.IsRow
-            ? item.MainSize - child.Padding.Horizontal - child.Border.Horizontal
-            : item.CrossSize - child.Padding.Horizontal - child.Border.Horizontal;
-        contentWidth = Math.Max(0, contentWidth);
-        // Final block pass at the chosen content width. The cross size is the
-        // *box* extent; descendants compose freely inside it.
-        _block.LayoutChildren(child, contentWidth);
+        var (boxW, boxH) = props.IsRow
+            ? (item.MainSize, item.CrossSize)
+            : (item.CrossSize, item.MainSize);
+        var contentWidth = Math.Max(0, boxW - child.Padding.Horizontal - child.Border.Horizontal);
+        // The item's used cross/main sizes are definite by the time we get
+        // here (resolved by main-axis distribution + align-items: stretch),
+        // so descendants with `height: 100%` should see the item's content
+        // height as their containing block — not collapse to 0. Without this
+        // a flex chain like  navbar(height:60) > brand(height:100%) >
+        // logo(height:100%, background-image)  renders the logo as zero.
+        var contentHeight = Math.Max(0, boxH - child.Padding.Vertical - child.Border.Vertical);
+        _block.LayoutChildren(child, contentWidth, contentHeight);
     }
 
     /// <summary>

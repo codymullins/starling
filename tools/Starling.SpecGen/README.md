@@ -3,11 +3,21 @@
 A small .NET CLI that ingests upstream spec definitions and reports our
 coverage against them.
 
+> **Conformance tests are hand-written, not generated.** The old
+> `generate-stubs` command (one `[PendingFact]` per webref definition) was
+> removed — it produced ~1185 empty stubs that implied coverage we didn't
+> have. Tests now live wherever they naturally belong (`tests/*.Tests/`),
+> are hand-written, and carry `[Spec]` + `[SpecFact]`/`[PendingFact]`
+> traits. This tool's job is only to tell you **what the spec defines**
+> (the catalog) so you know what's still missing.
+
 ## Implemented today
 
 - **`catalog`** — reads `testdata/webref/css/*.json` and emits a flat
   per-spec summary (counts of properties, at-rules, selectors, value
-  types). Output is committed to `tasks/SPEC_CATALOG.md`.
+  types). Output is committed to `tasks/SPEC_CATALOG.md`. This is the
+  upstream "what exists" map you diff against your `[Spec]`-tagged tests to
+  find gaps.
 
 ```bash
 dotnet run --project tools/Starling.SpecGen -- catalog \
@@ -21,17 +31,6 @@ Current snapshot:
   Animations, Font Loading, etc.)
 - **1075 properties, 59 at-rules, 169 selectors, 710 value types** in
   webref's parsed catalog.
-
-- **`generate-stubs`** — for every spec in the catalog, emit a `_spec.md`
-  manifest plus `PropertyTests.cs` / `AtRuleTests.cs` / `SelectorTests.cs`
-  containing one `[PendingFact]` per definition under
-  `tests/Starling.Css.Spec.Tests/{SpecId}/`. **Idempotent** — existing files
-  are never overwritten, so hand-written tests and promoted `[SpecFact]`s are
-  safe. Today's run produces **103 folders / 1185 stubs**.
-
-  ```bash
-  dotnet run --project tools/Starling.SpecGen -- generate-stubs
-  ```
 
 ## Planned (not implemented yet — tracked by `wp:spec-tooling-bootstrap`)
 

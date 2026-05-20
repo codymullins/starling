@@ -80,6 +80,80 @@ public sealed class ImageSharpTextMeasurerTests
         measurer.NormalLineHeight(FontSize, FontSpec.Default).Should().BeGreaterThan(0);
     }
 
+    /// <summary>
+    /// Regression: when ImageSharpTextMeasurer replaced SkiaTextMeasurer the
+    /// per-instance shape cache from commit 499ce3d was dropped. Article-class
+    /// pages with hundreds of repeats of common tokens then re-shaped each
+    /// token via SixLabors.Fonts on every call. The cache should return the
+    /// same <see cref="ShapedRun"/> instance for an identical (text, size,
+    /// spec) call, proving the cache is engaged.
+    /// </summary>
+    [TestMethod]
+    public void Shape_returns_same_instance_for_repeated_identical_calls()
+    {
+        using var measurer = new ImageSharpTextMeasurer();
+        var first = measurer.Shape(Probe, FontSize, FontSpec.Default);
+        var second = measurer.Shape(Probe, FontSize, FontSpec.Default);
+        second.Should().BeSameAs(first,
+            "the shape-result cache must hand the same ShapedRun back for an identical (text, size, spec) — otherwise repeated tokens on a page re-shape via SixLabors every call");
+    }
+
+    /// <summary>
+    /// Regression: <c>ImageSharpTextMeasurer.Shape</c> originally returned
+    /// <c>Glyphs = Array.Empty()</c> as a "let the paint backend re-shape"
+    /// sentinel. That silently disabled the <c>canSlice</c> optimisation in
+    /// <c>InlineLayout</c> (it requires <c>Glyphs.Length == text.Length</c>),
+    /// forcing one shape per word instead of one shape per run. Verify the
+    /// per-codepoint positions are populated and monotonic.
+    /// </summary>
+    [TestMethod]
+    public void Shape_populates_per_codepoint_positions_for_ascii_text()
+    {
+        const string ascii = "hello world";
+        using var measurer = new ImageSharpTextMeasurer();
+        var shaped = measurer.Shape(ascii, FontSize, FontSpec.Default);
+
+        shaped.Glyphs.Length.Should().Be(ascii.Length,
+            "ASCII text shapes 1:1 to glyphs — the canSlice fast path in InlineLayout depends on this");
+        shaped.Advance.Should().BeGreaterThan(0);
+        shaped.Glyphs[0].X.Should().Be(0f, "the first glyph's pen position is at the run origin");
+        for (var i = 1; i < shaped.Glyphs.Length; i++)
+            shaped.Glyphs[i].X.Should().BeGreaterThanOrEqualTo(shaped.Glyphs[i - 1].X,
+                "pen positions accumulate monotonically along the baseline");
+        ((double)shaped.Glyphs[^1].X).Should().BeLessThanOrEqualTo(shaped.Advance,
+            "the last glyph's pen X is before the run's total advance");
+    }
+
+    /// <summary>
+    /// <c>MeasureWidth</c> must agree with <c>Shape().Advance</c> — both
+    /// callers ought to share the same cache so common tokens hit cache
+    /// regardless of which entry point InlineLayout uses. A mismatch would
+    /// also indicate two parallel measurement codepaths drifting.
+    /// </summary>
+    [TestMethod]
+    public void Measure_width_matches_shape_advance()
+    {
+        using var measurer = new ImageSharpTextMeasurer();
+        var advance = measurer.MeasureWidth(Probe, FontSize, FontSpec.Default);
+        var shaped = measurer.Shape(Probe, FontSize, FontSpec.Default);
+        advance.Should().Be(shaped.Advance);
+    }
+
+    /// <summary>
+    /// Cache key includes size and FontSpec — same text at a different size
+    /// must shape independently, not collide with the smaller cache entry.
+    /// </summary>
+    [TestMethod]
+    public void Shape_cache_distinguishes_size_and_spec()
+    {
+        using var measurer = new ImageSharpTextMeasurer();
+        var small = measurer.Shape(Probe, FontSize, FontSpec.Default);
+        var large = measurer.Shape(Probe, FontSize * 2, FontSpec.Default);
+        large.Should().NotBeSameAs(small);
+        large.Advance.Should().BeGreaterThan(small.Advance,
+            "doubling font size must roughly double advance — collision in the cache would return the smaller run");
+    }
+
     private static bool HostHasInstalledSansSerif()
     {
         try

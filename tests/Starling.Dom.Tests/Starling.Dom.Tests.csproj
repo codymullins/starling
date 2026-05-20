@@ -9,5 +9,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Starling.Dom\Starling.Dom.csproj" />
+    <ProjectReference Include="..\Starling.Spec.Common\Starling.Spec.Common.csproj" />
   </ItemGroup>
 </Project>

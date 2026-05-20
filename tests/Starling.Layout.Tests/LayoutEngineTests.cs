@@ -2,6 +2,7 @@ using AwesomeAssertions;
 using Starling.Css.Cascade;
 using Starling.Html;
 using Starling.Layout.Box;
+using Starling.Spec;
 namespace Starling.Layout.Tests;
 
 [TestClass]
@@ -107,6 +108,87 @@ public sealed class LayoutEngineTests
 
         var body = FindBox(root, "body")!;
         body.Frame.Height.Should().BeGreaterThan(0);
+    }
+
+    [TestMethod]
+    [Spec("css-sizing-3", "https://drafts.csswg.org/css-sizing-3/#percentage-sizing", section: "5.1")]
+    [Spec("css2", "https://www.w3.org/TR/CSS21/visudet.html#the-height-property", section: "10.5")]
+    public void Percentage_height_inherits_parent_explicit_height()
+    {
+        // Parent has an explicit 64px height; the child's `height: 100%`
+        // should resolve against that, not the viewport.
+        var root = Layout(
+            """<body><div style="height:64px"><div id="t" style="height:100%">x</div></div></body>""",
+            new Size(400, 600));
+
+        var inner = FindBoxById(root, "t")!;
+        inner.Frame.Height.Should().BeApproximately(64, 0.5);
+    }
+
+    [TestMethod]
+    [Spec("css-sizing-3", "https://drafts.csswg.org/css-sizing-3/#percentage-sizing", section: "5.1")]
+    [Spec("css2", "https://www.w3.org/TR/CSS21/visudet.html#the-height-property", section: "10.5")]
+    public void Percentage_height_collapses_when_parent_height_indefinite()
+    {
+        // The parent has no explicit height (height: auto), so per CSS 2.1
+        // §10.5 the child's `height: 100%` must resolve to `auto` (content
+        // height) — here, 0. Previously we used the root viewport height as
+        // the basis, blowing the box out to ~600px. This is the bug that
+        // mis-sized .site-logo on docs.htmlcsstoimage.com.
+        var root = Layout(
+            """<body><div><div id="t" style="height:100%"></div></div></body>""",
+            new Size(400, 600));
+
+        var inner = FindBoxById(root, "t")!;
+        inner.Frame.Height.Should().BeApproximately(0, 0.5);
+    }
+
+    [TestMethod]
+    [Spec("css-flexbox-1", "https://drafts.csswg.org/css-flexbox-1/#definite-sizes", section: "9.8")]
+    public void Percentage_height_threads_through_flex_item_cross_size()
+    {
+        // The docs.htmlcsstoimage.com .site-logo scenario: a row-direction
+        // flex container with a definite height (the navbar). Items'
+        // cross size = the container's height; that cross size is a
+        // definite basis, so descendants with `height: 100%` should resolve
+        // against it instead of collapsing to 0.
+        //
+        //   navbar (display:flex, height:60px)
+        //     └─ brand (height:100%)
+        //         └─ logo  (height:100%, background-image)
+        var root = Layout(
+            """
+            <body>
+              <div style="display:flex; height:60px">
+                <div>
+                  <div id="t" style="height:100%"></div>
+                </div>
+              </div>
+            </body>
+            """,
+            new Size(800, 600));
+
+        var inner = FindBoxById(root, "t")!;
+        inner.Frame.Height.Should().BeApproximately(60, 0.5);
+    }
+
+    [TestMethod]
+    // Not normative — html/body height-100% is a long-standing browser quirk
+    // (see CSSWG issue csswg-drafts#1108). Tagged under css2 §10.1 (initial
+    // containing block) as the closest formal anchor.
+    [Spec("compat-quirks", "https://github.com/w3c/csswg-drafts/issues/1108")]
+    [Spec("css2", "https://www.w3.org/TR/CSS21/visudet.html#containing-block-details", section: "10.1")]
+    public void Body_height_100_percent_resolves_against_viewport()
+    {
+        // Long-standing html/body special case: even though <html> has
+        // auto height, browsers thread the viewport height down to body so
+        // `body { height: 100% }` reaches the viewport.
+        var root = Layout(
+            """<body style="height:100%"><div></div></body>""",
+            new Size(400, 600));
+
+        var body = FindBox(root, "body")!;
+        body.Frame.Height.Should().BeApproximately(600, 0.5);
     }
 
     [TestMethod]
@@ -240,6 +322,17 @@ public sealed class LayoutEngineTests
         foreach (var child in root.Children)
         {
             var hit = FindBox(child, localName);
+            if (hit is not null) return hit;
+        }
+        return null;
+    }
+
+    private static Box.Box? FindBoxById(Box.Box root, string id)
+    {
+        if (root.Element?.GetAttribute("id") == id) return root;
+        foreach (var child in root.Children)
+        {
+            var hit = FindBoxById(child, id);
             if (hit is not null) return hit;
         }
         return null;

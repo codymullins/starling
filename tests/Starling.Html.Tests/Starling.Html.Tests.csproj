@@ -9,6 +9,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Starling.Html\Starling.Html.csproj" />
+    <ProjectReference Include="..\Starling.Spec.Common\Starling.Spec.Common.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\..\testdata\spec\html5lib-tests\tokenizer\**\*">
