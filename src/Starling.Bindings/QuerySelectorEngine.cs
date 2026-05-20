@@ -1,79 +1,78 @@
+using Starling.Css.Selectors;
 using Starling.Dom;
 using Starling.Js.Runtime;
 
 namespace Starling.Bindings;
 
 /// <summary>
-/// B5-1 stop-gap selector engine. Accepts a single simple selector — one of
-/// <c>#id</c>, <c>.class</c>, or a bare tag name (<c>div</c>). Throws a JS
-/// <c>SyntaxError</c> for anything more complex. The real CSS-selector engine
-/// is tracked as a follow-up; this is just enough for boot-time framework
-/// probes ("does <c>document.querySelector('#root')</c> exist?").
+/// Selector engine backing <c>querySelector</c>/<c>querySelectorAll</c>/
+/// <c>matches</c>/<c>closest</c>. Delegates to the full CSS
+/// <see cref="SelectorParser"/> + <see cref="SelectorMatcher"/> from
+/// <c>Starling.Css</c>, so the JS layer accepts the same grammar the cascade
+/// does — compound selectors, combinators (<c>&gt;</c>, <c>+</c>, <c>~</c>,
+/// descendant), attribute selectors, <c>:nth-*</c>, <c>:is/:where/:not</c>, etc.
+/// An unparseable selector throws a JS <c>SyntaxError</c> (per the DOM spec).
 /// </summary>
 internal static class QuerySelectorEngine
 {
+    /// <summary>First descendant of <paramref name="root"/> matching <paramref name="selector"/>, in tree order.</summary>
     public static Element? First(Node root, string selector, JsRealm realm)
     {
-        var p = Parse(selector, realm);
+        var list = Parse(selector, realm);
+        var ctx = ContextFor(root);
         foreach (var e in root.DescendantElements())
-            if (p.Matches(e)) return e;
+            if (SelectorMatcher.Matches(list, e, ctx)) return e;
         return null;
     }
 
+    /// <summary>All descendants of <paramref name="root"/> matching <paramref name="selector"/>, in tree order.</summary>
     public static IEnumerable<Element> All(Node root, string selector, JsRealm realm)
     {
-        var p = Parse(selector, realm);
+        var list = Parse(selector, realm);
+        var ctx = ContextFor(root);
         foreach (var e in root.DescendantElements())
-            if (p.Matches(e)) yield return e;
+            if (SelectorMatcher.Matches(list, e, ctx)) yield return e;
     }
 
-    private static SimpleSelector Parse(string raw, JsRealm realm)
+    /// <summary>Whether <paramref name="element"/> itself matches <paramref name="selector"/> (<c>Element.matches</c>).</summary>
+    public static bool Matches(Element element, string selector, JsRealm realm)
+        => SelectorMatcher.Matches(Parse(selector, realm), element, ContextFor(element));
+
+    /// <summary>
+    /// Nearest inclusive ancestor of <paramref name="element"/> matching
+    /// <paramref name="selector"/>, or <c>null</c> (<c>Element.closest</c>).
+    /// </summary>
+    public static Element? Closest(Element element, string selector, JsRealm realm)
     {
-        if (string.IsNullOrEmpty(raw))
-            throw new JsThrow(realm.NewSyntaxError("Selector is empty"));
-        var s = raw.Trim();
-        if (s.Length == 0)
-            throw new JsThrow(realm.NewSyntaxError("Selector is empty"));
-        if (s[0] == '#')
-        {
-            var id = s[1..];
-            ValidateIdentifier(id, raw, realm);
-            return new SimpleSelector(SelectorKind.Id, id);
-        }
-        if (s[0] == '.')
-        {
-            var cls = s[1..];
-            ValidateIdentifier(cls, raw, realm);
-            return new SimpleSelector(SelectorKind.Class, cls);
-        }
-        if (s == "*") return new SimpleSelector(SelectorKind.Universal, "*");
-        ValidateIdentifier(s, raw, realm);
-        return new SimpleSelector(SelectorKind.Tag, s);
+        var list = Parse(selector, realm);
+        var ctx = ContextFor(element);
+        for (Node? n = element; n is not null; n = n.ParentNode)
+            if (n is Element e && SelectorMatcher.Matches(list, e, ctx)) return e;
+        return null;
     }
 
-    private static void ValidateIdentifier(string value, string raw, JsRealm realm)
+    private static SelectorMatchContext ContextFor(Node root)
+        => root is Element scope
+            ? new SelectorMatchContext { ScopeElement = scope }
+            : SelectorMatchContext.Default;
+
+    private static SelectorList Parse(string raw, JsRealm realm)
     {
-        if (string.IsNullOrEmpty(value))
-            throw new JsThrow(realm.NewSyntaxError($"'{raw}' is not a supported selector (B5-1: only '#id', '.class', and bare tag names are supported)"));
-        foreach (var ch in value)
+        if (string.IsNullOrWhiteSpace(raw))
+            throw new JsThrow(realm.NewSyntaxError("The selector is empty."));
+
+        SelectorList list;
+        try
         {
-            if (char.IsLetterOrDigit(ch) || ch == '-' || ch == '_') continue;
-            throw new JsThrow(realm.NewSyntaxError(
-                $"'{raw}' is not a supported selector (B5-1: only '#id', '.class', and bare tag names are supported)"));
+            list = SelectorParser.ParseSelectorList(raw);
         }
-    }
-
-    private enum SelectorKind { Tag, Id, Class, Universal }
-
-    private readonly record struct SimpleSelector(SelectorKind Kind, string Value)
-    {
-        public bool Matches(Element e) => Kind switch
+        catch (FormatException ex)
         {
-            SelectorKind.Tag => e.LocalName.Equals(Value, StringComparison.OrdinalIgnoreCase),
-            SelectorKind.Id => e.Id == Value,
-            SelectorKind.Class => e.ClassList.Contains(Value),
-            SelectorKind.Universal => true,
-            _ => false,
-        };
+            throw new JsThrow(realm.NewSyntaxError($"'{raw}' is not a valid selector: {ex.Message}"));
+        }
+
+        if (list.Selectors.Count == 0)
+            throw new JsThrow(realm.NewSyntaxError($"'{raw}' is not a valid selector."));
+        return list;
     }
 }

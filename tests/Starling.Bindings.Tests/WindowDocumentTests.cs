@@ -271,6 +271,60 @@ public sealed class WindowDocumentTests
     }
 
     [TestMethod]
+    public void Query_selector_supports_compound_combinator_and_attribute_selectors()
+    {
+        var (runtime, doc) = BuildEnv();
+        BuildCard(doc);
+
+        // Compound + child combinator.
+        Eval(runtime, "result = document.querySelector('div.card > span.title').tagName;")
+            .AsString.Should().Be("SPAN");
+        // Descendant combinator.
+        Eval(runtime, "result = document.querySelector('.card span').className;")
+            .AsString.Should().Be("title");
+        // Attribute presence + value.
+        Eval(runtime, "result = document.querySelector('[data-x]').tagName;")
+            .AsString.Should().Be("P");
+        Eval(runtime, "result = document.querySelector('[data-role=\"panel\"]').tagName;")
+            .AsString.Should().Be("DIV");
+        // :nth-child (span is child 1, p is child 2).
+        Eval(runtime, "result = document.querySelector('.card p:nth-child(2)').tagName;")
+            .AsString.Should().Be("P");
+        // Selector list, in tree order.
+        Eval(runtime, "result = document.querySelectorAll('div.card span, div.card p').length;")
+            .AsNumber.Should().Be(2);
+    }
+
+    [TestMethod]
+    public void Element_matches_and_closest_use_full_selector_grammar()
+    {
+        var (runtime, doc) = BuildEnv();
+        BuildCard(doc);
+
+        Eval(runtime, "result = document.querySelector('span').matches('.title');")
+            .AsBool.Should().BeTrue();
+        Eval(runtime, "result = document.querySelector('span').matches('.nope');")
+            .AsBool.Should().BeFalse();
+        Eval(runtime, "result = document.querySelector('span.title').closest('div.card').tagName;")
+            .AsString.Should().Be("DIV");
+        Eval(runtime, "result = document.querySelector('span').closest('.nope') === null;")
+            .AsBool.Should().BeTrue();
+    }
+
+    [TestMethod]
+    public void Query_selector_throws_syntax_error_on_invalid_selector()
+    {
+        var (runtime, _) = BuildEnv();
+        Eval(runtime, """
+            function err(sel) {
+                try { document.querySelector(sel); return ''; }
+                catch (e) { return e.name; }
+            }
+            result = err('') + '|' + err('div::before.x');
+        """).AsString.Should().Be("SyntaxError|SyntaxError");
+    }
+
+    [TestMethod]
     public void Navigator_user_agent_is_exposed()
     {
         var (runtime, _) = BuildEnv();
@@ -332,6 +386,21 @@ public sealed class WindowDocumentTests
         doc.AppendChild(html);
         html.AppendChild(body);
         return doc;
+    }
+
+    /// <summary>Appends <c>&lt;div class="card" data-role="panel"&gt;&lt;span class="title"/&gt;&lt;p data-x="1"/&gt;&lt;/div&gt;</c> to the body.</summary>
+    private static void BuildCard(Document doc)
+    {
+        var card = doc.CreateElement("div");
+        card.SetAttribute("class", "card");
+        card.SetAttribute("data-role", "panel");
+        var title = doc.CreateElement("span");
+        title.SetAttribute("class", "title");
+        var para = doc.CreateElement("p");
+        para.SetAttribute("data-x", "1");
+        card.AppendChild(title);
+        card.AppendChild(para);
+        doc.Body!.AppendChild(card);
     }
 
     private static JsValue Eval(JsRuntime runtime, string source)

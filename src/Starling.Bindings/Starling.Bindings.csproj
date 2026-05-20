@@ -4,6 +4,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Starling.Common\Starling.Common.csproj" />
+    <ProjectReference Include="..\Starling.Css\Starling.Css.csproj" />
     <ProjectReference Include="..\Starling.Dom\Starling.Dom.csproj" />
     <ProjectReference Include="..\Starling.Js\Starling.Js.csproj" />
     <ProjectReference Include="..\Starling.Net\Starling.Net.csproj" />

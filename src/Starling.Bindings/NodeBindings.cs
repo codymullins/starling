@@ -9,10 +9,11 @@ namespace Starling.Bindings;
 /// from EventTargetPrototype).
 /// </summary>
 /// <remarks>
-/// <para><b>Selector grammar:</b> <c>querySelector</c> /
-/// <c>querySelectorAll</c> only accept three forms — <c>#id</c>, <c>.class</c>,
-/// and a bare tag name. Anything else throws a <c>SyntaxError</c>. The real
-/// CSS-selector engine arrives in a follow-up.</para>
+/// <para><b>Selector grammar:</b> <c>querySelector</c> / <c>querySelectorAll</c>
+/// / <c>matches</c> / <c>closest</c> delegate to the full <c>Starling.Css</c>
+/// selector engine (<see cref="QuerySelectorEngine"/>), so compound selectors,
+/// combinators, attribute selectors, <c>:nth-*</c>, and <c>:is/:where/:not</c>
+/// all work. An unparseable selector throws a JS <c>SyntaxError</c>.</para>
 /// <para><b>innerHTML:</b> getter returns <see cref="Node.TextContent"/> — we
 /// don't have a tree-to-HTML serializer threaded here. Setter accepts only
 /// plain text (no HTML parsing) and replaces children with a single text node.
@@ -279,6 +280,17 @@ public static class NodeBindings
             foreach (var m in QuerySelectorEngine.All(e, JsValue.ToStringValue(args[0]), realm))
                 items.Add(JsValue.Object(DomWrappers.Wrap(realm, m)));
             return MakeArray(realm, items);
+        }, length: 1);
+        EventTargetBinding.DefineMethod(realm, elProto, "matches", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is not { } e || args.Length == 0) return JsValue.False;
+            return JsValue.Boolean(QuerySelectorEngine.Matches(e, JsValue.ToStringValue(args[0]), realm));
+        }, length: 1);
+        EventTargetBinding.DefineMethod(realm, elProto, "closest", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is not { } e || args.Length == 0) return JsValue.Null;
+            var match = QuerySelectorEngine.Closest(e, JsValue.ToStringValue(args[0]), realm);
+            return match is null ? JsValue.Null : JsValue.Object(DomWrappers.Wrap(realm, match));
         }, length: 1);
         EventTargetBinding.DefineMethod(realm, elProto, "getElementsByTagName", (thisV, args) =>
         {
