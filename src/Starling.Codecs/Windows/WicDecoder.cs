@@ -128,8 +128,6 @@ internal sealed partial class WicDecoder : IImageDecoder
 [Guid("EC5EC8A9-C395-4314-9C77-54D7A935FF70")]
 internal partial interface IWICImagingFactory
 {
-    IWICStream CreateStream();
-
     [PreserveSig]
     int CreateDecoderFromFilename(
         [MarshalAs(UnmanagedType.LPWStr)] string filename, in Guid vendor,
@@ -138,7 +136,34 @@ internal partial interface IWICImagingFactory
     IWICBitmapDecoder CreateDecoderFromStream(
         IWICStream stream, in Guid vendor, uint metadataOptions);
 
+    [PreserveSig]
+    int CreateDecoderFromFileHandle(
+        nint file, in Guid vendor, uint metadataOptions, out IWICBitmapDecoder decoder);
+
+    [PreserveSig]
+    int CreateComponentInfo(in Guid clsidComponent, out nint info);
+
+    [PreserveSig]
+    int CreateDecoder(in Guid containerFormat, in Guid vendor, out IWICBitmapDecoder decoder);
+
+    [PreserveSig]
+    int CreateEncoder(in Guid containerFormat, in Guid vendor, out nint encoder);
+
+    [PreserveSig]
+    int CreatePalette(out nint palette);
+
     IWICFormatConverter CreateFormatConverter();
+
+    [PreserveSig]
+    int CreateBitmapScaler(out nint scaler);
+
+    [PreserveSig]
+    int CreateBitmapClipper(out nint clipper);
+
+    [PreserveSig]
+    int CreateBitmapFlipRotator(out nint flipRotator);
+
+    IWICStream CreateStream();
 }
 
 /// <summary>WIC stream — wraps an in-memory byte buffer for the decoder.</summary>
@@ -146,12 +171,50 @@ internal partial interface IWICImagingFactory
 [Guid("135FF860-22B7-4DDF-B0F6-218F4F299A43")]
 internal partial interface IWICStream
 {
+    // IWICStream inherits IStream. The source generator uses declaration order
+    // as vtable order, so these inherited slots must appear before WIC's own
+    // InitializeFrom* methods even though Starling never calls them directly.
+    [PreserveSig]
+    int Read(nint buffer, uint count, nint bytesRead);
+
+    [PreserveSig]
+    int Write(nint buffer, uint count, nint bytesWritten);
+
+    [PreserveSig]
+    int Seek(long move, uint origin, nint newPosition);
+
+    [PreserveSig]
+    int SetSize(ulong newSize);
+
+    [PreserveSig]
+    int CopyTo(nint stream, ulong count, nint bytesRead, nint bytesWritten);
+
+    [PreserveSig]
+    int Commit(uint flags);
+
+    [PreserveSig]
+    int Revert();
+
+    [PreserveSig]
+    int LockRegion(ulong offset, ulong count, uint lockType);
+
+    [PreserveSig]
+    int UnlockRegion(ulong offset, ulong count, uint lockType);
+
+    [PreserveSig]
+    int Stat(nint stat, uint flags);
+
+    [PreserveSig]
+    int Clone(out nint stream);
+
     void InitializeFromIStream(nint stream);
 
     void InitializeFromFilename(
         [MarshalAs(UnmanagedType.LPWStr)] string filename, uint desiredAccess);
 
     void InitializeFromMemory(nint buffer, uint size);
+
+    void InitializeFromIStreamRegion(nint stream, ulong offset, ulong maxSize);
 }
 
 /// <summary>WIC decoder — yields one or more frames from an encoded image.</summary>
