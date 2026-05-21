@@ -248,4 +248,7 @@ public enum PropertyId
     AnimationFillMode,
     AnimationPlayState,
     AnimationComposition,
+
+    // Visual effects (appended): box shadow
+    BoxShadow,
 }

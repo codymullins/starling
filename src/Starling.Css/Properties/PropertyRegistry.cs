@@ -169,6 +169,7 @@ public static class PropertyRegistry
             PropertyId.Filter or PropertyId.BackdropFilter => new CssKeyword("none"),
             PropertyId.MixBlendMode or PropertyId.BackgroundBlendMode => new CssKeyword("normal"),
             PropertyId.ClipPath => new CssKeyword("none"),
+            PropertyId.BoxShadow => new CssKeyword("none"),
             PropertyId.MaskImage => new CssKeyword("none"),
             PropertyId.MaskPosition => new CssKeyword("0% 0%"),
             PropertyId.MaskSize => new CssKeyword("auto"),

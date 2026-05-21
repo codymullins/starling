@@ -182,6 +182,17 @@ internal sealed class LayerTreeBuilder
         {
             case FillRect f: bounds = f.Bounds; return true;
             case StrokeRect s: bounds = s.Bounds; return true;
+            case FillRoundedRect rf: bounds = rf.Bounds; return true;
+            case StrokeRoundedRect rs: bounds = rs.Bounds; return true;
+            case DrawBoxShadow sh:
+                // The painted shadow is the box grown by spread+blur, offset.
+                var pad = sh.Spread + sh.Blur;
+                bounds = new Rect(
+                    sh.Bounds.X + sh.OffsetX - pad,
+                    sh.Bounds.Y + sh.OffsetY - pad,
+                    sh.Bounds.Width + 2 * pad,
+                    sh.Bounds.Height + 2 * pad);
+                return true;
             case DrawImage i: bounds = i.Bounds; return true;
             case DrawText t:
                 // Glyph run sits on the baseline; cover ascent above and a small
