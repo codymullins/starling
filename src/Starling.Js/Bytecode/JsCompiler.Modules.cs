@@ -364,6 +364,17 @@ public sealed partial class JsCompiler
 
     /// <summary>Module-scope variable declaration — initializers write through
     /// the binding's upvalue cell instead of the global object.</summary>
+    /// <remarks>
+    /// Single-identifier targets store directly into the reserved upvalue cell.
+    /// Destructuring binding patterns (<c>const { a, b } = obj</c>,
+    /// <c>let [x, ...rest] = arr</c>, with nesting/defaults/rest) reuse the
+    /// function-scope pattern lowering via <see cref="EmitDestructuringFromStack"/>:
+    /// each bound name was already reserved as a module upvalue by
+    /// <see cref="CollectLocalBindingNames"/> → <see cref="ReserveModuleBinding"/>,
+    /// so the leaf store resolves through <c>StoreUpvalue</c> (the module's live
+    /// cell) rather than a shadowing local — preserving live bindings even when
+    /// the names are re-exported.
+    /// </remarks>
     private void EmitModuleVarDecl(VariableDeclaration vd)
     {
         foreach (var d in vd.Declarations)
@@ -376,12 +387,13 @@ public sealed partial class JsCompiler
             }
             else
             {
-                // Destructuring binding patterns at module scope are deferred:
-                // the classic path would route the bound names to local slots,
-                // which would shadow their export upvalue cells and break live
-                // bindings. Rare in practice; tracked as a follow-up.
-                throw new NotSupportedException(
-                    "destructuring binding patterns at module top level are not yet supported");
+                // Destructuring binding pattern: push the source value and let
+                // the shared pattern walker extract each name into its module
+                // upvalue cell. No DeclarePatternBindings call → no shadowing
+                // local, so live bindings stay intact (the subtlety the prior
+                // implementation's NotSupportedException guarded against).
+                EmitExpression(d.Init);
+                EmitDestructuringFromStack(d.Id);
             }
         }
     }

@@ -2021,6 +2021,20 @@ public sealed partial class JsCompiler
         EmitPatternFromStack(pattern, isDeclaration);
     }
 
+    /// <summary>
+    /// Lower a destructuring binding pattern whose source value is already on the
+    /// stack, identical to <see cref="EmitPatternFromStack"/> but used by the
+    /// module compiler. The module path reserves every bound name as an upvalue
+    /// cell (see <c>JsCompiler.Modules.cs</c>), so the leaf-identifier store in
+    /// <see cref="StoreBindingIdentifier"/> resolves through <c>StoreUpvalue</c>
+    /// automatically — no shadowing local is declared (no
+    /// <c>DeclarePatternBindings</c> call), which keeps module live bindings
+    /// intact. This is just a named seam so the module compiler does not depend
+    /// on the private leaf helper directly.
+    /// </summary>
+    internal void EmitDestructuringFromStack(Expression pattern) =>
+        EmitPatternFromStack(pattern, isDeclaration: true);
+
     private void EmitPatternFromStack(Expression pattern, bool isDeclaration)
     {
         switch (pattern)
