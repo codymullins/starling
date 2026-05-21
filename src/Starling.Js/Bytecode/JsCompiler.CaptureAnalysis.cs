@@ -51,6 +51,145 @@ internal static class CaptureAnalysis
         return captured;
     }
 
+    /// <summary>wp:M3-20 — does this (non-arrow) function body reference the
+    /// identifier <c>arguments</c> in its own <c>arguments</c>-scope? True when
+    /// the name appears free in the body or in a parameter default, including
+    /// inside nested <em>arrow</em> functions (which inherit <c>arguments</c>
+    /// lexically) — but NOT inside nested ordinary functions / class methods,
+    /// which establish their own <c>arguments</c>. The compiler uses this to
+    /// decide whether to materialize the arguments object (§10.4.4) for the
+    /// function, avoiding the per-call allocation when it is never read.</summary>
+    public static bool ReferencesArguments(
+        IReadOnlyList<Expression> parameters,
+        IReadOnlyList<Statement> body)
+    {
+        foreach (var p in parameters)
+            if (ArgRefExpr(p)) return true;
+        foreach (var s in body)
+            if (ArgRefStmt(s)) return true;
+        return false;
+    }
+
+    private static bool ArgRefStmt(Statement? s)
+    {
+        if (s is null) return false;
+        switch (s)
+        {
+            case BlockStatement b: return b.Body.Any(ArgRefStmt);
+            case ExpressionStatement es: return ArgRefExpr(es.Expression);
+            case ReturnStatement r: return ArgRefExpr(r.Argument);
+            case ThrowStatement t: return ArgRefExpr(t.Argument);
+            case IfStatement i:
+                return ArgRefExpr(i.Test) || ArgRefStmt(i.Consequent) || ArgRefStmt(i.Alternate);
+            case WhileStatement w: return ArgRefExpr(w.Test) || ArgRefStmt(w.Body);
+            case DoWhileStatement dw: return ArgRefStmt(dw.Body) || ArgRefExpr(dw.Test);
+            case ForStatement f:
+                if (f.Init is Statement fis && ArgRefStmt(fis)) return true;
+                if (f.Init is Expression fie && ArgRefExpr(fie)) return true;
+                return ArgRefExpr(f.Test) || ArgRefExpr(f.Update) || ArgRefStmt(f.Body);
+            case ForInStatement fi:
+                if (fi.Left is Statement fil && ArgRefStmt(fil)) return true;
+                if (fi.Left is Expression file && ArgRefExpr(file)) return true;
+                return ArgRefExpr(fi.Right) || ArgRefStmt(fi.Body);
+            case ForOfStatement fo:
+                if (fo.Left is Statement fol && ArgRefStmt(fol)) return true;
+                if (fo.Left is Expression foe && ArgRefExpr(foe)) return true;
+                return ArgRefExpr(fo.Right) || ArgRefStmt(fo.Body);
+            case SwitchStatement sw:
+                if (ArgRefExpr(sw.Discriminant)) return true;
+                foreach (var c in sw.Cases)
+                {
+                    if (ArgRefExpr(c.Test)) return true;
+                    if (c.Consequent.Any(ArgRefStmt)) return true;
+                }
+                return false;
+            case TryStatement tr:
+                if (ArgRefStmt(tr.Block)) return true;
+                if (tr.Handler is not null && tr.Handler.Body.Body.Any(ArgRefStmt)) return true;
+                return tr.Finalizer is not null && ArgRefStmt(tr.Finalizer);
+            case LabeledStatement ls: return ArgRefStmt(ls.Body);
+            case VariableDeclaration vd:
+                return vd.Declarations.Any(d => ArgRefExpr(d.Init));
+            // A nested ordinary function / class declaration establishes its
+            // own `arguments` — do not descend.
+            case FunctionDeclaration: return false;
+            case ClassDeclaration cd: return ArgRefExpr(cd.BaseClass);
+            default: return false;
+        }
+    }
+
+    private static bool ArgRefExpr(Expression? e)
+    {
+        if (e is null) return false;
+        switch (e)
+        {
+            case Identifier id: return id.Name == "arguments";
+            case BinaryExpression bin: return ArgRefExpr(bin.Left) || ArgRefExpr(bin.Right);
+            case LogicalExpression log: return ArgRefExpr(log.Left) || ArgRefExpr(log.Right);
+            case UnaryExpression u: return ArgRefExpr(u.Argument);
+            case UpdateExpression up: return ArgRefExpr(up.Argument);
+            case AssignmentExpression a: return ArgRefExpr(a.Target) || ArgRefExpr(a.Value);
+            case AssignmentPattern ap: return ArgRefExpr(ap.Target) || ArgRefExpr(ap.Default);
+            case RestElement rest: return ArgRefExpr(rest.Argument);
+            case ConditionalExpression c:
+                return ArgRefExpr(c.Test) || ArgRefExpr(c.Consequent) || ArgRefExpr(c.Alternate);
+            case MemberExpression m:
+                return ArgRefExpr(m.Object) || (m.Computed && ArgRefExpr(m.Property));
+            case CallExpression call:
+                return ArgRefExpr(call.Callee) || call.Arguments.Any(ArgRefExpr);
+            case NewExpression ne:
+                return ArgRefExpr(ne.Callee) || ne.Arguments.Any(ArgRefExpr);
+            case ArrayExpression aex: return aex.Elements.Any(ArgRefExpr);
+            case ObjectExpression oe:
+                foreach (var prop in oe.Properties)
+                {
+                    if (prop.Computed && ArgRefExpr(prop.Key)) return true;
+                    if (ArgRefExpr(prop.Value)) return true;
+                }
+                return false;
+            case SequenceExpression seq: return seq.Expressions.Any(ArgRefExpr);
+            case TemplateLiteral tpl: return tpl.Expressions.Any(ArgRefExpr);
+            case TaggedTemplateExpression tte: return ArgRefExpr(tte.Tag) || ArgRefExpr(tte.Quasi);
+            case SpreadElement sp: return ArgRefExpr(sp.Argument);
+            // Arrows inherit the enclosing `arguments` — descend into them.
+            case ArrowFunctionExpression arrow:
+                if (arrow.Params.Any(ArgRefExpr)) return true;
+                return arrow.Body switch
+                {
+                    BlockStatement block => block.Body.Any(ArgRefStmt),
+                    Expression expr => ArgRefExpr(expr),
+                    _ => false,
+                };
+            // Ordinary nested function expressions have their own `arguments`.
+            case FunctionExpression: return false;
+            case ClassExpression cls: return ArgRefExpr(cls.BaseClass);
+            case ArrayPattern arrp:
+                foreach (var el in arrp.Elements)
+                {
+                    switch (el)
+                    {
+                        case ArrayPatternBindingElement binding:
+                            if (ArgRefExpr(binding.Target) || ArgRefExpr(binding.Default)) return true;
+                            break;
+                        case ArrayPatternRestElement r:
+                            if (ArgRefExpr(r.Target)) return true;
+                            break;
+                    }
+                }
+                return false;
+            case ObjectPattern op:
+                foreach (var prop in op.Properties)
+                {
+                    if (prop.Computed && ArgRefExpr(prop.Key)) return true;
+                    if (ArgRefExpr(prop.Target) || ArgRefExpr(prop.Default)) return true;
+                }
+                return op.Rest is not null && ArgRefExpr(op.Rest.Argument);
+            case SuperPropertyExpression sp2: return sp2.Computed && ArgRefExpr(sp2.Property);
+            case SuperCallExpression scx: return scx.Arguments.Any(ArgRefExpr);
+            default: return false;
+        }
+    }
+
     // ----------------------------------------------------------------------
     // "Outer" walk: we are still in the function whose captures we're
     // computing. Whenever we hit a nested function/class member body, we

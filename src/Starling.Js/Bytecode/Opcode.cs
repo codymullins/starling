@@ -338,5 +338,16 @@ public enum Opcode : byte
     /// module code (no matching module record).</summary>
     LoadImportMeta,
 
+    /// <summary>wp:M3-20 — §10.4.4 CreateMappedArgumentsObject (Starling builds
+    /// the simpler unmapped form, §10.4.4 / §10.4.4.6 CreateUnmappedArgumentsObject):
+    /// materialize the current frame's <c>arguments</c> object — an
+    /// array-like exotic object carrying every argument the callee received in
+    /// index order plus a <c>length</c> own property — and store it into the
+    /// local slot named in the operand (u8). Emitted only at the top of a
+    /// non-arrow function body that references the identifier <c>arguments</c>
+    /// without binding it. Arrow functions never emit this; they inherit
+    /// <c>arguments</c> lexically through the upvalue mechanism.</summary>
+    MakeArguments,
+
     Halt,           // end-of-program sentinel
 }

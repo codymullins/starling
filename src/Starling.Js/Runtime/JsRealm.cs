@@ -255,6 +255,35 @@ public sealed class JsRealm
     /// <summary>Allocate a fresh ordinary object inheriting from <paramref name="proto"/>.</summary>
     public JsObject NewObjectWithProto(JsObject? proto) => new JsObject(proto);
 
+    /// <summary>§10.4.4.6 CreateUnmappedArgumentsObject. Build the
+    /// <c>arguments</c> object the running (non-arrow) function sees: an
+    /// ordinary object inheriting from <see cref="ObjectPrototype"/>, carrying
+    /// the supplied <paramref name="args"/> as configurable, writable,
+    /// enumerable indexed data properties; a non-enumerable <c>length</c> data
+    /// property; and <c>@@iterator</c> aliased to
+    /// <c>Array.prototype[@@iterator]</c> so spreading / <c>for…of</c> /
+    /// destructuring over <c>arguments</c> works. Starling builds the unmapped
+    /// form (no parameter aliasing) — sufficient for sloppy-mode legacy code
+    /// that reads <c>arguments.length</c> / <c>arguments[i]</c> and does
+    /// <c>Array.prototype.slice.call(arguments)</c>.</summary>
+    public JsObject CreateArgumentsObject(IReadOnlyList<JsValue> args)
+    {
+        var obj = new JsObject(ObjectPrototype);
+        for (var i = 0; i < args.Count; i++)
+            obj.DefineOwnProperty(
+                i.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                PropertyDescriptor.Data(args[i], writable: true, enumerable: true, configurable: true));
+        obj.DefineOwnProperty("length",
+            PropertyDescriptor.Data(JsValue.Number(args.Count), writable: true, enumerable: false, configurable: true));
+        // @@iterator = %Array.prototype.values% so `[...arguments]` / `for…of`
+        // work. Resolve it off Array.prototype if the Array intrinsic is wired.
+        var arrayIter = ArrayPrototype.GetOwnPropertyDescriptor(Intrinsics.SymbolCtor.Iterator);
+        if (arrayIter is { } iterDesc && iterDesc.Value.IsObject)
+            obj.DefineOwnProperty(Intrinsics.SymbolCtor.Iterator,
+                PropertyDescriptor.BuiltinMethod(iterDesc.Value));
+        return obj;
+    }
+
     /// <summary>Construct a generic Error-like object with a <c>message</c>
     /// data slot. Used by abstract operations to surface engine-level errors
     /// before the full Error intrinsic lands.</summary>

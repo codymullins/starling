@@ -371,6 +371,8 @@ public sealed partial class JsCompiler
         // `function inner() {...}` would be silently dropped, breaking
         // closure tests like `function outer(){ var x=0; function inner(){x=5} inner(); return x }`.
         HoistFunctionDeclarations(fd.Body.Body);
+        // wp:M3-20 — synthesize the `arguments` object if the body reads it.
+        MaybeBindArguments(fd.Params, fd.Body.Body);
         foreach (var inner in fd.Body.Body) EmitStatement(inner);
         // Implicit `return undefined` if the body didn't return.
         _b.Emit(Opcode.ReturnUndefined);
@@ -1648,7 +1650,7 @@ public sealed partial class JsCompiler
         };
         var fe = BuildFunctionExpressionShim(null, arrow.Params, body, arrow.Start, arrow.End,
             isAsync: arrow.Async, isGenerator: arrow.Generator);
-        EmitFunctionExpression(fe);
+        EmitFunctionExpression(fe, isArrow: true);
     }
 
     private static FunctionExpression BuildFunctionExpressionShim(
@@ -2200,7 +2202,7 @@ public sealed partial class JsCompiler
         }
     }
 
-    private void EmitFunctionExpression(FunctionExpression fe)
+    private void EmitFunctionExpression(FunctionExpression fe, bool isArrow = false)
     {
         // Compile the body in a sub-compiler parented to this one so
         // free identifiers can be lazily resolved as upvalues captured
@@ -2220,6 +2222,9 @@ public sealed partial class JsCompiler
         // references to it compile to (undefined) globals — breaking all
         // IIFE/webpack/bundler code.
         sub.HoistFunctionDeclarations(fe.Body.Body);
+        // wp:M3-20 — arrows have no own `arguments` (they inherit lexically),
+        // so only ordinary function expressions synthesize one.
+        if (!isArrow) sub.MaybeBindArguments(fe.Params, fe.Body.Body);
         foreach (var s in fe.Body.Body) sub.EmitStatement(s);
         sub._b.Emit(Opcode.ReturnUndefined);
         // Per ES2024 §15.2 NamedEvaluation, anonymous FunctionExpression
@@ -2333,6 +2338,34 @@ public sealed partial class JsCompiler
         AssignmentPattern a => IsPattern(a.Target),
         _ => false,
     };
+
+    /// <summary>wp:M3-20 — §10.4.4. If a non-arrow function body references the
+    /// identifier <c>arguments</c> without binding it (no param/var named
+    /// <c>arguments</c>), reserve a local for it and emit
+    /// <see cref="Opcode.MakeArguments"/> so the VM materializes the arguments
+    /// object at entry. Must run AFTER <see cref="BindFunctionParameters"/> and
+    /// the captured-var pre-allocation so any explicit <c>arguments</c> binding
+    /// already occupies the scope (in which case we do nothing — the user's
+    /// binding wins, §10.2.11). When a nested arrow captures <c>arguments</c>,
+    /// the slot is boxed into a Cell first so the closure shares the object.</summary>
+    private void MaybeBindArguments(IReadOnlyList<Expression> parameters, IReadOnlyList<Statement> body)
+    {
+        // An explicit param/var/function named `arguments` shadows the implicit
+        // one — the scope already owns the name, so don't synthesize.
+        if (_scopes.Any(s => s.ContainsKey("arguments"))) return;
+        if (!CaptureAnalysis.ReferencesArguments(parameters, body)) return;
+
+        var slot = _b.ReserveLocal();
+        _scopes[^1]["arguments"] = slot;
+        if (IsNameCaptured("arguments"))
+        {
+            // A nested arrow reads `arguments` — back it with a Cell so the
+            // closure and this frame observe one shared object.
+            _b.MarkCaptured(slot);
+            _b.Emit(Opcode.InitCellLocal, (byte)slot);
+        }
+        _b.Emit(Opcode.MakeArguments, (byte)slot);
+    }
 
     private void BindFunctionParameters(IReadOnlyList<Expression> parameters)
     {

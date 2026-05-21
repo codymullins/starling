@@ -214,6 +214,9 @@ public sealed partial class JsCompiler
             // capture a shared cell instead of a raw value.
             sub.PreallocateCapturedVarBindings(bodyBlock.Body);
             sub.HoistFunctionDeclarations(bodyBlock.Body);
+            // wp:M3-20 — class constructors are non-arrow functions; give them
+            // an `arguments` object when the body reads it.
+            sub.MaybeBindArguments(parameters, bodyBlock.Body);
             foreach (var s in bodyBlock.Body) sub.EmitStatement(s);
         }
 
@@ -245,6 +248,9 @@ public sealed partial class JsCompiler
         sub.BindFunctionParameters(md.Params);
         sub.PreallocateCapturedVarBindings(md.Body.Body);
         sub.HoistFunctionDeclarations(md.Body.Body);
+        // wp:M3-20 — methods/accessors are non-arrow functions; synthesize an
+        // `arguments` object when the body reads it.
+        sub.MaybeBindArguments(md.Params, md.Body.Body);
         foreach (var s in md.Body.Body) sub.EmitStatement(s);
         sub._b.Emit(Opcode.ReturnUndefined);
         sub._privateScopes.Pop();

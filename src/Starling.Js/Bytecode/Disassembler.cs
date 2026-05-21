@@ -70,6 +70,7 @@ public static class Disassembler
                 case Opcode.New:
                 case Opcode.LoadUpvalue:
                 case Opcode.Suspend:
+                case Opcode.MakeArguments:
                 {
                     var slot = code[i];
                     i++;

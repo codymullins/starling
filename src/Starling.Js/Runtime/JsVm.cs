@@ -1231,6 +1231,21 @@ public sealed class JsVm
                     Push(JsValue.Object(meta));
                     break;
                 }
+                case Opcode.MakeArguments:
+                {
+                    // §10.4.4 — materialize the callee's `arguments` object from
+                    // this frame's received args and bind it into `slot`. If the
+                    // slot was pre-initialized to a Cell (because a nested arrow
+                    // captures `arguments`), write through the cell so the
+                    // closure observes the same object; otherwise store directly.
+                    var slot = ReadU8();
+                    var argObj = JsValue.Object(_runtime.Realm.CreateArgumentsObject(args));
+                    if (locals[slot].IsObject && locals[slot].AsObject is Cell cell)
+                        cell.Value = argObj;
+                    else
+                        locals[slot] = argObj;
+                    break;
+                }
                 case Opcode.BindThis:
                 {
                     thisV = Pop();
