@@ -2,9 +2,10 @@
 id: "wp:M3-04h-js-computed-super"
 parent: "wp:M3-04-js-vm"
 milestone: "M3"
-status: "claimed"
+status: "complete"
 claimed_by: "agent-claude-cody-compsuper"
 claimed_at: "2026-05-21T02:01:39Z"
+completed_at: "2026-05-21T02:09:00Z"
 branch: "main"
 depends_on:
   - "wp:M3-04c2-js-method-capture-cell"
@@ -71,3 +72,6 @@ throwing.
 ## Handoff log
 - 2026-05-21T01:51:31Z — created as blocked (sequenced after wp:M3-04c2 to avoid JsCompiler.Classes.cs/JsVm.cs conflict)
 - 2026-05-21T02:01:39Z — unblocked (wp:M3-04c2 complete + landed on main) + claimed for agent-claude-cody-compsuper
+- 2026-05-21T02:09Z — COMPLETE (cherry-picked to main as `7221f0d`). Two new no-operand opcodes `LoadSuperComputed`/`StoreSuperComputed` (key from stack via `AbstractOperations.ToPropertyKey`, home-proto lookup with `this` receiver — string + Symbol keys). Compiler emits them for `super[expr]`, `super[expr](args)`, `super[k]=v`, and compound `super[k] op= v`; removed the throw. Also fixed the parser (`JsParser.Patterns.cs`) to accept `SuperPropertyExpression` as a simple assignment target. 12 tests in `ComputedSuperTests.cs`; full JS suite 1208 green; downstream Bindings 136 + Engine 121 green.
+  - **Pre-existing gap surfaced (out of scope, follow-up candidate):** non-computed `super.name = v` was NEVER wired — the compiler never emitted `StoreSuperProperty` (the VM handler exists). It still throws `NotSupportedException`. So we now support computed super-write (`super[k]=v`) but not named super-write; wiring the latter to the existing opcode is trivial.
+  - `super[k]++`/`super[k]--` update form not supported — same limitation as `obj.x++` (engine `EmitUpdate` only handles identifier targets).

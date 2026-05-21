@@ -87,7 +87,7 @@ structure).
 | [wp:M3-03c-js-dynamic-import](M3/wp-M3-03c-js-dynamic-import.md) | 🟢 complete | agent-claude-cody-dynimport | Starling.Js |
 | [wp:M3-03d-js-async-module-cycles](M3/wp-M3-03d-js-async-module-cycles.md) | 🟢 complete | agent-claude-cody-modcycles | Starling.Js |
 | [wp:M3-04c2-js-method-capture-cell](M3/wp-M3-04c2-js-method-capture-cell.md) | 🟢 complete | agent-claude-cody-capturecell | Starling.Js |
-| [wp:M3-04h-js-computed-super](M3/wp-M3-04h-js-computed-super.md) | 🟡 claimed | agent-claude-cody-compsuper | Starling.Js |
+| [wp:M3-04h-js-computed-super](M3/wp-M3-04h-js-computed-super.md) | 🟢 complete | agent-claude-cody-compsuper | Starling.Js |
 | [wp:M3-06-native-interop-pivot](M3/wp-M3-06-native-interop-pivot.md) | 🟢 complete | agent-claude-cody | build |
 | [wp:M3-06a-native-scaffold](M3/wp-M3-06a-native-scaffold.md) | 🟢 complete | agent-claude-cody-native | build |
 | [wp:M3-06b-native-build](M3/wp-M3-06b-native-build.md) | 🟢 complete | agent-claude-cody-native | build |
@@ -212,22 +212,26 @@ top-level await (`wp:M3-03b`) then dynamic `import()` / `import.meta`
 (`wp:M3-03c`). Full JS suite **1172 green**; downstream Bindings (136) + Engine
 (121) green.
 
-**Follow-ups (2026-05-21):** ✅ class-method capture-cell bug fixed
-(`wp:M3-04c2` — was actually mutation-through-upvalue in class-member bodies, not
-a snapshot issue). ✅ async-module cycle ordering (`wp:M3-03d` — Tarjan SCC,
-stronger-than-spec settled-read ordering for async cycles). 🟡 computed
-`super[expr]` (`wp:M3-04h`) in progress. JS suite now **1196 green**.
+**Follow-ups (2026-05-21) — ALL DONE.** ✅ class-method capture-cell bug
+(`wp:M3-04c2` — mutation-through-upvalue in class-member bodies). ✅ async-module
+cycle ordering (`wp:M3-03d` — Tarjan SCC, stronger-than-spec settled-read
+ordering for async cycles). ✅ computed `super[expr]` read/call/write/compound
+(`wp:M3-04h`). JS suite now **1208 green**; downstream Bindings 136 + Engine 121
+green.
 
-Remaining JS work: Test262 ≥ 80% (`wp:M3-02e`) and two NEW pre-existing bugs
-surfaced during `wp:M3-04c2` (both reproduce independent of recent work, not yet
-ticketed):
+Remaining JS work: Test262 ≥ 80% (`wp:M3-02e`) and three small pre-existing gaps
+surfaced along the way (reproduce independent of recent work, not yet ticketed):
 - **class name unbound inside a `static {}` block** — `C.x = …` sees `C`
-  undefined inside a static block (the class binds to global only after
-  `BuildClass` runs static blocks); workaround `this.x` works.
+  undefined inside a static block (binds to global only after `BuildClass` runs
+  static blocks); workaround `this.x` works.
 - **captured + mutated `var` in an inner block** mis-binds to a block-local slot
   (yields `NaN`) — general `var`-in-block hoisting/capture interaction in
   `PreallocateCapturedVarBindings`/`DeclarePatternBindings`, reproduces in plain
   functions too.
+- **named super-write + member update forms** — `super.name = v` is still
+  unwired (throws; the `StoreSuperProperty` VM handler exists — trivial to emit),
+  and `obj.x++`/`super[k]++` update forms only support identifier targets
+  (`EmitUpdate` limitation).
 
 ## Recently completed
 
