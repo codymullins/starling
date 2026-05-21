@@ -149,7 +149,7 @@ internal sealed class DynamicScriptRunner
             {
                 _diag.Counter("engine.script.dynamic.failed", 1);
                 _diag.Log(DiagLevel.Warn, "engine.js",
-                    $"Uncaught dynamic script error ({label}): {JsValue.ToStringValue(ex.Value)}");
+                    $"Uncaught dynamic script error ({label}): {DescribeThrow(ex.Value)}");
             }
             catch (Exception ex)
             {
@@ -165,6 +165,31 @@ internal sealed class DynamicScriptRunner
         // exceptions thrown by an otherwise-loaded script). A compile failure
         // is treated as a load failure → `error`.
         FireEvent(script, ranOk ? "load" : "error");
+    }
+
+    /// <summary>Render a thrown JS value for diagnostics. Error objects
+    /// stringify to a bare "[object Object]" via the ordinary path, which hides
+    /// the actual failure; pull out <c>name</c>/<c>message</c> when present so a
+    /// thrown <c>TypeError: x is not a function</c> shows up legibly.</summary>
+    private static string DescribeThrow(JsValue v)
+    {
+        if (v.IsObject)
+        {
+            try
+            {
+                var o = v.AsObject;
+                var name = o.Get("name");
+                var message = o.Get("message");
+                if (!name.IsUndefined || !message.IsUndefined)
+                {
+                    var n = name.IsUndefined ? "Error" : JsValue.ToStringValue(name);
+                    var m = message.IsUndefined ? "" : JsValue.ToStringValue(message);
+                    return string.IsNullOrEmpty(m) ? n : $"{n}: {m}";
+                }
+            }
+            catch { /* fall through to the generic stringification */ }
+        }
+        return JsValue.ToStringValue(v);
     }
 
     /// <summary>Dispatch a simple, non-bubbling event on the element through the
