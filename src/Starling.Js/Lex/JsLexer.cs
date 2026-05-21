@@ -751,7 +751,12 @@ public sealed class JsLexer
         if (c == '&' && p1 == '&') return Punct(JsTokenKind.AmpAmp, 2, start, precededByLT);
         if (c == '|' && p1 == '|') return Punct(JsTokenKind.PipePipe, 2, start, precededByLT);
         if (c == '?' && p1 == '?') return Punct(JsTokenKind.QuestionQuestion, 2, start, precededByLT);
-        if (c == '?' && p1 == '.') return Punct(JsTokenKind.QuestionDot, 2, start, precededByLT);
+        // §12.10 OptionalChainingPunctuator: `?.` is optional-chaining ONLY when
+        // not immediately followed by a decimal digit, so `x ? .5 : y` stays a
+        // conditional with a leading-dot number, and `a?.b` / `a?.[i]` / `a?.(x)`
+        // still chain. `?.` + digit falls through to a `?` Question token.
+        if (c == '?' && p1 == '.' && !(p2 >= '0' && p2 <= '9'))
+            return Punct(JsTokenKind.QuestionDot, 2, start, precededByLT);
         if (c == '=' && p1 == '>') return Punct(JsTokenKind.Arrow, 2, start, precededByLT);
         if (c == '+' && p1 == '=') return Punct(JsTokenKind.PlusEq, 2, start, precededByLT);
         if (c == '-' && p1 == '=') return Punct(JsTokenKind.MinusEq, 2, start, precededByLT);
