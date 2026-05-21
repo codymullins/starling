@@ -104,10 +104,15 @@ internal static class ImageFormatSniffer
         if (rest.IsEmpty || rest[0] != (byte)'<')
             return false;
 
-        // Decode a short ASCII prefix for the prologue/root-element check. SVG
-        // markup is ASCII at the top regardless of the declared encoding, so a
-        // bounded prefix is enough and never throws on multi-byte tails.
-        Span<char> prefix = stackalloc char[64];
+        // Decode an ASCII prefix for the prologue/root-element check. SVG markup
+        // is ASCII at the top regardless of the declared encoding, so a bounded
+        // prefix is enough and never throws on multi-byte tails. The window must
+        // be large enough to clear an XML declaration *and* a leading generator
+        // comment before the root element — Adobe Illustrator emits
+        // "<?xml …?>\r\n<!-- Generator: Adobe Illustrator …, SVG Export … -->"
+        // which pushes "<svg" well past 100 bytes. 1 KiB covers real-world
+        // generator preambles with margin.
+        Span<char> prefix = stackalloc char[1024];
         int n = 0;
         for (int j = 0; j < rest.Length && n < prefix.Length; j++)
         {

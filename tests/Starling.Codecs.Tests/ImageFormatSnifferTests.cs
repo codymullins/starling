@@ -108,6 +108,28 @@ public sealed class ImageFormatSnifferTests
     }
 
     [TestMethod]
+    public void DetectsSvgWithLongIllustratorGeneratorCommentAndCrlf()
+    {
+        // Regression: Adobe Illustrator emits an XML declaration followed by a
+        // long generator comment before the <svg> root, using CRLF line endings.
+        // This is exactly what mcmaster.com serves (e.g. MastheadLogo.svg) — the
+        // "<svg" token sits ~136 bytes in, past the original 64-byte sniff
+        // window, so these real-world files were misclassified as Unknown and
+        // failed to decode. Build the bytes in-code so git line-ending
+        // normalization can't mask the CRLF that triggers the boundary.
+        const string header =
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n" +
+            "<!-- Generator: Adobe Illustrator 19.1.0, SVG Export Plug-In . SVG Version: 6.00 Build 0)  -->\r\n" +
+            "<svg version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 456.5 65.7\">" +
+            "<rect width=\"10\" height=\"10\"/></svg>";
+        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(header);
+
+        ImageFormatSniffer.Detect(bytes).Should().Be(ImageFormat.Svg);
+        ImageFormatSniffer.LooksLikeSvg(bytes).Should().BeTrue();
+        NativeImageDecoder.IsSvg(bytes).Should().BeTrue();
+    }
+
+    [TestMethod]
     public void DoesNotDetectPlainXmlAsSvg()
     {
         // An XML document that is clearly not SVG must not sniff as SVG.
