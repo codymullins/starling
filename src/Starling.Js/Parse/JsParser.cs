@@ -214,7 +214,13 @@ public sealed partial class JsParser
             var block = ParseBlock();
             return new ArrowFunctionExpression(@params, block, IsExpression: false, Async: async, start, block.End);
         }
-        var expr = ParseAssignment();
+        // The concise body is AssignmentExpression[+In]; a for-header [NoIn]
+        // restriction never reaches an arrow body, so allow `in` again here.
+        var savedNoIn = _disallowInDepth;
+        _disallowInDepth = 0;
+        Expression expr;
+        try { expr = ParseAssignment(); }
+        finally { _disallowInDepth = savedNoIn; }
         return new ArrowFunctionExpression(@params, expr, IsExpression: true, Async: async, start, expr.End);
     }
 

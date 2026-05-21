@@ -95,12 +95,25 @@ public sealed partial class JsParser
     {
         var start = _current.Start;
         Expect(JsTokenKind.LBrace, "{ expected");
-        var body = new List<Statement>();
-        while (!Check(JsTokenKind.RBrace) && !Check(JsTokenKind.EndOfFile))
-            body.Add(ParseStatement());
-        var end = _current.End;
-        Expect(JsTokenKind.RBrace, "expected '}' to close block");
-        return new BlockStatement(body, start, end);
+        // A block is a statement context, so the `for` header's [NoIn]
+        // restriction does NOT propagate into it — this is what makes `in` legal
+        // inside a function/arrow body that happens to sit in a for-initializer,
+        // e.g. `for(!function(){ if("x" in a){} }(); …)`. Reset and restore.
+        var savedNoIn = _disallowInDepth;
+        _disallowInDepth = 0;
+        try
+        {
+            var body = new List<Statement>();
+            while (!Check(JsTokenKind.RBrace) && !Check(JsTokenKind.EndOfFile))
+                body.Add(ParseStatement());
+            var end = _current.End;
+            Expect(JsTokenKind.RBrace, "expected '}' to close block");
+            return new BlockStatement(body, start, end);
+        }
+        finally
+        {
+            _disallowInDepth = savedNoIn;
+        }
     }
 
     private EmptyStatement ParseEmpty()
