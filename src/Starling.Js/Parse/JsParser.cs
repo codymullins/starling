@@ -886,35 +886,36 @@ public sealed partial class JsParser
     private ObjectProperty ParseObjectProperty()
     {
         var start = _current.Start;
-        var computed = false;
-        Expression key;
-        if (Match(JsTokenKind.LBracket))
+
+        // wp:M3-26 — accessor (getter/setter) shorthand: `{ get x(){…} }`,
+        // `{ set x(v){…} }` (ECMA-262 §13.2.5). `get`/`set` are contextual:
+        // they introduce an accessor ONLY when followed by a property name
+        // (identifier / reserved word / string / number / computed `[`).
+        // Otherwise they are an ordinary key: `{ get: 1 }` (data property
+        // named "get") or `{ get(){} }` (method named "get"). Mirrors the
+        // class-body disambiguation in ParseClassMember.
+        if (_current.Kind == JsTokenKind.Identifier
+            && (_current.Lexeme == "get" || _current.Lexeme == "set"))
         {
-            computed = true;
-            key = ParseAssignment();
-            Expect(JsTokenKind.RBracket, "expected ']' after computed key");
+            var peek = _lex.Peek();
+            if (IsAccessorPropertyNameStart(peek.Kind))
+            {
+                var kind = _current.Lexeme == "get" ? MethodKind.Get : MethodKind.Set;
+                Advance(); // consume 'get' / 'set'
+                var (akey, acomputed) = ParsePropertyKey();
+                var (parameters, body, endPos) = ParseMethodTail();
+                // §15.4.1 well-formedness: getter takes 0 params, setter exactly 1.
+                if (kind == MethodKind.Get && parameters.Count != 0)
+                    throw new JsParseException("getter must have no parameters", start);
+                if (kind == MethodKind.Set && parameters.Count != 1)
+                    throw new JsParseException("setter must have exactly one parameter", start);
+                var fn = MakeFnExpression(name: null, parameters, body, start, endPos);
+                return new ObjectProperty(akey, fn,
+                    Shorthand: false, Computed: acomputed, start, endPos, kind);
+            }
         }
-        else if (_current.Kind == JsTokenKind.StringLiteral)
-        {
-            var t = Advance();
-            key = new StringLiteral((string)t.Value!, t.Start, t.End);
-        }
-        else if (_current.Kind == JsTokenKind.NumericLiteral)
-        {
-            var t = Advance();
-            key = new NumericLiteral((double)t.Value!, t.Start, t.End);
-        }
-        else if (_current.Kind == JsTokenKind.Identifier
-            || IsReservedNameAllowedAsPropertyName(_current.Kind))
-        {
-            var t = Advance();
-            key = new Identifier(t.Lexeme, t.Start, t.End);
-        }
-        else
-        {
-            throw new JsParseException(
-                $"expected property name, got {_current.Kind}", _current.Start);
-        }
+
+        var (key, computed) = ParsePropertyKey();
 
         // Method shorthand: { foo() { … }, [bar](x) { … } }
         if (Check(JsTokenKind.LParen))
@@ -952,6 +953,48 @@ public sealed partial class JsParser
         throw new JsParseException(
             $"expected ':' or '(' after object property key", _current.Start);
     }
+
+    /// <summary>wp:M3-26 — parse a single object-literal property key:
+    /// computed <c>[expr]</c>, string, numeric, identifier, or reserved word.
+    /// Returns the key node and whether it was computed. Shared by the data /
+    /// method / accessor property forms.</summary>
+    private (Expression Key, bool Computed) ParsePropertyKey()
+    {
+        if (Match(JsTokenKind.LBracket))
+        {
+            var k = ParseAssignment();
+            Expect(JsTokenKind.RBracket, "expected ']' after computed key");
+            return (k, true);
+        }
+        if (_current.Kind == JsTokenKind.StringLiteral)
+        {
+            var t = Advance();
+            return (new StringLiteral((string)t.Value!, t.Start, t.End), false);
+        }
+        if (_current.Kind == JsTokenKind.NumericLiteral)
+        {
+            var t = Advance();
+            return (new NumericLiteral((double)t.Value!, t.Start, t.End), false);
+        }
+        if (_current.Kind == JsTokenKind.Identifier
+            || IsReservedNameAllowedAsPropertyName(_current.Kind))
+        {
+            var t = Advance();
+            return (new Identifier(t.Lexeme, t.Start, t.End), false);
+        }
+        throw new JsParseException(
+            $"expected property name, got {_current.Kind}", _current.Start);
+    }
+
+    /// <summary>wp:M3-26 — true when <paramref name="kind"/> can begin a
+    /// property name following a contextual <c>get</c>/<c>set</c>, marking an
+    /// accessor rather than a data property or method named "get"/"set".</summary>
+    private bool IsAccessorPropertyNameStart(JsTokenKind kind)
+        => kind == JsTokenKind.Identifier
+        || kind == JsTokenKind.StringLiteral
+        || kind == JsTokenKind.NumericLiteral
+        || kind == JsTokenKind.LBracket
+        || IsReservedNameAllowedAsPropertyName(kind);
 
     private static FunctionExpression MakeFnExpression(
         Identifier? name, IReadOnlyList<Expression> @params, BlockStatement body,

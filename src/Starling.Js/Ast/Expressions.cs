@@ -67,7 +67,11 @@ public sealed record ObjectProperty(
     Expression Value,
     bool Shorthand,         // { foo } instead of { foo: foo }
     bool Computed,          // { [key]: v }
-    JsPosition Start, JsPosition End)
+    JsPosition Start, JsPosition End,
+    // wp:M3-26 — accessor (getter/setter) shorthand in object literals
+    // (ECMA-262 §13.2.5). MethodKind.Method = data/method property (default,
+    // back-compat); Get/Set = accessor whose Value is the accessor function.
+    MethodKind Kind = MethodKind.Method)
     : AstNode(Start, End);
 
 // -----------------------------------------------------------------------

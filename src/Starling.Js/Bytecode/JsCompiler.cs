@@ -2323,14 +2323,49 @@ public sealed partial class JsCompiler
                 _b.Emit(Opcode.SpreadInto);        // [obj]
                 continue;
             }
-            // Pattern per property: keep obj on stack, store, discard the
-            // value-clone that StoreProperty/Computed re-pushes.
-            _b.Emit(Opcode.Dup); // [obj, obj]
+            // wp:M3-26 — accessor (getter/setter) shorthand. The value is the
+            // accessor function; emit it then a Define{Getter,Setter} opcode
+            // that installs an enumerable accessor descriptor (merging a paired
+            // get/set on the same key). Reuses the runtime accessor machinery
+            // the class compiler uses via InstallMethodOrAccessor.
+            if (prop.Kind is MethodKind.Get or MethodKind.Set)
+            {
+                // The Define{Getter,Setter}* opcodes pop their inputs ABOVE the
+                // object and push the object back, so the stack stays [obj] for
+                // the next property — no Dup/Pop bracketing needed here.
+                if (prop.Computed)
+                {
+                    EmitExpression(prop.Key);   // [obj, key]
+                    EmitExpression(prop.Value); // [obj, key, fn]
+                    _b.Emit(prop.Kind == MethodKind.Get
+                        ? Opcode.DefineGetterComputed : Opcode.DefineSetterComputed); // [obj]
+                }
+                else
+                {
+                    var accIdx = prop.Key switch
+                    {
+                        Identifier id => _b.AddConstant(id.Name),
+                        StringLiteral sl => _b.AddConstant(sl.Value),
+                        NumericLiteral nl =>
+                            _b.AddConstant(JsValue.ToStringValue(JsValue.Number(nl.Value))),
+                        _ => throw new NotSupportedException(
+                            $"accessor key kind '{prop.Key.GetType().Name}'"),
+                    };
+                    EmitExpression(prop.Value); // [obj, fn]
+                    _b.EmitU16(prop.Kind == MethodKind.Get
+                        ? Opcode.DefineGetter : Opcode.DefineSetter, accIdx); // [obj]
+                }
+                continue;
+            }
+            // wp:M3-26 — data property via CreateDataPropertyOrThrow (§13.2.5.5):
+            // the DefineData* opcodes consume [obj, (key,) value] and push obj
+            // back, defining a fresh own data property that OVERRIDES any prior
+            // accessor on the key (so `{ get x(){…}, x: v }` ends as data `v`).
             if (prop.Computed)
             {
-                EmitExpression(prop.Key);       // [obj, obj, key]
-                EmitExpression(prop.Value);     // [obj, obj, key, value]
-                _b.Emit(Opcode.StoreComputed);  // [obj, value]
+                EmitExpression(prop.Key);            // [obj, key]
+                EmitExpression(prop.Value);          // [obj, key, value]
+                _b.Emit(Opcode.DefineDataComputed);  // [obj]
             }
             else
             {
@@ -2343,10 +2378,9 @@ public sealed partial class JsCompiler
                     _ => throw new NotSupportedException(
                         $"object key kind '{prop.Key.GetType().Name}'"),
                 };
-                EmitExpression(prop.Value);                 // [obj, obj, value]
-                _b.EmitU16(Opcode.StoreProperty, nameIdx);  // [obj, value]
+                EmitExpression(prop.Value);                      // [obj, value]
+                _b.EmitU16(Opcode.DefineDataProperty, nameIdx);  // [obj]
             }
-            _b.Emit(Opcode.Pop); // [obj]
         }
     }
 

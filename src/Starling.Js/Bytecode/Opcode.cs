@@ -114,6 +114,19 @@ public enum Opcode : byte
     StoreProperty,  // [u16 nameIdx]
     LoadComputed,   // obj[key] (key + obj on stack)
     StoreComputed,
+    // wp:M3-26 — object-literal accessor (getter/setter) shorthand (§13.2.5).
+    // Stack: [obj, fn] → [obj]. Defines an enumerable accessor descriptor,
+    // merging an existing accessor's complementary half (paired get/set).
+    DefineGetter,         // [u16 nameIdx] — { get name(){…} }
+    DefineSetter,         // [u16 nameIdx] — { set name(v){…} }
+    DefineGetterComputed, // stack: [obj, key, fn] → [obj] — { get [k](){…} }
+    DefineSetterComputed, // stack: [obj, key, fn] → [obj] — { set [k](v){…} }
+    // wp:M3-26 — object-literal data property via CreateDataPropertyOrThrow
+    // (§13.2.5.5): define an own enumerable/writable/configurable data prop,
+    // OVERRIDING any existing accessor (vs StoreProperty's [[Set]], which would
+    // invoke an inherited/own setter). Stack: [obj, value] → [obj].
+    DefineDataProperty,   // [u16 nameIdx]
+    DefineDataComputed,   // stack: [obj, key, value] → [obj]
 
     // ----- Calls -----
     Call,           // [u8 argc] callee + args on stack; this=Undefined

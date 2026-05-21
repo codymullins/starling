@@ -38,6 +38,9 @@ public static class Disassembler
                 case Opcode.DeclareGlobalVar:
                 case Opcode.LoadProperty:
                 case Opcode.StoreProperty:
+                case Opcode.DefineGetter:
+                case Opcode.DefineSetter:
+                case Opcode.DefineDataProperty:
                 case Opcode.RestArray:
                 case Opcode.RestObject:
                 case Opcode.LoadSuperProperty:

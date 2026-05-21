@@ -657,6 +657,57 @@ public sealed class JsVm
                     Push(value);
                     break;
                 }
+                // wp:M3-26 — object-literal accessor (getter/setter) shorthand.
+                // Reuse the class-member accessor installer so paired get/set on
+                // the same key share one descriptor. Object-literal accessors are
+                // enumerable (§13.2.5), unlike class accessors.
+                case Opcode.DefineGetter:
+                case Opcode.DefineSetter:
+                {
+                    var idx = ReadU16();
+                    var name = (string)constants[idx]!;
+                    var fnVal = Pop();
+                    var obj = Pop();
+                    InstallObjectAccessor(obj.AsObject, JsPropertyKey.String(name),
+                        isGetter: op == Opcode.DefineGetter, (JsFunction)fnVal.AsObject);
+                    Push(obj);
+                    break;
+                }
+                case Opcode.DefineGetterComputed:
+                case Opcode.DefineSetterComputed:
+                {
+                    var fnVal = Pop();
+                    var key = Pop();
+                    var obj = Pop();
+                    InstallObjectAccessor(obj.AsObject, AbstractOperations.ToPropertyKey(key),
+                        isGetter: op == Opcode.DefineGetterComputed, (JsFunction)fnVal.AsObject);
+                    Push(obj);
+                    break;
+                }
+                // wp:M3-26 — CreateDataPropertyOrThrow (§7.3.5): define an own
+                // enumerable/writable/configurable data property, replacing any
+                // existing accessor or data descriptor on the key.
+                case Opcode.DefineDataProperty:
+                {
+                    var idx = ReadU16();
+                    var name = (string)constants[idx]!;
+                    var value = Pop();
+                    var obj = Pop();
+                    obj.AsObject.DefineOwnProperty(name,
+                        PropertyDescriptor.Data(value, writable: true, enumerable: true, configurable: true));
+                    Push(obj);
+                    break;
+                }
+                case Opcode.DefineDataComputed:
+                {
+                    var value = Pop();
+                    var key = Pop();
+                    var obj = Pop();
+                    obj.AsObject.DefineOwnProperty(AbstractOperations.ToPropertyKey(key),
+                        PropertyDescriptor.Data(value, writable: true, enumerable: true, configurable: true));
+                    Push(obj);
+                    break;
+                }
 
                 // ----- Calls -----
                 // §10.2.1: plain Call binds this=Undefined (strict default);
@@ -2218,6 +2269,26 @@ public sealed class JsVm
                 break;
             }
         }
+    }
+
+    /// <summary>wp:M3-26 — install an object-literal accessor (getter/setter).
+    /// Mirrors <see cref="InstallMethodOrAccessor(JsObject, JsPropertyKey, Starling.Js.Bytecode.ClassMethodKind, JsFunction)"/>
+    /// but marks the descriptor <em>enumerable</em> per §13.2.5 (object-literal
+    /// accessors are enumerable; class accessors are not). Merges an existing
+    /// accessor's complementary half so a paired <c>get x()/set x()</c> on the
+    /// same key shares one descriptor, and stamps the §13.2.5.5 "name"
+    /// ("get x"/"set x").</summary>
+    private static void InstallObjectAccessor(JsObject owner, JsPropertyKey key, bool isGetter, JsFunction fn)
+    {
+        StampMethodName(fn, key, isGetter
+            ? Starling.Js.Bytecode.ClassMethodKind.Get
+            : Starling.Js.Bytecode.ClassMethodKind.Set);
+        var existing = owner.GetOwnPropertyDescriptor(key);
+        var prevAccessor = existing is { IsAccessor: true } d ? d : (PropertyDescriptor?)null;
+        var getter = isGetter ? fn : prevAccessor?.Getter;
+        var setter = isGetter ? prevAccessor?.Setter : fn;
+        owner.DefineOwnProperty(key,
+            PropertyDescriptor.Accessor(getter, setter, enumerable: true, configurable: true));
     }
 
     /// <summary>wp:M3-04f — stamp the §13.2.5.5 / §15.7.5 "name" own property
