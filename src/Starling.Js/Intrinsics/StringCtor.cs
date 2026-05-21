@@ -284,14 +284,19 @@ public static class StringCtor
     private static JsValue Replace(JsRealm realm, JsValue thisV, JsValue[] args, bool replaceAll)
     {
         var s = ThisStringValue(realm, thisV);
-        // RegExp path: route through the regex's @@replace protocol. B4-1.
-        if (args.Length > 0 && RegExpCtor.IsRegExp(args[0]))
+        // §22.1.3.19/§22.1.3.20: if searchValue is not undefined/null, let
+        // replacer be GetMethod(searchValue, @@replace) and, if not undefined,
+        // delegate to it. This is NOT RegExp-specific — any object exposing a
+        // callable [Symbol.replace] participates (core-js feature-detects this).
+        if (args.Length > 0 && args[0].IsObject)
         {
-            var re = (JsRegExp)args[0].AsObject;
-            if (replaceAll && (re.Flags & Starling.Js.RegExp.RegexFlags.Global) == 0)
+            // replaceAll's non-global guard is a RegExp-specific invariant
+            // (§22.1.3.20 step 2): a RegExp without the global flag throws.
+            if (replaceAll && RegExpCtor.IsRegExp(args[0])
+                && (((JsRegExp)args[0].AsObject).Flags & Starling.Js.RegExp.RegexFlags.Global) == 0)
                 throw new JsThrow(realm.NewTypeError("String.prototype.replaceAll called with a non-global RegExp"));
-            var replaceFn = re.Get(SymbolCtor.Replace);
-            if (replaceFn.IsObject)
+            var replaceFn = args[0].AsObject.Get(SymbolCtor.Replace);
+            if (AbstractOperations.IsCallable(replaceFn))
                 return AbstractOperations.Call(realm.ActiveVm, replaceFn, args[0],
                     new[] { JsValue.String(s), args.Length > 1 ? args[1] : JsValue.Undefined });
         }

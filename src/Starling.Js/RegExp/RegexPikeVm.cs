@@ -58,7 +58,14 @@ public sealed class RegexPikeVm
         var curr = new List<Thread>();
         var next = new List<Thread>();
         var seen = new HashSet<int>();
-        AddThread(curr, seen, new Thread(0, new int[slotCount]), input, start);
+        // §22.2.2.1 RegExpBuiltinExec initializes every capture to undefined; a
+        // capture group that doesn't participate in the match must read back as
+        // undefined, not the empty string. The slot array uses -1 to mean
+        // "not captured", so it must start all -1 (default int[] is all-zero,
+        // which would mis-report non-participating groups as the empty span 0,0).
+        var initialSlots = new int[slotCount];
+        for (var i = 0; i < slotCount; i++) initialSlots[i] = -1;
+        AddThread(curr, seen, new Thread(0, initialSlots), input, start);
         RegexMatch? best = null;
         int pos = start;
         while (true)

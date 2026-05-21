@@ -249,51 +249,130 @@ public static class RegExpCtor
         return JsValue.Object(arr);
     }
 
+    // §22.2.7.1 RegExpExec ( R, S ): read R.exec; if callable, call it and
+    // require an Object-or-null result; otherwise fall back to the built-in
+    // RegExp.prototype.exec. Honoring the user-visible `exec` property is what
+    // lets a subclass / monkeypatched exec drive @@replace/@@match/@@split —
+    // core-js feature-detects this delegation (DELEGATES_TO_EXEC) and installs
+    // a recursing polyfill when it is missing.
+    internal static JsValue RegExpExec(JsRealm realm, JsObject r, string s)
+    {
+        var vm = realm.ActiveVm;
+        var exec = AbstractOperations.Get(vm, r, "exec");
+        if (AbstractOperations.IsCallable(exec))
+        {
+            var result = AbstractOperations.Call(vm, exec, JsValue.Object(r),
+                new[] { JsValue.String(s) });
+            if (!result.IsObject && !result.IsNull)
+                throw new JsThrow(realm.NewTypeError(
+                    "RegExp exec method returned something other than an Object or null"));
+            return result;
+        }
+        // Fallback: must be a real RegExp to run the built-in.
+        if (r is not JsRegExp)
+            throw new JsThrow(realm.NewTypeError("RegExp#exec called on incompatible receiver"));
+        return Exec(realm, JsValue.Object(r), new[] { JsValue.String(s) });
+    }
+
     private static JsValue SymbolReplace(JsRealm realm, JsValue thisV, JsValue[] args)
     {
-        var re = RequireRegExp(realm, thisV);
+        // §22.2.6.11 RegExp.prototype[@@replace]. `this` must be an Object but
+        // need not be a genuine RegExp (it can be a user object whose `exec`
+        // and `global` we read), so we do not RequireRegExp here.
+        if (!thisV.IsObject)
+            throw new JsThrow(realm.NewTypeError("RegExp.prototype[Symbol.replace] called on non-object"));
+        var rx = thisV.AsObject;
+        var vm = realm.ActiveVm;
         var s = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "undefined";
         var replacement = args.Length > 1 ? args[1] : JsValue.Undefined;
         bool functional = AbstractOperations.IsCallable(replacement);
         string replStr = functional ? null! : JsValue.ToStringValue(replacement);
-        bool global = (re.Flags & RegexFlags.Global) != 0;
+
+        bool global = JsValue.ToBoolean(AbstractOperations.Get(vm, rx, "global"));
+        if (global) rx.Set("lastIndex", JsValue.Number(0));
+
+        // Step 14: gather every match through RegExpExec (which calls rx.exec).
+        var results = new List<JsValue>();
+        while (true)
+        {
+            var result = RegExpExec(realm, rx, s);
+            if (result.IsNull) break;
+            results.Add(result);
+            if (!global) break;
+            // Empty-match advance (§22.2.6.11 step 14.d.iii).
+            var resObj = result.AsObject;
+            var matchStr = JsValue.ToStringValue(AbstractOperations.Get(vm, resObj, "0"));
+            if (matchStr.Length == 0)
+            {
+                var li = (int)ToLengthLocal(AbstractOperations.Get(vm, rx, "lastIndex"));
+                rx.Set("lastIndex", JsValue.Number(li + 1));
+            }
+        }
 
         var sb = new StringBuilder();
-        int pos = 0;
-        while (pos <= s.Length)
+        int nextSourcePosition = 0;
+        foreach (var result in results)
         {
-            var m = re.Compiled.Exec(s, pos);
-            if (m is null) break;
-            sb.Append(s, pos, m.Start - pos);
-            string result;
+            var resObj = result.AsObject;
+            var matched = JsValue.ToStringValue(AbstractOperations.Get(vm, resObj, "0"));
+            int matchLength = matched.Length;
+            // position = clamp(ToInteger(result.index), 0, s.Length)
+            var rawIndex = (int)JsValue.ToNumber(AbstractOperations.Get(vm, resObj, "index"));
+            int position = System.Math.Max(0, System.Math.Min(rawIndex, s.Length));
+            // Captures: result[1 .. length-1].
+            int nCaptures = System.Math.Max(0,
+                (int)ToLengthLocal(AbstractOperations.Get(vm, resObj, "length")) - 1);
+            var captures = new List<JsValue>(nCaptures);
+            for (var n = 1; n <= nCaptures; n++)
+            {
+                var cap = AbstractOperations.Get(vm, resObj, n.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                captures.Add(cap.IsUndefined ? JsValue.Undefined : JsValue.String(JsValue.ToStringValue(cap)));
+            }
+            var namedCaptures = AbstractOperations.Get(vm, resObj, "groups");
+
+            string replacementText;
             if (functional)
             {
-                var fnArgs = new List<JsValue> { JsValue.String(m.Group(0) ?? string.Empty) };
-                for (var i = 1; i <= re.Compiled.CaptureCount; i++)
-                {
-                    var g = m.Group(i);
-                    fnArgs.Add(g is null ? JsValue.Undefined : JsValue.String(g));
-                }
-                fnArgs.Add(JsValue.Number(m.Start));
+                var fnArgs = new List<JsValue> { JsValue.String(matched) };
+                fnArgs.AddRange(captures);
+                fnArgs.Add(JsValue.Number(position));
                 fnArgs.Add(JsValue.String(s));
-                var r = AbstractOperations.Call(realm.ActiveVm, replacement, JsValue.Undefined, fnArgs.ToArray());
-                result = JsValue.ToStringValue(r);
+                if (!namedCaptures.IsUndefined) fnArgs.Add(namedCaptures);
+                var r = AbstractOperations.Call(vm, replacement, JsValue.Undefined, fnArgs.ToArray());
+                replacementText = JsValue.ToStringValue(r);
             }
             else
             {
-                result = GetSubstitution(replStr, m, s, re);
+                replacementText = GetSubstitution(realm, replStr, matched, s, position, captures, namedCaptures);
             }
-            sb.Append(result);
-            if (m.End > pos) pos = m.End;
-            else { if (m.End < s.Length) sb.Append(s[m.End]); pos = m.End + 1; }
-            if (!global) break;
+
+            if (position >= nextSourcePosition)
+            {
+                sb.Append(s, nextSourcePosition, position - nextSourcePosition);
+                sb.Append(replacementText);
+                nextSourcePosition = position + matchLength;
+            }
         }
-        if (pos < s.Length) sb.Append(s, pos, s.Length - pos);
+        if (nextSourcePosition < s.Length)
+            sb.Append(s, nextSourcePosition, s.Length - nextSourcePosition);
         return JsValue.String(sb.ToString());
     }
 
-    private static string GetSubstitution(string replacement, RegexMatch m, string whole, JsRegExp re)
+    private static double ToLengthLocal(JsValue v)
     {
+        var n = JsValue.ToNumber(v);
+        if (double.IsNaN(n) || n <= 0) return 0;
+        return System.Math.Min(System.Math.Floor(n), 9007199254740991d);
+    }
+
+    // §22.2.6.11.1 GetSubstitution — operates on the captures list + namedCaptures
+    // object pulled from the exec result, per spec (not on the raw RegexMatch).
+    private static string GetSubstitution(JsRealm realm, string replacement, string matched,
+        string str, int position, List<JsValue> captures, JsValue namedCaptures)
+    {
+        var vm = realm.ActiveVm;
+        int tailPos = position + matched.Length;
+        int m = captures.Count;
         var sb = new StringBuilder();
         for (var i = 0; i < replacement.Length; i++)
         {
@@ -306,42 +385,37 @@ public static class RegExpCtor
             switch (next)
             {
                 case '$': sb.Append('$'); i++; break;
-                case '&': sb.Append(m.Group(0)); i++; break;
-                case '`': sb.Append(whole, 0, m.Start); i++; break;
-                case '\'':
-                    sb.Append(whole, m.End, whole.Length - m.End); i++; break;
+                case '&': sb.Append(matched); i++; break;
+                case '`': sb.Append(str, 0, position); i++; break;
+                case '\'': sb.Append(str, tailPos, str.Length - tailPos); i++; break;
                 case '<':
                     {
+                        // Named captures only honored when groups is not undefined
+                        // (§22.2.6.11.1 step 11). Otherwise "$<" is literal.
+                        if (namedCaptures.IsUndefined) { sb.Append('$'); i++; break; }
                         var close = replacement.IndexOf('>', i + 2);
-                        if (close < 0) { sb.Append('$'); break; }
+                        if (close < 0) { sb.Append('$'); i++; break; }
                         var name = replacement.Substring(i + 2, close - (i + 2));
-                        if (re.Compiled.NamedCaptures.TryGetValue(name, out var ni))
-                        {
-                            var g = m.Group(ni);
-                            if (g is not null) sb.Append(g);
-                        }
+                        var groupsObj = AbstractOperations.ToObject(realm, namedCaptures);
+                        var cap = AbstractOperations.Get(vm, groupsObj, name);
+                        if (!cap.IsUndefined) sb.Append(JsValue.ToStringValue(cap));
                         i = close;
                         break;
                     }
                 default:
                     if (next >= '0' && next <= '9')
                     {
-                        // Try two-digit group first
                         int n = next - '0';
                         int consumed = 1;
                         if (i + 2 < replacement.Length && replacement[i + 2] >= '0' && replacement[i + 2] <= '9')
                         {
                             var n2 = n * 10 + (replacement[i + 2] - '0');
-                            if (n2 <= re.Compiled.CaptureCount)
-                            {
-                                n = n2;
-                                consumed = 2;
-                            }
+                            if (n2 >= 1 && n2 <= m) { n = n2; consumed = 2; }
                         }
-                        if (n > 0 && n <= re.Compiled.CaptureCount)
+                        if (n >= 1 && n <= m)
                         {
-                            var g = m.Group(n);
-                            if (g is not null) sb.Append(g);
+                            var cap = captures[n - 1];
+                            if (!cap.IsUndefined) sb.Append(JsValue.ToStringValue(cap));
                             i += consumed;
                         }
                         else
