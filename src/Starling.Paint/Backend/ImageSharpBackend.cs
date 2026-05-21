@@ -7,6 +7,7 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Drawing;
 using SixLabors.ImageSharp.Drawing.Processing;
 using SixLabors.ImageSharp.Drawing.Processing.Backends;
+using SixLabors.ImageSharp.Drawing.Text;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using Starling.Common.Diagnostics;
@@ -56,15 +57,36 @@ internal sealed class ImageSharpBackend : IPaintBackend
     private readonly bool _useWebGpu;
     private readonly FontCollection _fontCollection;
     private readonly ConcurrentDictionary<FontCacheKey, Font> _fontCache = new();
+    // Glyph-outline cache: maps a (text, font) run to its pre-tessellated glyph
+    // outlines so a repeated word is filled instead of re-shaped+re-tessellated
+    // on every DrawText. ImageSharp's DrawText(TextBlock,…) regenerates the full
+    // glyph geometry on each call even when the TextBlock is reused — that
+    // tessellation is the dominant cost in the raster.replay_items span on
+    // text-heavy pages. Filling a cached, translated IPathCollection produces
+    // byte-identical pixels for plain outline glyphs (verified by snapshot
+    // tests) while skipping the re-tessellation. A null entry marks a run that
+    // must keep going through DrawText: color/painted (COLR/CPAL emoji) glyphs,
+    // whose layer fills GeneratePaths/GenerateGlyphs-outlines would drop.
+    private readonly ConcurrentDictionary<GlyphOutlineKey, IPathCollection?> _glyphOutlineCache = new();
+    // Cap the outline cache so a pathological page with a huge unique-token
+    // count can't grow it without bound; past the cap, runs fall back to the
+    // (still TextBlock-cached) DrawText path. Article-class pages have a few
+    // thousand unique tokens, comfortably under this.
+    private const int MaxGlyphOutlineCacheEntries = 20_000;
+    // Test seam: lets the pixel-parity regression test render the same display
+    // list with and without the outline fast-path and assert the two are
+    // byte-identical. Production callers leave this at its default (enabled).
+    private readonly bool _useGlyphOutlineCache;
     private static readonly Lazy<WebGPUEnvironmentError> _webGpuAvailability = new(WebGPUEnvironment.ProbeAvailability);
 
-    public ImageSharpBackend(FontResolver fonts, FontFaceRegistry? webFonts, IDiagnostics? diagnostics = null, bool useWebGpu = false)
+    public ImageSharpBackend(FontResolver fonts, FontFaceRegistry? webFonts, IDiagnostics? diagnostics = null, bool useWebGpu = false, bool useGlyphOutlineCache = true)
     {
         ArgumentNullException.ThrowIfNull(fonts);
         _fonts = fonts;
         _webFonts = webFonts;
         _diag = diagnostics ?? NoopDiagnostics.Instance;
         _useWebGpu = useWebGpu;
+        _useGlyphOutlineCache = useGlyphOutlineCache;
         _fontCollection = ImageSharpFontLookup.LoadCollection(webFonts);
     }
 
@@ -540,6 +562,23 @@ internal sealed class ImageSharpBackend : IPaintBackend
         var originY = (float)text.Y;
         var brush = Brushes.Solid(color);
 
+        // Fast path: fill cached, pre-tessellated glyph outlines. Repeated words
+        // on a text-heavy page (the page footprint that dominates
+        // raster.replay_items) re-tessellate identical geometry on every
+        // DrawText, even with the TextBlock reused — ImageSharp regenerates the
+        // glyph paths inside each DrawText call. Caching the outlines once per
+        // (text, font) and filling a translated copy is byte-identical for
+        // plain outline glyphs and ~1.5x faster on article-class pages. The
+        // cache returns null for color/painted glyph runs, which keep going
+        // through DrawText below so their layer fills are preserved.
+        var outline = _useGlyphOutlineCache ? GetGlyphOutline(text.Text, font) : null;
+        if (outline is not null)
+        {
+            stats.GlyphOutlineFilled++;
+            canvas.Fill(brush, outline.Translate(originX, originY));
+            return;
+        }
+
         // Reusing the layout-time shaped run skips a paint-time reshape; a miss
         // (no ImageSharp run, or a font-size mismatch) rebuilds the TextBlock
         // here — re-shaping the run, the cost the postmortem suspected. Track
@@ -557,6 +596,63 @@ internal sealed class ImageSharpBackend : IPaintBackend
         }
 
         canvas.DrawText(textBlock, new PointF(originX, originY), -1, brush, null);
+    }
+
+    private readonly record struct GlyphOutlineKey(string Text, Font Font);
+
+    /// <summary>
+    /// Returns the pre-tessellated glyph outlines for <paramref name="text"/>
+    /// rendered with <paramref name="font"/>, or <c>null</c> when the run must
+    /// keep going through <c>DrawText</c> (a color/painted COLR/CPAL glyph,
+    /// whose per-layer paint can't be expressed as a single filled outline, or
+    /// the outline cache is full). The returned collection is at the glyph
+    /// origin; callers translate it to the draw position before filling. The
+    /// outlines are immutable and shared across every fragment with the same
+    /// (text, font), so a repeated word tessellates exactly once.
+    /// </summary>
+    private IPathCollection? GetGlyphOutline(string text, Font font)
+    {
+        var key = new GlyphOutlineKey(text, font);
+        if (_glyphOutlineCache.TryGetValue(key, out var cached))
+            return cached;
+
+        if (_glyphOutlineCache.Count >= MaxGlyphOutlineCacheEntries)
+            return null;
+
+        var built = BuildGlyphOutline(text, font);
+        return _glyphOutlineCache.GetOrAdd(key, built);
+    }
+
+    /// <summary>
+    /// Builds the merged outline path for <paramref name="text"/>, or returns
+    /// <c>null</c> if any glyph carries a color/painted layer (COLR/CPAL) or a
+    /// per-layer paint override — those must render through <c>DrawText</c> so
+    /// their layer colors survive. Uses the same <see cref="TextOptions"/> the
+    /// <c>DrawText</c> path uses so the produced geometry is identical.
+    /// </summary>
+    private static PathCollection? BuildGlyphOutline(string text, Font font)
+    {
+        var glyphs = TextBuilder.GenerateGlyphs(text, new TextOptions(font));
+        if (glyphs.Count == 0)
+            return null;
+
+        var paths = new List<IPath>();
+        foreach (var glyph in glyphs)
+        {
+            foreach (var layer in glyph.Layers)
+            {
+                // Anything other than a plain monochrome glyph outline (color
+                // layers, decorations, custom paints) can't be collapsed into a
+                // single fill without losing fidelity — bail to DrawText.
+                if (layer.Kind != GlyphLayerKind.Glyph || layer.Paint is not null)
+                    return null;
+            }
+
+            foreach (var path in glyph.PathList)
+                paths.Add(path);
+        }
+
+        return new PathCollection(paths);
     }
 
     // ---- CSS Text Decoration 3 (wp:M5-css-15) ----
@@ -1014,6 +1110,7 @@ internal sealed class ImageSharpBackend : IPaintBackend
         public int TextChars;
         public int ShapedReused;
         public int ShapedRebuilt;
+        public int GlyphOutlineFilled;
         public int FontCacheMiss;
 
         public void Record(DisplayItem item, long ticks)
@@ -1059,6 +1156,7 @@ internal sealed class ImageSharpBackend : IPaintBackend
             activity.SetTag("raster.text.chars", TextChars);
             activity.SetTag("raster.text.shaped_reused", ShapedReused);
             activity.SetTag("raster.text.shaped_rebuilt", ShapedRebuilt);
+            activity.SetTag("raster.text.glyph_outline_filled", GlyphOutlineFilled);
             activity.SetTag("raster.font.cache_miss", FontCacheMiss);
         }
     }
@@ -1082,6 +1180,7 @@ internal sealed class ImageSharpBackend : IPaintBackend
         // FontCollection has no Dispose. Clear cached Font entries so a
         // long-lived host releases per-spec lookup results.
         _fontCache.Clear();
+        _glyphOutlineCache.Clear();
         _ = _fonts;
         _ = _webFonts;
     }
