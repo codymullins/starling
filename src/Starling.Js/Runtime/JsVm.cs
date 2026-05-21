@@ -69,7 +69,11 @@ public sealed class JsVm
     /// the drain is a no-op (the host loop owns pumping).
     /// </remarks>
     public JsValue Run(Chunk chunk) =>
-        Run(chunk, args: [], thisValue: JsValue.Undefined,
+        // §16.1.7 / §9.4.1: a classic script's top-level `this` is the global
+        // object (modules — evaluated via CallFunction, not this entry — keep
+        // `this` = undefined). Real-world UMD wrappers do `}(this, factory)` and
+        // read `this._` / `this.Backbone`, so top-level `this` MUST be global.
+        Run(chunk, args: [], thisValue: JsValue.Object(_runtime.Realm.GlobalObject),
             upvalues: Array.Empty<JsValue>(), drainMicrotasks: true,
             currentFunction: null, newTarget: null);
 

@@ -8,8 +8,12 @@ namespace Starling.Js.Tests.Runtime;
 public class JsNewThisTests
 {
     [TestMethod]
-    public void This_at_script_top_level_is_undefined()
-        => Eval("this;").IsUndefined.Should().BeTrue();
+    public void This_at_classic_script_top_level_is_the_global_object()
+        // §16.1.7 GlobalDeclarationInstantiation / §9.4.1: a classic script's (and
+        // global sloppy eval's) top-level `this` is the global object. (Only ES
+        // *modules* have top-level `this` === undefined, and they evaluate via a
+        // different path.) UMD wrappers `}(this, …)` depend on this.
+        => Eval("this === globalThis;").AsBool.Should().BeTrue();
 
     [TestMethod]
     public void This_inside_plain_function_call_is_the_global_object()
