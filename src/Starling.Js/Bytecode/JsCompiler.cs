@@ -236,7 +236,7 @@ public sealed partial class JsCompiler
                     var fresh = _b.ReserveLocal();
                     _scopes[^1][fd.Name.Name] = fresh;
                     if (IsNameCaptured(fd.Name.Name)) _b.MarkCaptured(fresh);
-                    if (_b.IsCaptured(fresh)) _b.Emit(Opcode.InitCellLocal, (byte)fresh);
+                    if (_b.IsCaptured(fresh)) _b.EmitSlot(Opcode.InitCellLocal, fresh);
                     slot = fresh;
                 }
             }
@@ -275,8 +275,8 @@ public sealed partial class JsCompiler
     /// cell.</summary>
     private void EmitStoreLocalSlot(int slot)
     {
-        if (_b.IsCaptured(slot)) _b.Emit(Opcode.StoreCellLocal, (byte)slot);
-        else _b.Emit(Opcode.StoreLocal, (byte)slot);
+        if (_b.IsCaptured(slot)) _b.EmitSlot(Opcode.StoreCellLocal, slot);
+        else _b.EmitSlot(Opcode.StoreLocal, slot);
     }
 
     /// <summary>gap:closure-write-back — emit the correct load opcode for
@@ -284,8 +284,8 @@ public sealed partial class JsCompiler
     /// cell.</summary>
     private void EmitLoadLocalSlot(int slot)
     {
-        if (_b.IsCaptured(slot)) _b.Emit(Opcode.LoadCellLocal, (byte)slot);
-        else _b.Emit(Opcode.LoadLocal, (byte)slot);
+        if (_b.IsCaptured(slot)) _b.EmitSlot(Opcode.LoadCellLocal, slot);
+        else _b.EmitSlot(Opcode.LoadLocal, slot);
     }
 
     /// <summary>Materialize a function as either a plain template
@@ -329,7 +329,7 @@ public sealed partial class JsCompiler
                 // _capturedNames before any bytecode was emitted, and
                 // every declaration site honored that). Plain LoadLocal
                 // pushes the slot value — which is the cell.
-                _b.Emit(Opcode.LoadLocal, (byte)u.Index);
+                _b.EmitSlot(Opcode.LoadLocal, u.Index);
             }
             else
             {
@@ -450,7 +450,7 @@ public sealed partial class JsCompiler
                     var slot = _b.ReserveLocal();
                     _scopes[^1][id.Name] = slot;
                     _b.MarkCaptured(slot);
-                    _b.Emit(Opcode.InitCellLocal, (byte)slot);
+                    _b.EmitSlot(Opcode.InitCellLocal, slot);
                 }
                 return;
             case AssignmentExpression a when a.Op == "=": PreallocateCapturedInPattern(a.Target); return;
@@ -646,13 +646,13 @@ public sealed partial class JsCompiler
                 if (IsNameCaptured(idParam.Name))
                 {
                     _b.MarkCaptured(slot);
-                    _b.Emit(Opcode.InitCellLocal, (byte)slot);
-                    _b.Emit(Opcode.StoreCellLocal, (byte)slot);
+                    _b.EmitSlot(Opcode.InitCellLocal, slot);
+                    _b.EmitSlot(Opcode.StoreCellLocal, slot);
                 }
                 else
                 {
-                    _b.Emit(Opcode.DeclareLocal, (byte)slot);
-                    _b.Emit(Opcode.StoreLocal, (byte)slot);
+                    _b.EmitSlot(Opcode.DeclareLocal, slot);
+                    _b.EmitSlot(Opcode.StoreLocal, slot);
                 }
             }
             else if (handler.Param is null)
@@ -662,7 +662,7 @@ public sealed partial class JsCompiler
             else
             {
                 var srcSlot = _b.ReserveLocal();
-                _b.Emit(Opcode.StoreLocal, (byte)srcSlot);
+                _b.EmitSlot(Opcode.StoreLocal, srcSlot);
                 DeclarePatternBindings(handler.Param);
                 EmitPatternFromLocal(handler.Param, srcSlot, isDeclaration: true);
             }
@@ -755,7 +755,7 @@ public sealed partial class JsCompiler
         // §14.12.3 step 1: evaluate the discriminant once.
         EmitExpression(sw.Discriminant);
         var discSlot = _b.ReserveLocal();
-        _b.Emit(Opcode.StoreLocal, (byte)discSlot);
+        _b.EmitSlot(Opcode.StoreLocal, discSlot);
 
         // Open a single shared lexical scope for the entire switch body
         // (§14.12.2 CaseBlock — one LexicalEnvironment for all clauses).
@@ -789,7 +789,7 @@ public sealed partial class JsCompiler
             if (c.Test is null) { bodyPatchPositions[i] = -1; continue; } // default — patched later
 
             // Load discriminant from temp slot, push test value, strict-equal.
-            _b.Emit(Opcode.LoadLocal, (byte)discSlot);
+            _b.EmitSlot(Opcode.LoadLocal, discSlot);
             EmitExpression(c.Test);
             _b.Emit(Opcode.StrictEq);
             bodyPatchPositions[i] = _b.EmitJump(Opcode.JumpIfTrue);
@@ -873,7 +873,7 @@ public sealed partial class JsCompiler
                 {
                     var srcSlot = _b.ReserveLocal();
                     EmitExpression(d.Init);
-                    _b.Emit(Opcode.StoreLocal, (byte)srcSlot);
+                    _b.EmitSlot(Opcode.StoreLocal, srcSlot);
                     EmitPatternFromLocal(d.Id, srcSlot, isDeclaration: true);
                 }
             }
@@ -972,7 +972,7 @@ public sealed partial class JsCompiler
         if (perIterSlots is not null)
         {
             foreach (var slot in perIterSlots)
-                _b.Emit(Opcode.RefreshLetBinding, (byte)slot);
+                _b.EmitSlot(Opcode.RefreshLetBinding, slot);
         }
 
         var loop = new LoopFrame { TryDepthAtEntry = _tryDepth, Label = label };
@@ -999,7 +999,7 @@ public sealed partial class JsCompiler
         if (perIterSlots is not null)
         {
             foreach (var slot in perIterSlots)
-                _b.Emit(Opcode.RefreshLetBinding, (byte)slot);
+                _b.EmitSlot(Opcode.RefreshLetBinding, slot);
         }
         if (f.Update is not null)
         {
@@ -1041,7 +1041,7 @@ public sealed partial class JsCompiler
                 {
                     var srcSlot = _b.ReserveLocal();
                     EmitExpression(d.Init);
-                    _b.Emit(Opcode.StoreLocal, (byte)srcSlot);
+                    _b.EmitSlot(Opcode.StoreLocal, srcSlot);
                     EmitPatternFromLocal(d.Id, srcSlot, isDeclaration: true);
                 }
                 continue;
@@ -1052,13 +1052,13 @@ public sealed partial class JsCompiler
             var slot = _b.ReserveLocal();
             _scopes[^1][id.Name] = slot;
             _b.MarkCaptured(slot);
-            _b.Emit(Opcode.InitCellLocal, (byte)slot);
+            _b.EmitSlot(Opcode.InitCellLocal, slot);
             slots.Add(slot);
 
             if (d.Init is not null)
             {
                 EmitExpression(d.Init);
-                _b.Emit(Opcode.StoreCellLocal, (byte)slot);
+                _b.EmitSlot(Opcode.StoreCellLocal, slot);
             }
         }
         return slots;
@@ -1079,7 +1079,7 @@ public sealed partial class JsCompiler
             var slot = _b.ReserveLocal();
             _scopes[^1][id.Name] = slot;
             _b.MarkCaptured(slot);
-            _b.Emit(Opcode.InitCellLocal, (byte)slot);
+            _b.EmitSlot(Opcode.InitCellLocal, slot);
             slots.Add(slot);
         }
         return slots;
@@ -1115,7 +1115,7 @@ public sealed partial class JsCompiler
         EmitExpression(fo.Right);
         _b.Emit(fo.Await ? Opcode.GetAsyncIterator : Opcode.GetIterator);
         var handleSlot = _b.ReserveLocal();
-        _b.Emit(Opcode.StoreLocal, (byte)handleSlot);
+        _b.EmitSlot(Opcode.StoreLocal, handleSlot);
 
         // Pre-declare any identifiers introduced by the LHS so the body sees
         // them as locals. For VariableDeclaration we declare each binding;
@@ -1149,7 +1149,7 @@ public sealed partial class JsCompiler
         if (fo.Await)
         {
             // step = await iterator.next(); if step.done goto done.
-            _b.Emit(Opcode.LoadLocal, (byte)handleSlot);
+            _b.EmitSlot(Opcode.LoadLocal, handleSlot);
             _b.Emit(Opcode.AsyncIteratorNext);   // push the next()-promise
             _b.Emit(Opcode.Suspend);
             _b.EmitU8Raw(1);                     // await → result object on top
@@ -1160,7 +1160,7 @@ public sealed partial class JsCompiler
         }
         else
         {
-            _b.Emit(Opcode.LoadLocal, (byte)handleSlot);
+            _b.EmitSlot(Opcode.LoadLocal, handleSlot);
             _b.Emit(Opcode.IteratorStep);
             // Stack top is iterator-result-object or undefined. Compare with
             // undefined; jump to done when so.
@@ -1174,7 +1174,7 @@ public sealed partial class JsCompiler
         if (perIterSlots is not null)
         {
             foreach (var slot in perIterSlots)
-                _b.Emit(Opcode.RefreshLetBinding, (byte)slot);
+                _b.EmitSlot(Opcode.RefreshLetBinding, slot);
         }
         // Stack: [iterResult]. Extract .value.
         _b.EmitU16(Opcode.LoadProperty, _b.AddConstant("value"));
@@ -1217,7 +1217,7 @@ public sealed partial class JsCompiler
     {
         if (isAwait)
         {
-            _b.Emit(Opcode.LoadLocal, (byte)handleSlot);
+            _b.EmitSlot(Opcode.LoadLocal, handleSlot);
             _b.Emit(Opcode.AsyncIteratorClose); // push return()-result (or undefined)
             _b.Emit(Opcode.Suspend);
             _b.EmitU8Raw(1);                    // await the close
@@ -1225,7 +1225,7 @@ public sealed partial class JsCompiler
         }
         else
         {
-            _b.Emit(Opcode.LoadLocal, (byte)handleSlot);
+            _b.EmitSlot(Opcode.LoadLocal, handleSlot);
             _b.Emit(Opcode.IteratorClose);
         }
     }
@@ -1242,12 +1242,12 @@ public sealed partial class JsCompiler
         EmitExpression(fi.Right);
         _b.Emit(Opcode.EnumerateKeys);
         var keysSlot = _b.ReserveLocal();
-        _b.Emit(Opcode.StoreLocal, (byte)keysSlot);
+        _b.EmitSlot(Opcode.StoreLocal, keysSlot);
 
         // Iteration counter.
         var iSlot = _b.ReserveLocal();
         _b.Emit(Opcode.LoadZero);
-        _b.Emit(Opcode.StoreLocal, (byte)iSlot);
+        _b.EmitSlot(Opcode.StoreLocal, iSlot);
 
         // Pre-declare LHS bindings. Per §14.7.4.4 CreatePerIterationEnvironment,
         // let/const bindings get a fresh slot per iteration.
@@ -1271,8 +1271,8 @@ public sealed partial class JsCompiler
 
         var loopStart = _b.Position;
         // if (i >= keys.length) break.
-        _b.Emit(Opcode.LoadLocal, (byte)iSlot);
-        _b.Emit(Opcode.LoadLocal, (byte)keysSlot);
+        _b.EmitSlot(Opcode.LoadLocal, iSlot);
+        _b.EmitSlot(Opcode.LoadLocal, keysSlot);
         _b.EmitU16(Opcode.LoadProperty, _b.AddConstant("length"));
         _b.Emit(Opcode.GtEq);
         var jExit = _b.EmitJump(Opcode.JumpIfTrue);
@@ -1282,12 +1282,12 @@ public sealed partial class JsCompiler
         if (perIterSlots is not null)
         {
             foreach (var slot in perIterSlots)
-                _b.Emit(Opcode.RefreshLetBinding, (byte)slot);
+                _b.EmitSlot(Opcode.RefreshLetBinding, slot);
         }
 
         // key = keys[i].
-        _b.Emit(Opcode.LoadLocal, (byte)keysSlot);
-        _b.Emit(Opcode.LoadLocal, (byte)iSlot);
+        _b.EmitSlot(Opcode.LoadLocal, keysSlot);
+        _b.EmitSlot(Opcode.LoadLocal, iSlot);
         _b.Emit(Opcode.LoadComputed);
         // Bind to LHS.
         EmitForOfBinding(fi.Left);
@@ -1297,10 +1297,10 @@ public sealed partial class JsCompiler
         var incPos = _b.Position;
         foreach (var p in loop.ContinuePatches) PatchBackwardJump(p, incPos);
         // i++ (use load/add/store; the Inc-update path is not exposed here).
-        _b.Emit(Opcode.LoadLocal, (byte)iSlot);
+        _b.EmitSlot(Opcode.LoadLocal, iSlot);
         _b.EmitU16(Opcode.LoadConst, _b.AddConstant((double)1));
         _b.Emit(Opcode.Add);
-        _b.Emit(Opcode.StoreLocal, (byte)iSlot);
+        _b.EmitSlot(Opcode.StoreLocal, iSlot);
         var jBack = _b.EmitJump(Opcode.Jump);
         PatchBackwardJump(jBack, loopStart);
 
@@ -1918,9 +1918,9 @@ public sealed partial class JsCompiler
             // performs the pattern writes, and the whole expression returns the RHS.
             var rhsSlot = _b.ReserveLocal();
             EmitExpression(a.Value);
-            _b.Emit(Opcode.StoreLocal, (byte)rhsSlot);
+            _b.EmitSlot(Opcode.StoreLocal, rhsSlot);
             EmitPatternFromLocal(a.Target, rhsSlot, isDeclaration: false);
-            _b.Emit(Opcode.LoadLocal, (byte)rhsSlot);
+            _b.EmitSlot(Opcode.LoadLocal, rhsSlot);
             return;
         }
         // §13.15.2 — the three logical assignment operators short-circuit and
@@ -2565,9 +2565,9 @@ public sealed partial class JsCompiler
             // A nested arrow reads `arguments` — back it with a Cell so the
             // closure and this frame observe one shared object.
             _b.MarkCaptured(slot);
-            _b.Emit(Opcode.InitCellLocal, (byte)slot);
+            _b.EmitSlot(Opcode.InitCellLocal, slot);
         }
-        _b.Emit(Opcode.MakeArguments, (byte)slot);
+        _b.EmitSlot(Opcode.MakeArguments, slot);
     }
 
     /// <summary>wp:M3-21 — §15.2.5 InstantiateOrdinaryFunctionExpression. Bind a
@@ -2595,9 +2595,9 @@ public sealed partial class JsCompiler
             // A nested closure references the self-name — back it with a Cell so
             // the closure and this frame observe the same binding.
             _b.MarkCaptured(slot);
-            _b.Emit(Opcode.InitCellLocal, (byte)slot);
+            _b.EmitSlot(Opcode.InitCellLocal, slot);
         }
-        _b.Emit(Opcode.BindCallee, (byte)slot);
+        _b.EmitSlot(Opcode.BindCallee, slot);
     }
 
     private void BindFunctionParameters(IReadOnlyList<Expression> parameters)
@@ -2638,7 +2638,7 @@ public sealed partial class JsCompiler
                 if (IsNameCaptured(id.Name))
                 {
                     _b.MarkCaptured(argSlots[i]);
-                    _b.Emit(Opcode.PromoteParamCell, (byte)argSlots[i]);
+                    _b.EmitSlot(Opcode.PromoteParamCell, argSlots[i]);
                 }
                 continue;
             }
@@ -2689,11 +2689,11 @@ public sealed partial class JsCompiler
                     if (IsNameCaptured(id.Name))
                     {
                         _b.MarkCaptured(slot);
-                        _b.Emit(Opcode.InitCellLocal, (byte)slot);
+                        _b.EmitSlot(Opcode.InitCellLocal, slot);
                     }
                     else
                     {
-                        _b.Emit(Opcode.DeclareLocal, (byte)slot);
+                        _b.EmitSlot(Opcode.DeclareLocal, slot);
                     }
                 }
                 return;
@@ -2743,7 +2743,7 @@ public sealed partial class JsCompiler
 
     private void EmitPatternFromLocal(Expression pattern, int sourceSlot, bool isDeclaration)
     {
-        _b.Emit(Opcode.LoadLocal, (byte)sourceSlot);
+        _b.EmitSlot(Opcode.LoadLocal, sourceSlot);
         EmitPatternFromStack(pattern, isDeclaration);
     }
 
@@ -2803,13 +2803,13 @@ public sealed partial class JsCompiler
     private void EmitDefaultedPattern(Expression target, Expression fallback, bool isDeclaration)
     {
         var valueSlot = _b.ReserveLocal();
-        _b.Emit(Opcode.StoreLocal, (byte)valueSlot);
-        _b.Emit(Opcode.LoadLocal, (byte)valueSlot);
+        _b.EmitSlot(Opcode.StoreLocal, valueSlot);
+        _b.EmitSlot(Opcode.LoadLocal, valueSlot);
         _b.Emit(Opcode.LoadUndefined);
         _b.Emit(Opcode.StrictEq);
         var skipDefault = _b.EmitJump(Opcode.JumpIfFalse);
         EmitExpression(fallback);
-        _b.Emit(Opcode.StoreLocal, (byte)valueSlot);
+        _b.EmitSlot(Opcode.StoreLocal, valueSlot);
         _b.PatchJump(skipDefault);
         EmitPatternFromLocal(target, valueSlot, isDeclaration);
     }
@@ -2828,10 +2828,10 @@ public sealed partial class JsCompiler
     private void StoreMemberTarget(MemberExpression me)
     {
         var valueSlot = _b.ReserveLocal();
-        _b.Emit(Opcode.StoreLocal, (byte)valueSlot);
+        _b.EmitSlot(Opcode.StoreLocal, valueSlot);
         EmitExpression(me.Object);
         if (me.Computed) EmitExpression(me.Property);
-        _b.Emit(Opcode.LoadLocal, (byte)valueSlot);
+        _b.EmitSlot(Opcode.LoadLocal, valueSlot);
         if (me.Computed) _b.Emit(Opcode.StoreComputed);
         else _b.EmitU16(Opcode.StoreProperty, _b.AddConstant(((Identifier)me.Property).Name));
         _b.Emit(Opcode.Pop);
@@ -2840,19 +2840,19 @@ public sealed partial class JsCompiler
     private void EmitArrayPattern(ArrayExpression arr, bool isDeclaration)
     {
         var srcSlot = _b.ReserveLocal();
-        _b.Emit(Opcode.StoreLocal, (byte)srcSlot);
+        _b.EmitSlot(Opcode.StoreLocal, srcSlot);
         for (var i = 0; i < arr.Elements.Count; i++)
         {
             var element = arr.Elements[i];
             if (element is null) continue;
             if (element is SpreadElement spread)
             {
-                _b.Emit(Opcode.LoadLocal, (byte)srcSlot);
+                _b.EmitSlot(Opcode.LoadLocal, srcSlot);
                 _b.EmitU16(Opcode.RestArray, i);
                 EmitPatternFromStack(spread.Argument, isDeclaration);
                 break;
             }
-            _b.Emit(Opcode.LoadLocal, (byte)srcSlot);
+            _b.EmitSlot(Opcode.LoadLocal, srcSlot);
             _b.EmitU16(Opcode.LoadConst, _b.AddConstant((double)i));
             _b.Emit(Opcode.LoadComputed);
             EmitPatternFromStack(element, isDeclaration);
@@ -2862,7 +2862,7 @@ public sealed partial class JsCompiler
     private void EmitArrayPattern(ArrayPattern arr, bool isDeclaration)
     {
         var srcSlot = _b.ReserveLocal();
-        _b.Emit(Opcode.StoreLocal, (byte)srcSlot);
+        _b.EmitSlot(Opcode.StoreLocal, srcSlot);
         for (var i = 0; i < arr.Elements.Count; i++)
         {
             switch (arr.Elements[i])
@@ -2870,12 +2870,12 @@ public sealed partial class JsCompiler
                 case ArrayPatternHole:
                     continue;
                 case ArrayPatternRestElement rest:
-                    _b.Emit(Opcode.LoadLocal, (byte)srcSlot);
+                    _b.EmitSlot(Opcode.LoadLocal, srcSlot);
                     _b.EmitU16(Opcode.RestArray, i);
                     EmitPatternFromStack(rest.Target, isDeclaration);
                     return;
                 case ArrayPatternBindingElement binding:
-                    _b.Emit(Opcode.LoadLocal, (byte)srcSlot);
+                    _b.EmitSlot(Opcode.LoadLocal, srcSlot);
                     _b.EmitU16(Opcode.LoadConst, _b.AddConstant((double)i));
                     _b.Emit(Opcode.LoadComputed);
                     if (binding.Default is null) EmitPatternFromStack(binding.Target, isDeclaration);
@@ -2888,7 +2888,7 @@ public sealed partial class JsCompiler
     private void EmitObjectPattern(ObjectExpression obj, bool isDeclaration)
     {
         var srcSlot = _b.ReserveLocal();
-        _b.Emit(Opcode.StoreLocal, (byte)srcSlot);
+        _b.EmitSlot(Opcode.StoreLocal, srcSlot);
         var exclusions = new List<RestExclusion>();
         foreach (var prop in obj.Properties)
         {
@@ -2906,7 +2906,7 @@ public sealed partial class JsCompiler
     private void EmitObjectPattern(ObjectPattern obj, bool isDeclaration)
     {
         var srcSlot = _b.ReserveLocal();
-        _b.Emit(Opcode.StoreLocal, (byte)srcSlot);
+        _b.EmitSlot(Opcode.StoreLocal, srcSlot);
         var exclusions = new List<RestExclusion>();
         foreach (var prop in obj.Properties)
         {
@@ -2926,16 +2926,16 @@ public sealed partial class JsCompiler
         {
             var keySlot = _b.ReserveLocal();
             EmitExpression(key);
-            _b.Emit(Opcode.StoreLocal, (byte)keySlot);
-            _b.Emit(Opcode.LoadLocal, (byte)srcSlot);
-            _b.Emit(Opcode.LoadLocal, (byte)keySlot);
+            _b.EmitSlot(Opcode.StoreLocal, keySlot);
+            _b.EmitSlot(Opcode.LoadLocal, srcSlot);
+            _b.EmitSlot(Opcode.LoadLocal, keySlot);
             _b.Emit(Opcode.LoadComputed);
             exclusions.Add(new RestExclusion(RestExclusionKind.Local, null, keySlot));
         }
         else
         {
             var name = PropertyName(key);
-            _b.Emit(Opcode.LoadLocal, (byte)srcSlot);
+            _b.EmitSlot(Opcode.LoadLocal, srcSlot);
             _b.EmitU16(Opcode.LoadProperty, _b.AddConstant(name));
             exclusions.Add(new RestExclusion(RestExclusionKind.Constant, name, -1));
         }
@@ -2943,13 +2943,13 @@ public sealed partial class JsCompiler
 
     private void EmitObjectRest(int srcSlot, List<RestExclusion> exclusions, Expression target, bool isDeclaration)
     {
-        _b.Emit(Opcode.LoadLocal, (byte)srcSlot);
+        _b.EmitSlot(Opcode.LoadLocal, srcSlot);
         foreach (var ex in exclusions)
         {
             if (ex.Kind == RestExclusionKind.Constant)
                 _b.EmitU16(Opcode.LoadConst, _b.AddConstant(ex.Name!));
             else
-                _b.Emit(Opcode.LoadLocal, (byte)ex.Slot);
+                _b.EmitSlot(Opcode.LoadLocal, ex.Slot);
         }
         _b.EmitU16(Opcode.RestObject, exclusions.Count);
         EmitPatternFromStack(target, isDeclaration);

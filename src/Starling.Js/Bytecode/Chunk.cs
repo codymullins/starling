@@ -185,6 +185,24 @@ public sealed class ChunkBuilder
         _code.Add(b2);
     }
 
+    /// <summary>Emit a local-slot opcode with a 16-bit slot operand. Local
+    /// slots are addressed with a u16 (not u8) so functions with more than
+    /// 255 locals — common in large minified bundles such as Google Tag
+    /// Manager, whose top-level IIFE has thousands of hoisted closures and
+    /// captured vars — address every slot uniquely. A u8 operand silently
+    /// wrapped slot indices modulo 256, aliasing an unrelated low slot; if
+    /// one of the colliding slots was a captured <c>Cell</c> and the other a
+    /// plain local, a <c>StoreLocal</c> could overwrite the cell with a raw
+    /// value, and a later <c>StoreCellLocal</c> on the same byte operand then
+    /// failed casting the raw value to <c>Cell</c>.</summary>
+    public void EmitSlot(Opcode op, int slot)
+    {
+        if (slot is < 0 or > 0xFFFF)
+            throw new InvalidOperationException(
+                $"local slot {slot} exceeds the u16 limit (65535); function has too many locals");
+        EmitU16(op, slot);
+    }
+
     /// <summary>
     /// Emit a jump opcode with a placeholder offset; returns the position of
     /// the offset bytes for later patching via <see cref="PatchJump"/>.

@@ -30,25 +30,25 @@ public enum Opcode : byte
     LoadZero,       // → push 0 (peephole optimization)
 
     // ----- Locals -----
-    LoadLocal,      // [u8 slot] → push local at slot
-    StoreLocal,     // [u8 slot] → pop value, store to local slot
-    DeclareLocal,   // [u8 slot] → make slot live (initialized to undefined)
+    LoadLocal,      // [u16 slot] → push local at slot
+    StoreLocal,     // [u16 slot] → pop value, store to local slot
+    DeclareLocal,   // [u16 slot] → make slot live (initialized to undefined)
 
     // ----- Captured locals (gap:closure-write-back / wp:M3-04c2) -----
-    /// <summary>[u8 slot] — allocate a fresh <c>Cell { Value = Undefined }</c>
+    /// <summary>[u16 slot] — allocate a fresh <c>Cell { Value = Undefined }</c>
     /// and store it as the slot's value. Emitted in place of
     /// <see cref="DeclareLocal"/> for any local whose binding is referenced
     /// by a nested function.</summary>
     InitCellLocal,
-    /// <summary>[u8 slot] — read the cell stored in the slot, push
+    /// <summary>[u16 slot] — read the cell stored in the slot, push
     /// <c>cell.Value</c>. Replaces <see cref="LoadLocal"/> for captured
     /// reads in the function that owns the binding.</summary>
     LoadCellLocal,
-    /// <summary>[u8 slot] — pop value, read the cell stored in the slot,
+    /// <summary>[u16 slot] — pop value, read the cell stored in the slot,
     /// set <c>cell.Value = value</c>. Replaces <see cref="StoreLocal"/> for
     /// captured writes in the function that owns the binding.</summary>
     StoreCellLocal,
-    /// <summary>[u8 slot] — read the current slot value, wrap it in a fresh
+    /// <summary>[u16 slot] — read the current slot value, wrap it in a fresh
     /// <see cref="Starling.Js.Runtime.Cell"/>, and store the cell back in
     /// the slot. Emitted at function entry for captured parameters whose
     /// values land in the slot by the VM's argument-copy step.</summary>
@@ -62,7 +62,7 @@ public enum Opcode : byte
     /// regular <see cref="LoadUpvalue"/> dereferences through the cell;
     /// this opcode hands the cell off intact.</summary>
     LoadUpvalueCell,
-    /// <summary>[u8 slot] — §14.7.4.4 CreatePerIterationEnvironment. Read
+    /// <summary>[u16 slot] — §14.7.4.4 CreatePerIterationEnvironment. Read
     /// the current <see cref="Starling.Js.Runtime.Cell"/> stored in
     /// <c>slot</c>, snapshot its <c>Value</c>, allocate a fresh Cell with
     /// the same value, and write the fresh cell back into the slot. Emitted
@@ -356,7 +356,7 @@ public enum Opcode : byte
     /// materialize the current frame's <c>arguments</c> object — an
     /// array-like exotic object carrying every argument the callee received in
     /// index order plus a <c>length</c> own property — and store it into the
-    /// local slot named in the operand (u8). Emitted only at the top of a
+    /// local slot named in the operand (u16). Emitted only at the top of a
     /// non-arrow function body that references the identifier <c>arguments</c>
     /// without binding it. Arrow functions never emit this; they inherit
     /// <c>arguments</c> lexically through the upvalue mechanism.</summary>
@@ -366,7 +366,7 @@ public enum Opcode : byte
     /// named function <em>expression</em>'s own name inside its body to the
     /// function instance currently executing, so the body can refer to itself
     /// (recursion / self-reference) regardless of any outer binding. The operand
-    /// (u8) is the local slot reserved for the name. Emitted only at the top of a
+    /// (u16) is the local slot reserved for the name. Emitted only at the top of a
     /// NON-arrow function-expression body whose name is not shadowed by a param
     /// or body var/function declaration. The VM writes <c>currentFunction</c>
     /// (the callee) into the slot — through its Cell when a nested closure

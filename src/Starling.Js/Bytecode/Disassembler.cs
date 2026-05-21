@@ -57,7 +57,8 @@ public static class Disassembler
                     sb.Append("  ; ").Append(FormatConstant(c));
                     break;
                 }
-                // u8 operand opcodes
+                // u16 local-slot operand opcodes (slots are addressed with a
+                // u16 — see ChunkBuilder.EmitSlot).
                 case Opcode.LoadLocal:
                 case Opcode.StoreLocal:
                 case Opcode.DeclareLocal:
@@ -66,6 +67,15 @@ public static class Disassembler
                 case Opcode.StoreCellLocal:
                 case Opcode.PromoteParamCell:
                 case Opcode.RefreshLetBinding:
+                case Opcode.MakeArguments:
+                case Opcode.BindCallee:
+                {
+                    var slot = BinaryPrimitives.ReadUInt16LittleEndian(code.AsSpan(i, 2));
+                    i += 2;
+                    sb.Append(op).Append(' ').Append(slot);
+                    break;
+                }
+                // u8 operand opcodes
                 case Opcode.StoreUpvalue:
                 case Opcode.LoadUpvalueCell:
                 case Opcode.Call:
@@ -73,8 +83,6 @@ public static class Disassembler
                 case Opcode.New:
                 case Opcode.LoadUpvalue:
                 case Opcode.Suspend:
-                case Opcode.MakeArguments:
-                case Opcode.BindCallee:
                 {
                     var slot = code[i];
                     i++;

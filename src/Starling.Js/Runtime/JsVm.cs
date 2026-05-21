@@ -303,39 +303,42 @@ public sealed class JsVm
                 case Opcode.LoadZero: Push(JsValue.Zero); break;
 
                 // ----- Locals -----
+                // Local-slot operands are u16 (see ChunkBuilder.EmitSlot):
+                // large minified bundles routinely declare >255 locals in one
+                // function, which a u8 operand would alias modulo 256.
                 case Opcode.DeclareLocal:
                 {
-                    var slot = ReadU8();
+                    var slot = ReadU16();
                     locals[slot] = JsValue.Undefined;
                     break;
                 }
-                case Opcode.LoadLocal: Push(locals[ReadU8()]); break;
-                case Opcode.StoreLocal: locals[ReadU8()] = Pop(); break;
+                case Opcode.LoadLocal: Push(locals[ReadU16()]); break;
+                case Opcode.StoreLocal: locals[ReadU16()] = Pop(); break;
 
                 // ----- Captured locals (gap:closure-write-back) -----
                 case Opcode.InitCellLocal:
                 {
-                    var slot = ReadU8();
+                    var slot = ReadU16();
                     locals[slot] = JsValue.Object(new Cell(JsValue.Undefined));
                     break;
                 }
                 case Opcode.LoadCellLocal:
                 {
-                    var slot = ReadU8();
+                    var slot = ReadU16();
                     var cell = (Cell)locals[slot].AsObject;
                     Push(cell.Value);
                     break;
                 }
                 case Opcode.StoreCellLocal:
                 {
-                    var slot = ReadU8();
+                    var slot = ReadU16();
                     var cell = (Cell)locals[slot].AsObject;
                     cell.Value = Pop();
                     break;
                 }
                 case Opcode.PromoteParamCell:
                 {
-                    var slot = ReadU8();
+                    var slot = ReadU16();
                     locals[slot] = JsValue.Object(new Cell(locals[slot]));
                     break;
                 }
@@ -360,7 +363,7 @@ public sealed class JsVm
                 // `const` declared in a for-loop init.
                 case Opcode.RefreshLetBinding:
                 {
-                    var slot = ReadU8();
+                    var slot = ReadU16();
                     var oldCell = (Cell)locals[slot].AsObject;
                     locals[slot] = JsValue.Object(new Cell(oldCell.Value));
                     break;
@@ -1318,7 +1321,7 @@ public sealed class JsVm
                     // slot was pre-initialized to a Cell (because a nested arrow
                     // captures `arguments`), write through the cell so the
                     // closure observes the same object; otherwise store directly.
-                    var slot = ReadU8();
+                    var slot = ReadU16();
                     var argObj = JsValue.Object(_runtime.Realm.CreateArgumentsObject(args));
                     if (locals[slot].IsObject && locals[slot].AsObject is Cell cell)
                         cell.Value = argObj;
@@ -1334,7 +1337,7 @@ public sealed class JsVm
                     // slot was pre-initialized to a Cell (a nested closure
                     // captures the name) write through the cell so the closure
                     // observes the same binding; otherwise store directly.
-                    var slot = ReadU8();
+                    var slot = ReadU16();
                     var calleeVal = currentFunction is null
                         ? JsValue.Undefined
                         : JsValue.Object(currentFunction);

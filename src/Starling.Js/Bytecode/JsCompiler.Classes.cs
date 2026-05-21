@@ -388,7 +388,7 @@ public sealed partial class JsCompiler
     {
         foreach (var u in upvalues)
         {
-            if (u.IsLocalCapture) _b.Emit(Opcode.LoadLocal, (byte)u.Index);
+            if (u.IsLocalCapture) _b.EmitSlot(Opcode.LoadLocal, u.Index);
             else _b.Emit(Opcode.LoadUpvalue, (byte)u.Index);
         }
     }
