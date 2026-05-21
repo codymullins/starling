@@ -2225,6 +2225,13 @@ public sealed partial class JsCompiler
         // wp:M3-20 — arrows have no own `arguments` (they inherit lexically),
         // so only ordinary function expressions synthesize one.
         if (!isArrow) sub.MaybeBindArguments(fe.Params, fe.Body.Body);
+        // wp:M3-21 — §15.2.5. A NON-arrow named function *expression* binds its
+        // own name inside the body to the function instance (for recursion /
+        // self-reference). Run AFTER params + var/function bindings so a param
+        // or body var/function of the same name shadows it (§10.2.11). Function
+        // *declarations* bind in the enclosing scope (HoistFunctionDeclarations)
+        // and must not double-bind here.
+        if (!isArrow && fe.Name is not null) sub.MaybeBindSelfName(fe.Name.Name);
         foreach (var s in fe.Body.Body) sub.EmitStatement(s);
         sub._b.Emit(Opcode.ReturnUndefined);
         // Per ES2024 §15.2 NamedEvaluation, anonymous FunctionExpression
@@ -2365,6 +2372,36 @@ public sealed partial class JsCompiler
             _b.Emit(Opcode.InitCellLocal, (byte)slot);
         }
         _b.Emit(Opcode.MakeArguments, (byte)slot);
+    }
+
+    /// <summary>wp:M3-21 — §15.2.5 InstantiateOrdinaryFunctionExpression. Bind a
+    /// named function <em>expression</em>'s own name inside its body to the
+    /// executing function instance, so the body can refer to itself for
+    /// recursion / self-reference (e.g. <c>var f = function g(){ return g; }</c>).
+    /// Must run AFTER <see cref="BindFunctionParameters"/>, the captured-var
+    /// pre-allocation, and function-declaration hoisting so any param or body
+    /// <c>var</c>/function of the same name already owns the scope — in which
+    /// case we do nothing (the user's binding shadows the self-name, §10.2.11).
+    /// When a nested closure (incl. arrow) captures the name, the slot is boxed
+    /// into a Cell first so the closure shares the binding. The VM's
+    /// <see cref="Opcode.BindCallee"/> writes <c>currentFunction</c> into the
+    /// slot at body entry.</summary>
+    private void MaybeBindSelfName(string name)
+    {
+        // A param / var / function declaration of the same name shadows the
+        // self-name — the scope already owns it, so don't synthesize.
+        if (_scopes.Any(s => s.ContainsKey(name))) return;
+
+        var slot = _b.ReserveLocal();
+        _scopes[^1][name] = slot;
+        if (IsNameCaptured(name))
+        {
+            // A nested closure references the self-name — back it with a Cell so
+            // the closure and this frame observe the same binding.
+            _b.MarkCaptured(slot);
+            _b.Emit(Opcode.InitCellLocal, (byte)slot);
+        }
+        _b.Emit(Opcode.BindCallee, (byte)slot);
     }
 
     private void BindFunctionParameters(IReadOnlyList<Expression> parameters)

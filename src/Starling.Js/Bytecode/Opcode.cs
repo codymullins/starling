@@ -349,5 +349,17 @@ public enum Opcode : byte
     /// <c>arguments</c> lexically through the upvalue mechanism.</summary>
     MakeArguments,
 
+    /// <summary>wp:M3-21 — §15.2.5 InstantiateOrdinaryFunctionExpression: bind a
+    /// named function <em>expression</em>'s own name inside its body to the
+    /// function instance currently executing, so the body can refer to itself
+    /// (recursion / self-reference) regardless of any outer binding. The operand
+    /// (u8) is the local slot reserved for the name. Emitted only at the top of a
+    /// NON-arrow function-expression body whose name is not shadowed by a param
+    /// or body var/function declaration. The VM writes <c>currentFunction</c>
+    /// (the callee) into the slot — through its Cell when a nested closure
+    /// captures the name. Function <em>declarations</em> bind their name in the
+    /// enclosing scope and never emit this; arrows never have an own name.</summary>
+    BindCallee,
+
     Halt,           // end-of-program sentinel
 }

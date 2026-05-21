@@ -1246,6 +1246,24 @@ public sealed class JsVm
                         locals[slot] = argObj;
                     break;
                 }
+                case Opcode.BindCallee:
+                {
+                    // wp:M3-21 — §15.2.5. Bind a named function expression's own
+                    // name to the executing function instance, so the body can
+                    // refer to itself. `currentFunction` IS the callee. If the
+                    // slot was pre-initialized to a Cell (a nested closure
+                    // captures the name) write through the cell so the closure
+                    // observes the same binding; otherwise store directly.
+                    var slot = ReadU8();
+                    var calleeVal = currentFunction is null
+                        ? JsValue.Undefined
+                        : JsValue.Object(currentFunction);
+                    if (locals[slot].IsObject && locals[slot].AsObject is Cell cell)
+                        cell.Value = calleeVal;
+                    else
+                        locals[slot] = calleeVal;
+                    break;
+                }
                 case Opcode.BindThis:
                 {
                     thisV = Pop();
