@@ -63,6 +63,11 @@ public sealed partial class JsParser
             Advance(); // async
             return ParseFunctionDeclaration(asyncStart, isAsync: true);
         }
+        // §14.13 LabeledStatement — `identifier : Statement`
+        if (_current.Kind == JsTokenKind.Identifier && _lex.Peek().Kind == JsTokenKind.Colon)
+        {
+            return ParseLabeledStatement();
+        }
         return ParseExpressionStatement();
     }
 
@@ -351,6 +356,23 @@ public sealed partial class JsParser
             throw new JsParseException("'try' requires 'catch' or 'finally'", start);
         var end = (Statement?)finalizer ?? handler?.Body ?? block;
         return new TryStatement(block, handler, finalizer, start, end.End);
+    }
+
+    // -----------------------------------------------------------------------
+    // labeled statement (§14.13)
+    // -----------------------------------------------------------------------
+
+    /// <summary>§14.13 LabeledStatement — <c>identifier : Statement</c>.
+    /// The caller must have verified that the current token is an Identifier
+    /// and the next token is a Colon before calling this method.</summary>
+    private LabeledStatement ParseLabeledStatement()
+    {
+        var start = _current.Start;
+        var label = _current.Lexeme;
+        Advance(); // identifier
+        Advance(); // ':'
+        var body = ParseStatement();
+        return new LabeledStatement(label, body, start, body.End);
     }
 
     // -----------------------------------------------------------------------

@@ -88,6 +88,7 @@ structure).
 | [wp:M3-03d-js-async-module-cycles](M3/wp-M3-03d-js-async-module-cycles.md) | 🟢 complete | agent-claude-cody-modcycles | Starling.Js |
 | [wp:M3-04c2-js-method-capture-cell](M3/wp-M3-04c2-js-method-capture-cell.md) | 🟢 complete | agent-claude-cody-capturecell | Starling.Js |
 | [wp:M3-04h-js-computed-super](M3/wp-M3-04h-js-computed-super.md) | 🟢 complete | agent-claude-cody-compsuper | Starling.Js |
+| [wp:M3-03e-js-switch-statement](M3/wp-M3-03e-js-switch-statement.md) | 🟢 complete | agent-claude-cody-switch | Starling.Js |
 | [wp:M3-06-native-interop-pivot](M3/wp-M3-06-native-interop-pivot.md) | 🟢 complete | agent-claude-cody | build |
 | [wp:M3-06a-native-scaffold](M3/wp-M3-06a-native-scaffold.md) | 🟢 complete | agent-claude-cody-native | build |
 | [wp:M3-06b-native-build](M3/wp-M3-06b-native-build.md) | 🟢 complete | agent-claude-cody-native | build |

@@ -93,6 +93,13 @@ public sealed partial class JsCompiler
         public List<int> BreakPatches { get; } = [];
         public List<int> ContinuePatches { get; } = [];
         public int TryDepthAtEntry { get; init; }
+        /// <summary>True when this frame belongs to a switch statement rather
+        /// than an iteration statement. A bare <c>continue</c> must skip switch
+        /// frames and target the nearest enclosing iteration frame instead.</summary>
+        public bool IsSwitch { get; init; }
+        /// <summary>Optional label that directly wraps this statement; used by
+        /// <c>break &lt;label&gt;</c> / <c>continue &lt;label&gt;</c> resolution.</summary>
+        public string? Label { get; init; }
     }
 
     private readonly Stack<LoopFrame> _loops = new();
@@ -562,6 +569,12 @@ public sealed partial class JsCompiler
             case TryStatement ts:
                 EmitTry(ts);
                 return;
+            case SwitchStatement sw:
+                EmitSwitch(sw, outerLabel: null);
+                return;
+            case LabeledStatement ls:
+                EmitLabeledStatement(ls);
+                return;
         }
         throw new NotSupportedException(
             $"compiler: statement kind '{s.GetType().Name}' not yet supported (see wp:M3-03 notes).");
@@ -670,6 +683,160 @@ public sealed partial class JsCompiler
         if (jumpPastHandler >= 0) _b.PatchJump(jumpPastHandler);
     }
 
+    /// <summary>wp:M3-03e — emit a labeled statement. Strips the label and
+    /// passes it to the inner statement so that a labeled switch or loop can
+    /// register the label on its <see cref="LoopFrame"/>. After the inner
+    /// statement finishes, any break patches targeting this label (if the inner
+    /// statement was NOT a loop/switch that already consumed the label) are
+    /// patched to the current PC.</summary>
+    private void EmitLabeledStatement(LabeledStatement ls)
+    {
+        // If the inner statement is a loop or switch, let that emitter register
+        // the label on the frame it pushes, so `break label` / `continue label`
+        // can find it. Otherwise (e.g. `label: { block }`) we create a
+        // synthetic switch-like break-only frame.
+        switch (ls.Body)
+        {
+            case WhileStatement w:
+                EmitWhile(w, ls.Label);
+                return;
+            case DoWhileStatement dw:
+                EmitDoWhile(dw, ls.Label);
+                return;
+            case ForStatement f:
+                EmitFor(f, ls.Label);
+                return;
+            case ForOfStatement fo:
+                EmitForOf(fo, ls.Label);
+                return;
+            case ForInStatement fi:
+                EmitForIn(fi, ls.Label);
+                return;
+            case SwitchStatement sw:
+                EmitSwitch(sw, ls.Label);
+                return;
+            default:
+                // Generic labeled block: push a break-only frame so that
+                // `break label` inside the body can exit to past this statement.
+                var frame = new LoopFrame { TryDepthAtEntry = _tryDepth, IsSwitch = true, Label = ls.Label };
+                _loops.Push(frame);
+                EmitStatement(ls.Body);
+                foreach (var p in frame.BreakPatches) _b.PatchJump(p);
+                _loops.Pop();
+                return;
+        }
+    }
+
+    /// <summary>wp:M3-03e — §14.12 SwitchStatement lowering.
+    ///
+    /// <para>Algorithm (correct per spec):</para>
+    /// <list type="number">
+    ///   <item>Evaluate the discriminant once into a temp local slot.</item>
+    ///   <item>For each clause (in source order) that has a Test expression,
+    ///     load the temp, evaluate the test, emit <see cref="Opcode.StrictEq"/>,
+    ///     and jump-if-true to that clause's body label.</item>
+    ///   <item>After all tests: jump to the default clause's body if one exists,
+    ///     otherwise jump straight to the switch end.</item>
+    ///   <item>Emit all clause bodies in source order (contiguous — fall-through
+    ///     is free). Each body label is patched here. No implicit jump is emitted
+    ///     between bodies; <c>break</c> inside a body was already converted to a
+    ///     forward jump whose patch position is recorded on the <see cref="LoopFrame"/>.</item>
+    ///   <item>Patch all break-jumps to the switch end.</item>
+    /// </list>
+    ///
+    /// <para>One shared lexical scope is pushed for the whole switch body per
+    /// §14.12.2 CaseBlock — <c>let</c>/<c>const</c> in any clause are scoped
+    /// to the entire switch body.</para>
+    /// </summary>
+    private void EmitSwitch(SwitchStatement sw, string? outerLabel)
+    {
+        // §14.12.3 step 1: evaluate the discriminant once.
+        EmitExpression(sw.Discriminant);
+        var discSlot = _b.ReserveLocal();
+        _b.Emit(Opcode.StoreLocal, (byte)discSlot);
+
+        // Open a single shared lexical scope for the entire switch body
+        // (§14.12.2 CaseBlock — one LexicalEnvironment for all clauses).
+        _scopes.Add(new());
+
+        // Push the loop frame (IsSwitch=true so that bare `continue` skips it).
+        var frame = new LoopFrame { TryDepthAtEntry = _tryDepth, IsSwitch = true, Label = outerLabel };
+        _loops.Push(frame);
+
+        // Hoist any function declarations visible at the top of the switch body.
+        // (let/const are declared per-body in normal statement lowering.)
+        var allConsequent = sw.Cases.SelectMany(c => c.Consequent).ToList();
+        HoistFunctionDeclarations(allConsequent);
+
+        // Locate the default clause index (if any).
+        int defaultIdx = -1;
+        for (var i = 0; i < sw.Cases.Count; i++)
+        {
+            if (sw.Cases[i].Test is null) { defaultIdx = i; break; }
+        }
+
+        // -----------------------------------------------------------------------
+        // Pass 1: emit the comparison chain.
+        // For each non-default clause, load discriminant, evaluate Test,
+        // strict-equal, jump-if-true to a placeholder; record the patch.
+        // -----------------------------------------------------------------------
+        var bodyPatchPositions = new int[sw.Cases.Count]; // patch-or-no-op
+        for (var i = 0; i < sw.Cases.Count; i++)
+        {
+            var c = sw.Cases[i];
+            if (c.Test is null) { bodyPatchPositions[i] = -1; continue; } // default — patched later
+
+            // Load discriminant from temp slot, push test value, strict-equal.
+            _b.Emit(Opcode.LoadLocal, (byte)discSlot);
+            EmitExpression(c.Test);
+            _b.Emit(Opcode.StrictEq);
+            bodyPatchPositions[i] = _b.EmitJump(Opcode.JumpIfTrue);
+        }
+
+        // After all tests failed: jump to default body (or switch end).
+        int jDefault;
+        if (defaultIdx >= 0)
+        {
+            jDefault = _b.EmitJump(Opcode.Jump); // will be patched to default body start
+        }
+        else
+        {
+            jDefault = _b.EmitJump(Opcode.Jump); // will be patched to switch end
+        }
+
+        // -----------------------------------------------------------------------
+        // Pass 2: emit clause bodies in source order.
+        // -----------------------------------------------------------------------
+        for (var i = 0; i < sw.Cases.Count; i++)
+        {
+            var bodyStart = _b.Position;
+
+            // Patch the comparison jump for this clause (if it has a Test).
+            if (bodyPatchPositions[i] >= 0)
+                _b.PatchJump(bodyPatchPositions[i]);
+
+            // Patch the default-jump when we reach the default clause.
+            if (i == defaultIdx)
+                _b.PatchJump(jDefault);
+
+            foreach (var stmt in sw.Cases[i].Consequent)
+                EmitStatement(stmt);
+
+            _ = bodyStart; // suppress unused-variable warning
+        }
+
+        // If jDefault was never patched as a body-start (no cases follow it,
+        // or there is no default), it must point past all bodies — which is
+        // exactly where we are now. But if defaultIdx >= 0, jDefault was already
+        // patched above in the loop. If defaultIdx < 0, we need to patch it now.
+        if (defaultIdx < 0) _b.PatchJump(jDefault);
+
+        // Patch all break jumps to the current position (switch end).
+        foreach (var p in frame.BreakPatches) _b.PatchJump(p);
+        _loops.Pop();
+        _scopes.RemoveAt(_scopes.Count - 1);
+    }
+
     private void EmitVarDecl(VariableDeclaration vd)
     {
         foreach (var d in vd.Declarations)
@@ -710,9 +877,9 @@ public sealed partial class JsCompiler
     /// <summary>§14.7.3 WhileStatement — emits a label-top / test / body /
     /// jump-back pattern, routing <c>break</c> and <c>continue</c> through
     /// the loop frame so nested jumps land at the right targets.</summary>
-    private void EmitWhile(WhileStatement w)
+    private void EmitWhile(WhileStatement w, string? label = null)
     {
-        var loop = new LoopFrame { TryDepthAtEntry = _tryDepth };
+        var loop = new LoopFrame { TryDepthAtEntry = _tryDepth, Label = label };
         _loops.Push(loop);
         var loopStart = _b.Position;
         EmitExpression(w.Test);
@@ -730,9 +897,9 @@ public sealed partial class JsCompiler
 
     /// <summary>§14.7.2 DoWhileStatement — body runs once before the test.
     /// <c>continue</c> jumps to the test; <c>break</c> jumps past the loop.</summary>
-    private void EmitDoWhile(DoWhileStatement dw)
+    private void EmitDoWhile(DoWhileStatement dw, string? label = null)
     {
-        var loop = new LoopFrame { TryDepthAtEntry = _tryDepth };
+        var loop = new LoopFrame { TryDepthAtEntry = _tryDepth, Label = label };
         _loops.Push(loop);
         var loopStart = _b.Position;
         EmitStatement(dw.Body);
@@ -762,7 +929,7 @@ public sealed partial class JsCompiler
     /// iteration body capture the iteration's own cell. <c>for (var i = ...)</c>
     /// is unchanged: a single binding for the whole loop.
     /// </remarks>
-    private void EmitFor(ForStatement f)
+    private void EmitFor(ForStatement f, string? label = null)
     {
         _scopes.Add(new());
 
@@ -802,7 +969,7 @@ public sealed partial class JsCompiler
                 _b.Emit(Opcode.RefreshLetBinding, (byte)slot);
         }
 
-        var loop = new LoopFrame { TryDepthAtEntry = _tryDepth };
+        var loop = new LoopFrame { TryDepthAtEntry = _tryDepth, Label = label };
         _loops.Push(loop);
 
         var loopStart = _b.Position;
@@ -931,7 +1098,7 @@ public sealed partial class JsCompiler
     /// fires (invoking the iterator's <c>return()</c> if defined, per
     /// §7.4.10). <c>continue</c> jumps to the next IteratorStep.
     /// </summary>
-    private void EmitForOf(ForOfStatement fo)
+    private void EmitForOf(ForOfStatement fo, string? label = null)
     {
         // Open a fresh scope so loop-var bindings don't leak.
         _scopes.Add(new());
@@ -968,7 +1135,7 @@ public sealed partial class JsCompiler
             }
         }
 
-        var loop = new LoopFrame { TryDepthAtEntry = _tryDepth };
+        var loop = new LoopFrame { TryDepthAtEntry = _tryDepth, Label = label };
         _loops.Push(loop);
 
         var loopStart = _b.Position;
@@ -1060,7 +1227,7 @@ public sealed partial class JsCompiler
     /// <summary>§14.7.5 ForIn — iterate enumerable string keys of the
     /// right-hand side (own + inherited, dedup'd). The key set is snapshotted
     /// at loop entry per spec, so mutations during iteration don't appear.</summary>
-    private void EmitForIn(ForInStatement fi)
+    private void EmitForIn(ForInStatement fi, string? label = null)
     {
         _scopes.Add(new());
 
@@ -1093,7 +1260,7 @@ public sealed partial class JsCompiler
             }
         }
 
-        var loop = new LoopFrame { TryDepthAtEntry = _tryDepth };
+        var loop = new LoopFrame { TryDepthAtEntry = _tryDepth, Label = label };
         _loops.Push(loop);
 
         var loopStart = _b.Position;
@@ -1137,10 +1304,22 @@ public sealed partial class JsCompiler
         _scopes.RemoveAt(_scopes.Count - 1);
     }
 
-    /// <summary>B7-followup-b — emit a forward <see cref="Opcode.Jump"/> for
+    /// <summary>B7-followup-b / wp:M3-03e — emit a forward <see cref="Opcode.Jump"/> for
     /// <c>break</c> or <c>continue</c> and record the patch position on the
-    /// innermost open loop frame. Labeled break/continue is a follow-up
-    /// (queued under the M3-03 labeled-statement work).</summary>
+    /// appropriate open loop frame.
+    ///
+    /// <para>Rules:</para>
+    /// <list type="bullet">
+    ///   <item>Bare <c>break</c> — targets the innermost frame (loop or switch).</item>
+    ///   <item>Bare <c>continue</c> — skips switch frames; targets the innermost
+    ///     iteration (non-switch) frame. Mirrors spec §14.9.3 where <c>continue</c>
+    ///     is only valid inside an IterationStatement, not inside a SwitchStatement.</item>
+    ///   <item>Labeled <c>break label</c> — targets any frame (loop or switch) whose
+    ///     <see cref="LoopFrame.Label"/> matches.</item>
+    ///   <item>Labeled <c>continue label</c> — targets any non-switch frame whose
+    ///     label matches.</item>
+    /// </list>
+    /// </summary>
     /// <remarks>
     /// The cross-finally case (a break/continue whose target loop sits
     /// outside an enclosing try/finally) is NOT yet supported — spec wants
@@ -1150,18 +1329,53 @@ public sealed partial class JsCompiler
     /// </remarks>
     private void EmitBreakOrContinue(Starling.Js.Lex.JsPosition where, bool isBreak, string? label)
     {
-        if (label is not null)
-            throw new NotSupportedException(
-                $"labeled '{(isBreak ? "break" : "continue")} {label}' is not yet supported (compiler at {where.Line}:{where.Column}).");
         if (_loops.Count == 0)
             throw new InvalidOperationException(
-                $"SyntaxError: Illegal {(isBreak ? "break" : "continue")} statement at {where.Line}:{where.Column} (must be inside a loop).");
-        var loop = _loops.Peek();
-        if (_tryDepth > loop.TryDepthAtEntry)
+                $"SyntaxError: Illegal {(isBreak ? "break" : "continue")} statement at {where.Line}:{where.Column} (must be inside a loop or switch).");
+
+        LoopFrame? targetFrame = null;
+
+        if (label is not null)
+        {
+            // Labeled break/continue: walk the stack to find a frame whose
+            // Label matches. For continue, the matching frame must not be a
+            // switch (§14.9.3 ContinueStatement runtime semantics).
+            foreach (var f in _loops)
+            {
+                if (f.Label != label) continue;
+                if (!isBreak && f.IsSwitch)
+                    throw new InvalidOperationException(
+                        $"SyntaxError: Illegal 'continue {label}' — label '{label}' is a switch, not an iteration statement (compiler at {where.Line}:{where.Column}).");
+                targetFrame = f;
+                break;
+            }
+            if (targetFrame is null)
+                throw new InvalidOperationException(
+                    $"SyntaxError: Label '{label}' not found for '{(isBreak ? "break" : "continue")}' statement at {where.Line}:{where.Column}.");
+        }
+        else if (!isBreak)
+        {
+            // Bare continue: skip switch frames, find the nearest iteration frame.
+            foreach (var f in _loops)
+            {
+                if (!f.IsSwitch) { targetFrame = f; break; }
+            }
+            if (targetFrame is null)
+                throw new InvalidOperationException(
+                    $"SyntaxError: Illegal 'continue' — not inside an iteration statement at {where.Line}:{where.Column}.");
+        }
+        else
+        {
+            // Bare break: innermost frame (loop or switch).
+            targetFrame = _loops.Peek();
+        }
+
+        if (_tryDepth > targetFrame.TryDepthAtEntry)
             throw new NotSupportedException(
                 $"'{(isBreak ? "break" : "continue")}' across an enclosing try/finally is not yet supported (compiler at {where.Line}:{where.Column}).");
+
         var patch = _b.EmitJump(Opcode.Jump);
-        (isBreak ? loop.BreakPatches : loop.ContinuePatches).Add(patch);
+        (isBreak ? targetFrame.BreakPatches : targetFrame.ContinuePatches).Add(patch);
     }
 
     private void EmitForOfBinding(AstNode left)
