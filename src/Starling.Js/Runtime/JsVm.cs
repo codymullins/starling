@@ -250,6 +250,18 @@ public sealed class JsVm
             return v;
         }
 
+        // wp:M3-23 — append "(at line:col)" to a runtime-error message using
+        // the chunk's sparse position table. At a throw site `ip` has already
+        // advanced past the offending opcode's operands, so PositionAt finds
+        // the nearest preceding recorded entry (the opcode's start offset).
+        // No-ops gracefully (returns the bare message) when no position was
+        // recorded for that opcode.
+        string AtPos(string message)
+        {
+            var pos = chunk.PositionAt(ip);
+            return pos is { } p ? $"{message} (at {p.Line}:{p.Col})" : message;
+        }
+
         // §14.15 try-frame stack — owns the catch/finally targets that the
         // outer C# catch(JsThrow) and the Return opcode handler consult.
         var tryStack = new Stack<TryFrame>();
@@ -653,7 +665,7 @@ public sealed class JsVm
                     for (var i = argc - 1; i >= 0; i--) callArgs[i] = Pop();
                     var callee = Pop();
                     if (!IsCallableValue(callee))
-                        throw new JsThrow(JsValue.String($"not a function: {JsValue.ToStringValue(callee)} (callee hint: '{_lastLoadName}')"));
+                        throw new JsThrow(JsValue.String(AtPos($"not a function: {JsValue.ToStringValue(callee)} (callee hint: '{_lastLoadName}')")));
                     Push(AbstractOperations.Call(this, callee, JsValue.Undefined, callArgs));
                     break;
                 }
@@ -665,7 +677,7 @@ public sealed class JsVm
                     var callee = Pop();
                     var receiver = Pop();
                     if (!IsCallableValue(callee))
-                        throw new JsThrow(JsValue.String($"not a function: {JsValue.ToStringValue(callee)} (method hint: '{_lastLoadName}')"));
+                        throw new JsThrow(JsValue.String(AtPos($"not a function: {JsValue.ToStringValue(callee)} (method hint: '{_lastLoadName}')")));
                     Push(AbstractOperations.Call(this, callee, receiver, callArgs));
                     break;
                 }
@@ -760,7 +772,7 @@ public sealed class JsVm
                     for (var i = argc - 1; i >= 0; i--) newArgs[i] = Pop();
                     var ctor = Pop();
                     if (!ctor.IsObject)
-                        throw new JsThrow(JsValue.String($"not a constructor: {JsValue.ToStringValue(ctor)} (new hint: '{_lastLoadName}')"));
+                        throw new JsThrow(JsValue.String(AtPos($"not a constructor: {JsValue.ToStringValue(ctor)} (new hint: '{_lastLoadName}')")));
                     Push(AbstractOperations.Construct(this, ctor, newArgs));
                     break;
                 }

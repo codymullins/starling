@@ -2057,6 +2057,13 @@ public sealed partial class JsCompiler
         throw new NotSupportedException($"invalid assignment target '{a.Target.GetType().Name}'");
     }
 
+    /// <summary>wp:M3-23 — record the AST node's source position against the
+    /// NEXT opcode the builder will emit, so runtime throws from that opcode
+    /// can report <c>(at line:col)</c>. Cheap: only called at the small set of
+    /// throw-prone emit sites (calls / new / member loads).</summary>
+    private void RecordPos(AstNode node)
+        => _b.RecordPosition(node.Start.Line, node.Start.Column);
+
     private void EmitMemberLoad(MemberExpression m)
     {
         // Private name: obj.#name
@@ -2064,6 +2071,7 @@ public sealed partial class JsCompiler
         {
             var mangled = ResolvePrivateName(pne.Name);
             EmitExpression(m.Object);
+            RecordPos(m);
             _b.EmitU16(Opcode.PrivateGet, _b.AddConstant(mangled));
             return;
         }
@@ -2071,11 +2079,13 @@ public sealed partial class JsCompiler
         if (m.Computed)
         {
             EmitExpression(m.Property);
+            RecordPos(m);
             _b.Emit(Opcode.LoadComputed);
         }
         else
         {
             var name = ((Identifier)m.Property).Name;
+            RecordPos(m);
             _b.EmitU16(Opcode.LoadProperty, _b.AddConstant(name));
         }
     }
@@ -2109,10 +2119,12 @@ public sealed partial class JsCompiler
             if (hasSpread)
             {
                 EmitArgsAsArray(call.Arguments);
+                RecordPos(call);
                 _b.Emit(Opcode.CallApplyMethod);
                 return;
             }
             foreach (var arg in call.Arguments) EmitExpression(arg);
+            RecordPos(call);
             _b.Emit(Opcode.CallMethod, (byte)call.Arguments.Count);
             return;
         }
@@ -2129,26 +2141,31 @@ public sealed partial class JsCompiler
             if (me.Computed)
             {
                 EmitExpression(me.Property);    // [obj, obj, key]
+                RecordPos(me);
                 _b.Emit(Opcode.LoadComputed);   // [obj, fn]
             }
             else if (me.Property is PrivateNameExpression pne)
             {
                 var mangled = ResolvePrivateName(pne.Name);
+                RecordPos(me);
                 _b.EmitU16(Opcode.PrivateGet, _b.AddConstant(mangled));  // [obj, fn]
             }
             else
             {
                 var nameIdx = _b.AddConstant(((Identifier)me.Property).Name);
+                RecordPos(me);
                 _b.EmitU16(Opcode.LoadProperty, nameIdx);  // [obj, fn]
             }
             if (hasSpread)
             {
                 // Build args array first, then apply.
                 EmitArgsAsArray(call.Arguments);
+                RecordPos(call);
                 _b.Emit(Opcode.CallApplyMethod);
                 return;
             }
             foreach (var arg in call.Arguments) EmitExpression(arg);
+            RecordPos(call);
             _b.Emit(Opcode.CallMethod, (byte)call.Arguments.Count);
             return;
         }
@@ -2157,10 +2174,12 @@ public sealed partial class JsCompiler
         if (hasSpread)
         {
             EmitArgsAsArray(call.Arguments);
+            RecordPos(call);
             _b.Emit(Opcode.CallApply);
             return;
         }
         foreach (var arg in call.Arguments) EmitExpression(arg);
+        RecordPos(call);
         _b.Emit(Opcode.Call, (byte)call.Arguments.Count);
     }
 
@@ -2833,12 +2852,14 @@ public sealed partial class JsCompiler
         if (hasSpread)
         {
             EmitArgsAsArray(ne.Arguments);
+            RecordPos(ne);
             _b.Emit(Opcode.NewApply);
             return;
         }
         foreach (var arg in ne.Arguments) EmitExpression(arg);
         if (ne.Arguments.Count > 255)
             throw new NotSupportedException("more than 255 new args not supported");
+        RecordPos(ne);
         _b.Emit(Opcode.New, (byte)ne.Arguments.Count);
     }
 

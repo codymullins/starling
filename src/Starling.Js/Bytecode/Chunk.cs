@@ -29,21 +29,59 @@ public sealed class Chunk
     /// functions with no captured locals (the common case).</summary>
     public IReadOnlySet<int> CapturedSlots { get; }
 
+    /// <summary>wp:M3-23 — sparse source-position table, sorted ascending by
+    /// bytecode offset. Each entry maps the start offset of a
+    /// throw-prone opcode (Call / CallMethod / New / *Apply / member loads)
+    /// to the 1-based line/column of the originating AST node. Empty unless
+    /// the compiler recorded positions. Lookup via <see cref="PositionAt"/>.</summary>
+    public IReadOnlyList<(int Offset, int Line, int Col)> Positions { get; }
+
     public Chunk(byte[] code, IReadOnlyList<object?> constants, int localCount, string? name = null)
         : this(code, constants, localCount, name, capturedSlots: null)
     {
     }
 
     public Chunk(byte[] code, IReadOnlyList<object?> constants, int localCount, string? name, IReadOnlySet<int>? capturedSlots)
+        : this(code, constants, localCount, name, capturedSlots, positions: null)
+    {
+    }
+
+    public Chunk(byte[] code, IReadOnlyList<object?> constants, int localCount, string? name,
+        IReadOnlySet<int>? capturedSlots, IReadOnlyList<(int Offset, int Line, int Col)>? positions)
     {
         Code = code ?? throw new ArgumentNullException(nameof(code));
         Constants = constants ?? throw new ArgumentNullException(nameof(constants));
         LocalCount = localCount;
         Name = name;
         CapturedSlots = capturedSlots ?? EmptyCaptured;
+        Positions = positions ?? EmptyPositions;
     }
 
     private static readonly IReadOnlySet<int> EmptyCaptured = new HashSet<int>();
+    private static readonly IReadOnlyList<(int, int, int)> EmptyPositions = [];
+
+    /// <summary>wp:M3-23 — find the nearest recorded source position at or
+    /// before <paramref name="ip"/>. The VM's <c>ip</c> at a throw site has
+    /// already advanced past the offending opcode's operand bytes, so the
+    /// recorded entry (keyed by the opcode's start offset) is the greatest
+    /// entry with <c>Offset &lt;= ip</c>. Returns <c>null</c> when no position
+    /// was recorded (empty table or the throw precedes the first entry).</summary>
+    public (int Line, int Col)? PositionAt(int ip)
+    {
+        var positions = Positions;
+        if (positions.Count == 0) return null;
+        // Binary search for the greatest Offset <= ip.
+        int lo = 0, hi = positions.Count - 1, best = -1;
+        while (lo <= hi)
+        {
+            var mid = (lo + hi) >> 1;
+            if (positions[mid].Offset <= ip) { best = mid; lo = mid + 1; }
+            else hi = mid - 1;
+        }
+        if (best < 0) return null;
+        var e = positions[best];
+        return (e.Line, e.Col);
+    }
 
     public override string ToString() => Disassembler.Disassemble(this);
 }
@@ -78,7 +116,25 @@ public sealed class ChunkBuilder
     private readonly List<object?> _constants = [];
     private readonly Dictionary<string, int> _stringPool = new(StringComparer.Ordinal);
     private HashSet<int>? _capturedSlots;
+    private List<(int Offset, int Line, int Col)>? _positions;
     public int LocalCount { get; private set; }
+
+    /// <summary>wp:M3-23 — record that the opcode about to be emitted at the
+    /// current <see cref="Position"/> originates from the given 1-based source
+    /// line/column. Call immediately BEFORE emitting a throw-prone opcode so
+    /// the recorded offset equals the opcode's start byte. Entries are kept in
+    /// emission order, which is monotonically non-decreasing in offset, so the
+    /// table is already sorted for <see cref="Chunk.PositionAt"/>'s binary
+    /// search. Duplicate offsets are coalesced (last write wins).</summary>
+    public void RecordPosition(int line, int col)
+    {
+        _positions ??= [];
+        var offset = _code.Count;
+        if (_positions.Count > 0 && _positions[^1].Offset == offset)
+            _positions[^1] = (offset, line, col);
+        else
+            _positions.Add((offset, line, col));
+    }
 
     /// <summary>gap:closure-write-back — record that <paramref name="slot"/>
     /// is captured by a nested function and must use <see cref="Starling.Js.Runtime.Cell"/>
@@ -185,5 +241,6 @@ public sealed class ChunkBuilder
     }
 
     public Chunk Build(string? name = null)
-        => new(_code.ToArray(), _constants.ToArray(), LocalCount, name, _capturedSlots);
+        => new(_code.ToArray(), _constants.ToArray(), LocalCount, name, _capturedSlots,
+            _positions is null ? null : _positions.ToArray());
 }
