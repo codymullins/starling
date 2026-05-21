@@ -549,6 +549,38 @@ public sealed class JsLexer
             start, CurrentPos(), precededByLT, value);
     }
 
+    /// <summary>
+    /// Scans a numeric literal that begins with a decimal point, e.g. <c>.5</c>,
+    /// <c>.25e3</c>, <c>.0</c>.  ECMAScript §12.9.3 <c>DecimalLiteral</c>
+    /// production: <c>. DecimalDigits ExponentPart?</c>.
+    /// Called only when the current character is <c>.</c> and the lookahead is
+    /// an ASCII digit — the caller (ScanPunctuator) has already verified this.
+    /// </summary>
+    private JsToken ScanLeadingDotNumber(JsPosition start, bool precededByLT)
+    {
+        var begin = _i;
+        Advance(); // consume the '.'
+        // Fractional digits (guaranteed at least one by caller's lookahead check).
+        while (_i < _src.Length && IsAsciiDigit(_src[_i])) Advance();
+        // Optional exponent part: [eE] [+-]? Digits
+        if (_i < _src.Length && (_src[_i] == 'e' || _src[_i] == 'E'))
+        {
+            Advance();
+            if (_i < _src.Length && (_src[_i] == '+' || _src[_i] == '-')) Advance();
+            if (_i >= _src.Length || !IsAsciiDigit(_src[_i]))
+                _errors.Report(JsLexError.InvalidNumericLiteral, start, "exponent has no digits");
+            while (_i < _src.Length && IsAsciiDigit(_src[_i])) Advance();
+        }
+        var lex = _src[begin.._i];
+        if (!double.TryParse(lex, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var value))
+        {
+            _errors.Report(JsLexError.InvalidNumericLiteral, start, lex);
+            value = double.NaN;
+        }
+        return MakeToken(JsTokenKind.NumericLiteral, lex, start, CurrentPos(), precededByLT, value);
+    }
+
     private static bool IsDigitInRadix(char c, int radix) => radix switch
     {
         2 => c == '0' || c == '1',
@@ -681,6 +713,13 @@ public sealed class JsLexer
         var c = _src[_i];
         char p1 = _i + 1 < _src.Length ? _src[_i + 1] : '\0';
         char p2 = _i + 2 < _src.Length ? _src[_i + 2] : '\0';
+
+        // §12.9.3 DecimalLiteral — ". DecimalDigits ExponentPart?" — a numeric
+        // literal may start with a decimal point when followed by an ASCII digit.
+        // Must be checked BEFORE the '...' three-char check so that the three-dot
+        // case (p1 == '.' && p2 == '.') still falls through to Ellipsis below.
+        if (c == '.' && p1 >= '0' && p1 <= '9')
+            return ScanLeadingDotNumber(start, precededByLT);
 
         // 3-char punctuators
         if (c == '=' && p1 == '=' && p2 == '=') return Punct(JsTokenKind.EqEqEq, 3, start, precededByLT);

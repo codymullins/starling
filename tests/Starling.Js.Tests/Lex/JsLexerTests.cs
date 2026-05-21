@@ -1,5 +1,6 @@
 using AwesomeAssertions;
 using Starling.Js.Lex;
+using Starling.Spec;
 namespace Starling.Js.Tests.Lex;
 
 [TestClass]
@@ -301,6 +302,186 @@ public class JsLexerTests
         l.Peek().Lexeme.Should().Be("a"); // still
         l.Next().Lexeme.Should().Be("a");
         l.Next().Lexeme.Should().Be("b");
+    }
+
+    // ----- Leading-dot numeric literals (§12.9.3 DecimalLiteral) -----------
+    // ECMAScript allows ". DecimalDigits ExponentPart?" — e.g. .5, .25e3, .0
+    // These tests fail before the fix and are promoted to [SpecFact] after.
+
+    [Spec("ecma262", "https://tc39.es/ecma262/#prod-DecimalLiteral", "12.9.3 Numeric Literals")]
+    [SpecFact]
+    public void Leading_dot_simple_fraction()
+    {
+        var t = First(".5");
+        t.Kind.Should().Be(JsTokenKind.NumericLiteral);
+        t.Value.Should().Be(0.5);
+        t.Lexeme.Should().Be(".5");
+    }
+
+    [Spec("ecma262", "https://tc39.es/ecma262/#prod-DecimalLiteral", "12.9.3 Numeric Literals")]
+    [SpecFact]
+    public void Leading_dot_multi_digit_fraction()
+    {
+        var t = First(".25");
+        t.Kind.Should().Be(JsTokenKind.NumericLiteral);
+        t.Value.Should().Be(0.25);
+    }
+
+    [Spec("ecma262", "https://tc39.es/ecma262/#prod-DecimalLiteral", "12.9.3 Numeric Literals")]
+    [SpecFact]
+    public void Leading_dot_with_exponent()
+    {
+        var t = First(".25e3");
+        t.Kind.Should().Be(JsTokenKind.NumericLiteral);
+        t.Value.Should().Be(250.0);
+        t.Lexeme.Should().Be(".25e3");
+    }
+
+    [Spec("ecma262", "https://tc39.es/ecma262/#prod-DecimalLiteral", "12.9.3 Numeric Literals")]
+    [SpecFact]
+    public void Leading_dot_with_negative_exponent()
+    {
+        var t = First(".5e-1");
+        t.Kind.Should().Be(JsTokenKind.NumericLiteral);
+        t.Value.Should().Be(0.05);
+    }
+
+    [Spec("ecma262", "https://tc39.es/ecma262/#prod-DecimalLiteral", "12.9.3 Numeric Literals")]
+    [SpecFact]
+    public void Leading_dot_zero()
+    {
+        var t = First(".0");
+        t.Kind.Should().Be(JsTokenKind.NumericLiteral);
+        t.Value.Should().Be(0.0);
+    }
+
+    [Spec("ecma262", "https://tc39.es/ecma262/#prod-DecimalLiteral", "12.9.3 Numeric Literals")]
+    [SpecFact]
+    public void Leading_dot_in_expression_context()
+    {
+        // (.5).toFixed(1) tokenizes as ( .5 ) . identifier ( 1 ) — the .5 is a number
+        var kinds = Kinds("(.5).toFixed(1)");
+        kinds.Should().Equal(
+            JsTokenKind.LParen,
+            JsTokenKind.NumericLiteral,
+            JsTokenKind.RParen,
+            JsTokenKind.Dot,
+            JsTokenKind.Identifier,
+            JsTokenKind.LParen,
+            JsTokenKind.NumericLiteral,
+            JsTokenKind.RParen,
+            JsTokenKind.EndOfFile);
+    }
+
+    [Spec("ecma262", "https://tc39.es/ecma262/#prod-DecimalLiteral", "12.9.3 Numeric Literals")]
+    [SpecFact]
+    public void Leading_dot_in_var_initializer()
+    {
+        // var x = .5; must parse as var / ident / = / .5-numeric / ;
+        var kinds = Kinds("var x = .5;");
+        kinds.Should().Equal(
+            JsTokenKind.Var,
+            JsTokenKind.Identifier,
+            JsTokenKind.Eq,
+            JsTokenKind.NumericLiteral,
+            JsTokenKind.Semicolon,
+            JsTokenKind.EndOfFile);
+        // Confirm the value
+        var toks = Tokens("var x = .5;");
+        toks[3].Value.Should().Be(0.5);
+    }
+
+    // ----- No-regress: dot-NOT-followed-by-digit must remain a Dot punctuator
+
+    [Spec("ecma262", "https://tc39.es/ecma262/#prod-MemberExpression", "13.3 Left-Hand-Side Expressions")]
+    [SpecFact]
+    public void Member_access_dot_not_followed_by_digit_is_Dot_punctuator()
+    {
+        // a.b — dot followed by identifier → Dot
+        Kinds("a.b").Should().Equal(
+            JsTokenKind.Identifier, JsTokenKind.Dot, JsTokenKind.Identifier,
+            JsTokenKind.EndOfFile);
+    }
+
+    [Spec("ecma262", "https://tc39.es/ecma262/#prod-MemberExpression", "13.3 Left-Hand-Side Expressions")]
+    [SpecFact]
+    public void Chained_member_access()
+    {
+        Kinds("a.b.c").Should().Equal(
+            JsTokenKind.Identifier, JsTokenKind.Dot, JsTokenKind.Identifier,
+            JsTokenKind.Dot, JsTokenKind.Identifier,
+            JsTokenKind.EndOfFile);
+    }
+
+    [Spec("ecma262", "https://tc39.es/ecma262/#prod-SpreadElement", "13.2.5 Array Initializer")]
+    [SpecFact]
+    public void Ellipsis_spread_not_affected_by_leading_dot_fix()
+    {
+        // [...a] — three dots → Ellipsis, not a number
+        Kinds("[...a]").Should().Equal(
+            JsTokenKind.LBracket, JsTokenKind.Ellipsis, JsTokenKind.Identifier,
+            JsTokenKind.RBracket, JsTokenKind.EndOfFile);
+    }
+
+    [Spec("ecma262", "https://tc39.es/ecma262/#prod-DecimalLiteral", "12.9.3 Numeric Literals")]
+    [SpecFact]
+    public void Normal_float_1_dot_5_still_works()
+    {
+        var t = First("1.5");
+        t.Kind.Should().Be(JsTokenKind.NumericLiteral);
+        t.Value.Should().Be(1.5);
+    }
+
+    [Spec("ecma262", "https://tc39.es/ecma262/#prod-DecimalLiteral", "12.9.3 Numeric Literals")]
+    [SpecFact]
+    public void Normal_float_0_dot_5_still_works()
+    {
+        var t = First("0.5");
+        t.Kind.Should().Be(JsTokenKind.NumericLiteral);
+        t.Value.Should().Be(0.5);
+    }
+
+    [Spec("ecma262", "https://tc39.es/ecma262/#prod-DecimalLiteral", "12.9.3 Numeric Literals")]
+    [SpecFact]
+    public void Trailing_dot_still_works()
+    {
+        // "3." is valid ES — a decimal literal with no fractional digits
+        var t = First("3.");
+        t.Kind.Should().Be(JsTokenKind.NumericLiteral);
+        t.Value.Should().Be(3.0);
+    }
+
+    [Spec("ecma262", "https://tc39.es/ecma262/#prod-DecimalLiteral", "12.9.3 Numeric Literals")]
+    [SpecFact]
+    public void Dot_at_end_of_source_is_Dot_punctuator()
+    {
+        // "." alone (no digit follows) → Dot punctuator
+        Kinds(".").Should().Equal(JsTokenKind.Dot, JsTokenKind.EndOfFile);
+    }
+
+    [Spec("ecma262", "https://tc39.es/ecma262/#prod-DecimalLiteral", "12.9.3 Numeric Literals")]
+    [SpecFact]
+    public void Dot_followed_by_non_digit_is_Dot_punctuator()
+    {
+        // ".x" → Dot + Identifier (e.g. ".length" in method chaining would be Dot + ident)
+        Kinds(".x").Should().Equal(JsTokenKind.Dot, JsTokenKind.Identifier, JsTokenKind.EndOfFile);
+    }
+
+    [Spec("ecma262", "https://tc39.es/ecma262/#prod-MemberExpression", "13.3 Left-Hand-Side Expressions")]
+    [SpecFact]
+    public void Double_dot_member_call_1_dot_dot_toString()
+    {
+        // 1..toString() — integer 1 followed by "." fractional dot, then ".toString()"
+        var kinds = Kinds("1..toString()");
+        kinds.Should().Equal(
+            JsTokenKind.NumericLiteral,
+            JsTokenKind.Dot,
+            JsTokenKind.Identifier,
+            JsTokenKind.LParen,
+            JsTokenKind.RParen,
+            JsTokenKind.EndOfFile);
+        // The numeric token should be "1."
+        Tokens("1..toString()")[0].Value.Should().Be(1.0);
     }
 
     // ----- Helpers --------------------------------------------------------

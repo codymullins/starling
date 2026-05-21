@@ -79,6 +79,7 @@ structure).
 
 | ID | Status | Owner | Subsystem |
 |---|---|---|---|
+| [wp:M3-01a-js-lexer-leading-dot-numeric](M3/wp-M3-01a-js-lexer-leading-dot-numeric.md) | 🟢 complete | agent-claude-cody | Starling.Js |
 | [wp:M3-02c-js-parser-classes-modules](M3/wp-M3-02c-js-parser-classes-modules.md) | 🟢 complete | agent-copilot-claude-opus-4.7-modules | Starling.Js |
 | [wp:M3-02d-js-parser-destructuring](M3/wp-M3-02d-js-parser-destructuring.md) | 🟢 complete | agent-copilot-claude-opus-4.7-destruct | Starling.Js |
 | [wp:M3-03a-js-module-destructuring](M3/wp-M3-03a-js-module-destructuring.md) | 🟢 complete | agent-claude-cody-moddestruct | Starling.Js |
