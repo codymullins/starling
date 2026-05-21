@@ -278,5 +278,22 @@ public enum Opcode : byte
     /// suspension target).</summary>
     YieldDelegate,
 
+    /// <summary>wp:M3-04g — pop an iterable, resolve its async iterator via
+    /// <c>[Symbol.asyncIterator]</c> (falling back to a sync iterator wrapped
+    /// as async, §7.4.2 GetIterator(obj, async)), and push an opaque
+    /// async-iterator-record handle. Used by <c>for await (… of …)</c>.</summary>
+    GetAsyncIterator,
+
+    /// <summary>wp:M3-04g — peek the async-iterator-record handle and call its
+    /// <c>next()</c>; push the returned promise (to be <c>await</c>ed by a
+    /// following <see cref="Suspend"/> kind=1). The awaited result object's
+    /// <c>done</c>/<c>value</c> are then read by the loop.</summary>
+    AsyncIteratorNext,
+
+    /// <summary>wp:M3-04g — pop an async-iterator-record handle; if not already
+    /// done, call its <c>return()</c>. Push the returned value (a promise or
+    /// undefined) to be <c>await</c>ed for AsyncIteratorClose (§7.4.11).</summary>
+    AsyncIteratorClose,
+
     Halt,           // end-of-program sentinel
 }

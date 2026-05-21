@@ -97,6 +97,14 @@ public static class IteratorIntrinsics
 public sealed class JsIteratorRecordHandle : JsObject
 {
     public IteratorRecord Record;
+
+    /// <summary>wp:M3-04g — true when this record was produced by
+    /// <c>GetAsyncIterator</c> on an object that only has a sync
+    /// <c>[Symbol.iterator]</c> (CreateAsyncFromSyncIterator, §27.1.4.1).
+    /// The driver wraps each sync iterator-result in a resolved Promise and
+    /// awaits its <c>value</c>.</summary>
+    public bool SyncWrapped;
+
     public JsIteratorRecordHandle(IteratorRecord record) : base(null)
     {
         Record = record;

@@ -50,6 +50,15 @@ public sealed class SuspendedFrame
     /// <c>value</c>; for await it's the promise/value to settle on.</summary>
     public JsValue YieldedValue { get; set; } = JsValue.Undefined;
 
+    /// <summary>Why the worker last suspended: <c>0</c> = <c>yield</c>,
+    /// <c>1</c> = <c>await</c>. Set by the <see cref="Starling.Js.Bytecode.Opcode.Suspend"/>
+    /// handler before it hands off, so the async-generator driver can tell a
+    /// genuine yield (settle the pending request with <c>{value, done:false}</c>)
+    /// apart from an internal await (resume after the awaited promise settles,
+    /// without producing a result for the caller). Sync generators and plain
+    /// async functions ignore this field.</summary>
+    public int SuspendKind { get; set; }
+
     /// <summary>True once the worker thread has finished executing the
     /// function body (normally via <c>return</c> or fall-off).</summary>
     public bool Completed { get; private set; }

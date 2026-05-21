@@ -75,7 +75,10 @@ public sealed record ForOfStatement(
     AstNode Left,
     Expression Right,
     Statement Body,
-    JsPosition Start, JsPosition End)
+    JsPosition Start, JsPosition End,
+    // wp:M3-04g — true for `for await (… of …)`; drives the async-iterator
+    // protocol (await each iterator-result) instead of the sync one.
+    bool Await = false)
     : Statement(Start, End);
 
 public sealed record SwitchStatement(

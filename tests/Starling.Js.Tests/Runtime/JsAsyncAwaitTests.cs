@@ -92,9 +92,9 @@ public class JsAsyncAwaitTests
     [TestMethod]
     public void Async_generator_yields_promises()
     {
-        // Async generator stub — minimal: .next() returns a Promise of
-        // {value, done} but await inside the body is not supported in
-        // this slice (documented gap).
+        // wp:M3-04g — .next() returns a Promise of {value, done}. (Full
+        // yield/await interleaving + for-await is covered in
+        // AsyncGeneratorTests.)
         var (runtime, _) = Eval(@"
             async function* g() { yield 1; yield 2; }
             var it = g();

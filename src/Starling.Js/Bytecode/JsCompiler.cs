@@ -937,8 +937,10 @@ public sealed partial class JsCompiler
         _scopes.Add(new());
 
         // Step 1: evaluate the iterable + materialise an iterator-record handle.
+        // wp:M3-04g — `for await` resolves an async iterator; the per-iteration
+        // result objects are obtained by awaiting iterator.next().
         EmitExpression(fo.Right);
-        _b.Emit(Opcode.GetIterator);
+        _b.Emit(fo.Await ? Opcode.GetAsyncIterator : Opcode.GetIterator);
         var handleSlot = _b.ReserveLocal();
         _b.Emit(Opcode.StoreLocal, (byte)handleSlot);
 
@@ -970,14 +972,30 @@ public sealed partial class JsCompiler
         _loops.Push(loop);
 
         var loopStart = _b.Position;
-        _b.Emit(Opcode.LoadLocal, (byte)handleSlot);
-        _b.Emit(Opcode.IteratorStep);
-        // Stack top is iterator-result-object or undefined. Compare with
-        // undefined; jump to done when so.
-        _b.Emit(Opcode.Dup);
-        _b.Emit(Opcode.LoadUndefined);
-        _b.Emit(Opcode.StrictEq);
-        var jExit = _b.EmitJump(Opcode.JumpIfTrue);
+        int jExit;
+        if (fo.Await)
+        {
+            // step = await iterator.next(); if step.done goto done.
+            _b.Emit(Opcode.LoadLocal, (byte)handleSlot);
+            _b.Emit(Opcode.AsyncIteratorNext);   // push the next()-promise
+            _b.Emit(Opcode.Suspend);
+            _b.EmitU8Raw(1);                     // await → result object on top
+            // Stack: [iterResult]. Branch on .done (always an object here).
+            _b.Emit(Opcode.Dup);
+            _b.EmitU16(Opcode.LoadProperty, _b.AddConstant("done"));
+            jExit = _b.EmitJump(Opcode.JumpIfTrue);
+        }
+        else
+        {
+            _b.Emit(Opcode.LoadLocal, (byte)handleSlot);
+            _b.Emit(Opcode.IteratorStep);
+            // Stack top is iterator-result-object or undefined. Compare with
+            // undefined; jump to done when so.
+            _b.Emit(Opcode.Dup);
+            _b.Emit(Opcode.LoadUndefined);
+            _b.Emit(Opcode.StrictEq);
+            jExit = _b.EmitJump(Opcode.JumpIfTrue);
+        }
         // CreatePerIterationEnvironment — refresh let/const bindings before
         // the iteration's value is stored into them.
         if (perIterSlots is not null)
@@ -991,7 +1009,7 @@ public sealed partial class JsCompiler
         EmitForOfBinding(fo.Left);
         // Body.
         EmitStatement(fo.Body);
-        // continue → loopStart (re-fetch via IteratorStep).
+        // continue → loopStart (re-fetch via IteratorStep / async next).
         foreach (var p in loop.ContinuePatches) PatchBackwardJump(p, loopStart);
         var jBack = _b.EmitJump(Opcode.Jump);
         PatchBackwardJump(jBack, loopStart);
@@ -1001,22 +1019,42 @@ public sealed partial class JsCompiler
         // Cleanup is duplicated from the normal-exit path below but with no
         // initial Pop.
         foreach (var p in loop.BreakPatches) _b.PatchJump(p);
-        _b.Emit(Opcode.LoadLocal, (byte)handleSlot);
-        _b.Emit(Opcode.IteratorClose);
+        EmitForOfClose(handleSlot, fo.Await);
         var jPastNormal = _b.EmitJump(Opcode.Jump);
 
         _b.PatchJump(jExit);
-        // Stack on exit: [undefined-sentinel]. Pop it.
+        // Stack on exit: [undefined-sentinel] (sync) or [done iter-result]
+        // (async). Pop it.
         _b.Emit(Opcode.Pop);
-        // IteratorClose on normal completion is a no-op (record.Done=true)
-        // but we emit the opcode so abrupt completions stack into the
-        // cleanup path uniformly.
-        _b.Emit(Opcode.LoadLocal, (byte)handleSlot);
-        _b.Emit(Opcode.IteratorClose);
+        // IteratorClose on normal completion is a no-op (record already done)
+        // but we emit the opcode so abrupt completions stack into the cleanup
+        // path uniformly. For async, normal completion has already drained the
+        // iterator (done:true), so close is a no-op there too.
+        EmitForOfClose(handleSlot, fo.Await);
 
         _b.PatchJump(jPastNormal);
         _loops.Pop();
         _scopes.RemoveAt(_scopes.Count - 1);
+    }
+
+    /// <summary>wp:M3-04g — emit the IteratorClose for a for-of cleanup path.
+    /// Async loops await the close (AsyncIteratorClose, §7.4.11) and discard
+    /// the awaited result.</summary>
+    private void EmitForOfClose(int handleSlot, bool isAwait)
+    {
+        if (isAwait)
+        {
+            _b.Emit(Opcode.LoadLocal, (byte)handleSlot);
+            _b.Emit(Opcode.AsyncIteratorClose); // push return()-result (or undefined)
+            _b.Emit(Opcode.Suspend);
+            _b.EmitU8Raw(1);                    // await the close
+            _b.Emit(Opcode.Pop);                // discard the awaited result
+        }
+        else
+        {
+            _b.Emit(Opcode.LoadLocal, (byte)handleSlot);
+            _b.Emit(Opcode.IteratorClose);
+        }
     }
 
     /// <summary>§14.7.5 ForIn — iterate enumerable string keys of the

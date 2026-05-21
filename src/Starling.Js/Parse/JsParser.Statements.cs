@@ -167,6 +167,14 @@ public sealed partial class JsParser
     {
         var start = _current.Start;
         Advance();
+        // wp:M3-04g — `for await (… of …)`. `await` is a contextual keyword
+        // (an Identifier here); consume it and require an of-iteration form.
+        bool isAwait = false;
+        if (_current.Kind == JsTokenKind.Identifier && _current.Lexeme == "await")
+        {
+            isAwait = true;
+            Advance();
+        }
         Expect(JsTokenKind.LParen, "( expected after 'for'");
 
         // Initializer: VariableDeclaration | Expression | empty.
@@ -188,7 +196,7 @@ public sealed partial class JsParser
                     && vd.Declarations[0].Init is null)
                 {
                     if (Check(JsTokenKind.In)) return FinishForIn(start, vd);
-                    if (IsContextualOf()) return FinishForOf(start, vd);
+                    if (IsContextualOf()) return FinishForOf(start, vd, isAwait);
                 }
             }
             else
@@ -197,7 +205,7 @@ public sealed partial class JsParser
                 {
                     var cover = ParseLeftHandSide();
                     if (Check(JsTokenKind.In)) return FinishForIn(start, cover);
-                    if (IsContextualOf()) return FinishForOf(start, cover);
+                    if (IsContextualOf()) return FinishForOf(start, cover, isAwait);
                     var exprInit = cover;
                     init = new ExpressionStatement(exprInit, exprInit.Start, exprInit.End);
                 }
@@ -207,11 +215,14 @@ public sealed partial class JsParser
                     if (Check(JsTokenKind.In))
                         return FinishForIn(start, expr);
                     if (IsContextualOf())
-                        return FinishForOf(start, expr);
+                        return FinishForOf(start, expr, isAwait);
                     init = new ExpressionStatement(expr, expr.Start, expr.End);
                 }
             }
         }
+        // wp:M3-04g — `for await` is only valid in the for-of form.
+        if (isAwait)
+            throw new JsParseException("'for await' requires an 'of' iteration clause", _current.Start);
         Expect(JsTokenKind.Semicolon, "expected ';' in for-loop init");
 
         Expression? test = null;
@@ -238,14 +249,14 @@ public sealed partial class JsParser
         return new ForInStatement(left, right, body, start, body.End);
     }
 
-    private ForOfStatement FinishForOf(JsPosition start, AstNode left)
+    private ForOfStatement FinishForOf(JsPosition start, AstNode left, bool isAwait = false)
     {
         if (left is Expression expr) left = ReinterpretAssignmentTarget(expr);
         Advance(); // contextual 'of'
         var right = ParseExpressionNoEof();
         Expect(JsTokenKind.RParen, "expected ')' after for-of head");
         var body = ParseStatement();
-        return new ForOfStatement(left, right, body, start, body.End);
+        return new ForOfStatement(left, right, body, start, body.End, isAwait);
     }
 
     // -----------------------------------------------------------------------

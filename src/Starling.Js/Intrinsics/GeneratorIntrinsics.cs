@@ -38,12 +38,23 @@ public static class GeneratorIntrinsics
         proto.DefineOwnProperty(SymbolCtor.ToStringTag,
             PropertyDescriptor.Data(JsValue.String("Generator"), writable: false, enumerable: false, configurable: true));
 
-        // ----- AsyncGeneratorPrototype (minimal): next returns Promise of result.
+        // ----- AsyncGeneratorPrototype (wp:M3-04g): next/return/throw each
+        // return a Promise of {value, done}. The body interleaves yield and
+        // await; requests are serialized through a per-generator queue
+        // (§27.6.1 %AsyncGeneratorPrototype%).
         var asyncProto = realm.AsyncGeneratorPrototype;
         var asyncNext = new JsNativeFunction(realm, "next", 1,
             (thisV, args) => AsyncGeneratorNext(realm, thisV, args.Length > 0 ? args[0] : JsValue.Undefined),
             isConstructor: false);
         asyncProto.DefineOwnProperty("next", PropertyDescriptor.BuiltinMethod(JsValue.Object(asyncNext)));
+        var asyncReturn = new JsNativeFunction(realm, "return", 1,
+            (thisV, args) => AsyncGeneratorReturn(realm, thisV, args.Length > 0 ? args[0] : JsValue.Undefined),
+            isConstructor: false);
+        asyncProto.DefineOwnProperty("return", PropertyDescriptor.BuiltinMethod(JsValue.Object(asyncReturn)));
+        var asyncThrow = new JsNativeFunction(realm, "throw", 1,
+            (thisV, args) => AsyncGeneratorThrow(realm, thisV, args.Length > 0 ? args[0] : JsValue.Undefined),
+            isConstructor: false);
+        asyncProto.DefineOwnProperty("throw", PropertyDescriptor.BuiltinMethod(JsValue.Object(asyncThrow)));
         var asyncIter = new JsNativeFunction(realm, "[Symbol.asyncIterator]", 0,
             (thisV, _) => thisV, isConstructor: false);
         asyncProto.DefineOwnProperty(SymbolCtor.AsyncIterator,
@@ -123,22 +134,35 @@ public static class GeneratorIntrinsics
         return IteratorIntrinsics.MakeResult(realm, gen.Frame.YieldedValue, done: false);
     }
 
-    private static JsValue AsyncGeneratorNext(JsRealm realm, JsValue thisV, JsValue sent)
+    // ---- wp:M3-04g — async-generator next/return/throw -----------------------
+    // Each call enqueues an AsyncGeneratorRequest and returns its promise. The
+    // VM driver (JsVm.AsyncGeneratorEnqueue / DrainQueue) serializes them so
+    // the body never runs two requests at once, and rides yield+await
+    // suspensions to settle each request with a Promise of {value, done}.
+
+    private static JsValue AsyncGeneratorEnqueue(
+        JsRealm realm, JsValue thisV, AsyncGeneratorRequestKind kind, JsValue value, string method)
     {
-        // Minimal: wrap the sync next() result in Promise.resolve and put
-        // {value, done} into the promise. Doesn't support await inside the
-        // body — those would throw at the Suspend opcode because no awaiter
-        // wiring exists. Documented gap.
-        var promise = new JsPromise(realm.PromisePrototype);
-        try
+        // §27.6.3.1 step 1–3: a brand check failure must REJECT the returned
+        // promise rather than throw synchronously.
+        if (!thisV.IsObject || thisV.AsObject is not JsAsyncGenerator gen)
         {
-            var result = GeneratorNext(realm, thisV, sent);
-            PromiseCtor.Resolve(realm, promise, result);
+            var p = new JsPromise(realm.PromisePrototype);
+            PromiseCtor.Reject(realm, p, realm.NewTypeError(
+                $"AsyncGenerator.prototype.{method} called on non-AsyncGenerator"));
+            return JsValue.Object(p);
         }
-        catch (JsThrow ex)
-        {
-            PromiseCtor.Reject(realm, promise, ex.Value);
-        }
-        return JsValue.Object(promise);
+        var vm = realm.ActiveVm
+            ?? throw new JsThrow(realm.NewTypeError("no active VM to drive async generator"));
+        return vm.AsyncGeneratorEnqueue(gen, kind, value);
     }
+
+    private static JsValue AsyncGeneratorNext(JsRealm realm, JsValue thisV, JsValue sent)
+        => AsyncGeneratorEnqueue(realm, thisV, AsyncGeneratorRequestKind.Next, sent, "next");
+
+    private static JsValue AsyncGeneratorReturn(JsRealm realm, JsValue thisV, JsValue value)
+        => AsyncGeneratorEnqueue(realm, thisV, AsyncGeneratorRequestKind.Return, value, "return");
+
+    private static JsValue AsyncGeneratorThrow(JsRealm realm, JsValue thisV, JsValue err)
+        => AsyncGeneratorEnqueue(realm, thisV, AsyncGeneratorRequestKind.Throw, err, "throw");
 }

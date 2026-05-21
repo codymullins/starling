@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using Starling.Js.Bytecode;
+using Starling.Js.Intrinsics;
 using Starling.Js.RegExp;
 
 namespace Starling.Js.Runtime;
@@ -914,6 +915,74 @@ public sealed class JsVm
                     break;
                 }
 
+                case Opcode.GetAsyncIterator:
+                {
+                    // §7.4.2 GetIterator(obj, async). Resolve
+                    // obj[@@asyncIterator]; if absent, fall back to the sync
+                    // iterator wrapped as async (CreateAsyncFromSyncIterator).
+                    var iterable = Pop();
+                    Push(JsValue.Object(GetAsyncIteratorHandle(iterable)));
+                    break;
+                }
+
+                case Opcode.AsyncIteratorNext:
+                {
+                    // Peek the record handle (loop keeps it across iterations).
+                    var top = Peek();
+                    if (!top.IsObject || top.AsObject is not Starling.Js.Intrinsics.JsIteratorRecordHandle handle)
+                        throw new InvalidOperationException("AsyncIteratorNext expects an async-iterator-record handle");
+                    var resultV = AbstractOperations.Call(this, handle.Record.NextMethod,
+                        handle.Record.Iterator, Array.Empty<JsValue>());
+                    if (handle.SyncWrapped)
+                    {
+                        // §27.1.4.2.1 CreateAsyncFromSyncIterator: await the
+                        // sync result's `value` (it may itself be a thenable),
+                        // then rebuild {value: awaited, done} so the loop's
+                        // following await observes a fully-settled element.
+                        Push(JsValue.Object(WrapSyncIteratorResult(resultV)));
+                    }
+                    else
+                    {
+                        // Async iterator: next() already returns a promise.
+                        Push(resultV);
+                    }
+                    break;
+                }
+
+                case Opcode.AsyncIteratorClose:
+                {
+                    var handleV = Pop();
+                    if (handleV.IsObject && handleV.AsObject is Starling.Js.Intrinsics.JsIteratorRecordHandle h
+                        && !h.Record.Done)
+                    {
+                        var ret = AbstractOperations.GetMethod(this, h.Record.Iterator, "return");
+                        if (!ret.IsUndefined && !ret.IsNull)
+                        {
+                            var rv = AbstractOperations.Call(this, ret, h.Record.Iterator,
+                                Array.Empty<JsValue>());
+                            // AsyncIteratorClose awaits the return result; the
+                            // following Suspend(kind=1) does the await. For a
+                            // sync-wrapped iterator the return value isn't a
+                            // promise — resolve it so the await is uniform.
+                            if (h.SyncWrapped)
+                            {
+                                var p = new JsPromise(_runtime.Realm.PromisePrototype);
+                                PromiseCtor.Resolve(_runtime.Realm, p, rv);
+                                Push(JsValue.Object(p));
+                            }
+                            else
+                            {
+                                Push(rv);
+                            }
+                            break;
+                        }
+                    }
+                    // No return method (or already done) — push undefined so
+                    // the unconditional await downstream is a no-op.
+                    Push(JsValue.Undefined);
+                    break;
+                }
+
                 case Opcode.EnumerateKeys:
                 {
                     // §14.7.5.10 ForIn/OfHeadEvaluation step 6: for-in
@@ -1220,6 +1289,13 @@ public sealed class JsVm
                         // up the .then, then calls Resume.
                         toYield = yielded;
                     }
+                    // Record whether this suspension is a yield (0) or an
+                    // await (1). The async-generator driver inspects this to
+                    // distinguish a real `yield` (which settles the pending
+                    // request with {value, done:false}) from an internal
+                    // `await` (which just resumes the worker once the awaited
+                    // promise settles). Sync generators / plain async ignore it.
+                    suspension.SuspendKind = kind;
                     // Hand off to the caller (main thread). Block until
                     // resume. Returned value is the value to push back.
                     var resumed = suspension.WorkerYield(toYield);
@@ -2090,24 +2166,259 @@ public sealed class JsVm
             Starling.Js.Intrinsics.PromiseCtor.Resolve(realm, state.OuterPromise, state.Frame.ReturnValue);
     }
 
-    /// <summary>Async generators: stub. Returns a plain async generator
-    /// object that yields rejected promises for now — full implementation
-    /// deferred. Tracked: B1b-2c follow-up.</summary>
+    /// <summary>wp:M3-04g — invoke an <c>async function*</c>. Sets up a
+    /// <see cref="JsAsyncGenerator"/> whose worker thread runs the body lazily
+    /// on the first request. The body interleaves <c>yield</c> (kind 0) and
+    /// <c>await</c> (kind 1) suspensions through the shared
+    /// <see cref="SuspendedFrame"/>; the driver
+    /// (<see cref="AsyncGeneratorDrainQueue"/>) tells them apart via
+    /// <see cref="SuspendedFrame.SuspendKind"/>.</summary>
     internal JsValue StartAsyncGeneratorBody(JsFunction fn, JsValue thisValue, JsValue[] args)
     {
-        // Minimal stub: treat as a sync generator that wraps yielded values
-        // in Promise.resolve. Good enough for the simple async-iterator
-        // tests. .next() returns a Promise of {value, done}.
-        var genV = StartGeneratorBody(fn, thisValue, args);
-        if (genV.IsObject && genV.AsObject is JsGenerator gen)
+        var realm = _runtime.Realm;
+        var frame = new SuspendedFrame(this);
+        var gen = new JsAsyncGenerator(realm, frame);
+        var fnCopy = fn;
+        var argsCopy = args;
+        var thisCopy = thisValue;
+        frame.Start(() =>
         {
-            // Reparent to AsyncGeneratorPrototype so .next() comes from the
-            // async-generator prototype methods (installed by
-            // GeneratorIntrinsics). Tests using this prototype's .next will
-            // call the async wrapper which produces Promises.
-            gen.SetPrototypeOf(_runtime.Realm.AsyncGeneratorPrototype);
+            try
+            {
+                var rv = Run(fnCopy.Body, argsCopy, thisCopy, fnCopy.Upvalues,
+                    drainMicrotasks: false, currentFunction: fnCopy, newTarget: null,
+                    suspension: frame);
+                frame.SetReturnValue(rv);
+            }
+            catch (JsThrow ex)
+            {
+                frame.SetThrew(ex.Value);
+            }
+        });
+        return JsValue.Object(gen);
+    }
+
+    /// <summary>wp:M3-04g — §7.4.2 GetIterator(obj, async) for
+    /// <c>for await…of</c>. Resolves <c>obj[@@asyncIterator]</c>; when absent,
+    /// builds the record from the sync <c>[Symbol.iterator]</c> and marks it
+    /// sync-wrapped so the driver lifts each result into a Promise
+    /// (CreateAsyncFromSyncIterator, §27.1.4.1).</summary>
+    private Starling.Js.Intrinsics.JsIteratorRecordHandle GetAsyncIteratorHandle(JsValue iterable)
+    {
+        var realm = _runtime.Realm;
+        if (iterable.IsNullish)
+            throw new JsThrow(realm.NewTypeError("value is not async iterable"));
+
+        var asyncMethod = AbstractOperations.GetMethod(this, iterable,
+            Starling.Js.Intrinsics.SymbolCtor.AsyncIterator);
+        if (!asyncMethod.IsUndefined && !asyncMethod.IsNull)
+        {
+            var iter = AbstractOperations.Call(this, asyncMethod, iterable, Array.Empty<JsValue>());
+            if (!iter.IsObject)
+                throw new JsThrow(realm.NewTypeError("async iterator method did not return an object"));
+            var nextMethod = AbstractOperations.Get(this, iter.AsObject, "next");
+            return new Starling.Js.Intrinsics.JsIteratorRecordHandle(
+                new IteratorRecord(iter, nextMethod, Done: false));
         }
-        return genV;
+
+        // No @@asyncIterator — wrap the sync iterator.
+        var syncRecord = AbstractOperations.GetIterator(realm, this, iterable);
+        return new Starling.Js.Intrinsics.JsIteratorRecordHandle(syncRecord) { SyncWrapped = true };
+    }
+
+    /// <summary>wp:M3-04g — §27.1.4.2.1 AsyncFromSyncIterator next: produce a
+    /// promise that resolves to <c>{value: await syncResult.value, done}</c>,
+    /// so a sync iterable of promises iterated by <c>for await</c> unwraps each
+    /// element.</summary>
+    private JsPromise WrapSyncIteratorResult(JsValue syncResult)
+    {
+        var realm = _runtime.Realm;
+        if (!syncResult.IsObject)
+            throw new JsThrow(realm.NewTypeError("iterator.next() did not return an object"));
+        var done = JsValue.ToBoolean(AbstractOperations.Get(this, syncResult.AsObject, "done"));
+        var value = AbstractOperations.Get(this, syncResult.AsObject, "value");
+
+        // Promise.resolve(value).then(v => MakeResult(v, done)).
+        var inner = new JsPromise(realm.PromisePrototype);
+        PromiseCtor.Resolve(realm, inner, value);
+        var onFulfill = new JsNativeFunction("", (thisV, args) =>
+        {
+            var v = args.Length > 0 ? args[0] : JsValue.Undefined;
+            return IteratorIntrinsics.MakeResult(realm, v, done);
+        }, isConstructor: false);
+        var then = AbstractOperations.Get(this, inner, "then");
+        var chained = AbstractOperations.Call(this, then, JsValue.Object(inner),
+            new[] { JsValue.Object(onFulfill) });
+        // `then` returns a Promise; hand it back for the loop to await.
+        return chained.IsObject && chained.AsObject is JsPromise p
+            ? p
+            : throw new JsThrow(realm.NewTypeError("Promise.prototype.then did not return a promise"));
+    }
+
+    // ---- wp:M3-04g — async-generator request queue + driver ----------------
+
+    /// <summary>§27.6.3.1 AsyncGeneratorEnqueue — allocate a request promise,
+    /// queue the request, and (if the generator isn't already busy draining)
+    /// start processing the queue. Returns the request's promise.</summary>
+    internal JsValue AsyncGeneratorEnqueue(JsAsyncGenerator gen, AsyncGeneratorRequestKind kind, JsValue value)
+    {
+        var realm = _runtime.Realm;
+        var cap = new JsPromise(realm.PromisePrototype);
+        gen.Queue.Enqueue(new AsyncGeneratorRequest(kind, value, cap));
+        AsyncGeneratorDrainQueue(gen);
+        return JsValue.Object(cap);
+    }
+
+    /// <summary>§27.6.3.4 AsyncGeneratorDrainQueue — if the generator is idle,
+    /// resume the body for the head request and ride its yield/await
+    /// suspensions until it produces a result (or completes), settling the
+    /// head request's promise.</summary>
+    private void AsyncGeneratorDrainQueue(JsAsyncGenerator gen)
+    {
+        if (gen.Draining) return;            // a resume is already in flight
+        if (gen.Queue.Count == 0) return;    // nothing to do
+
+        var realm = _runtime.Realm;
+        var req = gen.Queue.Peek();
+
+        // Already-completed generator: short-circuit per §27.6.3.6
+        // AsyncGeneratorResumeNext for a Done state.
+        if (gen.Done)
+        {
+            gen.Queue.Dequeue();
+            switch (req.Kind)
+            {
+                case AsyncGeneratorRequestKind.Throw:
+                    PromiseCtor.Reject(realm, req.Capability, req.Value);
+                    break;
+                case AsyncGeneratorRequestKind.Return:
+                    PromiseCtor.Resolve(realm, req.Capability,
+                        IteratorIntrinsics.MakeResult(realm, req.Value, done: true));
+                    break;
+                default:
+                    PromiseCtor.Resolve(realm, req.Capability,
+                        IteratorIntrinsics.MakeResult(realm, JsValue.Undefined, done: true));
+                    break;
+            }
+            // Keep draining any further requests against the done state.
+            AsyncGeneratorDrainQueue(gen);
+            return;
+        }
+
+        // Requests against a not-yet-started generator that aren't `next`
+        // complete the generator without ever running the body (§27.6.3.6):
+        //   .return(v) → {value:v, done:true}; .throw(e) → reject(e).
+        if (!gen.Started && req.Kind != AsyncGeneratorRequestKind.Next)
+        {
+            gen.Done = true;
+            gen.Queue.Dequeue();
+            if (req.Kind == AsyncGeneratorRequestKind.Throw)
+                PromiseCtor.Reject(realm, req.Capability, req.Value);
+            else
+                PromiseCtor.Resolve(realm, req.Capability,
+                    IteratorIntrinsics.MakeResult(realm, req.Value, done: true));
+            AsyncGeneratorDrainQueue(gen);
+            return;
+        }
+
+        gen.Draining = true;
+        gen.Started = true;
+        // Resume the body for this request's completion kind.
+        switch (req.Kind)
+        {
+            case AsyncGeneratorRequestKind.Throw:
+                gen.Frame.Resume(req.Value, withThrow: true);
+                break;
+            case AsyncGeneratorRequestKind.Return:
+                gen.Frame.Resume(req.Value, withReturn: true);
+                break;
+            default:
+                gen.Frame.Resume(req.Value);
+                break;
+        }
+        AsyncGeneratorAfterResume(gen);
+    }
+
+    /// <summary>Common post-resume handling: the body either completed, hit a
+    /// <c>yield</c> (deliver a result to the head request) or hit an
+    /// <c>await</c> (schedule a continuation that resumes the body once the
+    /// awaited promise settles).</summary>
+    private void AsyncGeneratorAfterResume(JsAsyncGenerator gen)
+    {
+        var realm = _runtime.Realm;
+        var frame = gen.Frame;
+
+        if (frame.Completed)
+        {
+            gen.Draining = false;
+            gen.Done = true;
+            var req = gen.Queue.Dequeue();
+            if (frame.ThrewUncaught)
+                PromiseCtor.Reject(realm, req.Capability, frame.ReturnValue);
+            else
+                PromiseCtor.Resolve(realm, req.Capability,
+                    IteratorIntrinsics.MakeResult(realm, frame.ReturnValue, done: true));
+            // Drive remaining requests against the now-done state.
+            AsyncGeneratorDrainQueue(gen);
+            return;
+        }
+
+        if (frame.SuspendKind == 1)
+        {
+            // Internal `await` — resume the body once the awaited value
+            // settles, then re-enter this handler. Stays Draining; does NOT
+            // deliver a result to the head request.
+            AsyncGeneratorScheduleAwait(gen);
+            return;
+        }
+
+        // Real `yield` — fulfil the head request with {value, done:false}.
+        gen.Draining = false;
+        var yielded = frame.YieldedValue;
+        var head = gen.Queue.Dequeue();
+        PromiseCtor.Resolve(realm, head.Capability,
+            IteratorIntrinsics.MakeResult(realm, yielded, done: false));
+        // Service the next queued request (if any).
+        AsyncGeneratorDrainQueue(gen);
+    }
+
+    /// <summary>Wire the internal <c>await</c>: resolve the awaited value to a
+    /// promise and resume the body when it settles (mirrors
+    /// <see cref="ScheduleAwait"/> but feeds back into the async-generator
+    /// driver).</summary>
+    private void AsyncGeneratorScheduleAwait(JsAsyncGenerator gen)
+    {
+        var realm = _runtime.Realm;
+        var awaited = gen.Frame.YieldedValue;
+        JsPromise inner;
+        if (awaited.IsObject && awaited.AsObject is JsPromise existing)
+        {
+            inner = existing;
+        }
+        else
+        {
+            inner = new JsPromise(realm.PromisePrototype);
+            PromiseCtor.Resolve(realm, inner, awaited);
+        }
+
+        var onFulfill = new JsNativeFunction("", (thisV, args) =>
+        {
+            var v = args.Length > 0 ? args[0] : JsValue.Undefined;
+            gen.Frame.Resume(v, withThrow: false);
+            AsyncGeneratorAfterResume(gen);
+            return JsValue.Undefined;
+        }, isConstructor: false);
+        var onReject = new JsNativeFunction("", (thisV, args) =>
+        {
+            var r = args.Length > 0 ? args[0] : JsValue.Undefined;
+            gen.Frame.Resume(r, withThrow: true);
+            AsyncGeneratorAfterResume(gen);
+            return JsValue.Undefined;
+        }, isConstructor: false);
+
+        var then = AbstractOperations.Get(this, inner, "then");
+        AbstractOperations.Call(this, then, JsValue.Object(inner),
+            new[] { JsValue.Object(onFulfill), JsValue.Object(onReject) });
     }
 }
 
