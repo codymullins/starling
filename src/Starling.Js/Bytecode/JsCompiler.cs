@@ -1762,7 +1762,92 @@ public sealed partial class JsCompiler
             _b.EmitU16(Opcode.StoreGlobal, nameIdx);
             return;
         }
-        throw new NotSupportedException("update target must be identifier in this slice");
+        if (up.Argument is MemberExpression me)
+        {
+            // §13.4 Update Expressions — member-expression target.
+            //
+            // The receiver (and computed key) must be evaluated EXACTLY ONCE.
+            // StoreProperty / StoreComputed already re-push the stored value
+            // (same contract as compound assignment in EmitAssignment), so we
+            // can recover oldNum from newVal without any temporary locals.
+            //
+            // Reject `super.x++` / `super[k]++` — these would require
+            // PutValue on a super-reference, which needs separate super-update
+            // opcodes (deferred; add them if the McMaster app needs it).
+            if (me.Object is SuperPropertyExpression)
+                throw new NotSupportedException("update of super property not yet supported (wp:M3-08)");
+
+            var isIncrement = up.Op == "++";
+
+            if (!me.Computed)
+            {
+                // Non-computed: obj.name++ / obj.name-- / ++obj.name / --obj.name
+                //
+                // §13.4 mandates ToNumeric(GetValue(lhs)) before the ±1 step; we
+                // use UnaryPlus (≡ ToNumber) so strings/booleans are coerced
+                // correctly ("5" → 5, true → 1, etc.) before Add/Sub.
+                //
+                // StoreProperty pops [obj, newVal] and RE-PUSHES newVal, which
+                // lets the postfix arm recover oldNum = newVal ∓ 1 without any
+                // temporary locals.
+                //
+                // Prefix byte sequence  (++obj.name):
+                //   EmitObj, Dup, LoadProperty(name), UnaryPlus,
+                //   LoadConst(1), Add/Sub, StoreProperty(name)       → [newVal]
+                //
+                // Postfix byte sequence (obj.name++):
+                //   EmitObj, Dup, LoadProperty(name), UnaryPlus,
+                //   LoadConst(1), Add/Sub, StoreProperty(name),
+                //   LoadConst(1), Sub/Add                             → [oldNum]
+                var nameIdx = _b.AddConstant(((Identifier)me.Property).Name);
+                EmitExpression(me.Object);                              // [obj]
+                _b.Emit(Opcode.Dup);                                    // [obj, obj]
+                _b.EmitU16(Opcode.LoadProperty, nameIdx);               // [obj, oldVal]
+                _b.Emit(Opcode.UnaryPlus);                              // [obj, oldNum]   ToNumber
+                _b.EmitU16(Opcode.LoadConst, _b.AddConstant(1.0));      // [obj, oldNum, 1]
+                _b.Emit(isIncrement ? Opcode.Add : Opcode.Sub);         // [obj, newVal]
+                _b.EmitU16(Opcode.StoreProperty, nameIdx);              // [newVal]
+                if (!up.Prefix)
+                {
+                    // Postfix: result = oldNum = newVal ∓ 1 (reverse the ±1 step).
+                    _b.EmitU16(Opcode.LoadConst, _b.AddConstant(1.0));  // [newVal, 1]
+                    _b.Emit(isIncrement ? Opcode.Sub : Opcode.Add);     // [oldNum]
+                }
+                return;
+            }
+            else
+            {
+                // Computed: obj[key]++ / obj[key]-- / ++obj[key] / --obj[key]
+                //
+                // Both obj and key are evaluated exactly once via Dup2.
+                // UnaryPlus coerces oldVal to number before the ±1 step.
+                //
+                // Prefix byte sequence  (++obj[key]):
+                //   EmitObj, EmitKey, Dup2, LoadComputed, UnaryPlus,
+                //   LoadConst(1), Add/Sub, StoreComputed              → [newVal]
+                //
+                // Postfix byte sequence (obj[key]++):
+                //   EmitObj, EmitKey, Dup2, LoadComputed, UnaryPlus,
+                //   LoadConst(1), Add/Sub, StoreComputed,
+                //   LoadConst(1), Sub/Add                             → [oldNum]
+                EmitExpression(me.Object);                              // [obj]
+                EmitExpression(me.Property);                            // [obj, key]
+                _b.Emit(Opcode.Dup2);                                   // [obj, key, obj, key]
+                _b.Emit(Opcode.LoadComputed);                           // [obj, key, oldVal]
+                _b.Emit(Opcode.UnaryPlus);                              // [obj, key, oldNum]  ToNumber
+                _b.EmitU16(Opcode.LoadConst, _b.AddConstant(1.0));      // [obj, key, oldNum, 1]
+                _b.Emit(isIncrement ? Opcode.Add : Opcode.Sub);         // [obj, key, newVal]
+                _b.Emit(Opcode.StoreComputed);                          // [newVal]
+                if (!up.Prefix)
+                {
+                    // Postfix: result = oldNum = newVal ∓ 1.
+                    _b.EmitU16(Opcode.LoadConst, _b.AddConstant(1.0));  // [newVal, 1]
+                    _b.Emit(isIncrement ? Opcode.Sub : Opcode.Add);     // [oldNum]
+                }
+                return;
+            }
+        }
+        throw new NotSupportedException("update target must be identifier or member expression");
     }
 
     /// <summary>gap:delete — lower <c>delete expr</c> per §13.5.1. For

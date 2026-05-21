@@ -110,6 +110,7 @@ structure).
 | [wp:M3-06k-gui-canvas](M3/wp-M3-06k-gui-canvas.md) | 🟢 complete | agent-claude-cody-gui | Starling.Gui |
 | [wp:M3-06l-ci-policy](M3/wp-M3-06l-ci-policy.md) | 🟢 complete | agent-claude-cody-ci | build |
 | [wp:M3-07-dynamic-script-src](M3/wp-M3-07-dynamic-script-src.md) | 🟢 complete | agent-claude-cody | Starling.Engine |
+| [wp:M3-08-js-member-update](M3/wp-M3-08-js-member-update.md) | 🟢 complete | agent-claude-cody | Starling.Js |
 
 > **M3-06 native interop pivot: COMPLETE (with one revert).** All 13 packages
 > (06a–06l + the 06g2 shim follow-up) shipped; full `dotnet build && dotnet test`
@@ -263,8 +264,9 @@ floor-gated at 37% (ratchet). `built-ins` is opt-in pending slow-test hardening.
 Remaining JS work toward **Test262 ≥ 80%** — each a follow-up engine WP, biggest
 buckets first: `language/expressions` (35%, ~21k scenarios), `eval-code` (no
 `eval` global), `arguments-object` (3.5%), `global-code`/`block-scope`. Plus one
-small known gap: **member/super update forms** — `obj.x++` / `super[k]++` only
-support identifier targets (`EmitUpdate` limitation). Low priority.
+small remaining gap: **super update forms** — `super.x++` / `super[k]++`
+deferred (needs super-reference PutValue semantics); `obj.x++` / `obj[k]++`
+are now implemented (`wp:M3-08`).
 
 ## Recently completed
 
