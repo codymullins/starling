@@ -40,6 +40,7 @@ order: milestone, then numeric id, then sub-letter.
 | [wp:M1-07-css-cascade](M1/wp-M1-07-css-cascade.md) | 🟢 complete | agent-copilot-gpt-5.5 | Starling.Css |
 | [wp:M1-08-layout-block-inline](M1/wp-M1-08-layout-block-inline.md) | 🟢 complete | agent-copilot-gpt-5.5 | Starling.Layout |
 | [wp:M1-09-paint-display-list](M1/wp-M1-09-paint-display-list.md) | 🟢 complete | agent-copilot-gpt-5.5 | Starling.Paint |
+| [wp:M1-noscript-scripting-flag](M1/wp-M1-noscript-scripting-flag.md) | 🟢 complete | agent-claude-cody | Starling.Html |
 
 ## M2 — Networking
 

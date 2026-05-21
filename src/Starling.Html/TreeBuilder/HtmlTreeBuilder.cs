@@ -35,6 +35,7 @@ public sealed class HtmlTreeBuilder
     private readonly StringBuilder _pendingText = new();
     private readonly IDiagnostics _diag;
     private readonly CountingParseErrorSink? _errorCounter;
+    private readonly bool _scriptingEnabled;
 
     private Element? _headElement;
     private Element? _bodyElement;
@@ -51,12 +52,13 @@ public sealed class HtmlTreeBuilder
     private readonly Element? _fragmentContext;
 
     public HtmlTreeBuilder(HtmlTokenizer tokenizer, IDiagnostics? diagnostics = null,
-        CountingParseErrorSink? errorCounter = null)
+        CountingParseErrorSink? errorCounter = null, bool scriptingEnabled = false)
     {
         ArgumentNullException.ThrowIfNull(tokenizer);
         _tokenizer = tokenizer;
         _diag = diagnostics ?? NoopDiagnostics.Instance;
         _errorCounter = errorCounter;
+        _scriptingEnabled = scriptingEnabled;
     }
 
     private HtmlTreeBuilder(HtmlTokenizer tokenizer, Element fragmentContext, IDiagnostics? diagnostics,
@@ -66,7 +68,22 @@ public sealed class HtmlTreeBuilder
         _fragmentContext = fragmentContext;
     }
 
-    public static Document Parse(string html, IDiagnostics? diagnostics = null)
+    /// <summary>
+    /// Runs tree construction over <paramref name="html"/>.
+    /// </summary>
+    /// <param name="html">The HTML source to parse.</param>
+    /// <param name="diagnostics">Optional diagnostics sink for spans/counters.</param>
+    /// <param name="scriptingEnabled">
+    /// WHATWG HTML §13.2 "scripting flag". When <c>true</c> (the engine, which
+    /// runs JS) a <c>&lt;noscript&gt;</c> start tag in the "in head" insertion
+    /// mode follows the generic raw text element parsing algorithm
+    /// (§13.2.6.4.4) so its contents become an inert text node rather than
+    /// parsed elements. When <c>false</c> (the html5lib conformance harness,
+    /// which assumes scripting disabled) the legacy element-parsing behavior is
+    /// preserved.
+    /// </param>
+    public static Document Parse(string html, IDiagnostics? diagnostics = null,
+        bool scriptingEnabled = false)
     {
         ArgumentNullException.ThrowIfNull(html);
         var diag = diagnostics ?? NoopDiagnostics.Instance;
@@ -74,7 +91,7 @@ public sealed class HtmlTreeBuilder
         var tokenizer = new HtmlTokenizer(errorCounter);
         tokenizer.Feed(html);
         tokenizer.EndOfInput();
-        var builder = new HtmlTreeBuilder(tokenizer, diag, errorCounter);
+        var builder = new HtmlTreeBuilder(tokenizer, diag, errorCounter, scriptingEnabled);
         return builder.Run();
     }
 
@@ -439,6 +456,19 @@ public sealed class HtmlTreeBuilder
                 _tokenizer.SetState(TokenizerState.Rcdata);
                 return;
             case StartTagToken start when start.Name is "noframes" or "style":
+                InsertElement(start);
+                _originalMode = _mode;
+                _mode = InsertionMode.Text;
+                _tokenizer.SetState(TokenizerState.Rawtext);
+                return;
+            // §13.2.6.4.4 "in head" — <noscript> start tag. When the scripting
+            // flag is ENABLED, follow the generic raw text element parsing
+            // algorithm: the contents become an inert text node, never elements.
+            // When DISABLED the spec switches to the "in head noscript" mode and
+            // parses the contents as elements; this builder doesn't model that
+            // sub-mode, so we leave the scripting-disabled path on its existing
+            // "anything else" fall-through (html5lib conformance default).
+            case StartTagToken start when start.Name == "noscript" && _scriptingEnabled:
                 InsertElement(start);
                 _originalMode = _mode;
                 _mode = InsertionMode.Text;

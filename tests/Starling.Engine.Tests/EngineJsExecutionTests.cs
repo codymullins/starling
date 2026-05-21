@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using AwesomeAssertions;
 using SixLabors.ImageSharp;
+using Starling.Spec;
 namespace Starling.Engine.Tests;
 
 /// <summary>
@@ -30,6 +31,26 @@ public sealed class EngineJsExecutionTests
         var outcome = await RenderHtmlAsync(html);
         outcome.DisplayText.Should().Contain("after-js");
         outcome.DisplayText.Should().NotContain("placeholder");
+    }
+
+    [Spec("html", "https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inhead",
+        "13.2.6.4.4 in head — noscript / scripting flag")]
+    [SpecFact]
+    public async Task Noscript_contents_are_not_rendered_when_scripting_is_enabled()
+    {
+        // The engine runs JS (scripting flag enabled). Per WHATWG HTML the
+        // <noscript> element must contribute no visible text/boxes: the UA
+        // stylesheet rule §15.3.1 `noscript { display: none }` hides it, and
+        // the parser turns in-head <noscript> contents into inert raw text.
+        // Regression for mcmaster.com showing its "enable JavaScript" fallback.
+        var html = @"<!doctype html><html><body>
+            <p>VISIBLE</p>
+            <noscript>HIDDEN-NOSCRIPT-FALLBACK</noscript>
+        </body></html>";
+
+        var outcome = await RenderHtmlAsync(html);
+        outcome.DisplayText.Should().Contain("VISIBLE");
+        outcome.DisplayText.Should().NotContain("HIDDEN-NOSCRIPT-FALLBACK");
     }
 
     [TestMethod]

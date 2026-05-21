@@ -30,6 +30,15 @@ public static class UaStyleSheet
           display: none;
         }
 
+        /* WHATWG HTML §15.3.1 "Hidden elements": when the scripting flag is
+           enabled the UA sheet applies `noscript { display: none !important; }`.
+           Starling's engine always runs JavaScript (scripting enabled), and the
+           HTML parser already turns <noscript> contents into inert raw text in
+           that mode, so the element and its raw-text child must not render. */
+        noscript {
+          display: none;
+        }
+
         body {
           margin: 8px;
           color: black;

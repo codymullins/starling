@@ -1,5 +1,6 @@
 using AwesomeAssertions;
 using Starling.Dom;
+using Starling.Spec;
 namespace Starling.Html.Tests;
 
 /// <summary>
@@ -205,5 +206,61 @@ public sealed class TreeBuilderTests
         table.Descendants().OfType<Element>().Select(e => e.LocalName)
             .Should().ContainInOrder("tbody", "tr", "td", "td");
         table.TextContent.Should().Be("AB");
+    }
+
+    // ----------------------------------------------------------------- noscript
+    // WHATWG HTML §13.2.6.4.4 "in head" insertion mode, <noscript> start tag:
+    //   - scripting flag ENABLED  → generic raw text element parsing algorithm;
+    //     the contents become an inert TEXT node, never parsed elements.
+    //   - scripting flag DISABLED → "in head noscript" mode; contents parse as
+    //     elements (the html5lib-conformance default this builder preserves).
+
+    [Spec("html", "https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inhead",
+        "13.2.6.4.4 in head — noscript / scripting flag")]
+    [SpecFact]
+    public void Noscript_in_head_with_scripting_enabled_parses_contents_as_inert_text()
+    {
+        var doc = HtmlParser.Parse(
+            "<!doctype html><html><head><noscript><div>x</div></noscript></head><body></body></html>",
+            scriptingEnabled: true);
+
+        var noscript = doc.Head!.DescendantElements().Single(e => e.LocalName == "noscript");
+        // RAWTEXT: the <div> is NOT an element child — it is raw text.
+        noscript.DescendantElements().Should().BeEmpty();
+        noscript.FirstChild.Should().BeOfType<Text>();
+        noscript.TextContent.Should().Be("<div>x</div>");
+    }
+
+    [Spec("html", "https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inhead",
+        "13.2.6.4.4 in head — noscript / scripting flag")]
+    [SpecFact]
+    public void Noscript_in_head_with_scripting_disabled_parses_contents_as_elements()
+    {
+        // Scripting disabled is the html5lib-conformance default. The contents
+        // must remain parsed elements — RAWTEXT must NOT kick in here.
+        var doc = HtmlParser.Parse(
+            "<!doctype html><html><head><noscript><div>x</div></noscript></head><body></body></html>",
+            scriptingEnabled: false);
+
+        var div = doc.DescendantElements().Single(e => e.LocalName == "div");
+        div.TextContent.Should().Be("x");
+        // The <div> is a real element node, not raw text.
+        doc.DescendantElements().Should().Contain(e => e.LocalName == "div");
+    }
+
+    [Spec("html", "https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inhead",
+        "13.2.6.4.4 in head — noscript / scripting flag")]
+    [SpecFact]
+    public void Noscript_in_body_text_is_inert_text_child_when_scripting_enabled()
+    {
+        // In "in body" the spec does not RAWTEXT <noscript>; it inserts an
+        // ordinary element. Non-rendering is achieved by the UA `display:none`
+        // rule, not by the parser. The element + its text still exist in the DOM.
+        var doc = HtmlParser.Parse(
+            "<!doctype html><html><body><p>VISIBLE</p><noscript>HIDDEN</noscript></body></html>",
+            scriptingEnabled: true);
+
+        var noscript = doc.Body!.DescendantElements().Single(e => e.LocalName == "noscript");
+        noscript.TextContent.Should().Be("HIDDEN");
     }
 }

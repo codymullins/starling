@@ -16,6 +16,15 @@ namespace Starling.Html;
 /// </remarks>
 public static class HtmlParser
 {
-    public static Document Parse(string html, IDiagnostics? diagnostics = null)
-        => HtmlTreeBuilder.Parse(html, diagnostics);
+    /// <summary>Parses <paramref name="html"/> into a <see cref="Document"/>.</summary>
+    /// <param name="html">The HTML source to parse.</param>
+    /// <param name="diagnostics">Optional diagnostics sink.</param>
+    /// <param name="scriptingEnabled">
+    /// WHATWG HTML §13.2 scripting flag. The engine (which runs JS) passes
+    /// <c>true</c> so <c>&lt;noscript&gt;</c> contents become inert raw text;
+    /// the html5lib conformance harness leaves it <c>false</c>.
+    /// </param>
+    public static Document Parse(string html, IDiagnostics? diagnostics = null,
+        bool scriptingEnabled = false)
+        => HtmlTreeBuilder.Parse(html, diagnostics, scriptingEnabled);
 }

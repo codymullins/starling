@@ -133,7 +133,10 @@ public sealed class StarlingEngine
         using (_diag.Span("engine", "parse_html"))
         {
             Activity.Current?.SetTag("html.bytes", html.Length);
-            doc = Html.HtmlParser.Parse(html, _diag);
+            // The engine runs page JavaScript, so HTML parsing uses the
+            // scripting flag ENABLED (WHATWG HTML §13.2). This makes
+            // <noscript> contents inert raw text instead of parsed elements.
+            doc = Html.HtmlParser.Parse(html, _diag, scriptingEnabled: true);
         }
 
         using var images = new ImageFetcher(_diag, _httpFactory);
@@ -326,7 +329,9 @@ public sealed class StarlingEngine
             return Result<LaidOutPage, RenderError>.Err(new RenderError(ex.Message));
         }
 
-        var doc = Html.HtmlParser.Parse(html, _diag);
+        // Scripting flag ENABLED — the engine executes page JS, so <noscript>
+        // contents must parse as inert raw text (WHATWG HTML §13.2.6.4.4).
+        var doc = Html.HtmlParser.Parse(html, _diag, scriptingEnabled: true);
 
         // Page resources outlive this method — the caller's LaidOutPage owns
         // and disposes them. On any path that doesn't return Ok we dispose
@@ -1001,7 +1006,11 @@ public sealed class StarlingEngine
             case CData cdata:
                 buffer.Append(cdata.Data);
                 return;
-            case Element { LocalName: "script" or "style" or "head" }:
+            // These elements are `display: none` in the UA stylesheet so they
+            // contribute no rendered text. `noscript` is hidden when scripting
+            // is enabled (WHATWG HTML §15.3.1) — the engine always runs JS, so
+            // its contents (parsed as inert raw text) must not surface here.
+            case Element { LocalName: "script" or "style" or "head" or "noscript" }:
                 return;
         }
 
