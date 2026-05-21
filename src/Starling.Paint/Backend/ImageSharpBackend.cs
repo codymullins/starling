@@ -159,6 +159,7 @@ internal sealed class ImageSharpBackend : IPaintBackend
                 Activity.Current?.SetTag("raster.items", list.Items.Count);
                 if (webGpuFallbackReason is not null)
                     Activity.Current?.SetTag("raster.webgpu.fallback_reason", webGpuFallbackReason);
+                var stats = new RasterStats();
                 image.Mutate(x => x.Paint(canvas =>
                 {
                     var transforms = new Stack<Matrix2D>();
@@ -168,11 +169,25 @@ internal sealed class ImageSharpBackend : IPaintBackend
                         Transform = ToCanvasMatrix(viewportTransform, scale),
                     });
 
-                    foreach (var item in list.Items)
-                        Apply(canvas, item, scale, pendingImageSources, transforms);
+                    // raster.command_record wraps the whole Mutate, but ImageSharp
+                    // rasterizes lazily when this Paint scope unwinds — so the
+                    // pixel-fill cost lands between this span closing and
+                    // command_record closing. replay_items isolates the
+                    // display-list walk (recording + TextBlock build) so
+                    // command_record − replay_items = the actual rasterization.
+                    using (_diag.Span("paint", "raster.replay_items"))
+                    {
+                        foreach (var item in list.Items)
+                        {
+                            var start = Stopwatch.GetTimestamp();
+                            Apply(canvas, item, scale, pendingImageSources, transforms, stats);
+                            stats.Record(item, Stopwatch.GetTimestamp() - start);
+                        }
+                    }
 
                     canvas.Restore();
                 }));
+                stats.Emit(Activity.Current);
             }
 
             byte[] pixels;
@@ -239,11 +254,23 @@ internal sealed class ImageSharpBackend : IPaintBackend
                         Transform = ToCanvasMatrix(viewportTransform, scale),
                     });
 
-
-                    foreach (var item in list.Items)
-                        Apply(canvas, item, scale, pendingImageSources, transforms);
+                    var stats = new RasterStats();
+                    // replay_items isolates the display-list walk (recording +
+                    // TextBlock build); on the GPU path the pixel work happens in
+                    // raster.flush below, so the two spans split record from
+                    // execute the same way the CPU path's command_record split does.
+                    using (_diag.Span("paint", "raster.replay_items"))
+                    {
+                        foreach (var item in list.Items)
+                        {
+                            var start = Stopwatch.GetTimestamp();
+                            Apply(canvas, item, scale, pendingImageSources, transforms, stats);
+                            stats.Record(item, Stopwatch.GetTimestamp() - start);
+                        }
+                    }
 
                     canvas.Restore();
+                    stats.Emit(Activity.Current);
 
                     // Flush seals queued commands into the canvas timeline so
                     // the GPU pipeline executes before ReadbackImage samples
@@ -266,7 +293,7 @@ internal sealed class ImageSharpBackend : IPaintBackend
         }
     }
 
-    private void Apply(DrawingCanvas canvas, DisplayItem item, float scale, DisposableBag pendingImageSources, Stack<Matrix2D> transforms)
+    private void Apply(DrawingCanvas canvas, DisplayItem item, float scale, DisposableBag pendingImageSources, Stack<Matrix2D> transforms, RasterStats stats)
     {
         switch (item)
         {
@@ -325,15 +352,15 @@ internal sealed class ImageSharpBackend : IPaintBackend
                 break;
             case DrawText text:
                 _diag.Counter("paint.draw_text", 1);
-                DrawText(canvas, text);
+                DrawText(canvas, text, stats);
                 break;
             case DrawTextShadow shadow:
                 _diag.Counter("paint.draw_text_shadow", 1);
-                DrawTextShadow(canvas, shadow, pendingImageSources);
+                DrawTextShadow(canvas, shadow, pendingImageSources, stats);
                 break;
             case DrawTextDecoration decoration:
                 _diag.Counter("paint.draw_text_decoration", 1);
-                DrawTextDecoration(canvas, decoration);
+                DrawTextDecoration(canvas, decoration, stats);
                 break;
             case DrawImage img:
                 _diag.Counter("paint.draw_image", 1);
@@ -498,36 +525,49 @@ internal sealed class ImageSharpBackend : IPaintBackend
         };
     }
 
-    private void DrawText(DrawingCanvas canvas, DrawText text)
+    private void DrawText(DrawingCanvas canvas, DrawText text, RasterStats stats)
     {
         if (string.IsNullOrEmpty(text.Text)) return;
+        stats.TextChars += text.Text.Length;
 
         var spec = FontSpecFromDrawText(text);
         var size = (float)text.FontSize;
         var probe = FirstCodepoint(text.Text);
-        var font = ResolveFont(spec, probe, size);
+        var font = ResolveFont(spec, probe, size, stats);
         var color = ToColor(text.Color);
 
         var originX = (float)text.X;
         var originY = (float)text.Y;
         var brush = Brushes.Solid(color);
 
-        var textBlock = text.Shaped is ImageSharpShapedRun shaped && shaped.Font.Size == size
-            ? shaped.TextBlock
-            : new TextBlock(text.Text, new TextOptions(font));
+        // Reusing the layout-time shaped run skips a paint-time reshape; a miss
+        // (no ImageSharp run, or a font-size mismatch) rebuilds the TextBlock
+        // here — re-shaping the run, the cost the postmortem suspected. Track
+        // both so the trace shows the reuse ratio for text-heavy pages.
+        TextBlock textBlock;
+        if (text.Shaped is ImageSharpShapedRun shaped && shaped.Font.Size == size)
+        {
+            textBlock = shaped.TextBlock;
+            stats.ShapedReused++;
+        }
+        else
+        {
+            textBlock = new TextBlock(text.Text, new TextOptions(font));
+            stats.ShapedRebuilt++;
+        }
 
         canvas.DrawText(textBlock, new PointF(originX, originY), -1, brush, null);
     }
 
     // ---- CSS Text Decoration 3 (wp:M5-css-15) ----
 
-    private void DrawTextDecoration(DrawingCanvas canvas, DrawTextDecoration d)
+    private void DrawTextDecoration(DrawingCanvas canvas, DrawTextDecoration d, RasterStats stats)
     {
         if (d.Width <= 0 || d.Lines == TextDecorationLines.None) return;
 
         var spec = new FontSpec(d.FontFamilies, d.Bold, d.Italic);
         var size = (float)d.FontSize;
-        var font = ResolveFont(spec, probeCodepoint: 'x', size);
+        var font = ResolveFont(spec, probeCodepoint: 'x', size, stats);
         var fm = font.FontMetrics;
         var unitsScale = fm.UnitsPerEm > 0 ? size / (float)fm.UnitsPerEm : size / 1000f;
 
@@ -636,23 +676,31 @@ internal sealed class ImageSharpBackend : IPaintBackend
         return pb.Build();
     }
 
-    private void DrawTextShadow(DrawingCanvas canvas, DrawTextShadow s, DisposableBag pendingImageSources)
+    private void DrawTextShadow(DrawingCanvas canvas, DrawTextShadow s, DisposableBag pendingImageSources, RasterStats stats)
     {
         if (string.IsNullOrEmpty(s.Text)) return;
 
         var spec = new FontSpec(s.FontFamilies, s.Bold, s.Italic);
         var size = (float)s.FontSize;
         var probe = FirstCodepoint(s.Text);
-        var font = ResolveFont(spec, probe, size);
+        var font = ResolveFont(spec, probe, size, stats);
         var color = ToColor(s.Color);
         var brush = Brushes.Solid(color);
 
         var originX = (float)(s.X + s.OffsetX);
         var originY = (float)(s.Y + s.OffsetY);
 
-        var textBlock = s.Shaped is ImageSharpShapedRun shaped && shaped.Font.Size == size
-            ? shaped.TextBlock
-            : new TextBlock(s.Text, new TextOptions(font));
+        TextBlock textBlock;
+        if (s.Shaped is ImageSharpShapedRun shaped && shaped.Font.Size == size)
+        {
+            textBlock = shaped.TextBlock;
+            stats.ShapedReused++;
+        }
+        else
+        {
+            textBlock = new TextBlock(s.Text, new TextOptions(font));
+            stats.ShapedRebuilt++;
+        }
 
         if (s.Blur <= 0)
         {
@@ -681,11 +729,20 @@ internal sealed class ImageSharpBackend : IPaintBackend
         // Stage it in the bag that is disposed after readback (mirrors DrawImage).
         pendingImageSources.Add(glyphLayer);
 
-        // The display-list DrawText origin (s.X, s.Y) is the top of the line box;
-        // render the glyph run at (pad, pad) inside the layer so it matches.
-        glyphLayer.Mutate(ctx => ctx.Paint(c =>
-            c.DrawText(new TextBlock(s.Text, new TextOptions(font)), new PointF(pad, pad), -1, brush, null)));
-        glyphLayer.Mutate(ctx => ctx.GaussianBlur((float)s.Blur));
+        // This offscreen glyph render + Gaussian blur is a full nested
+        // rasterization that the lazy outer command_record span never sees;
+        // its own span makes shadow-heavy pages attributable.
+        using (_diag.Span("paint", "raster.text_shadow_blur"))
+        {
+            Activity.Current?.SetTag("raster.text_shadow.width", width);
+            Activity.Current?.SetTag("raster.text_shadow.height", height);
+            Activity.Current?.SetTag("raster.text_shadow.blur", s.Blur);
+            // The display-list DrawText origin (s.X, s.Y) is the top of the line box;
+            // render the glyph run at (pad, pad) inside the layer so it matches.
+            glyphLayer.Mutate(ctx => ctx.Paint(c =>
+                c.DrawText(new TextBlock(s.Text, new TextOptions(font)), new PointF(pad, pad), -1, brush, null)));
+            glyphLayer.Mutate(ctx => ctx.GaussianBlur((float)s.Blur));
+        }
 
         // Composite at the offset origin minus the padding we added.
         var destRect = new RectangleF(originX - pad, originY - pad, width, height);
@@ -740,8 +797,25 @@ internal sealed class ImageSharpBackend : IPaintBackend
         return 0;
     }
 
-    private Font ResolveFont(FontSpec spec, int probeCodepoint, float size)
-        => _fontCache.GetOrAdd(new FontCacheKey(spec, size, probeCodepoint), k => CreateFont(k.Spec, k.Size));
+    private Font ResolveFont(FontSpec spec, int probeCodepoint, float size, RasterStats? stats = null)
+    {
+        var key = new FontCacheKey(spec, size, probeCodepoint);
+        if (_fontCache.TryGetValue(key, out var cached))
+            return cached;
+
+        // Cache miss: CreateFont resolves the family against the collection,
+        // expensive and cold-start-heavy. Attribute the build to the render so
+        // the trace separates cold font work from steady-state draw_text cost.
+        var start = Stopwatch.GetTimestamp();
+        var font = _fontCache.GetOrAdd(key, k => CreateFont(k.Spec, k.Size));
+        if (stats is not null)
+        {
+            stats.FontCacheMiss++;
+            stats.AddFontCreate(Stopwatch.GetTimestamp() - start);
+        }
+        _diag.Counter("paint.font.cache_miss", 1);
+        return font;
+    }
 
     private Font CreateFont(FontSpec spec, float size)
         => ImageSharpFontLookup.CreateFont(_fontCollection, spec, size);
@@ -860,7 +934,7 @@ internal sealed class ImageSharpBackend : IPaintBackend
     /// uses (so the device <paramref name="scale"/> composes correctly). Inset
     /// shadows are not painted (parsed only); the builder filters them out.
     /// </summary>
-    private static void DrawBoxShadow(DrawingCanvas canvas, DrawBoxShadow shadow, float scale, DisposableBag pendingImageSources)
+    private void DrawBoxShadow(DrawingCanvas canvas, DrawBoxShadow shadow, float scale, DisposableBag pendingImageSources)
     {
         if (shadow.Inset) return; // inner shadows deferred
         if (shadow.Color.A == 0) return;
@@ -887,12 +961,21 @@ internal sealed class ImageSharpBackend : IPaintBackend
         var shape = BuildRoundedRectPath(silhouette, grown);
 
         var shadowImage = new Image<Rgba32>(imgW, imgH, new Rgba32(0, 0, 0, 0));
-        // Drawing 3 paints paths through a DrawingCanvas (the same model the main
-        // render path uses), so fill the silhouette inside a Paint scope, then
-        // soften it with a separate Gaussian-blur Mutate.
-        shadowImage.Mutate(ctx => ctx.Paint(canvas => canvas.Fill(Brushes.Solid(ToColor(shadow.Color)), shape)));
-        if (blur > 0)
-            shadowImage.Mutate(ctx => ctx.GaussianBlur((float)(blur / 2d)));
+        // This offscreen silhouette fill + Gaussian blur is a full nested
+        // rasterization invisible to the lazy outer command_record span; its
+        // own span makes shadow-heavy pages attributable.
+        using (_diag.Span("paint", "raster.box_shadow_blur"))
+        {
+            Activity.Current?.SetTag("raster.box_shadow.width", imgW);
+            Activity.Current?.SetTag("raster.box_shadow.height", imgH);
+            Activity.Current?.SetTag("raster.box_shadow.blur", blur);
+            // Drawing 3 paints paths through a DrawingCanvas (the same model the main
+            // render path uses), so fill the silhouette inside a Paint scope, then
+            // soften it with a separate Gaussian-blur Mutate.
+            shadowImage.Mutate(ctx => ctx.Paint(canvas => canvas.Fill(Brushes.Solid(ToColor(shadow.Color)), shape)));
+            if (blur > 0)
+                shadowImage.Mutate(ctx => ctx.GaussianBlur((float)(blur / 2d)));
+        }
         pendingImageSources.Add(shadowImage);
 
         // Destination in CSS px: the silhouette's top-left is
@@ -911,6 +994,73 @@ internal sealed class ImageSharpBackend : IPaintBackend
             G(r.TopRightX, by), G(r.TopRightY, by),
             G(r.BottomRightX, by), G(r.BottomRightY, by),
             G(r.BottomLeftX, by), G(r.BottomLeftY, by));
+    }
+
+    /// <summary>
+    /// Per-render rasterization timing/quality counters accumulated during the
+    /// display-list replay and emitted as tags on the <c>raster.command_record</c>
+    /// span. The per-type <see cref="Record"/> timings cover <em>recording</em>
+    /// time only (the <see cref="Apply"/> dispatch, including paint-time
+    /// TextBlock builds); ImageSharp rasterizes lazily at scope unwind, so the
+    /// pixel-fill cost is <c>command_record − replay_items</c>, not any single
+    /// bucket here.
+    /// </summary>
+    private sealed class RasterStats
+    {
+        private long _fillRect, _strokeRect, _fillRounded, _strokeRounded;
+        private long _boxShadow, _text, _textShadow, _textDecoration;
+        private long _image, _gradient, _transform, _fontCreate;
+
+        public int TextChars;
+        public int ShapedReused;
+        public int ShapedRebuilt;
+        public int FontCacheMiss;
+
+        public void Record(DisplayItem item, long ticks)
+        {
+            // Qualify with DisplayList.* because several record names (DrawText,
+            // DrawImage, FillGradient, …) collide with method names on the
+            // enclosing backend, which would otherwise bind as constant patterns.
+            switch (item)
+            {
+                case DisplayList.FillRect: _fillRect += ticks; break;
+                case DisplayList.StrokeRect: _strokeRect += ticks; break;
+                case DisplayList.FillRoundedRect: _fillRounded += ticks; break;
+                case DisplayList.StrokeRoundedRect: _strokeRounded += ticks; break;
+                case DisplayList.DrawBoxShadow: _boxShadow += ticks; break;
+                case DisplayList.DrawText: _text += ticks; break;
+                case DisplayList.DrawTextShadow: _textShadow += ticks; break;
+                case DisplayList.DrawTextDecoration: _textDecoration += ticks; break;
+                case DisplayList.DrawImage: _image += ticks; break;
+                case DisplayList.FillGradient: _gradient += ticks; break;
+                case DisplayList.PushTransform:
+                case DisplayList.PopTransform: _transform += ticks; break;
+            }
+        }
+
+        public void AddFontCreate(long ticks) => _fontCreate += ticks;
+
+        public void Emit(Activity? activity)
+        {
+            if (activity is null) return;
+            static double Ms(long ticks) => ticks * 1000.0 / Stopwatch.Frequency;
+            activity.SetTag("raster.time.fill_rect_ms", Ms(_fillRect));
+            activity.SetTag("raster.time.stroke_rect_ms", Ms(_strokeRect));
+            activity.SetTag("raster.time.fill_rounded_rect_ms", Ms(_fillRounded));
+            activity.SetTag("raster.time.stroke_rounded_rect_ms", Ms(_strokeRounded));
+            activity.SetTag("raster.time.box_shadow_ms", Ms(_boxShadow));
+            activity.SetTag("raster.time.draw_text_ms", Ms(_text));
+            activity.SetTag("raster.time.text_shadow_ms", Ms(_textShadow));
+            activity.SetTag("raster.time.text_decoration_ms", Ms(_textDecoration));
+            activity.SetTag("raster.time.draw_image_ms", Ms(_image));
+            activity.SetTag("raster.time.gradient_ms", Ms(_gradient));
+            activity.SetTag("raster.time.transform_ms", Ms(_transform));
+            activity.SetTag("raster.time.font_create_ms", Ms(_fontCreate));
+            activity.SetTag("raster.text.chars", TextChars);
+            activity.SetTag("raster.text.shaped_reused", ShapedReused);
+            activity.SetTag("raster.text.shaped_rebuilt", ShapedRebuilt);
+            activity.SetTag("raster.font.cache_miss", FontCacheMiss);
+        }
     }
 
     private sealed class DisposableBag : IDisposable

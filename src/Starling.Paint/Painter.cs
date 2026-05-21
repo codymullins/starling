@@ -91,10 +91,17 @@ public sealed class Painter
             // its offset); otherwise the full layout viewport is rendered.
             try
             {
-                using var backend = PaintBackendSelector.Create(_fonts, webFonts, _diag);
-                return clipViewport is { } clip
-                    ? backend.Render(displayList, clip)
-                    : backend.Render(displayList, viewport);
+                // Backend construction (font collection load especially) runs
+                // inside the raster span but outside any child, so on a cold
+                // process it silently widens the raster→command_record gap.
+                // Span it so that cost is attributable.
+                IPaintBackend backend;
+                using (_diag.Span("paint", "raster.backend_init"))
+                    backend = PaintBackendSelector.Create(_fonts, webFonts, _diag);
+                using (backend)
+                    return clipViewport is { } clip
+                        ? backend.Render(displayList, clip)
+                        : backend.Render(displayList, viewport);
             }
             catch (Exception ex)
             {
@@ -228,10 +235,13 @@ public sealed class Painter
 
             using (_diag.Span("paint", $"raster:{PaintBackendSelector.Selected.ToString().ToLowerInvariant()}"))
             {
-                using var backend = PaintBackendSelector.Create(_fonts, webFonts, _diag);
-                return clipViewport is { } clip
-                    ? backend.Render(displayList, clip)
-                    : backend.Render(displayList, viewport);
+                IPaintBackend backend;
+                using (_diag.Span("paint", "raster.backend_init"))
+                    backend = PaintBackendSelector.Create(_fonts, webFonts, _diag);
+                using (backend)
+                    return clipViewport is { } clip
+                        ? backend.Render(displayList, clip)
+                        : backend.Render(displayList, viewport);
             }
         }
         finally
