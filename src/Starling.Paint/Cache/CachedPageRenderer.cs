@@ -66,20 +66,33 @@ internal sealed class CachedPageRenderer
         if (strips.Count == 1 && strips[0].Equals(device))
             return SeedAndServe(root, viewport, scale, pageVersion, device, styleOverride, images);
 
-        // Partial: paint each newly-exposed strip and stitch it in. If a stitch
-        // refuses (the grown union would blow the area budget → eviction), the
-        // cache no longer covers the request, so fall back to a full repaint of
-        // the viewport and reseed. This keeps the served output correct after an
-        // eviction instead of leaving the cache holding only one edge strip.
-        foreach (var strip in strips)
+        // Partial: paint each newly-exposed strip, then slide the cache window onto
+        // the new viewport — retaining the still-visible overlap and dropping the
+        // rows that scrolled off-screen. The cache stays viewport-sized, so a long
+        // scroll never grows it without bound and never pays for a full-viewport
+        // reseed; only the thin exposed strips are ever repainted.
+        var painted = new List<(DeviceRect Rect, RenderedBitmap Pixels)>(strips.Count);
+        try
         {
-            using var painted = PaintStrip(root, strip, scale, styleOverride, images);
-            var actual = new DeviceRect(strip.X, strip.Y, painted.Width, painted.Height);
-            if (!_cache.Stitch(actual, painted, scale, pageVersion))
+            foreach (var strip in strips)
             {
+                var bmp = PaintStrip(root, strip, scale, styleOverride, images);
+                // Track the raster's real device rect (origin + actual size); a
+                // fractional scale's ceil can differ from the requested strip.
+                painted.Add((new DeviceRect(strip.X, strip.Y, bmp.Width, bmp.Height), bmp));
+            }
+
+            if (!_cache.SlideTo(device, scale, pageVersion, painted))
+            {
+                // Stale key slipped past the strip computation — reseed wholesale.
                 _cache.Invalidate();
                 return SeedAndServe(root, viewport, scale, pageVersion, device, styleOverride, images);
             }
+        }
+        finally
+        {
+            foreach (var (_, bmp) in painted)
+                bmp.Dispose();
         }
         return ServeAfterFill(viewport, scale, pageVersion, device);
     }

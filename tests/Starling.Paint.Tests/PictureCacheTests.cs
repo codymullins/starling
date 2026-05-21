@@ -153,35 +153,61 @@ public sealed class PictureCacheTests
     }
 
     [TestMethod]
-    public void Eviction_fires_when_growth_exceeds_max_area_and_serves_remain_correct()
+    public void Long_scroll_slides_window_without_growing_or_full_reseed()
     {
         var root = LayoutTallPage(blocks: 1000, blockHeightPx: 200);
         var diag = new RecordingDiagnostics();
         using var backend = new ImageSharpBackend(FontResolver.Default, webFonts: null);
 
-        // Tight budget: ~1.2 viewports' worth. A single downward scroll grows the
-        // union past it, forcing an eviction + reseed.
-        var cache = new PictureCache(diag, maxAreaPx: (long)(ViewW * ViewH * 1.2));
+        var cache = new PictureCache(diag);
         var renderer = new CachedPageRenderer(backend, diag, cache);
 
         using (renderer.Render(root, new LayoutRect(0, 0, ViewW, ViewH), 1f, 1)) { }
-        // Scroll down by 400px: the union of [0,600) and [400,1000) is 1000px tall
-        // = 800*1000 px > budget, so the stitch evicts and reseeds from the strip.
+
+        // Scroll down by 400px: only [400,600) overlaps the seeded [0,600) window,
+        // so a 400px bottom strip is painted and the window slides down. The old
+        // design unioned to a 1000px-tall bitmap and (under budget) eventually
+        // evicted + repainted the whole viewport; the sliding window must instead
+        // stay viewport-sized and never count a second miss.
         var scrolled = new LayoutRect(0, 400, ViewW, ViewH);
         using var served = renderer.Render(root, scrolled, 1f, 1);
 
-        diag.CountOf("paint.cache.evict").Should().BeGreaterThanOrEqualTo(1,
-            "growing the single bitmap past the area budget must evict");
+        diag.CountOf("paint.cache.miss").Should().Be(1,
+            "only the seed is a miss; a partial scroll slides the window instead of reseeding");
+        diag.CountOf("paint.cache.partial").Should().BeGreaterThanOrEqualTo(1);
+        ((long)cache.Bounds.Width * cache.Bounds.Height).Should().Be(ViewW * ViewH,
+            "the cache window slides onto the new viewport rather than growing to the scrolled-through bounds");
 
         using var truth = RenderFromScratch(backend, root, scrolled);
         BitmapPixels.PixelsEqual(served, truth).Should().BeTrue(
-            "pixels served after an eviction+reseed must still match a from-scratch render");
+            "pixels served after a window slide must still match a from-scratch render");
 
-        // After eviction the cache holds the new content; re-requesting the same
-        // viewport is now a clean HIT and still correct.
+        // The slid window now holds the new content; re-requesting it is a clean HIT.
         using var again = renderer.Render(root, scrolled, 1f, 1);
         BitmapPixels.PixelsEqual(again, truth).Should().BeTrue();
         diag.CountOf("paint.cache.hit").Should().BeGreaterThanOrEqualTo(1);
+    }
+
+    [TestMethod]
+    public void Scrolling_back_up_after_window_slid_repaints_only_the_exposed_strip()
+    {
+        var root = LayoutTallPage(blocks: 1000, blockHeightPx: 200);
+        var diag = new RecordingDiagnostics();
+        using var backend = new ImageSharpBackend(FontResolver.Default, webFonts: null);
+        var renderer = new CachedPageRenderer(backend, diag);
+
+        // Seed, scroll down past the window, then scroll back up so the top edge is
+        // freshly exposed again. Every step stays viewport-sized and correct.
+        using (renderer.Render(root, new LayoutRect(0, 0, ViewW, ViewH), 1f, 1)) { }
+        using (renderer.Render(root, new LayoutRect(0, 400, ViewW, ViewH), 1f, 1)) { }
+
+        var backUp = new LayoutRect(0, 100, ViewW, ViewH);
+        using var served = renderer.Render(root, backUp, 1f, 1);
+        using var truth = RenderFromScratch(backend, root, backUp);
+
+        BitmapPixels.PixelsEqual(served, truth).Should().BeTrue(
+            "scrolling back up re-exposes a top strip; the slide must reassemble it correctly");
+        diag.CountOf("paint.cache.miss").Should().Be(1, "no step jumped clear of the window");
     }
 
     [TestMethod]

@@ -10,9 +10,13 @@ namespace Starling.Paint.Cache;
 /// rectangle it covers, keyed by <c>(pageVersion, scale)</c>. A scroll whose new
 /// viewport falls entirely inside the cached rectangle is served by blitting the
 /// cached pixels at an offset (no backend call). A scroll that exposes a fresh
-/// edge paints only the newly-visible strips and stitches them back in, growing
-/// the cache until it would exceed a max-area budget — at which point the cache
-/// is evicted and reseeded from the new content.
+/// edge paints only the newly-visible strips and then <em>slides</em> the cache
+/// window onto the new viewport (<see cref="SlideTo"/>): the overlap with the
+/// previous window is retained, the freshly-painted strips fill the exposed
+/// region, and the rows that scrolled off-screen are dropped. The cache buffer is
+/// therefore always exactly the requested viewport — it never grows with scroll
+/// distance, so a long scroll never accumulates the whole scrolled-through
+/// bounding box and never triggers a full-viewport reseed mid-scroll.
 /// </summary>
 /// <remarks>
 /// Coordinate spaces: the cache works entirely in <em>device pixels</em>
@@ -26,8 +30,9 @@ namespace Starling.Paint.Cache;
 /// why strips are rounded to whole device pixels (WP note: "rounds to whole
 /// device pixels to avoid aliasing").
 /// <para>
-/// This is intentionally a single bitmap; an LRU tile grid is
-/// <c>wp:M12-05-tile-grid</c>. Any display-list change is signalled by a bumped
+/// This is intentionally a single viewport-sized bitmap; an LRU tile grid (which
+/// would let off-screen scrolled-through content be retained across a long scroll
+/// instead of dropped) is <c>wp:M12-05-tile-grid</c>. Any display-list change is signalled by a bumped
 /// <c>pageVersion</c> and invalidates the whole cache — smarter partial
 /// invalidation is <c>wp:M12-06-invalidation</c>.
 /// </para>
@@ -35,7 +40,6 @@ namespace Starling.Paint.Cache;
 internal sealed class PictureCache
 {
     private readonly IDiagnostics _diag;
-    private readonly long _maxAreaPx;
 
     // Backing pixels for the cached region, RGBA8888, row stride _bounds.Width*4.
     private byte[]? _pixels;
@@ -43,19 +47,11 @@ internal sealed class PictureCache
     private float _scale;
     private int _pageVersion;
 
-    /// <summary>Creates an empty cache with the given strip-painting diagnostics sink and area budget.</summary>
-    /// <param name="diagnostics">Counter sink for hit/miss/partial/evict + strip area.</param>
-    /// <param name="maxAreaPx">
-    /// Maximum device-pixel area the cache buffer may occupy before a stitch that
-    /// would grow past it evicts instead. Defaults to ~4M px (≈ a 2560×1600
-    /// window). Sized as a small multiple of a typical viewport so a long scroll
-    /// can't grow the single bitmap without bound — that unbounded growth is what
-    /// the tile grid (M12-05) exists to solve.
-    /// </param>
-    public PictureCache(IDiagnostics? diagnostics = null, long maxAreaPx = 4_096_000)
+    /// <summary>Creates an empty cache with the given strip-painting diagnostics sink.</summary>
+    /// <param name="diagnostics">Counter sink for hit/miss/partial + strip area.</param>
+    public PictureCache(IDiagnostics? diagnostics = null)
     {
         _diag = diagnostics ?? NoopDiagnostics.Instance;
-        _maxAreaPx = maxAreaPx;
     }
 
     /// <summary>True once a frame has seeded the cache for the current key.</summary>
@@ -107,7 +103,7 @@ internal sealed class PictureCache
     /// <summary>
     /// Returns the list of device-pixel strip rectangles of <paramref name="viewport"/>
     /// that are NOT already covered by the cache for the matching key — the regions
-    /// the host must paint and then <see cref="Stitch"/> back. Returns the whole
+    /// the host must paint and then pass to <see cref="SlideTo"/>. Returns the whole
     /// requested rect (and bumps <c>paint.cache.miss</c>) when the key differs;
     /// returns the uncovered edges (and bumps <c>paint.cache.partial</c>) when the
     /// key matches but the rect spills past the cached bounds; returns empty when
@@ -131,40 +127,46 @@ internal sealed class PictureCache
     }
 
     /// <summary>
-    /// Stitches a freshly-painted edge strip into the cache, growing the cache
-    /// buffer to the union of its current bounds and the strip. Emits the painted
-    /// area as <c>paint.cache.strip_area</c>. Returns <c>false</c> when growth
-    /// would exceed the max-area budget (or the key is stale): the caller must then
-    /// evict via <see cref="Invalidate"/> and reseed with a full-viewport raster,
-    /// because a single strip does not cover the whole request. Returns <c>true</c>
-    /// when the strip was stitched in place.
+    /// Slides the cache window onto <paramref name="window"/> (the new viewport in
+    /// device px): allocates a fresh buffer sized to exactly that window, copies the
+    /// overlap with the current bounds into it (the part of the previous frame still
+    /// on screen), then fills the freshly-exposed regions from <paramref name="strips"/>
+    /// (each the raster of one uncovered edge band from
+    /// <see cref="ComputeUncachedStrips"/>). Rows that scrolled off-screen are
+    /// dropped, so the buffer never grows past one viewport. Emits each strip's area
+    /// as <c>paint.cache.strip_area</c>. Returns <c>false</c> (caller must reseed via
+    /// <see cref="Invalidate"/> + a full raster) only when the key is stale; the
+    /// retained overlap plus the strips otherwise tile the window completely.
     /// </summary>
-    public bool Stitch(DeviceRect stripBounds, RenderedBitmap stripPixels, float scale, int pageVersion)
+    public bool SlideTo(DeviceRect window, float scale, int pageVersion, IReadOnlyList<(DeviceRect Rect, RenderedBitmap Pixels)> strips)
     {
-        ArgumentNullException.ThrowIfNull(stripPixels);
-        _diag.Counter("paint.cache.strip_area", (double)stripBounds.Width * stripBounds.Height);
+        ArgumentNullException.ThrowIfNull(strips);
 
         // A version/scale mismatch slipping through here means the caller is
-        // stitching against a stale key — refuse so it reseeds wholesale.
+        // sliding against a stale key — refuse so it reseeds wholesale.
         if (_pixels is null || pageVersion != _pageVersion || scale != _scale)
             return false;
 
-        var grown = _bounds.Union(stripBounds);
-        if ((long)grown.Width * grown.Height > _maxAreaPx)
+        var dest = new byte[checked(window.Width * window.Height * 4)];
+
+        // Retain the part of the old window still visible in the new one.
+        var overlap = _bounds.Intersect(window);
+        if (overlap.Width > 0 && overlap.Height > 0)
+            CopyRegion(_pixels, _bounds, dest, window, overlap);
+
+        // Overlay each freshly-painted strip, clamped to the window in case a
+        // fractional-scale ceil sized the raster a pixel past the edge.
+        foreach (var (rect, pixels) in strips)
         {
-            _diag.Counter("paint.cache.evict", 1);
-            return false;
+            ArgumentNullException.ThrowIfNull(pixels);
+            _diag.Counter("paint.cache.strip_area", (double)rect.Width * rect.Height);
+            var region = rect.Intersect(window);
+            if (region.Width > 0 && region.Height > 0)
+                CopyRegion(pixels.Rgba, rect, dest, window, region);
         }
 
-        var dest = new byte[checked(grown.Width * grown.Height * 4)];
-        // Copy the existing cache into its place within the grown buffer, then
-        // overlay the new strip. Strip and cache never overlap (strips are the
-        // set-difference of the request and the cache), so order is irrelevant.
-        BlitInto(dest, grown.Width, _pixels, _bounds, grown);
-        BlitInto(dest, grown.Width, stripPixels.Rgba, stripBounds, grown);
-
         _pixels = dest;
-        _bounds = grown;
+        _bounds = window;
         return true;
     }
 
@@ -202,21 +204,23 @@ internal sealed class PictureCache
     }
 
     /// <summary>
-    /// Copies <paramref name="src"/> (covering <paramref name="srcRect"/>) into
-    /// <paramref name="dest"/> (covering <paramref name="destRect"/>), one row at a
-    /// time respecting both strides. Both rects are in the same device-pixel space.
+    /// Copies the device-pixel sub-rectangle <paramref name="region"/> from
+    /// <paramref name="src"/> (a tight buffer covering <paramref name="srcBounds"/>)
+    /// into <paramref name="dest"/> (a tight buffer covering
+    /// <paramref name="destBounds"/>), one row at a time respecting both strides.
+    /// <paramref name="region"/> must be contained in both bounds.
     /// </summary>
-    private static void BlitInto(byte[] dest, int destWidth, byte[] src, DeviceRect srcRect, DeviceRect destRect)
+    private static void CopyRegion(byte[] src, DeviceRect srcBounds, byte[] dest, DeviceRect destBounds, DeviceRect region)
     {
-        var rowBytes = srcRect.Width * 4;
-        var srcStride = srcRect.Width * 4;
-        var destStride = destWidth * 4;
-        var dx = srcRect.X - destRect.X;
-        var dy = srcRect.Y - destRect.Y;
-        for (var row = 0; row < srcRect.Height; row++)
+        var srcStride = srcBounds.Width * 4;
+        var destStride = destBounds.Width * 4;
+        var rowBytes = region.Width * 4;
+        var srcX = (region.X - srcBounds.X) * 4;
+        var destX = (region.X - destBounds.X) * 4;
+        for (var row = 0; row < region.Height; row++)
         {
-            var srcOffset = row * srcStride;
-            var destOffset = ((dy + row) * destStride) + (dx * 4);
+            var srcOffset = ((region.Y - srcBounds.Y + row) * srcStride) + srcX;
+            var destOffset = ((region.Y - destBounds.Y + row) * destStride) + destX;
             Array.Copy(src, srcOffset, dest, destOffset, rowBytes);
         }
     }
@@ -295,12 +299,17 @@ internal readonly record struct DeviceRect(int X, int Y, int Width, int Height)
     public bool Intersects(DeviceRect o)
         => X < o.Right && Right > o.X && Y < o.Bottom && Bottom > o.Y;
 
-    public DeviceRect Union(DeviceRect o)
+    /// <summary>
+    /// The overlapping rectangle of <c>this</c> and <paramref name="o"/>. A
+    /// non-overlapping pair yields a rect with zero or negative extent; callers
+    /// guard on <c>Width &gt; 0 &amp;&amp; Height &gt; 0</c> before using it.
+    /// </summary>
+    public DeviceRect Intersect(DeviceRect o)
     {
-        var x = Math.Min(X, o.X);
-        var y = Math.Min(Y, o.Y);
-        var right = Math.Max(Right, o.Right);
-        var bottom = Math.Max(Bottom, o.Bottom);
+        var x = Math.Max(X, o.X);
+        var y = Math.Max(Y, o.Y);
+        var right = Math.Min(Right, o.Right);
+        var bottom = Math.Min(Bottom, o.Bottom);
         return new DeviceRect(x, y, right - x, bottom - y);
     }
 }
