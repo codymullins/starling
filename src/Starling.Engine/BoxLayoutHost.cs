@@ -29,8 +29,9 @@ internal sealed class BoxLayoutHost : ILayoutHost
     private readonly Dictionary<Element, Box> _boxByElement = new(ReferenceEqualityComparer.Instance);
     private readonly Document? _document;
     private readonly Func<(BlockBox Root, StyleEngine Style)>? _relayout;
-    private StyleEngine _style;
+    private StyleEngine? _style;
     private int _laidOutVersion;
+    private bool _laidOut;
 
     /// <summary>
     /// Build a host over an already-computed layout. Without a
@@ -47,6 +48,26 @@ internal sealed class BoxLayoutHost : ILayoutHost
         _relayout = relayout;
         _laidOutVersion = document?.MutationVersion ?? 0;
         Index(root);
+        _laidOut = true;
+    }
+
+    /// <summary>
+    /// Build a host that <b>defers</b> its first layout until a script actually
+    /// reads geometry or computed style. Pages whose scripts never touch layout
+    /// (analytics beacons, feature-detection, etc.) skip the pre-script layout
+    /// pass entirely — the only layout that runs is the final render pass. The
+    /// first geometry/computed-style read triggers the <paramref name="relayout"/>
+    /// delegate; subsequent reads reuse it until a DOM mutation bumps the
+    /// document's <see cref="Document.MutationVersion"/>.
+    /// </summary>
+    public BoxLayoutHost(Document document, Func<(BlockBox Root, StyleEngine Style)> relayout)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(relayout);
+        _document = document;
+        _relayout = relayout;
+        _laidOutVersion = document.MutationVersion;
+        _laidOut = false;
     }
 
     /// <summary>
@@ -56,14 +77,16 @@ internal sealed class BoxLayoutHost : ILayoutHost
     /// </summary>
     private void EnsureFresh()
     {
-        if (_document is null || _relayout is null) return;
-        if (_document.MutationVersion == _laidOutVersion) return;
+        if (_relayout is null) return; // static snapshot — indexed at construction
+        if (_laidOut && (_document is null || _document.MutationVersion == _laidOutVersion))
+            return;
 
         var (root, style) = _relayout();
         _style = style;
         _boxByElement.Clear();
         Index(root);
-        _laidOutVersion = _document.MutationVersion;
+        _laidOutVersion = _document?.MutationVersion ?? 0;
+        _laidOut = true;
     }
 
     private void Index(Box box)
@@ -114,6 +137,7 @@ internal sealed class BoxLayoutHost : ILayoutHost
     {
         if (string.IsNullOrEmpty(propertyName)) return string.Empty;
         EnsureFresh();
+        if (_style is null) return string.Empty;
         try
         {
             var computed = _style.Compute(element);
