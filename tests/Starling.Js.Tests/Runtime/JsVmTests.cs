@@ -258,6 +258,22 @@ public class JsVmTests
             .Which.Value.AsString.Should().Be("boom");
     }
 
+    [TestMethod]
+    public void Not_a_function_error_names_the_global_callee()
+    {
+        var act = () => Eval("nopeFn();");
+        act.Should().Throw<JsThrow>()
+            .Which.Value.AsString.Should().Contain("nopeFn");
+    }
+
+    [TestMethod]
+    public void Not_a_function_error_names_the_method_callee()
+    {
+        var act = () => Eval("var o={}; o.missingMethod();");
+        act.Should().Throw<JsThrow>()
+            .Which.Value.AsString.Should().Contain("missingMethod");
+    }
+
     // ----- Helpers --------------------------------------------------------
 
     private static JsValue Eval(string src)

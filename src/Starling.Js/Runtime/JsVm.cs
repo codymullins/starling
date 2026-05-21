@@ -134,6 +134,13 @@ public sealed class JsVm
     /// saving/restoring it).</summary>
     private JsValue? _currentDerivedThis;
 
+    /// <summary>DIAG: name of the most recent property/global load, used to
+    /// enrich "not a function" errors with the callee identifier.</summary>
+    private string? _lastLoadName;
+
+    private static bool IsCallableValue(JsValue v)
+        => v.IsObject && v.AsObject is JsNativeFunction or JsFunction or JsBoundFunction or JsProxy;
+
     /// <summary>
     /// Internal entry. Copies <paramref name="args"/> into the first N
     /// local slots and stashes <paramref name="thisValue"/> for the
@@ -325,6 +332,7 @@ public sealed class JsVm
                 {
                     var idx = ReadU16();
                     var name = (string)constants[idx]!;
+                    _lastLoadName = name;
                     var globalObj = _runtime.Realm.GlobalObject;
                     Push(AbstractOperations.Get(this, globalObj, name, JsValue.Object(globalObj)));
                     break;
@@ -569,6 +577,7 @@ public sealed class JsVm
                 {
                     var idx = ReadU16();
                     var name = (string)constants[idx]!;
+                    _lastLoadName = name;
                     var obj = Pop();
                     if (obj.IsObject) Push(AbstractOperations.Get(this, obj.AsObject, name));
                     else if (!obj.IsNullish) Push(AbstractOperations.Get(this, AbstractOperations.ToObject(_runtime.Realm, obj), name, obj));
@@ -615,6 +624,8 @@ public sealed class JsVm
                     var callArgs = new JsValue[argc];
                     for (var i = argc - 1; i >= 0; i--) callArgs[i] = Pop();
                     var callee = Pop();
+                    if (!IsCallableValue(callee))
+                        throw new JsThrow(JsValue.String($"not a function: {JsValue.ToStringValue(callee)} (callee hint: '{_lastLoadName}')"));
                     Push(AbstractOperations.Call(this, callee, JsValue.Undefined, callArgs));
                     break;
                 }
@@ -625,6 +636,8 @@ public sealed class JsVm
                     for (var i = argc - 1; i >= 0; i--) callArgs[i] = Pop();
                     var callee = Pop();
                     var receiver = Pop();
+                    if (!IsCallableValue(callee))
+                        throw new JsThrow(JsValue.String($"not a function: {JsValue.ToStringValue(callee)} (method hint: '{_lastLoadName}')"));
                     Push(AbstractOperations.Call(this, callee, receiver, callArgs));
                     break;
                 }
