@@ -80,6 +80,9 @@ structure).
 |---|---|---|---|
 | [wp:M3-02c-js-parser-classes-modules](M3/wp-M3-02c-js-parser-classes-modules.md) | 🟢 complete | agent-copilot-claude-opus-4.7-modules | Starling.Js |
 | [wp:M3-02d-js-parser-destructuring](M3/wp-M3-02d-js-parser-destructuring.md) | 🟢 complete | agent-copilot-claude-opus-4.7-destruct | Starling.Js |
+| [wp:M3-03a-js-module-destructuring](M3/wp-M3-03a-js-module-destructuring.md) | 🟡 claimed | agent-claude-cody-moddestruct | Starling.Js |
+| [wp:M3-04f-js-computed-class-keys](M3/wp-M3-04f-js-computed-class-keys.md) | 🟡 claimed | agent-claude-cody-classkeys | Starling.Js |
+| [wp:M3-04g-js-async-generators](M3/wp-M3-04g-js-async-generators.md) | 🟡 claimed | agent-claude-cody-asyncgen | Starling.Js |
 | [wp:M3-06-native-interop-pivot](M3/wp-M3-06-native-interop-pivot.md) | 🟢 complete | agent-claude-cody | build |
 | [wp:M3-06a-native-scaffold](M3/wp-M3-06a-native-scaffold.md) | 🟢 complete | agent-claude-cody-native | build |
 | [wp:M3-06b-native-build](M3/wp-M3-06b-native-build.md) | 🟢 complete | agent-claude-cody-native | build |
