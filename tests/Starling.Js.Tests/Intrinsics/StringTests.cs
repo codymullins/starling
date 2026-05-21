@@ -125,6 +125,18 @@ public class StringTests
         Eval("'abc'.split('', 0).length;").AsNumber.Should().Be(0);
     }
 
+    [TestMethod]
+    public void Split_returns_a_real_array_with_array_prototype_methods()
+    {
+        // Regression: split returned a bare array-like (no Array.prototype), so
+        // the ubiquitous `.split(x).join(y)` / `.map(...)` failed with
+        // "join is not a function". §22.1.3.21 mandates a genuine Array.
+        Eval("Array.isArray('a,b,c'.split(','));").AsBool.Should().BeTrue();
+        Eval("'a,b,c'.split(',').join('-');").AsString.Should().Be("a-b-c");
+        Eval("'1,2,3'.split(',').map(function(x){return x+x;}).join('');").AsString.Should().Be("112233");
+        Eval("'a,b,c'.split(',') instanceof Array;").AsBool.Should().BeTrue();
+    }
+
     private static JsValue Eval(string src)
     {
         var program = new JsParser(src).ParseProgram();

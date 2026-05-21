@@ -467,16 +467,12 @@ public static class StringCtor
         return JsValue.String(s.Substring((int)start, (int)(end - start)));
     }
 
+    // §22.1.3.21 String.prototype.split returns a genuine Array (ArrayCreate),
+    // not a bare array-like — callers do `.split(x).join(y)`, `.map(...)`, etc.,
+    // which require Array.prototype. (Was returning an ordinary object, so those
+    // methods were undefined.)
     private static JsValue MakeArrayLike(JsRealm realm, List<JsValue> items)
-    {
-        var arr = realm.NewOrdinaryObject();
-        for (var i = 0; i < items.Count; i++)
-            arr.DefineOwnProperty(i.ToString(CultureInfo.InvariantCulture),
-                PropertyDescriptor.Data(items[i], writable: true, enumerable: true, configurable: true));
-        arr.DefineOwnProperty("length",
-            PropertyDescriptor.Data(JsValue.Number(items.Count), writable: true, enumerable: false, configurable: false));
-        return JsValue.Object(arr);
-    }
+        => JsValue.Object(new JsArray(realm, items));
 
     private static string RepeatToLength(string fill, int length)
     {
