@@ -197,6 +197,13 @@ internal sealed class ScriptFetcher : IDisposable
             || trimmed.Equals("application/x-javascript", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>Fetch a script's source for the dynamic (src-set-from-JS) path.
+    /// Shares the same scheme handling, decode, and per-URL cache as the static
+    /// parser-batch path so a bundle requested both ways is only fetched once.
+    /// Exposed for <c>DynamicScriptRunner</c>.</summary>
+    public Task<string?> FetchSourceAsync(StarlingUrl url, CancellationToken ct)
+        => FetchAsync(url, ct);
+
     private async Task<string?> FetchAsync(StarlingUrl url, CancellationToken ct)
     {
         var key = url.ToString();
@@ -204,6 +211,23 @@ internal sealed class ScriptFetcher : IDisposable
 
         using var _ = _diag.Span("engine", "fetch_script");
         Activity.Current?.SetTag("url", key);
+
+        // data: URLs decode locally — no network. The deferred-bundle repro
+        // uses `data:text/javascript,…` so the core behavior is testable
+        // offline; real loaders point at http(s) bundles handled below.
+        if (url.IsData)
+        {
+            if (DataUrl.TryDecode(url, out var payload))
+            {
+                var decoded = Decode(payload.MediaType, payload.Bytes);
+                _byUrl[key] = decoded;
+                _diag.Counter("engine.fetch.script", 1);
+                return decoded;
+            }
+            _diag.Log(DiagLevel.Warn, "engine", $"Malformed data: script URL");
+            _diag.Counter("engine.fetch.script.failed", 1);
+            return null;
+        }
 
         try
         {

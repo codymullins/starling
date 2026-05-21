@@ -447,6 +447,7 @@ public sealed class StarlingEngine
         Document document, StarlingUrl baseUrl, ScriptFetcher scriptFetcher,
         ILayoutHost? layoutHost, CancellationToken ct)
     {
+        var scripts = scriptFetcher.Scripts;
         var runtime = new JsRuntime();
         var consoleErrors = 0;
         var previousSink = runtime.Realm.ConsoleSink;
@@ -497,6 +498,15 @@ public sealed class StarlingEngine
         document.NodeConnected = node =>
             OnNodeConnected(node, runtime, scriptFetcher, baseUrl, executed, ct);
 
+        // Dynamic <script src=…> path (HTML §4.12.1 "prepare a script"): when a
+        // running script sets src on a not-yet-started <script>, queue it for
+        // fetch+execute and fire load/error. Deferred-bundle loaders depend on
+        // this. The runner shares the ScriptFetcher cache + scheme handling.
+        var dynamicRunner = new DynamicScriptRunner(
+            _diag, runtime, baseUrl,
+            (url, token) => scriptFetcher.FetchSourceAsync(url, token));
+        ScriptSrcHook.Register(runtime.Realm, dynamicRunner.OnSrcSet);
+
         try
         {
             // §0: ordered scripts (neither async nor defer, then defer) run in
@@ -512,24 +522,37 @@ public sealed class StarlingEngine
             // the shared ModuleLoader, before DOMContentLoaded.
             RunModuleScripts(runtime, baseUrl, scriptFetcher, ct);
 
-            // §1: DOMContentLoaded — synchronous handlers see the parsed DOM.
+            // Mark every parser-batch script "already started" in the dynamic
+            // runner so a deferred loader's later `src` write never re-runs a
+            // script that already executed. Empty deferred placeholders (no src,
+            // empty body) are not collected into these batches (ScriptFetcher
+            // drops them), so they stay eligible for the src-set path above.
+            foreach (var s in scriptFetcher.Scripts) dynamicRunner.MarkStarted(s.Element);
+            foreach (var s in scriptFetcher.ModuleScripts) dynamicRunner.MarkStarted(s.Element);
+
+            // §1: DOMContentLoaded — synchronous handlers see the parsed DOM. A
+            // deferred loader runs here and copies data-deferred-src onto src,
+            // which the hook turns into queued dynamic-script work.
             runtime.WithActiveVm(() => WindowBinding.FireDomContentLoaded(runtime));
 
-            // §2: pump any in-flight async work (fetch / XHR completing on a
-            // worker thread, microtasks chained off those completions, timer
-            // callbacks waiting on simulated time) until quiescent or budget.
-            await PumpPendingAsync(runtime, loop, ct).ConfigureAwait(false);
+            // §2: pump in-flight async work (fetch / XHR completions, chained
+            // microtasks, simulated timers/rAF) AND src-triggered dynamic script
+            // fetches, re-pumping after each settles. Sequential bundle loaders
+            // chain off `load`, so this loop is what lets bundle #2..N run after #1.
+            await PumpWithDynamicScriptsAsync(runtime, loop, dynamicRunner, ct).ConfigureAwait(false);
 
             // §3: load event after subresources have settled. Listeners that
-            // schedule more work get one more drain pass before we return.
+            // schedule more work (including more dynamic scripts) get one more
+            // drain pass before we return.
             runtime.WithActiveVm(() => WindowBinding.FireLoad(runtime));
-            await PumpPendingAsync(runtime, loop, ct, idleMs: 50, maxMs: 500).ConfigureAwait(false);
+            await PumpWithDynamicScriptsAsync(runtime, loop, dynamicRunner, ct).ConfigureAwait(false);
         }
         finally
         {
-            // Detach the hook so the document is inert again once scripting is
+            // Detach the hooks so the document is inert again once scripting is
             // done — a later layout/paint mutation must not re-enter the VM.
             document.NodeConnected = null;
+            ScriptSrcHook.Register(runtime.Realm, null);
         }
 
         if (consoleErrors > 0)
@@ -687,6 +710,45 @@ public sealed class StarlingEngine
                 }
             }
         });
+    }
+
+    /// <summary>
+    /// Drive the realm + simulated loop to quiescence the way
+    /// <see cref="PumpPendingAsync"/> does, but also service src-triggered
+    /// dynamic scripts: whenever the microtask/timer/rAF queues go quiet, drain
+    /// any queued dynamic-script fetches (each can enqueue more work or, via its
+    /// <c>load</c> handler, queue the next bundle), then resume pumping. Exits
+    /// only when nothing is pending on any of the three fronts — microtasks,
+    /// the simulated loop, and the dynamic-script queue — within budget. A
+    /// generous wall-clock cap (a few seconds) accommodates sequential network
+    /// bundle chains without hanging a stuck page.
+    /// </summary>
+    private async Task PumpWithDynamicScriptsAsync(
+        JsRuntime runtime, WebEventLoop loop, DynamicScriptRunner dynamicRunner, CancellationToken ct)
+    {
+        const int MaxMs = 8000;          // hard wall-clock cap for the whole settle
+        var wall = System.Diagnostics.Stopwatch.StartNew();
+
+        while (wall.ElapsedMilliseconds < MaxMs)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            // Settle JS-side async work first (microtasks/timers/rAF/fetch).
+            // Per-iteration budget is bounded so we cycle back to the dynamic
+            // queue promptly; the outer wall clock is the real ceiling.
+            await PumpPendingAsync(runtime, loop, ct, idleMs: 60, maxMs: 1500).ConfigureAwait(false);
+
+            if (!dynamicRunner.HasPending)
+                return; // fully quiescent — nothing left on any front
+
+            // Fetch + execute the queued dynamic scripts. Each fires load/error;
+            // a chained loader's load handler may queue the next script (lands
+            // back on HasPending) and/or kick more microtasks (next loop pump).
+            await dynamicRunner.DrainAsync(ct).ConfigureAwait(false);
+        }
+
+        _diag.Log(DiagLevel.Warn, "engine",
+            "Script pump hit the wall-clock cap before quiescence; rendering current DOM.");
     }
 
     /// <summary>

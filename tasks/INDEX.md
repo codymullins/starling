@@ -108,6 +108,7 @@ structure).
 | [wp:M3-06j-skia-fonts](M3/wp-M3-06j-skia-fonts.md) | 🟢 complete | agent-claude-cody-skia-fonts | Starling.Paint |
 | [wp:M3-06k-gui-canvas](M3/wp-M3-06k-gui-canvas.md) | 🟢 complete | agent-claude-cody-gui | Starling.Gui |
 | [wp:M3-06l-ci-policy](M3/wp-M3-06l-ci-policy.md) | 🟢 complete | agent-claude-cody-ci | build |
+| [wp:M3-07-dynamic-script-src](M3/wp-M3-07-dynamic-script-src.md) | 🟢 complete | agent-claude-cody | Starling.Engine |
 
 > **M3-06 native interop pivot: COMPLETE (with one revert).** All 13 packages
 > (06a–06l + the 06g2 shim follow-up) shipped; full `dotnet build && dotnet test`

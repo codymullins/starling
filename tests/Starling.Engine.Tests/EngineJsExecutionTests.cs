@@ -455,6 +455,182 @@ public sealed class EngineJsExecutionTests
     }
 
     // -------------------------------------------------------------------
+    // Dynamic <script src=…> — HTML §4.12.1 "prepare a script"
+    // -------------------------------------------------------------------
+
+    [Spec("html", "https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element", "4.12.1 prepare a script")]
+    [SpecFact]
+    public async Task Setting_src_on_deferred_script_fetches_and_runs_it()
+    {
+        // The seed repro: a loader runs on DOMContentLoaded and copies a custom
+        // data-* attribute onto src for each <script>. Setting src on a
+        // parser-created empty <script> must run "prepare a script": fetch the
+        // (data:) URL and execute it. Without the fix the deferred script never
+        // runs and we'd see FALLBACK_NOT_LOADED.
+        var html = @"<!doctype html><html><head>
+<script>
+  window.handlePageReady = function() {
+    var scripts = document.getElementsByTagName('script');
+    for (var i=0;i<scripts.length;i++){
+      var s=scripts[i];
+      if (s.getAttribute('data-deferred-src')) s.setAttribute('src', s.getAttribute('data-deferred-src'));
+    }
+  };
+  window.addEventListener('DOMContentLoaded', window.handlePageReady);
+</script></head><body>
+<p id=""status"">FALLBACK_NOT_LOADED</p>
+<script data-deferred-src=""data:text/javascript,document.getElementById('status').textContent='DEFERRED_RAN'""></script>
+</body></html>";
+
+        var outcome = await RenderHtmlAsync(html);
+        outcome.DisplayText.Should().Contain("DEFERRED_RAN");
+        outcome.DisplayText.Should().NotContain("FALLBACK_NOT_LOADED");
+    }
+
+    [Spec("html", "https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element", "4.12.1 prepare a script")]
+    [SpecFact]
+    public async Task Setting_src_via_idl_property_fetches_and_runs_it()
+    {
+        // The .src IDL setter must behave the same as setAttribute('src', …).
+        var html = @"<!doctype html><html><head>
+<script>
+  window.addEventListener('DOMContentLoaded', function() {
+    var s = document.getElementById('boot');
+    s.src = ""data:text/javascript,document.getElementById('status').textContent='IDL_SRC_RAN'"";
+  });
+</script></head><body>
+<p id=""status"">IDLE</p>
+<script id=""boot""></script>
+</body></html>";
+
+        var outcome = await RenderHtmlAsync(html);
+        outcome.DisplayText.Should().Contain("IDL_SRC_RAN");
+        outcome.DisplayText.Should().NotContain("IDLE");
+    }
+
+    [Spec("html", "https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element", "4.12.1 prepare a script")]
+    [SpecFact]
+    public async Task Load_event_chains_a_second_dynamic_script()
+    {
+        // Sequential loaders set src on script #2 only from script #1's load
+        // handler. This pins that (a) the load event fires after the
+        // src-triggered fetch+execute settles, and (b) the chained script then
+        // runs too. Without the load event only the first bundle would load.
+        var html = @"<!doctype html><html><head>
+<script>
+  window.addEventListener('DOMContentLoaded', function() {
+    var a = document.getElementById('a');
+    var b = document.getElementById('b');
+    a.addEventListener('load', function() {
+      b.src = ""data:text/javascript,document.getElementById('status').textContent += '_B'"";
+    });
+    a.src = ""data:text/javascript,document.getElementById('status').textContent='A'"";
+  });
+</script></head><body>
+<p id=""status"">none</p>
+<script id=""a""></script>
+<script id=""b""></script>
+</body></html>";
+
+        var outcome = await RenderHtmlAsync(html);
+        outcome.DisplayText.Should().Contain("A_B");
+    }
+
+    [Spec("html", "https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element", "4.12.1 prepare a script")]
+    [SpecFact]
+    public async Task Error_event_fires_when_dynamic_script_fetch_fails()
+    {
+        // A src pointing at a missing file fires `error`, not `load`. The error
+        // handler's mutation must land in the rendered text.
+        var html = @"<!doctype html><html><head>
+<script>
+  window.addEventListener('DOMContentLoaded', function() {
+    var s = document.getElementById('boot');
+    s.addEventListener('load', function() {
+      document.getElementById('status').textContent = 'LOADED';
+    });
+    s.addEventListener('error', function() {
+      document.getElementById('status').textContent = 'ERRORED';
+    });
+    s.src = 'file:///nonexistent/path/to/missing-bundle.js';
+  });
+</script></head><body>
+<p id=""status"">PENDING</p>
+<script id=""boot""></script>
+</body></html>";
+
+        var outcome = await RenderHtmlAsync(html);
+        outcome.DisplayText.Should().Contain("ERRORED");
+        outcome.DisplayText.Should().NotContain("LOADED");
+    }
+
+    [Spec("html", "https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element", "4.12.1 prepare a script")]
+    [SpecFact]
+    public async Task Sequential_network_bundles_chain_to_quiescence()
+    {
+        // Real deferred loaders fetch bundles over the network and chain off
+        // `load`. Three HTTP bundles, each setting src on the next from its own
+        // load handler — only all three settle if the pump waits on in-flight
+        // dynamic-script fetches and re-pumps after each completes.
+        await using var server = await BundleServer.StartAsync(new()
+        {
+            ["/b1.js"] = "document.getElementById('log').textContent += '1';",
+            ["/b2.js"] = "document.getElementById('log').textContent += '2';",
+            ["/b3.js"] = "document.getElementById('log').textContent += '3';",
+        });
+
+        var html = $@"<!doctype html><html><head>
+<script>
+  window.addEventListener('DOMContentLoaded', function() {{
+    var s1 = document.getElementById('s1');
+    var s2 = document.getElementById('s2');
+    var s3 = document.getElementById('s3');
+    s1.addEventListener('load', function() {{ s2.src = '{server.BaseUrl}/b2.js'; }});
+    s2.addEventListener('load', function() {{ s3.src = '{server.BaseUrl}/b3.js'; }});
+    s1.src = '{server.BaseUrl}/b1.js';
+  }});
+</script></head><body>
+<p id=""log"">L:</p>
+<script id=""s1""></script>
+<script id=""s2""></script>
+<script id=""s3""></script>
+</body></html>";
+
+        var outcome = await RenderHtmlAsync(html);
+        outcome.DisplayText.Should().Contain("L:123");
+    }
+
+    [Spec("html", "https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element", "4.12.1 prepare a script")]
+    [SpecFact]
+    public async Task Already_run_external_script_does_not_rerun_when_src_reassigned()
+    {
+        // A parser-discovered external script that already ran must not re-run
+        // when its src is reassigned to the same kind of resource. We count
+        // executions via a window counter; reassigning src should not increment
+        // it again (the "already started" flag).
+        await using var server = await BundleServer.StartAsync(new()
+        {
+            ["/once.js"] = "window.__runs = (window.__runs||0)+1;",
+        });
+
+        var html = $@"<!doctype html><html><head>
+<script src=""{server.BaseUrl}/once.js""></script>
+<script>
+  window.addEventListener('DOMContentLoaded', function() {{
+    var scripts = document.getElementsByTagName('script');
+    // Reassign src on the already-run external script.
+    scripts[0].src = '{server.BaseUrl}/once.js';
+    document.getElementById('out').textContent = 'runs=' + (window.__runs||0);
+  }});
+</script></head><body>
+<p id=""out"">?</p>
+</body></html>";
+
+        var outcome = await RenderHtmlAsync(html);
+        outcome.DisplayText.Should().Contain("runs=1");
+    }
+
+    // -------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------
 
@@ -518,6 +694,86 @@ public sealed class EngineJsExecutionTests
         }
     }
 
+    private static int FindFreePort()
+    {
+        var sock = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+        sock.Start();
+        var port = ((IPEndPoint)sock.LocalEndpoint).Port;
+        sock.Stop();
+        return port;
+    }
+
+    /// <summary>HttpListener-backed JS file server: maps absolute paths to
+    /// JavaScript source, returned as <c>text/javascript</c>. Used by the
+    /// sequential-bundle quiescence tests.</summary>
+    private sealed class BundleServer : IAsyncDisposable
+    {
+        private readonly HttpListener _listener;
+        private readonly CancellationTokenSource _cts = new();
+        private readonly Task _loop;
+        private readonly IReadOnlyDictionary<string, string> _routes;
+        public string BaseUrl { get; }
+
+        private BundleServer(HttpListener listener, string baseUrl, IReadOnlyDictionary<string, string> routes)
+        {
+            _listener = listener;
+            BaseUrl = baseUrl;
+            _routes = routes;
+            _loop = Task.Run(LoopAsync);
+        }
+
+        public static Task<BundleServer> StartAsync(Dictionary<string, string> routes)
+        {
+            var prefix = $"http://127.0.0.1:{FindFreePort()}/";
+            var listener = new HttpListener();
+            listener.Prefixes.Add(prefix);
+            listener.Start();
+            return Task.FromResult(new BundleServer(listener, prefix.TrimEnd('/'), routes));
+        }
+
+        private async Task LoopAsync()
+        {
+            while (!_cts.IsCancellationRequested)
+            {
+                HttpListenerContext ctx;
+                try { ctx = await _listener.GetContextAsync().ConfigureAwait(false); }
+                catch { return; }
+                _ = Task.Run(() =>
+                {
+                    try
+                    {
+                        var path = ctx.Request.Url?.AbsolutePath ?? "";
+                        if (_routes.TryGetValue(path, out var js))
+                        {
+                            ctx.Response.StatusCode = 200;
+                            ctx.Response.ContentType = "text/javascript";
+                            var bytes = Encoding.UTF8.GetBytes(js);
+                            ctx.Response.OutputStream.Write(bytes, 0, bytes.Length);
+                        }
+                        else
+                        {
+                            ctx.Response.StatusCode = 404;
+                        }
+                    }
+                    catch { /* swallow */ }
+                    finally
+                    {
+                        try { ctx.Response.OutputStream.Close(); } catch { }
+                        try { ctx.Response.Close(); } catch { }
+                    }
+                });
+            }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            _cts.Cancel();
+            try { _listener.Stop(); } catch { }
+            try { _listener.Close(); } catch { }
+            try { await _loop.ConfigureAwait(false); } catch { }
+        }
+    }
+
     /// <summary>HttpListener-backed JSON endpoint shared by the fetch test.</summary>
     private sealed class JsonResultsServer : IAsyncDisposable
     {
@@ -566,15 +822,6 @@ public sealed class EngineJsExecutionTests
                     }
                 });
             }
-        }
-
-        private static int FindFreePort()
-        {
-            var sock = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
-            sock.Start();
-            var port = ((IPEndPoint)sock.LocalEndpoint).Port;
-            sock.Stop();
-            return port;
         }
 
         public async ValueTask DisposeAsync()

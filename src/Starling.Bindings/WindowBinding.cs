@@ -363,8 +363,18 @@ public static class WindowBinding
     {
         ArgumentNullException.ThrowIfNull(runtime);
         if (!RealmToDocument.TryGetValue(runtime.Realm, out var doc)) return;
-        var ev = new Event("DOMContentLoaded", new EventInit(Bubbles: true, Cancelable: false));
-        doc.DispatchEvent(ev);
+        // Dispatch on the document so `document.addEventListener('DOMContentLoaded')`
+        // fires (and bubbles through the DOM ancestor chain).
+        doc.DispatchEvent(new Event("DOMContentLoaded", new EventInit(Bubbles: true, Cancelable: false)));
+
+        // Per HTML, DOMContentLoaded's propagation path includes the Window, so
+        // `window.addEventListener('DOMContentLoaded', …)` must also fire.
+        // The Window is a separate host EventTarget that is not part of the DOM
+        // node tree, so EventDispatcher's ParentNode walk never reaches it —
+        // fire a sibling event on the window host target to cover it. Deferred-
+        // bundle loaders very commonly register on window, not document.
+        var windowTarget = EventTargetBinding.ResolveHost(JsValue.Object(runtime.Realm.GlobalObject));
+        windowTarget?.DispatchEvent(new Event("DOMContentLoaded", new EventInit(Bubbles: false, Cancelable: false)));
     }
 
     /// <summary>TODO callable for the engine: dispatches <c>load</c> on the

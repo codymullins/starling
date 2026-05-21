@@ -291,9 +291,38 @@ public static class NodeBindings
         EventTargetBinding.DefineMethod(realm, elProto, "setAttribute", (thisV, args) =>
         {
             if (DomWrappers.UnwrapElement(thisV) is { } e && args.Length >= 2)
-                e.SetAttribute(JsValue.ToStringValue(args[0]), JsValue.ToStringValue(args[1]));
+            {
+                var name = JsValue.ToStringValue(args[0]);
+                var value = JsValue.ToStringValue(args[1]);
+                e.SetAttribute(name, value);
+                // HTML §4.12.1 "prepare a script": setting `src` on a script
+                // element makes it eligible to load+run. Real browsers treat a
+                // parser-inserted empty <script> that later gets a src as a
+                // newly-fetched external script (the deferred-bundle pattern).
+                MaybeTriggerScriptSrc(realm, e, name);
+            }
             return JsValue.Undefined;
         }, length: 2);
+
+        // `script.src` IDL property — get/set the resolved-ish src attribute.
+        // The setter mirrors setAttribute('src', …) and runs "prepare a script"
+        // so `el.src = url` loads the same way `setAttribute` does. Defined on
+        // Element.prototype but only meaningful for <script>; for non-script
+        // elements it's a plain attribute round-trip.
+        EventTargetBinding.DefineAccessor(realm, elProto, "src",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e
+                ? JsValue.String(e.GetAttribute("src") ?? "")
+                : JsValue.String(""),
+            (thisV, args) =>
+            {
+                if (DomWrappers.UnwrapElement(thisV) is { } e)
+                {
+                    var value = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+                    e.SetAttribute("src", value);
+                    MaybeTriggerScriptSrc(realm, e, "src");
+                }
+                return JsValue.Undefined;
+            });
         EventTargetBinding.DefineMethod(realm, elProto, "hasAttribute", (thisV, args) =>
             DomWrappers.UnwrapElement(thisV) is { } e && args.Length > 0
                 ? JsValue.Boolean(e.HasAttribute(JsValue.ToStringValue(args[0])))
@@ -796,6 +825,20 @@ public static class NodeBindings
             return JsValue.Number(select(m));
         }
         return JsValue.Number(0);
+    }
+
+    /// <summary>If <paramref name="e"/> is a <c>&lt;script&gt;</c> and the
+    /// mutated attribute is <c>src</c> with a non-empty value, notify the
+    /// engine so it can run HTML §4.12.1 "prepare a script" (fetch + execute +
+    /// fire load/error). Scoped strictly to script-element <c>src</c>; every
+    /// other attribute write is untouched.</summary>
+    private static void MaybeTriggerScriptSrc(JsRealm realm, Element e, string attrName)
+    {
+        if (!attrName.Equals("src", StringComparison.OrdinalIgnoreCase)) return;
+        if (!e.LocalName.Equals("script", StringComparison.OrdinalIgnoreCase)) return;
+        var src = e.GetAttribute("src");
+        if (string.IsNullOrWhiteSpace(src)) return;
+        ScriptSrcHook.NotifySrcSet(realm, e);
     }
 
     private static int NodeTypeFromKind(NodeKind kind) => (int)kind;
