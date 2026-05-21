@@ -1,10 +1,10 @@
 ---
 id: wp:M5-css-12-text-3-inline
 milestone: M5
-status: "claimed"
+status: "complete"
 claimed_by: "agent-claude-cody-text3"
 claimed_at: "2026-05-20T00:00:00Z"
-completed_at: ""
+completed_at: "2026-05-20T23:30:00Z"
 branch: "worktree"
 depends_on:
   - wp:M1-08-layout-block-inline
@@ -80,3 +80,28 @@ Apply the CSS Text Module Level 3 inline properties that are already in the
 ## Handoff log
 
 - 2026-05-20 — created + claimed by agent-claude-cody-text3 (orchestrated batch).
+- 2026-05-20 — implemented in `src/Starling.Layout/Inline/InlineLayout.cs`:
+  rewrote `LayoutText` into a white-space-aware tokenizer (`Tokenize`) +
+  `LayoutToken`/`LayoutBrokenWord` pipeline that preserves the per-run
+  shape-once-and-slice optimisation. New `WhiteSpaceMode.Resolve` reads the
+  legacy `white-space` keyword and the modern `white-space-collapse` +
+  `text-wrap` longhands; `TextTransformer` (none/upper/lower/capitalize, culture-
+  invariant) rewrites text before shaping; `letter-spacing`/`word-spacing` feed
+  the advance; `text-indent` offsets the first line only (em vs. font-size, %
+  vs. available width); `tab-size` expands `\t` at tab-stops in preserved
+  contexts; `overflow-wrap: anywhere|break-word` and `word-break: break-all`
+  drive per-character emergency breaking of an over-long token. In
+  `src/Starling.Css/Properties/PropertyRegistry.cs`, `white-space` now expands
+  to the `white-space-collapse` + `text-wrap` longhands (CSS Text 4 §3) while
+  keeping the legacy longhand set (BoxTreeBuilder's whitespace-collapse check
+  still reads it). Tests: `tests/Starling.Layout.Tests/CssText3InlineTests.cs`
+  (19 behavioral cases) + `tests/Starling.Css.Spec.Tests/CssText3/PropertyTests.cs`
+  (19 typed-parse `[SpecFact]`s) + `_spec.md`. Layout.Tests 155/155, Css.Spec
+  72 pass/13 skip (incl. 19 new), Css.Tests 505/1-skip, Paint.Tests 138/138
+  (fixed the 3 inline-shape-optimisation regressions by shaping the whole
+  segment once and slicing), Engine.Tests 122/122. NOTE: started in a worktree
+  branched from a stale pre-scaffold commit (9d3ec43); reset the branch to the
+  current `main` (40d1f02, which contains this WP file) since the branch had
+  zero unique commits. `Starling.Gui.Headless.Tests` cannot build under the
+  sandbox `-p:UseAppHost=false` flag (xUnit v3 needs an apphost) — pre-existing
+  sandbox limitation, unrelated. Completed by agent-claude-cody-text3.
