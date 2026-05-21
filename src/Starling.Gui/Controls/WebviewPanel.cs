@@ -19,6 +19,7 @@ using Starling.Gui; // linked BoxHitTester.cs lives in this namespace
 using AvColor = Avalonia.Media.Color;
 using DomElement = Starling.Dom.Element;
 using DomNode = Starling.Dom.Node;
+using EngineSize = SixLabors.ImageSharp.Size;
 using LayoutBox = Starling.Layout.Box.Box;
 
 namespace Starling.Gui.Controls;
@@ -37,6 +38,15 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     private readonly Action<string> _onLinkActivated;
     private readonly Action<string, bool> _onStatus;
     private readonly PageRendererHost _renderer;
+
+    // Given the current page and a new viewport size, reflows the page (reusing
+    // its document/resources, no network) and returns the successor — or null
+    // to skip (e.g. a navigation is in flight). Supplied by the host so the
+    // panel can react to its own resize without owning navigation policy.
+    private readonly Func<LaidOutPage, EngineSize, LaidOutPage?>? _relayout;
+    // Coalesces the burst of viewport changes during a drag-resize into a
+    // single re-layout once the size settles.
+    private readonly DispatcherTimer _relayoutTimer;
 
     private readonly ScrollViewer _scroll;
     private readonly Image _pageImage;
@@ -63,13 +73,21 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     private bool _selecting;
     private string _selectionText = string.Empty;
 
-    public WebviewPanel(ThemeManager tm, IDiagnostics diag, Action<string> onLinkActivated, Action<string, bool> onStatus)
+    public WebviewPanel(
+        ThemeManager tm,
+        IDiagnostics diag,
+        Action<string> onLinkActivated,
+        Action<string, bool> onStatus,
+        Func<LaidOutPage, EngineSize, LaidOutPage?>? relayout = null)
     {
         _tm = tm;
         _diag = diag;
         _renderer = new PageRendererHost(diag);
         _onLinkActivated = onLinkActivated;
         _onStatus = onStatus;
+        _relayout = relayout;
+        _relayoutTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        _relayoutTimer.Tick += (_, _) => RelayoutToViewport();
 
         _pageImage = new Image
         {
@@ -121,8 +139,11 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         };
         // Re-render the visible viewport region whenever the user scrolls or
         // the viewport size changes (M12 viewport-clipped paint: the page is no
-        // longer rasterized whole, only the on-screen rect each frame).
-        _scroll.ScrollChanged += (_, _) => RenderViewportRegion();
+        // longer rasterized whole, only the on-screen rect each frame). A
+        // non-zero ViewportDelta means the visible area itself resized (window
+        // resize, sidebar/DevTools toggle) — schedule a debounced re-layout so
+        // the page reflows to the new width instead of staying at its old one.
+        _scroll.ScrollChanged += OnScrollChanged;
 
         _findEntry = new TextBox
         {
@@ -191,8 +212,12 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     /// offset — only the on-screen region is rasterized each frame (M12
     /// viewport-clipped paint).
     /// </summary>
-    public void ShowPage(LaidOutPage page)
+    public void ShowPage(LaidOutPage page, bool preserveScroll = false)
     {
+        // Keep the scroll position across a reflow (resize re-layout) so the
+        // user doesn't jump to the top; a fresh navigation resets to the top.
+        var prevOffset = _scroll.Offset;
+
         _currentPage?.Dispose();
         _currentPage = page;
 
@@ -215,7 +240,18 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         _pageCanvas.Height = page.Root.Frame.Height;
         _scroll.Content = _pageCanvas;
 
-        _scroll.Offset = new Vector(0, 0);
+        if (preserveScroll)
+        {
+            var maxX = Math.Max(0, _pageCanvas.Width - _scroll.Viewport.Width);
+            var maxY = Math.Max(0, _pageCanvas.Height - _scroll.Viewport.Height);
+            _scroll.Offset = new Vector(
+                Math.Clamp(prevOffset.X, 0, maxX),
+                Math.Clamp(prevOffset.Y, 0, maxY));
+        }
+        else
+        {
+            _scroll.Offset = new Vector(0, 0);
+        }
         RenderViewportRegion();
 
         using (_diag.Span("gui", "show_page.hit_index"))
@@ -260,6 +296,58 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         _pageImage.Height = rect.Height;
         Canvas.SetLeft(_pageImage, rect.X);
         Canvas.SetTop(_pageImage, rect.Y);
+    }
+
+    private void OnScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        RenderViewportRegion();
+        if (e.ViewportDelta.X != 0 || e.ViewportDelta.Y != 0)
+            ScheduleRelayout();
+    }
+
+    /// <summary>
+    /// The live CSS layout viewport — the ScrollViewer's visible area (which
+    /// already excludes any scrollbar gutter). Falls back to the control bounds,
+    /// then a nominal size, before the panel has been measured. This is the
+    /// width/height pages are laid out against, so it tracks the window size.
+    /// </summary>
+    public EngineSize CurrentViewportSize()
+    {
+        var w = _scroll.Viewport.Width;
+        var h = _scroll.Viewport.Height;
+        if (w < 1 || h < 1)
+        {
+            w = Bounds.Width > 1 ? Bounds.Width : 1200;
+            h = Bounds.Height > 1 ? Bounds.Height : 900;
+        }
+        return new EngineSize((int)Math.Round(w), (int)Math.Round(h));
+    }
+
+    private void ScheduleRelayout()
+    {
+        if (_relayout is null) return;
+        // Restart the timer so a continuous drag-resize only reflows once it
+        // pauses, not on every intermediate size.
+        _relayoutTimer.Stop();
+        _relayoutTimer.Start();
+    }
+
+    private void RelayoutToViewport()
+    {
+        _relayoutTimer.Stop();
+        var page = _currentPage;
+        if (page is null || _relayout is null) return;
+
+        var size = CurrentViewportSize();
+        // No-op if the layout viewport already matches what produced this page —
+        // guards against scrollbar-toggle flicker and the post-load delta.
+        if (size.Width == (int)Math.Round(page.Viewport.Width) &&
+            size.Height == (int)Math.Round(page.Viewport.Height))
+            return;
+
+        var relaid = _relayout(page, size);
+        if (relaid is not null)
+            ShowPage(relaid, preserveScroll: true);
     }
 
     private double GetRenderScale()
@@ -699,6 +787,7 @@ internal sealed class WebviewPanel : UserControl, IDisposable
 
     public void Dispose()
     {
+        _relayoutTimer.Stop();
         _renderer.Dispose();
         _currentPage?.Dispose();
         (_pageImage.Source as IDisposable)?.Dispose();

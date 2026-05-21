@@ -396,6 +396,37 @@ public sealed class StarlingEngine
     }
 
     /// <summary>
+    /// Re-lays-out an existing <paramref name="page"/> at a new viewport size
+    /// (e.g. after a window resize) <em>without</em> re-fetching: the page's
+    /// already-parsed <see cref="LaidOutPage.Document"/> and resource resolvers
+    /// are reused, only the box tree and cascade are rebuilt against the new
+    /// <paramref name="options"/> viewport. Returns a fresh <see cref="LaidOutPage"/>
+    /// that owns the shared resources; the caller must show it and dispose the
+    /// old one. Synchronous — runs on the caller's thread.
+    /// </summary>
+    /// <remarks>
+    /// This reflows the post-script DOM as it currently stands; it does not
+    /// re-run page scripts, fire <c>resize</c> events, or re-evaluate
+    /// <c>srcset</c> against the new width. Those need a full navigation.
+    /// </remarks>
+    public LaidOutPage RelayoutPage(LaidOutPage page, RenderOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        ArgumentNullException.ThrowIfNull(options);
+
+        _diag.Counter("engine.page_relayout", 1);
+        using var _ = _diag.Span("engine", $"relayout {page.Url}");
+        Activity.Current?.SetTag("viewport.w", options.Viewport.Width);
+        Activity.Current?.SetTag("viewport.h", options.Viewport.Height);
+
+        var viewport = new LayoutSize(options.Viewport.Width, options.Viewport.Height);
+        var (root, style) = _painter.LayoutDocumentWithStyle(
+            page.Document, viewport, page.DefaultFontSize, page.Images, page.Stylesheets.Resolve,
+            page.WebFonts, colorScheme: options.PreferredColorScheme);
+        return page.Relayout(root, style, viewport);
+    }
+
+    /// <summary>
     /// Re-paint an already-laid-out page at frame timestamp <paramref name="nowMs"/>.
     /// Ticks the page's animation and transition engines forward, then runs the
     /// painter with the timestamp threaded through the cascade so any in-flight

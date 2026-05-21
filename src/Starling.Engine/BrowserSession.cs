@@ -88,6 +88,15 @@ public sealed class BrowserSession : IDisposable
         return TrackAsync("reload", url, () => _engine.LayoutPageAsync(url, options, ct));
     }
 
+    /// <summary>
+    /// Reflows <paramref name="page"/> at a new viewport size without touching
+    /// the network or history — used when the shell window resizes. Returns a
+    /// fresh page reusing the existing document/resources; the caller shows it
+    /// and disposes the old one. See <see cref="StarlingEngine.RelayoutPage"/>.
+    /// </summary>
+    public LaidOutPage RelayoutCurrent(LaidOutPage page, RenderOptions options)
+        => _engine.RelayoutPage(page, options);
+
     public Task<Result<RenderOutcome, RenderError>> BackAsync(
         RenderOptions options,
         string outputPath,

@@ -30,8 +30,6 @@ namespace Starling.Gui;
 /// </summary>
 public sealed class MainWindow : Window, IBrowserController
 {
-    private static readonly EngineSize Viewport = new(1200, 900);
-
     private static readonly IReadOnlyList<TabInfo> Bookmarks =
     [
         new TabInfo("b0a", "example.com",      "Example",                 Url: "https://example.com"),
@@ -76,7 +74,7 @@ public sealed class MainWindow : Window, IBrowserController
         _diag = Program.Services.GetRequiredService<IDiagnostics>();
         _telemetry = Program.Services.GetRequiredService<TelemetryStream>();
         _session = new BrowserSession(_diag);
-        _webview = new WebviewPanel(_tm, _diag, OnLinkActivated, OnWebviewStatus);
+        _webview = new WebviewPanel(_tm, _diag, OnLinkActivated, OnWebviewStatus, RelayoutForResize);
 
         Title = string.Empty;
         MinWidth = 1024;
@@ -478,10 +476,31 @@ public sealed class MainWindow : Window, IBrowserController
         _reloadButton.SetEnabled(_session.History.Current is not null && !_busy);
     }
 
-    private RenderOptions BuildOptions() => new(Viewport, FontSize: 16f)
+    // Layout viewport tracks the live webview area so pages reflow to the
+    // window size (and to sidebar/DevTools toggles), instead of a fixed size.
+    private RenderOptions BuildOptions() => BuildOptionsFor(_webview.CurrentViewportSize());
+
+    private RenderOptions BuildOptionsFor(EngineSize viewport) => new(viewport, FontSize: 16f)
     {
         PreferredColorScheme = _tm.Theme == ThemeMode.Dark ? ColorScheme.Dark : ColorScheme.Light,
     };
+
+    // Re-layout callback handed to WebviewPanel: reflow the current page at the
+    // new viewport reusing its document/resources (no network). Skipped while a
+    // navigation is in flight — that load already picks up the latest size.
+    private LaidOutPage? RelayoutForResize(LaidOutPage page, EngineSize viewport)
+    {
+        if (_busy) return null;
+        try
+        {
+            return _session.RelayoutCurrent(page, BuildOptionsFor(viewport));
+        }
+        catch (Exception ex)
+        {
+            _diag.Log(DiagLevel.Warn, "gui", $"resize relayout failed: {ex.Message}");
+            return null;
+        }
+    }
 
     // ---- IBrowserController -------------------------------------------------
     // MCP tool calls land here, marshaled to the UI thread by BrowserControlBridge.

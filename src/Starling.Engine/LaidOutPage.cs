@@ -31,6 +31,7 @@ public sealed class LaidOutPage : IDisposable
     private readonly StylesheetFetcher _stylesheets;
     private readonly FontFaceRegistry _webFonts;
     private bool _disposed;
+    private bool _resourcesTransferred;
 
     internal LaidOutPage(
         BlockBox root,
@@ -104,10 +105,30 @@ public sealed class LaidOutPage : IDisposable
     internal StylesheetFetcher Stylesheets => _stylesheets;
     internal FontFaceRegistry WebFonts => _webFonts;
 
+    /// <summary>
+    /// Produces a successor page from a fresh box tree / style engine laid out
+    /// over the <em>same</em> <see cref="Document"/> and resource resolvers —
+    /// the relayout path used when the viewport changes (window resize) without
+    /// a navigation. The already-fetched images, stylesheets, and web fonts are
+    /// handed to the successor, so disposing this page afterward leaves them
+    /// alone (the successor owns them now). The caller must show the returned
+    /// page and dispose this one.
+    /// </summary>
+    internal LaidOutPage Relayout(BlockBox root, StyleEngine style, Size viewport)
+    {
+        _resourcesTransferred = true;
+        return new LaidOutPage(
+            root, Document, style, viewport, Url, Title,
+            _images, _stylesheets, _webFonts, DefaultFontSize);
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+        // A page whose resources were handed to a relayout successor must not
+        // release them — they are still in use by that successor.
+        if (_resourcesTransferred) return;
         _images.Dispose();
         _stylesheets.Dispose();
         _webFonts.Dispose();

@@ -174,7 +174,7 @@ public sealed class Painter
 
         StyleEngine style;
         using (_diag.Span("paint", "style_cascade"))
-            style = CreateStyleEngine(document, defaultFontSize, externalStylesheet, _diag, colorScheme);
+            style = CreateStyleEngine(document, viewport, defaultFontSize, externalStylesheet, _diag, colorScheme);
 
         var measurer = PaintBackendSelector.CreateMeasurer(_fonts, webFonts);
         try
@@ -242,6 +242,7 @@ public sealed class Painter
 
     private static StyleEngine CreateStyleEngine(
         Document document,
+        LayoutSize viewport,
         float? defaultFontSize,
         Func<Element, StyleSheet?>? externalStylesheet,
         IDiagnostics diag,
@@ -249,9 +250,18 @@ public sealed class Painter
     {
         var style = new StyleEngine(diagnostics: diag);
         // Expose the UA's preferred color scheme through @media
-        // (prefers-color-scheme: …). Author rules under that query are
-        // evaluated against this on every Compute call.
-        style.MediaContext = style.MediaContext with { ColorScheme = colorScheme };
+        // (prefers-color-scheme: …) and the real viewport size through both
+        // @media width/height/orientation queries and the vw/vh/sv*/lv*/dv*
+        // length units. Without the viewport here the cascade falls back to
+        // MediaContext.Default (1024×768) and every page lays out for a fixed
+        // screen regardless of the actual window size. Evaluated on every
+        // Compute call.
+        style.MediaContext = style.MediaContext with
+        {
+            ColorScheme = colorScheme,
+            ViewportWidthPx = viewport.Width,
+            ViewportHeightPx = viewport.Height,
+        };
 
         if (defaultFontSize is > 0)
         {
