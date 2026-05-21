@@ -81,6 +81,16 @@ public sealed class JsVm
     /// <see cref="StartAsyncBody"/>.</summary>
     public JsValue CallFunction(JsFunction fn, JsValue thisValue, JsValue[] args)
     {
+        // §10.2.1.2 OrdinaryCallBindThis (sloppy mode — Starling has no strict
+        // mode yet, so every function is sloppy): a function called with a
+        // nullish `this` binds the global object, not undefined. This makes the
+        // ubiquitous global-detection idiom `(function(){return this})()` and
+        // legacy libs (jQuery/Backbone/YUI feature-detection) work. Arrows
+        // capture `this` lexically and ignore this argument; class constructors
+        // only run via [[Construct]] with a real `this`, so neither is affected.
+        if (thisValue.IsNullish && fn.ConstructorKind == ClassConstructorKind.None)
+            thisValue = JsValue.Object(_runtime.Realm.GlobalObject);
+
         if (fn.Kind == JsFunctionKind.Generator)
             return StartGeneratorBody(fn, thisValue, args);
         if (fn.Kind == JsFunctionKind.Async)
@@ -749,6 +759,8 @@ public sealed class JsVm
                     var newArgs = new JsValue[argc];
                     for (var i = argc - 1; i >= 0; i--) newArgs[i] = Pop();
                     var ctor = Pop();
+                    if (!ctor.IsObject)
+                        throw new JsThrow(JsValue.String($"not a constructor: {JsValue.ToStringValue(ctor)} (new hint: '{_lastLoadName}')"));
                     Push(AbstractOperations.Construct(this, ctor, newArgs));
                     break;
                 }

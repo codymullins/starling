@@ -35,15 +35,26 @@ public class JsMethodBindingTests
     }
 
     [TestMethod]
-    public void Plain_function_call_still_has_undefined_this()
+    public void Plain_function_call_binds_global_this_in_sloppy_mode()
     {
-        // Regression: M3-04e only affects member-call sites. Top-level
-        // function calls still see this=Undefined per §10.2.1.
+        // §10.2.1.2 OrdinaryCallBindThis: in a non-strict ("sloppy") function a
+        // nullish this is replaced by the global object — NOT undefined (that's
+        // strict mode only, which Starling does not implement, so every function
+        // is sloppy). The `(function(){return this})()` global-detection idiom
+        // used by jQuery/Backbone/core-js depends on this.
         var r = Eval(@"
             function f() { return typeof this; }
             f();
         ");
-        r.AsString.Should().Be("undefined");
+        r.AsString.Should().Be("object");
+    }
+
+    [TestMethod]
+    public void Global_detection_idiom_returns_the_global_object()
+    {
+        // The canonical legacy "get the global" idiom must return the global,
+        // exercised by core-js / jQuery / Backbone / YUI.
+        Eval("(function(){ return this; })() === globalThis;").AsBool.Should().BeTrue();
     }
 
     [TestMethod]
@@ -112,16 +123,18 @@ public class JsMethodBindingTests
     }
 
     [TestMethod]
-    public void Stored_method_called_as_bare_function_loses_this()
+    public void Stored_method_called_as_bare_function_loses_receiver_and_binds_global()
     {
-        // `var fn = obj.method; fn();` is NOT a method call — fn has no
-        // bound receiver. Spec: this=Undefined.
+        // `var fn = obj.method; fn();` is NOT a method call — fn has no bound
+        // receiver, so a sloppy call binds the global object (§10.2.1.2), not
+        // the original object and not undefined.
         var r = Eval(@"
-            function C() { this.n = 99; this.get = function() { return typeof this; }; }
+            function C() { this.n = 99; this.get = function() { return this.n; }; }
             var c = new C();
             var fn = c.get;
-            fn();
+            typeof fn();
         ");
+        // `this` is the global object, which has no `n`, so `this.n` is undefined.
         r.AsString.Should().Be("undefined");
     }
 

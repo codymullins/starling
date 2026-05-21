@@ -12,12 +12,14 @@ public class JsNewThisTests
         => Eval("this;").IsUndefined.Should().BeTrue();
 
     [TestMethod]
-    public void This_inside_plain_function_call_is_undefined()
+    public void This_inside_plain_function_call_is_the_global_object()
     {
+        // Sloppy-mode OrdinaryCallBindThis (§10.2.1.2) — nullish this becomes the
+        // global object, not undefined (Starling has no strict mode yet).
         Eval(@"
             function f() { return typeof this; }
             f();
-        ").AsString.Should().Be("undefined");
+        ").AsString.Should().Be("object");
     }
 
     [TestMethod]
