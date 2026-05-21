@@ -69,10 +69,17 @@ public sealed partial class JsCompiler
             for (var i = 0; i < body.Methods.Count; i++)
             {
                 var md = body.Methods[i];
-                if (md.Computed)
-                    throw new NotSupportedException("computed method names in class bodies are not supported in B1b-2a");
                 var (entry, methodUps) = CompileMethodTemplate(md, classId);
                 methodEntries.Add(entry);
+                // wp:M3-04f — for a computed key, evaluate + ToPropertyKey the
+                // key expression *now* (source order) and leave the coerced key
+                // on the stack below this method's upvalues so BuildClass pops
+                // upvalues first, then the key.
+                if (md.Computed)
+                {
+                    EmitExpression(md.Key);
+                    _b.Emit(Opcode.ToPropertyKey);
+                }
                 EmitUpvaluePushes(methodUps);
             }
 
@@ -83,6 +90,14 @@ public sealed partial class JsCompiler
                 var f = body.Fields[i];
                 var (entry, fieldUps) = CompileFieldEntry(f, classId);
                 fieldEntries.Add(entry);
+                // wp:M3-04f — computed field key: evaluate + ToPropertyKey now
+                // (source order), leaving the coerced key below this field's
+                // upvalues for BuildClass to consume.
+                if (f.Computed)
+                {
+                    EmitExpression(f.Key);
+                    _b.Emit(Opcode.ToPropertyKey);
+                }
                 EmitUpvaluePushes(fieldUps);
             }
 
@@ -212,7 +227,10 @@ public sealed partial class JsCompiler
         sub._b.Emit(Opcode.ReturnUndefined);
         sub._privateScopes.Pop();
 
-        string keyName = md.Key switch
+        // wp:M3-04f — computed keys have no statically-known name; the
+        // coerced key is supplied at BuildClass time. Use "" as the function
+        // name (the runtime stamps the real name when it knows the key).
+        string keyName = md.Computed ? "" : md.Key switch
         {
             Identifier id => id.Name,
             StringLiteral sl => sl.Value,
@@ -231,7 +249,11 @@ public sealed partial class JsCompiler
         };
         string? staticKey = null;
         string? mangled = null;
-        if (md.Key is PrivateNameExpression pne2)
+        if (md.Computed)
+        {
+            // Both keys stay null; BuildClass reads the coerced key off the stack.
+        }
+        else if (md.Key is PrivateNameExpression pne2)
         {
             mangled = ClassTemplate.MangledPrivateName(classId, pne2.Name);
         }
@@ -239,19 +261,21 @@ public sealed partial class JsCompiler
         {
             staticKey = keyName;
         }
-        var entry = new MethodEntry(staticKey, mangled, kind, md.IsStatic, template, sub._upvalues.Count);
+        var entry = new MethodEntry(staticKey, mangled, kind, md.IsStatic, template, sub._upvalues.Count, md.Computed);
         return (entry, sub._upvalues);
     }
 
     private (FieldEntry Entry, IReadOnlyList<UpvalueRef> Upvalues) CompileFieldEntry(
         PropertyField field, int classId)
     {
-        if (field.Computed)
-            throw new NotSupportedException("computed field keys are not supported in B1b-2a");
-
         string? staticKey = null;
         string? mangled = null;
-        if (field.Key is PrivateNameExpression pne)
+        if (field.Computed)
+        {
+            // wp:M3-04f — computed key resolved at BuildClass time; both keys
+            // stay null.
+        }
+        else if (field.Key is PrivateNameExpression pne)
         {
             mangled = ClassTemplate.MangledPrivateName(classId, pne.Name);
         }
@@ -268,30 +292,41 @@ public sealed partial class JsCompiler
 
         if (field.Initializer is null)
         {
-            return (new FieldEntry(staticKey, mangled, field.IsStatic, null, 0), Array.Empty<UpvalueRef>());
+            return (new FieldEntry(staticKey, mangled, field.IsStatic, null, 0, field.Computed), Array.Empty<UpvalueRef>());
         }
 
-        // Compile the initializer thunk: zero-arg function whose body is:
-        //   this.<key> = <init>  (or DefinePrivateField for private fields).
+        // Compile the initializer thunk.
+        //   Static / non-computed keys: `this.<key> = <init>` (or
+        //   DefinePrivateField for private fields) — the key is baked in.
+        //   Computed keys (wp:M3-04f): just `return <init>` — the runtime owns
+        //   the (already-coerced) key and performs the define.
         var sub = new JsCompiler(parent: this);
         sub._privateScopes.Push(_privateScopes.Peek());
         sub._classMethodDepth = 1;
-        sub._b.Emit(Opcode.LoadThis);
-        sub.EmitExpression(field.Initializer);
-        if (mangled is not null)
+        if (field.Computed)
         {
-            sub._b.EmitU16(Opcode.DefinePrivateField, sub._b.AddConstant(mangled));
+            sub.EmitExpression(field.Initializer);
+            sub._b.Emit(Opcode.Return);
         }
         else
         {
-            sub._b.EmitU16(Opcode.StoreProperty, sub._b.AddConstant(staticKey!));
-            sub._b.Emit(Opcode.Pop);
+            sub._b.Emit(Opcode.LoadThis);
+            sub.EmitExpression(field.Initializer);
+            if (mangled is not null)
+            {
+                sub._b.EmitU16(Opcode.DefinePrivateField, sub._b.AddConstant(mangled));
+            }
+            else
+            {
+                sub._b.EmitU16(Opcode.StoreProperty, sub._b.AddConstant(staticKey!));
+                sub._b.Emit(Opcode.Pop);
+            }
+            sub._b.Emit(Opcode.ReturnUndefined);
         }
-        sub._b.Emit(Opcode.ReturnUndefined);
         sub._privateScopes.Pop();
-        var chunk = sub._b.Build($"#field-init:{(staticKey ?? mangled)}");
+        var chunk = sub._b.Build($"#field-init:{(staticKey ?? mangled ?? "[computed]")}");
         var initTemplate = new JsFunction("", chunk, 0);
-        return (new FieldEntry(staticKey, mangled, field.IsStatic, initTemplate, sub._upvalues.Count), sub._upvalues);
+        return (new FieldEntry(staticKey, mangled, field.IsStatic, initTemplate, sub._upvalues.Count, field.Computed), sub._upvalues);
     }
 
     private (StaticBlockEntry Entry, IReadOnlyList<UpvalueRef> Upvalues) CompileStaticBlockEntry(BlockStatement block)

@@ -1169,9 +1169,30 @@ public sealed class JsVm
                     {
                         foreach (var init in inits)
                         {
-                            AbstractOperations.Call(this, JsValue.Object(init.Thunk), thisV, Array.Empty<JsValue>());
+                            var value = AbstractOperations.Call(
+                                this, JsValue.Object(init.Thunk), thisV, Array.Empty<JsValue>());
+                            // wp:M3-04f — computed-key instance fields: the thunk
+                            // returns the initializer value; define the own data
+                            // property under the key resolved at class-definition
+                            // time (CreateDataPropertyOrThrow per §10.2.4.1 /
+                            // §15.7.10). Non-computed thunks self-store and return
+                            // undefined — nothing to do here.
+                            if (init.ComputedKey is { } ck && thisV.IsObject)
+                            {
+                                thisV.AsObject.DefineOwnProperty(ck,
+                                    PropertyDescriptor.Data(value, writable: true, enumerable: true, configurable: true));
+                            }
                         }
                     }
+                    break;
+                }
+                case Opcode.ToPropertyKey:
+                {
+                    // wp:M3-04f — §7.1.19 ToPropertyKey; push the normalized key
+                    // back as a Symbol value or a String value. Threads `this`
+                    // VM so an object key's Symbol.toPrimitive is honored.
+                    var key = AbstractOperations.ToPropertyKey(this, Pop());
+                    Push(key.IsSymbol ? JsValue.Symbol(key.AsSymbol) : JsValue.String(key.AsString));
                     break;
                 }
                 // ----- B1b-2c — Suspend (yield / await) -----
@@ -1256,21 +1277,29 @@ public sealed class JsVm
                         for (var k = n - 1; k >= 0; k--) ups[k] = Pop();
                         staticBlockUpvalues[i] = ups;
                     }
+                    // wp:M3-04f — computed keys were pushed (already ToPropertyKey-
+                    // coerced) below each member's upvalues, so pop upvalues first
+                    // then the key. Keys default to undefined for non-computed
+                    // members and are ignored there.
                     var fieldUpvalues = new JsValue[template.Fields.Count][];
+                    var fieldComputedKeys = new JsValue[template.Fields.Count];
                     for (var i = template.Fields.Count - 1; i >= 0; i--)
                     {
                         var n = template.Fields[i].UpvalueCount;
                         var ups = new JsValue[n];
                         for (var k = n - 1; k >= 0; k--) ups[k] = Pop();
                         fieldUpvalues[i] = ups;
+                        fieldComputedKeys[i] = template.Fields[i].IsComputed ? Pop() : JsValue.Undefined;
                     }
                     var methodUpvalues = new JsValue[template.Methods.Count][];
+                    var methodComputedKeys = new JsValue[template.Methods.Count];
                     for (var i = template.Methods.Count - 1; i >= 0; i--)
                     {
                         var n = template.Methods[i].UpvalueCount;
                         var ups = new JsValue[n];
                         for (var k = n - 1; k >= 0; k--) ups[k] = Pop();
                         methodUpvalues[i] = ups;
+                        methodComputedKeys[i] = template.Methods[i].IsComputed ? Pop() : JsValue.Undefined;
                     }
                     var ctorUps = new JsValue[template.ConstructorUpvalueCount];
                     for (var k = template.ConstructorUpvalueCount - 1; k >= 0; k--) ctorUps[k] = Pop();
@@ -1278,7 +1307,8 @@ public sealed class JsVm
                     if (template.HasExtends) baseClassValue = Pop();
 
                     var classCtor = BuildClassRuntime(template, baseClassValue,
-                        ctorUps, methodUpvalues, fieldUpvalues, staticBlockUpvalues);
+                        ctorUps, methodUpvalues, fieldUpvalues, staticBlockUpvalues,
+                        methodComputedKeys, fieldComputedKeys);
                     Push(classCtor);
                     break;
                 }
@@ -1638,7 +1668,9 @@ public sealed class JsVm
         JsValue[] ctorUpvalues,
         JsValue[][] methodUpvalues,
         JsValue[][] fieldUpvalues,
-        JsValue[][] staticBlockUpvalues)
+        JsValue[][] staticBlockUpvalues,
+        JsValue[] methodComputedKeys,
+        JsValue[] fieldComputedKeys)
     {
         var realm = _runtime.Realm;
         JsObject? parentCtor = null;
@@ -1710,8 +1742,18 @@ public sealed class JsVm
             var fnInstance = JsFunction.CreateInstance(realm, m.Template, methodUpvalues[i]);
             fnInstance.HomeObject = m.IsStatic ? ctorInstance : protoObj;
             var owner = m.IsStatic ? (JsObject)ctorInstance : protoObj;
-            var keyForInstall = m.MangledPrivateKey ?? m.StaticKey!;
-            InstallMethodOrAccessor(owner, keyForInstall, m.Kind, fnInstance);
+            if (m.IsComputed)
+            {
+                // wp:M3-04f — coerced key value (Symbol or String) off the stack.
+                var keyPk = AbstractOperations.ToPropertyKey(methodComputedKeys[i]);
+                StampMethodName(fnInstance, keyPk, m.Kind);
+                InstallMethodOrAccessor(owner, keyPk, m.Kind, fnInstance);
+            }
+            else
+            {
+                var keyForInstall = m.MangledPrivateKey ?? m.StaticKey!;
+                InstallMethodOrAccessor(owner, keyForInstall, m.Kind, fnInstance);
+            }
         }
 
         // Static fields + static blocks: run in interleaved declaration order
@@ -1726,8 +1768,27 @@ public sealed class JsVm
         for (var i = 0; i < template.Fields.Count; i++)
         {
             var f = template.Fields[i];
+            // wp:M3-04f — computed key resolved at class-definition time.
+            JsPropertyKey? computedKey = f.IsComputed
+                ? AbstractOperations.ToPropertyKey(fieldComputedKeys[i])
+                : (JsPropertyKey?)null;
             if (f.IsStatic)
             {
+                if (computedKey is { } sck)
+                {
+                    // Static computed field: the thunk (when present) returns the
+                    // initializer value; absent initializer ⇒ undefined.
+                    var value = JsValue.Undefined;
+                    if (f.InitializerTemplate is not null)
+                    {
+                        var initFnC = JsFunction.CreateInstance(realm, f.InitializerTemplate, fieldUpvalues[i]);
+                        initFnC.HomeObject = ctorInstance;
+                        value = AbstractOperations.Call(this, JsValue.Object(initFnC), JsValue.Object(ctorInstance), Array.Empty<JsValue>());
+                    }
+                    ctorInstance.DefineOwnProperty(sck,
+                        PropertyDescriptor.Data(value, writable: true, enumerable: true, configurable: true));
+                    continue;
+                }
                 if (f.InitializerTemplate is null)
                 {
                     var key = f.MangledPrivateKey ?? f.StaticKey!;
@@ -1746,6 +1807,17 @@ public sealed class JsVm
                 var initFn = JsFunction.CreateInstance(realm, f.InitializerTemplate, fieldUpvalues[i]);
                 initFn.HomeObject = ctorInstance;
                 AbstractOperations.Call(this, JsValue.Object(initFn), JsValue.Object(ctorInstance), Array.Empty<JsValue>());
+            }
+            else if (computedKey is { } ick)
+            {
+                // Instance computed field: defer the (already-coerced) key + the
+                // initializer thunk to construction time. The thunk returns the
+                // value; RunFieldInits defines the property under ick. An absent
+                // initializer ⇒ a thunk returning undefined.
+                var thunk = f.InitializerTemplate is not null
+                    ? JsFunction.CreateInstance(realm, f.InitializerTemplate, fieldUpvalues[i])
+                    : MakeUndefinedReturningThunk(realm);
+                instanceFieldInits.Add(new InstanceFieldInit("", IsPrivate: false, thunk, ick));
             }
             else
             {
@@ -1786,6 +1858,14 @@ public sealed class JsVm
     }
 
     private static void InstallMethodOrAccessor(JsObject owner, string key, Starling.Js.Bytecode.ClassMethodKind kind, JsFunction fn)
+        => InstallMethodOrAccessor(owner, JsPropertyKey.String(key), kind, fn);
+
+    /// <summary>wp:M3-04f — install a method/accessor under a runtime property
+    /// key (String <em>or</em> Symbol), used for computed class members such
+    /// as <c>[Symbol.iterator]()</c>. Mirrors the string-keyed path exactly,
+    /// merging an existing accessor's complementary half so a paired
+    /// <c>get [k]()/set [k]()</c> shares one descriptor.</summary>
+    private static void InstallMethodOrAccessor(JsObject owner, JsPropertyKey key, Starling.Js.Bytecode.ClassMethodKind kind, JsFunction fn)
     {
         switch (kind)
         {
@@ -1808,6 +1888,39 @@ public sealed class JsVm
                 break;
             }
         }
+    }
+
+    /// <summary>wp:M3-04f — stamp the §13.2.5.5 / §15.7.5 "name" own property
+    /// for a computed-key method. String keys use the key text directly;
+    /// Symbol keys use <c>[description]</c> (empty for unnamed Symbols).
+    /// Getters/setters prefix "get "/"set ".</summary>
+    private static void StampMethodName(JsFunction fn, JsPropertyKey key, Starling.Js.Bytecode.ClassMethodKind kind)
+    {
+        string baseName = key.IsSymbol
+            ? (key.AsSymbol.Description is { } d ? "[" + d + "]" : "")
+            : key.AsString;
+        string prefix = kind switch
+        {
+            Starling.Js.Bytecode.ClassMethodKind.Get => "get ",
+            Starling.Js.Bytecode.ClassMethodKind.Set => "set ",
+            _ => "",
+        };
+        fn.DefineOwnProperty("name",
+            PropertyDescriptor.Data(JsValue.String(prefix + baseName), writable: false, enumerable: false, configurable: true));
+    }
+
+    /// <summary>wp:M3-04f — a zero-arg thunk that simply returns
+    /// <c>undefined</c>, used for an instance computed field with no
+    /// initializer. The runtime then defines the own property under the
+    /// pre-resolved computed key.</summary>
+    private static JsFunction MakeUndefinedReturningThunk(JsRealm realm)
+    {
+        var b = new Starling.Js.Bytecode.ChunkBuilder();
+        b.Emit(Starling.Js.Bytecode.Opcode.LoadUndefined);
+        b.Emit(Starling.Js.Bytecode.Opcode.Return);
+        var chunk = b.Build("#field-init-undef-computed");
+        var tmpl = new JsFunction("", chunk, 0);
+        return JsFunction.CreateInstance(realm, tmpl, Array.Empty<JsValue>());
     }
 
     private static JsFunction MakeUndefinedFieldThunk(JsRealm realm, Starling.Js.Bytecode.FieldEntry field)

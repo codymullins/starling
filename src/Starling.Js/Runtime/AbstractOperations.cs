@@ -83,8 +83,14 @@ public static class AbstractOperations
     /// <summary>§7.1.19 ToPropertyKey — Symbols are already property keys;
     /// every other primitive is stringified.</summary>
     public static JsPropertyKey ToPropertyKey(JsValue value)
+        => ToPropertyKey(null, value);
+
+    /// <summary>§7.1.19 ToPropertyKey with a VM so the §7.1.1 ToPrimitive step
+    /// can dispatch a user/exotic <c>Symbol.toPrimitive</c> on an object key
+    /// (used by computed class/object keys — wp:M3-04f).</summary>
+    public static JsPropertyKey ToPropertyKey(JsVm? vm, JsValue value)
     {
-        if (value.IsObject) value = ToPrimitive(value, "string");
+        if (value.IsObject) value = ToPrimitive(vm, value, "string");
         return value.IsSymbol ? JsPropertyKey.Symbol(value.AsSymbol)
             : JsPropertyKey.String(value.Kind == JsValueKind.String ? value.AsString : JsValue.ToStringValue(value));
     }

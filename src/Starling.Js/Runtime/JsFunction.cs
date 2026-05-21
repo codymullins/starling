@@ -133,8 +133,17 @@ public sealed class JsFunction : JsObject
 /// <see cref="FieldKey"/> is the property name to write; for a private
 /// field it's the mangled name. <see cref="IsPrivate"/> selects between
 /// <c>DefineOwnProperty</c> and the public <c>Set</c> path so private
-/// slots become non-enumerable per spec.</summary>
-public sealed record InstanceFieldInit(string FieldKey, bool IsPrivate, JsFunction Thunk);
+/// slots become non-enumerable per spec.
+/// <para>
+/// wp:M3-04f — when <see cref="ComputedKey"/> is non-null the field had a
+/// computed key (<c>[expr] = ...</c>) whose coerced key was resolved once at
+/// class-definition time. The <see cref="Thunk"/> then merely evaluates the
+/// initializer (with <c>this</c> bound to the instance) and returns the
+/// value; the runtime defines the own property under
+/// <see cref="ComputedKey"/>. <see cref="FieldKey"/> is unused in that case.
+/// </para></summary>
+public sealed record InstanceFieldInit(
+    string FieldKey, bool IsPrivate, JsFunction Thunk, JsPropertyKey? ComputedKey = null);
 
 /// <summary>
 /// ES2024 §10.2.1 [[ConstructorKind]] internal slot. Distinguishes between

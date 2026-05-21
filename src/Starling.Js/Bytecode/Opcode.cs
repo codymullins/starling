@@ -212,6 +212,14 @@ public enum Opcode : byte
     /// <see cref="BindThis"/> in a derived-class constructor body. No-op
     /// when the current function carries no field initializers.</summary>
     RunFieldInits,
+    /// <summary>wp:M3-04f — §7.1.19 ToPropertyKey. Pop a value, coerce it to a
+    /// property key (Symbols pass through; everything else stringifies via
+    /// ToPrimitive("string")), and push the normalized key back as a JsValue
+    /// (a Symbol value, or a String value). Emitted by the class compiler
+    /// immediately after evaluating a computed member key (<c>[expr]</c>) so
+    /// the ToPropertyKey coercion — and any observable side effects or throws
+    /// it triggers — happen once, in source order, at class-definition time.</summary>
+    ToPropertyKey,
 
     // ----- Exception handling (gap:try-catch) -----
     EnterTry,

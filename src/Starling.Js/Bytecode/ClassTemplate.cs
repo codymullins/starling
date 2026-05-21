@@ -82,16 +82,19 @@ public sealed class ClassTemplate
 }
 
 /// <summary>One method definition compiled for a class. Computed-key
-/// methods leave <see cref="StaticKey"/> null and push the key expression
-/// at runtime — those are handled by a separate <see cref="Opcode"/>
-/// path. For B1b-2a we only emit the non-computed form here.</summary>
+/// methods (wp:M3-04f) leave both <see cref="StaticKey"/> and
+/// <see cref="MangledPrivateKey"/> null, set <see cref="IsComputed"/>, and
+/// rely on the parent frame pushing the already-coerced property key onto
+/// the stack (below this entry's upvalues) for <see cref="Opcode.BuildClass"/>
+/// to consume.</summary>
 public sealed record MethodEntry(
     string? StaticKey,
     string? MangledPrivateKey,
     ClassMethodKind Kind,
     bool IsStatic,
     JsFunction Template,
-    int UpvalueCount);
+    int UpvalueCount,
+    bool IsComputed = false);
 
 public enum ClassMethodKind
 {
@@ -108,7 +111,13 @@ public sealed record FieldEntry(
     string? MangledPrivateKey,   // non-null for private fields
     bool IsStatic,
     JsFunction? InitializerTemplate,  // null when the field has no initializer
-    int UpvalueCount);
+    int UpvalueCount,
+    // wp:M3-04f — computed-key field. The already-coerced property key is
+    // pushed onto the stack (below this entry's upvalues) for BuildClass to
+    // consume. For computed fields the InitializerTemplate, when present,
+    // simply evaluates the initializer expression (with `this` bound) and
+    // *returns* the value rather than self-storing under a baked key.
+    bool IsComputed = false);
 
 /// <summary>One <c>static { ... }</c> initialization block. Compiled as a
 /// zero-arg <see cref="JsFunction"/> whose <c>this</c> is the constructor.</summary>
