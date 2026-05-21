@@ -2,9 +2,10 @@
 id: "wp:M3-03c-js-dynamic-import"
 parent: "wp:M3-03-js-compiler"
 milestone: "M3"
-status: "claimed"
+status: "complete"
 claimed_by: "agent-claude-cody-dynimport"
 claimed_at: "2026-05-21T01:35:07Z"
+completed_at: "2026-05-21T01:43:00Z"
 branch: "main"
 depends_on:
   - "wp:M3-03b-js-top-level-await"
@@ -97,3 +98,6 @@ Support two ES module features:
 ## Handoff log
 - 2026-05-21T01:26:13Z — created as blocked (await spine, step 2 of 2)
 - 2026-05-21T01:35:07Z — unblocked (wp:M3-03b complete) + claimed for agent-claude-cody-dynimport; reuse `ModuleLoader.EvaluateToPromise`
+- 2026-05-21T01:43Z — COMPLETE (cherry-picked to main as `cfef6e4`). 2 new opcodes `DynamicImport`/`LoadImportMeta`; AST `ImportCallExpression`/`ImportMetaExpression`; parser disambiguates `import(`/`import.` (expression) from static `import …` (declaration) by peeking the next token. `ModuleLoader.ImportDynamic` = LoadGraph+Link+EvaluateToPromise → `.then` namespace (TLA-imported module resolves only after it settles); errors → rejected promise. `import.meta` resolved via `chunk.Name` (the resolved module URL) → `ModuleLoader.ResolveMetaForUrl` → lazily-built `ModuleRecord.Meta` (`url`); classic-script chunk has no registry entry → `import.meta` throws SyntaxError (spec-correct). VM reaches loader via new `JsRealm.ModuleLoader` (set in loader ctor). 14 tests in `DynamicImportTests.cs`; full JS suite 1172 green; downstream Bindings 136 + Engine 121 green.
+  - **Note (not a bug):** `import('m')` synchronously runs the imported body up to its first top-level await, so the module's pre-await side effects log before the importer's next statement; the resolution `.then` still fires only after full settlement.
+  - `import()` second arg (import attributes) parsed for forward-compat but discarded; `import.meta` exposes only `url` (per "at least url").
