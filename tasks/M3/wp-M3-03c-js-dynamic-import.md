@@ -2,9 +2,9 @@
 id: "wp:M3-03c-js-dynamic-import"
 parent: "wp:M3-03-js-compiler"
 milestone: "M3"
-status: "blocked"
-claimed_by: ""
-claimed_at: ""
+status: "claimed"
+claimed_by: "agent-claude-cody-dynimport"
+claimed_at: "2026-05-21T01:35:07Z"
 branch: "main"
 depends_on:
   - "wp:M3-03b-js-top-level-await"
@@ -18,33 +18,82 @@ plan_refs:
 # wp:M3-03c — JS: dynamic `import()` + `import.meta`
 
 ## Goal
-Support `import(specifier)` call expressions (returning a Promise of the module
-namespace) and the `import.meta` meta-property (at least `import.meta.url`) in ES
-modules. Blocked on `wp:M3-03b` because dynamic import resolves through the
-loader's async-evaluation path (a dynamically-imported TLA module must settle
-before the returned Promise resolves).
+Support two ES module features:
+1. **Dynamic import** — `import(specifier)` is a call-like expression that
+   returns a Promise resolving to the imported module's namespace object. It
+   works from modules AND classic scripts. A dynamically-imported module with
+   top-level await resolves only after it settles.
+2. **`import.meta`** — a meta-property available in module code; provide at least
+   `import.meta.url` (the module's resolved URL).
 
-## Scope (to be detailed when unblocked)
-- Parser: recognize `import` `(` as an expression (dynamic import) and `import`
-  `.` `meta` as a meta-property, distinct from static `import` declarations.
-  `src/Starling.Js/Parse/JsParser.cs` / `JsParser.Modules.cs`.
-- AST: new nodes in `src/Starling.Js/Ast/Modules.cs` (e.g. `ImportCallExpression`,
-  `ImportMetaExpression`).
-- Compiler: `src/Starling.Js/Bytecode/JsCompiler.Modules.cs` — emit a runtime
-  call into the loader for `import()`; resolve `import.meta` to the module's meta
-  object.
-- Loader/runtime: `ModuleLoader` public async "load + evaluate to Promise" entry
-  (reuse the `wp:M3-03b` path); `ModuleRecord` gains a `Meta` object
-  (`import.meta`); `JsVm` binds the active loader so the import opcode can call
-  it.
+## Inputs / current shape (TLA — wp:M3-03b — is landed)
+- Reusable loader entry: **`internal JsPromise ModuleLoader.EvaluateToPromise(ModuleRecord)`**
+  returns a Promise that settles when the module subtree finishes (already
+  handles TLA). Build the dynamic-import resolution on top of it.
+- `ModuleLoader` already has (private) `LoadGraph(specifier, referrer)` →
+  `ModuleRecord`, `Link(record)`, and public `GetOrBuildNamespace(record)`. A
+  dynamic import = LoadGraph + Link + EvaluateToPromise, then resolve the
+  returned promise to `GetOrBuildNamespace(record)` (and reject on any throw,
+  e.g. fetch/resolve failure or evaluation error).
+- Static module parse/compile: `JsParser.Modules.cs`, `JsCompiler.Modules.cs`,
+  AST in `Ast/Modules.cs`. Object/runtime: `JsVm.cs`, `JsRealm.cs`,
+  `MicrotaskQueue`, `PromiseCtor`/`JsPromise`.
+- `import` is currently a reserved word routed at statement level
+  (`JsParser.Modules.cs`); you must add expression-context parsing for
+  `import(` and `import.meta` WITHOUT breaking static `import …` declarations.
 
-## Acceptance (draft)
-- `await import('./m.js')` resolves to the namespace; `.default`/named exports
-  readable.
-- dynamic import of a module with top-level await resolves only after it settles.
-- `import.meta.url` returns the module's URL.
-- rejected/missing specifier → rejected Promise.
-- New tests in `tests/Starling.Js.Tests/DynamicImportTests.cs`.
+## Scope / approach
+1. **Parser** (`JsParser.cs` / `JsParser.Modules.cs`): in primary-expression
+   position, recognize:
+   - `import` `(` AssignmentExpression [`,` … options ignored] `)` → dynamic
+     import call. (A trailing options arg may be parsed and ignored.)
+   - `import` `.` `meta` → meta-property.
+   Keep `import`/`export` declaration parsing intact (only valid at module top
+   level). `import(` and `import.meta` must parse as expressions anywhere an
+   expression is allowed.
+2. **AST** (`Ast/Modules.cs`): add `ImportCallExpression(Expression Specifier, …)`
+   and `ImportMetaExpression(…)` (or equivalents).
+3. **Compiler**: emit `import()` as a runtime call that hands the (string-coerced)
+   specifier + the current module's referrer URL to the loader and pushes the
+   resulting Promise. `import.meta` resolves to the current module's meta object.
+   You'll likely need a new opcode (e.g. `DynamicImport`, `LoadImportMeta`) or a
+   host-call shim — pick the approach that fits the VM; document it.
+4. **Runtime/loader**:
+   - Add an internal `JsPromise ImportDynamic(string specifier, string? referrer)`
+     on `ModuleLoader` (LoadGraph+Link+EvaluateToPromise → `.then` namespace;
+     catch resolve/fetch/eval errors into a rejected promise). The VM must be
+     able to reach the active `ModuleLoader` (wire a reference via realm/VM if not
+     already reachable).
+   - `import.meta`: give `ModuleRecord` a lazily-built `Meta` `JsObject` with at
+     least `url`. The module body needs access to its own meta — supply it the
+     way module bindings are supplied (an upvalue/slot the loader fills at
+     instantiation, or a record lookup keyed by the running module). Document the
+     mechanism.
+5. Specifier resolution uses the same host/resolver static imports use, relative
+   to the importing module's URL (or the document base URL for classic scripts).
+
+## Acceptance
+- New tests in `tests/Starling.Js.Tests/DynamicImportTests.cs` (MapHost/`report()`
+  harness), deterministic (drive the microtask queue):
+  - `import('./m.js')` resolves to a namespace whose named + `default` exports
+    read correctly.
+  - dynamic import of a module with top-level await resolves only after it
+    settles (assert ordering via a side-effect log).
+  - `import.meta.url` returns the module's URL.
+  - a failed specifier (missing module / resolve error) → rejected Promise
+    (observable via `.catch`/`try`).
+  - `import('x')` works from a classic (non-module) script too.
+  - regression: static `import`/`export` declarations and existing module tests
+    stay green.
+- `dotnet build src/Starling.Js/Starling.Js.csproj -c Debug` green.
+- `dotnet test tests/Starling.Js.Tests/Starling.Js.Tests.csproj -c Debug` green
+  (full suite, no regressions).
+
+## Notes
+- DO NOT touch any file under `tasks/` — the orchestrator owns task bookkeeping.
+- New tests in a NEW test file; deterministic; no sleeps.
+- Preserve all existing module + TLA + async behavior.
 
 ## Handoff log
-- 2026-05-21T01:26:13Z — created as blocked (await spine, step 2 of 2); unblocks when wp:M3-03b completes
+- 2026-05-21T01:26:13Z — created as blocked (await spine, step 2 of 2)
+- 2026-05-21T01:35:07Z — unblocked (wp:M3-03b complete) + claimed for agent-claude-cody-dynimport; reuse `ModuleLoader.EvaluateToPromise`

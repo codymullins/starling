@@ -2,9 +2,10 @@
 id: "wp:M3-03b-js-top-level-await"
 parent: "wp:M3-03-js-compiler"
 milestone: "M3"
-status: "claimed"
+status: "complete"
 claimed_by: "agent-claude-cody-tla"
 claimed_at: "2026-05-21T01:26:13Z"
+completed_at: "2026-05-21T01:35:07Z"
 branch: "main"
 depends_on:
   - "wp:M3-02c-js-parser-classes-modules"
@@ -107,3 +108,6 @@ synchronous (`vm.CallFunction(record.Instance!, …)`).
 
 ## Handoff log
 - 2026-05-21T01:26:13Z — created + claimed for agent-claude-cody-tla (await spine, step 1 of 2)
+- 2026-05-21T01:35Z — COMPLETE (cherry-picked to main as `11904a0`). AST-based top-level-await detection in `EmitModule` → `ModuleCompilation.HasTopLevelAwait` → `ModuleRecord.HasTopLevelAwait`; module body `JsFunction.Kind` switches to `Async` only when set (non-TLA modules keep the synchronous fast path — `Evaluate` returns null → plain `CallFunction`). Loader reworked: `internal JsPromise EvaluateToPromise(ModuleRecord)` (never null; sync graphs → already-settled promise), private `JsPromise? Evaluate(record)` (null = fully sync), async-dependency join, `ModuleRecord.EvaluationPromise`. 12 tests in `TopLevelAwaitTests.cs`; full JS suite 1158 green; Engine module integration 5 green.
+  - **Reusable for wp:M3-03c:** `ModuleLoader.EvaluateToPromise(ModuleRecord)`.
+  - **Documented simplification:** a cyclic back-edge into an async module does not await that module's completion (we only learn a module is async after evaluating its deps); it observes partially-published bindings, matching existing synchronous cycle semantics. Full `[[CycleRoot]]`/`[[AsyncEvaluation]]` ordering is not modeled; acyclic async graphs are correct.
