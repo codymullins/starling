@@ -83,6 +83,11 @@ internal sealed class BlockLayout
             var flex = new Starling.Layout.Flex.FlexLayout(this, _viewport);
             return flex.Layout(item, containerWidth, containerHeight);
         }
+        if (IsGridContainer(item.Style))
+        {
+            var grid = new Starling.Layout.Grid.GridLayout(this, _viewport);
+            return grid.Layout(item, containerWidth, containerHeight);
+        }
         return LayoutChildren(item, containerWidth, containerHeight, measure);
     }
 
@@ -196,6 +201,11 @@ internal sealed class BlockLayout
             var flex = new Starling.Layout.Flex.FlexLayout(this, _viewport);
             childContentHeight = flex.Layout(child, width, explicitHeight);
         }
+        else if (IsGridContainer(child.Style))
+        {
+            var grid = new Starling.Layout.Grid.GridLayout(this, _viewport);
+            childContentHeight = grid.Layout(child, width, explicitHeight);
+        }
         else
         {
             childContentHeight = LayoutChildren(child, width, explicitHeight, measure: false);
@@ -271,6 +281,11 @@ internal sealed class BlockLayout
         {
             var flex = new Starling.Layout.Flex.FlexLayout(this, _viewport);
             childContentHeight = flex.Layout(child, width, explicitHeight);
+        }
+        else if (IsGridContainer(child.Style))
+        {
+            var grid = new Starling.Layout.Grid.GridLayout(this, _viewport);
+            childContentHeight = grid.Layout(child, width, explicitHeight);
         }
         else
         {
@@ -361,6 +376,14 @@ internal sealed class BlockLayout
         if (style.Get(PropertyId.Display) is not CssKeyword k) return false;
         return k.Name.Equals("flex", StringComparison.OrdinalIgnoreCase)
             || k.Name.Equals("inline-flex", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static bool IsGridContainer(ComputedStyle? style)
+    {
+        if (style is null) return false;
+        if (style.Get(PropertyId.Display) is not CssKeyword k) return false;
+        return k.Name.Equals("grid", StringComparison.OrdinalIgnoreCase)
+            || k.Name.Equals("inline-grid", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool HasExplicitWidth(ComputedStyle? style)
