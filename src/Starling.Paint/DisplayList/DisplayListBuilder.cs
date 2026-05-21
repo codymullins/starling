@@ -202,11 +202,25 @@ public sealed class DisplayListBuilder
             || (box.Kind == BoxKind.Inline && hasFrame);
         if (paintsBox && EffectiveStyle(box, styleOverride) is { } style)
         {
+            var bounds = new Rect(frameX, frameY, box.Frame.Width, box.Frame.Height);
+
+            // CSS Backgrounds 3 §5 — the four corner radii (clamped to the box
+            // per §5.1 so overlapping radii never exceed the box dimensions).
+            var radii = ReadCornerRadii(style, box.Frame.Width, box.Frame.Height);
+
+            // CSS Backgrounds 3 §6 — box-shadow. Outer shadows paint BEHIND the
+            // box (before background + border), in reverse list order so the
+            // first listed layer ends up on top. Inset shadows are parsed but
+            // painted best-effort (the outer drop shadow is the supported path).
+            EmitBoxShadows(box, bounds, radii, list, current, cull, style);
+
             var bg = style.GetColor(PropertyId.BackgroundColor);
             if (bg is { A: > 0 })
             {
-                var bounds = new Rect(frameX, frameY, box.Frame.Width, box.Frame.Height);
-                Emit(list, new FillRect(bounds, bg, FillRectPixelAlignment.Preserve), bounds, current, cull);
+                if (radii.IsZero)
+                    Emit(list, new FillRect(bounds, bg, FillRectPixelAlignment.Preserve), bounds, current, cull);
+                else
+                    Emit(list, new FillRoundedRect(bounds, radii, bg), bounds, current, cull);
             }
 
             // CSS Backgrounds 3 §3 — background-image paints inside the
@@ -216,7 +230,7 @@ public sealed class DisplayListBuilder
             EmitBackgroundImage(box, frameX, frameY, list, current, cull, style, images);
 
             // Borders. Painter renders one stroke per side that has a non-zero width.
-            EmitBorders(box, frameX, frameY, list, current, cull, style);
+            EmitBorders(box, frameX, frameY, list, current, cull, style, radii);
         }
 
         // Inline content: text fragments live on TextBoxes, positioned in their
@@ -412,7 +426,104 @@ public sealed class DisplayListBuilder
         return postOrigin.Multiply(local).Multiply(preOrigin);
     }
 
-    private static void EmitBorders(Box box, double x, double y, DisplayList list, Matrix2D current, Rect? cull, ComputedStyle style)
+    /// <summary>
+    /// Reads the four <c>border-*-radius</c> longhands off the style, resolves
+    /// each to CSS px against the box dimensions, and clamps them so adjacent
+    /// radii never overlap (CSS Backgrounds 3 §5.1: if the sum of two radii on a
+    /// side exceeds that side's length, all radii are scaled down by the same
+    /// factor). Returns <see cref="CornerRadii.None"/> when every corner is
+    /// square.
+    /// </summary>
+    private static CornerRadii ReadCornerRadii(ComputedStyle style, double width, double height)
+    {
+        var tl = ResolveRadius(style.Get(PropertyId.BorderTopLeftRadius), width, height);
+        var tr = ResolveRadius(style.Get(PropertyId.BorderTopRightRadius), width, height);
+        var br = ResolveRadius(style.Get(PropertyId.BorderBottomRightRadius), width, height);
+        var bl = ResolveRadius(style.Get(PropertyId.BorderBottomLeftRadius), width, height);
+        if (tl <= 0 && tr <= 0 && br <= 0 && bl <= 0) return CornerRadii.None;
+
+        // §5.1 overlap clamp — scale every corner by the smallest side ratio.
+        var scale = 1d;
+        if (tl + tr > 0) scale = Math.Min(scale, SafeRatio(width, tl + tr));
+        if (bl + br > 0) scale = Math.Min(scale, SafeRatio(width, bl + br));
+        if (tl + bl > 0) scale = Math.Min(scale, SafeRatio(height, tl + bl));
+        if (tr + br > 0) scale = Math.Min(scale, SafeRatio(height, tr + br));
+        if (scale < 1d)
+        {
+            tl *= scale; tr *= scale; br *= scale; bl *= scale;
+        }
+
+        return CornerRadii.Uniform(tl, tr, br, bl);
+    }
+
+    private static double SafeRatio(double available, double requested)
+        => requested <= 0 ? 1d : Math.Min(1d, available / requested);
+
+    private static double ResolveRadius(CssValue? value, double width, double height)
+        => value switch
+        {
+            CssLength len => Math.Max(0, Starling.Layout.Block.BlockLayout.ToPx(len)),
+            // §5: a percentage radius is relative to the box's width for the
+            // horizontal component; we use the smaller dimension as a single
+            // circular approximation (rx == ry) which matches the common case.
+            CssPercentage pct => Math.Max(0, Math.Min(width, height) * pct.Value / 100d),
+            CssNumber n => Math.Max(0, n.Value),
+            CssValueList list when list.Values.Count > 0 => ResolveRadius(list.Values[0], width, height),
+            _ => 0,
+        };
+
+    private static CornerRadii ShrinkRadii(CornerRadii r, double by)
+    {
+        static double S(double v, double by) => Math.Max(0, v - by);
+        return new CornerRadii(
+            S(r.TopLeftX, by), S(r.TopLeftY, by),
+            S(r.TopRightX, by), S(r.TopRightY, by),
+            S(r.BottomRightX, by), S(r.BottomRightY, by),
+            S(r.BottomLeftX, by), S(r.BottomLeftY, by));
+    }
+
+    /// <summary>
+    /// Emits the outer <c>box-shadow</c> drop shadows behind the box. Per CSS
+    /// Backgrounds 3 §6 the first listed layer is on top, so the layers are
+    /// emitted back-to-front (last → first). Inset layers are recognised but
+    /// only their parse is honoured here; inner-shadow painting is a documented
+    /// follow-up.
+    /// </summary>
+    private static void EmitBoxShadows(Box box, Rect bounds, CornerRadii radii, DisplayList list, Matrix2D current, Rect? cull, ComputedStyle style)
+    {
+        var raw = style.Get(PropertyId.BoxShadow);
+        if (raw is null or CssKeyword { Name: "none" }) return;
+        var shadow = CssBoxShadowParser.Parse(raw);
+        if (shadow.IsNone) return;
+
+        var textColor = style.GetColor(PropertyId.Color);
+
+        for (var i = shadow.Layers.Count - 1; i >= 0; i--)
+        {
+            var layer = shadow.Layers[i];
+            if (layer.Inset) continue; // outer shadows only (inset deferred)
+
+            var color = layer.Color ?? textColor;
+            if (color.A == 0) continue;
+
+            var offsetX = Starling.Layout.Block.BlockLayout.ToPx(layer.OffsetX);
+            var offsetY = Starling.Layout.Block.BlockLayout.ToPx(layer.OffsetY);
+            var blur = Math.Max(0, Starling.Layout.Block.BlockLayout.ToPx(layer.Blur));
+            var spread = Starling.Layout.Block.BlockLayout.ToPx(layer.Spread);
+
+            // Shadow AABB for culling: box grown by spread + blur, offset.
+            var pad = spread + blur;
+            var shadowAabb = new Rect(
+                bounds.X + offsetX - pad,
+                bounds.Y + offsetY - pad,
+                bounds.Width + 2 * pad,
+                bounds.Height + 2 * pad);
+
+            Emit(list, new DrawBoxShadow(bounds, radii, offsetX, offsetY, blur, spread, color, layer.Inset), shadowAabb, current, cull);
+        }
+    }
+
+    private static void EmitBorders(Box box, double x, double y, DisplayList list, Matrix2D current, Rect? cull, ComputedStyle style, CornerRadii radii)
     {
         var top = box.Border.Top;
         var right = box.Border.Right;
@@ -424,6 +535,33 @@ public sealed class DisplayListBuilder
         var rightColor = style.GetColor(PropertyId.BorderRightColor);
         var bottomColor = style.GetColor(PropertyId.BorderBottomColor);
         var leftColor = style.GetColor(PropertyId.BorderLeftColor);
+
+        // Rounded uniform border: when every side shares the same width and
+        // color (the overwhelmingly common authoring case) and the box has
+        // rounded corners, paint the border as a single rounded ring — fill the
+        // outer rounded border-box, then knock out the inner (padding-box)
+        // rounded rect by filling it back to the background-less hole. We can't
+        // composite a hole here, so instead paint the ring as the difference of
+        // two rounded fills layered with the background already drawn beneath:
+        // fill the outer border-box rounded rect with the border color BEFORE
+        // the background would be insufficient. Simpler + correct for the solid
+        // case: stroke the centre-line rounded rect with a pen of the border
+        // width. Per-side mixed (different widths/colors) rounded borders fall
+        // back to the square strokes below — a documented first-cut gap.
+        if (!radii.IsZero
+            && top > 0 && top == right && right == bottom && bottom == left
+            && topColor.A > 0
+            && topColor == rightColor && rightColor == bottomColor && bottomColor == leftColor)
+        {
+            // Centre-line rounded rect: inset by half the border width so a
+            // pen of `top` width straddles the border-box edge symmetrically.
+            var half = top / 2d;
+            var inner = new Rect(x + half, y + half, box.Frame.Width - top, box.Frame.Height - top);
+            var innerRadii = ShrinkRadii(radii, half);
+            var ringBounds = new Rect(x, y, box.Frame.Width, box.Frame.Height);
+            Emit(list, new StrokeRoundedRect(inner, innerRadii, topColor, top), ringBounds, current, cull);
+            return;
+        }
 
         {
             var b = new Rect(x, y, box.Frame.Width, top);

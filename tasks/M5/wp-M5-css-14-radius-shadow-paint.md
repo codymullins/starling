@@ -1,10 +1,10 @@
 ---
 id: wp:M5-css-14-radius-shadow-paint
 milestone: M5
-status: "claimed"
+status: "complete"
 claimed_by: "agent-claude-cody-radshadow"
 claimed_at: "2026-05-20T00:00:00Z"
-completed_at: ""
+completed_at: "2026-05-20T23:30:00Z"
 branch: "worktree"
 depends_on:
   - wp:M5-skia-removal
@@ -82,3 +82,43 @@ outer drop-shadow paint).
 ## Handoff log
 
 - 2026-05-20 — created + claimed by agent-claude-cody-radshadow (orchestrated batch).
+- 2026-05-20 — **complete** (agent-claude-cody-radshadow).
+  - Worktree base was stale (branched from `9d3ec43`); fast-forwarded the
+    worktree branch to local `main` (`40d1f02`) which carries this WP's
+    scaffolding before starting.
+  - **CSS:** added `PropertyId.BoxShadow` (appended at enum end) + `none`
+    initial value; `box-shadow` flows through the registry default case as a
+    raw `CssValueList`. New typed value `CssBoxShadow`/`CssShadow`
+    (`src/Starling.Css/Values/CssBoxShadow.cs`) + fail-soft
+    `CssBoxShadowParser` (`CssBoxShadowParser.cs`): offset-x/y, optional
+    blur (non-negative) + spread, optional color (null = currentColor
+    sentinel), optional `inset`, comma-separated multi-layer. Layer splitting
+    keys on the value parser's empty-name comma keyword.
+  - **Paint records (appended to `DisplayItem.cs`):** `CornerRadii` struct,
+    `FillRoundedRect`, `StrokeRoundedRect`, `DrawBoxShadow`.
+  - **Builder (`PaintBoxAndChildren` + `EmitBorders` only):** reads the four
+    `border-*-radius` longhands, clamps overlaps (§5.1), emits a
+    `FillRoundedRect` background when rounded; emits outer box-shadow layers
+    behind the box (back-to-front, currentColor resolved against the box
+    `color`); paints a uniform rounded border as a single centre-line
+    `StrokeRoundedRect`.
+  - **Backend:** rounded path via `PathBuilder` cubic-bezier corners; box
+    shadow rasterized into an offscreen transparent `Image<Rgba32>`,
+    `GaussianBlur(σ=blur/2)`, blitted via `canvas.DrawImage` so the device
+    scale composes through the canvas transform.
+  - **LayerTreeBuilder:** added the three new records to `TryItemBounds` so
+    compositor layer AABBs cover rounded fills + shadow spread/blur/offset.
+  - **Tests:** `CssBoxShadowParserTests` (9, Css.Tests), promoted
+    `BorderRadiusTests` to 2 `[SpecFact]` + new `BoxShadowTests` (4
+    `[SpecFact]`, Css.Spec.Tests), `RoundedRectAndShadowTests` (3 pixel
+    probes, Paint.Tests).
+  - **Golden:** `testdata/golden/snapshots/nginx.org.png` regenerated — nginx
+    CSS uses `box-shadow` + `border-radius:3px`, previously no-ops; the new
+    render is correct (rounded logo corners, soft drop shadow), verified
+    visually.
+  - **Deferred (documented gaps):** inset shadows (parsed, not painted);
+    per-side mixed (different width/color) rounded borders fall back to square
+    strokes; elliptical per-corner rx/ry from the slash syntax (the longhands
+    store a single length here); percentage radii use min(width,height) as a
+    circular approximation; box-shadow `currentColor` resolves to the box's
+    own `color` (no inheritance edge cases).

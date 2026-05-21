@@ -303,6 +303,26 @@ internal sealed class ImageSharpBackend : IPaintBackend
                     canvas.Draw(pen, r);
                 }
                 break;
+            case FillRoundedRect roundFill:
+                if (roundFill.Bounds.Width <= 0 || roundFill.Bounds.Height <= 0) return;
+                _diag.Counter("paint.fill_rounded_rect", 1);
+                {
+                    var path = BuildRoundedRectPath(roundFill.Bounds, roundFill.Radii);
+                    canvas.Fill(Brushes.Solid(ToColor(roundFill.Color)), path);
+                }
+                break;
+            case StrokeRoundedRect roundStroke:
+                if (roundStroke.Bounds.Width <= 0 || roundStroke.Bounds.Height <= 0 || roundStroke.Width <= 0) return;
+                _diag.Counter("paint.stroke_rounded_rect", 1);
+                {
+                    var path = BuildRoundedRectPath(roundStroke.Bounds, roundStroke.Radii);
+                    canvas.Draw(Pens.Solid(ToColor(roundStroke.Color), (float)roundStroke.Width), path);
+                }
+                break;
+            case DrawBoxShadow shadow:
+                _diag.Counter("paint.box_shadow", 1);
+                DrawBoxShadow(canvas, shadow, scale, pendingImageSources);
+                break;
             case DrawText text:
                 _diag.Counter("paint.draw_text", 1);
                 DrawText(canvas, text);
@@ -422,6 +442,139 @@ internal sealed class ImageSharpBackend : IPaintBackend
 
     private static Color ToColor(CssColor c)
         => Color.FromPixel(new Rgba32(c.R, c.G, c.B, c.A));
+
+    // --- wp:M5-css-14 — rounded rects + box-shadow ---------------------------
+
+    // Magic constant for approximating a 90° elliptical arc with a cubic Bézier.
+    private const float ArcBezierK = 0.5522847498f;
+
+    /// <summary>
+    /// Builds a closed rounded-rectangle path for <paramref name="bounds"/> with
+    /// independent per-corner elliptical radii. Each corner's radii are clamped
+    /// to half the box extent so they never cross. A zero-radius corner degrades
+    /// to a sharp right angle. Traced clockwise from the top edge.
+    /// </summary>
+    private static IPath BuildRoundedRectPath(LayoutRect bounds, CornerRadii r)
+    {
+        var x = (float)bounds.X;
+        var y = (float)bounds.Y;
+        var w = (float)bounds.Width;
+        var h = (float)bounds.Height;
+        var right = x + w;
+        var bottom = y + h;
+
+        // Clamp each radius to the half-extents of the box.
+        var maxX = w / 2f;
+        var maxY = h / 2f;
+        float Clamp(double v, float max) => Math.Clamp((float)v, 0f, max);
+        var tlx = Clamp(r.TopLeftX, maxX); var tly = Clamp(r.TopLeftY, maxY);
+        var trx = Clamp(r.TopRightX, maxX); var tryy = Clamp(r.TopRightY, maxY);
+        var brx = Clamp(r.BottomRightX, maxX); var bry = Clamp(r.BottomRightY, maxY);
+        var blx = Clamp(r.BottomLeftX, maxX); var bly = Clamp(r.BottomLeftY, maxY);
+
+        var pb = new PathBuilder();
+        // Top edge, left→right, starting just after the top-left corner.
+        pb.MoveTo(new PointF(x + tlx, y));
+        pb.LineTo(new PointF(right - trx, y));
+        // Top-right corner.
+        if (trx > 0 || tryy > 0)
+            pb.AddCubicBezier(
+                new PointF(right - trx, y),
+                new PointF(right - trx + trx * ArcBezierK, y),
+                new PointF(right, y + tryy - tryy * ArcBezierK),
+                new PointF(right, y + tryy));
+        // Right edge.
+        pb.LineTo(new PointF(right, bottom - bry));
+        // Bottom-right corner.
+        if (brx > 0 || bry > 0)
+            pb.AddCubicBezier(
+                new PointF(right, bottom - bry),
+                new PointF(right, bottom - bry + bry * ArcBezierK),
+                new PointF(right - brx + brx * ArcBezierK, bottom),
+                new PointF(right - brx, bottom));
+        // Bottom edge.
+        pb.LineTo(new PointF(x + blx, bottom));
+        // Bottom-left corner.
+        if (blx > 0 || bly > 0)
+            pb.AddCubicBezier(
+                new PointF(x + blx, bottom),
+                new PointF(x + blx - blx * ArcBezierK, bottom),
+                new PointF(x, bottom - bly + bly * ArcBezierK),
+                new PointF(x, bottom - bly));
+        // Left edge.
+        pb.LineTo(new PointF(x, y + tly));
+        // Top-left corner.
+        if (tlx > 0 || tly > 0)
+            pb.AddCubicBezier(
+                new PointF(x, y + tly),
+                new PointF(x, y + tly - tly * ArcBezierK),
+                new PointF(x + tlx - tlx * ArcBezierK, y),
+                new PointF(x + tlx, y));
+        pb.CloseFigure();
+        return pb.Build();
+    }
+
+    /// <summary>
+    /// Paints a single outer drop shadow (CSS Backgrounds 3 §6). The shadow
+    /// silhouette — the box grown by <c>Spread</c>, with its corner radii grown
+    /// to match — is rasterized into a transparent offscreen image at CSS-pixel
+    /// resolution, blurred by a Gaussian of σ = blur/2, then blitted at the
+    /// shadow offset through the same canvas transform every other primitive
+    /// uses (so the device <paramref name="scale"/> composes correctly). Inset
+    /// shadows are not painted (parsed only); the builder filters them out.
+    /// </summary>
+    private static void DrawBoxShadow(DrawingCanvas canvas, DrawBoxShadow shadow, float scale, DisposableBag pendingImageSources)
+    {
+        if (shadow.Inset) return; // inner shadows deferred
+        if (shadow.Color.A == 0) return;
+
+        // The spread-expanded silhouette in CSS px (still at the box origin).
+        var spread = shadow.Spread;
+        var silhouetteW = shadow.Bounds.Width + 2 * spread;
+        var silhouetteH = shadow.Bounds.Height + 2 * spread;
+        if (silhouetteW <= 0 || silhouetteH <= 0) return;
+
+        var blur = Math.Max(0, shadow.Blur);
+        // Padding around the silhouette so the Gaussian tail isn't clipped. A
+        // Gaussian is effectively zero past 3σ; σ = blur/2, so 3σ = 1.5·blur.
+        var margin = (int)Math.Ceiling(blur * 1.5) + 2;
+
+        var imgW = (int)Math.Ceiling(silhouetteW) + 2 * margin;
+        var imgH = (int)Math.Ceiling(silhouetteH) + 2 * margin;
+        if (imgW <= 0 || imgH <= 0 || (long)imgW * imgH > 64_000_000L) return; // guard pathological sizes
+
+        // Grow each corner radius by the spread so the silhouette stays a
+        // rounded rect that hugs the box (a negative spread shrinks them).
+        var grown = GrowRadii(shadow.Radii, spread);
+        var silhouette = new LayoutRect(margin, margin, silhouetteW, silhouetteH);
+        var shape = BuildRoundedRectPath(silhouette, grown);
+
+        var shadowImage = new Image<Rgba32>(imgW, imgH, new Rgba32(0, 0, 0, 0));
+        // Drawing 3 paints paths through a DrawingCanvas (the same model the main
+        // render path uses), so fill the silhouette inside a Paint scope, then
+        // soften it with a separate Gaussian-blur Mutate.
+        shadowImage.Mutate(ctx => ctx.Paint(canvas => canvas.Fill(Brushes.Solid(ToColor(shadow.Color)), shape)));
+        if (blur > 0)
+            shadowImage.Mutate(ctx => ctx.GaussianBlur((float)(blur / 2d)));
+        pendingImageSources.Add(shadowImage);
+
+        // Destination in CSS px: the silhouette's top-left is
+        // (Bounds - spread + offset); the image extends `margin` px further out.
+        var destX = shadow.Bounds.X - spread + shadow.OffsetX - margin;
+        var destY = shadow.Bounds.Y - spread + shadow.OffsetY - margin;
+        var dest = new RectangleF((float)destX, (float)destY, imgW, imgH);
+        canvas.DrawImage(shadowImage, new Rectangle(0, 0, imgW, imgH), dest, KnownResamplers.Bicubic);
+    }
+
+    private static CornerRadii GrowRadii(CornerRadii r, double by)
+    {
+        static double G(double v, double by) => v <= 0 ? 0 : Math.Max(0, v + by);
+        return new CornerRadii(
+            G(r.TopLeftX, by), G(r.TopLeftY, by),
+            G(r.TopRightX, by), G(r.TopRightY, by),
+            G(r.BottomRightX, by), G(r.BottomRightY, by),
+            G(r.BottomLeftX, by), G(r.BottomLeftY, by));
+    }
 
     private sealed class DisposableBag : IDisposable
     {
