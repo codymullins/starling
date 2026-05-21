@@ -158,6 +158,10 @@ public static class WindowBinding
         // by host.GetComputedProperty; with no host installed, every
         // property reads as the empty string (matches an un-styled doc).
         InstallGetComputedStyle(realm, global);
+
+        // 9) M3-31: Web Crypto minimal surface — crypto.getRandomValues +
+        //    crypto.randomUUID. crypto.subtle is intentionally left undefined.
+        CryptoBinding.Install(runtime);
     }
 
     /// <summary>Resolve the runtime that backs the given realm. Returns null
