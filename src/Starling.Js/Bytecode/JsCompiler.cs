@@ -1325,11 +1325,11 @@ public sealed partial class JsCompiler
     /// </list>
     /// </summary>
     /// <remarks>
-    /// The cross-finally case (a break/continue whose target loop sits
-    /// outside an enclosing try/finally) is NOT yet supported — spec wants
-    /// the intervening finally blocks to run first, mirroring the
-    /// DivertReturnThroughFinally path. For now the compiler throws so
-    /// callers see a clear error instead of silently skipping a finally.
+    /// wp:M3-15 — the cross-finally case (a break/continue whose target loop
+    /// sits outside one or more enclosing try/finally blocks) emits
+    /// <see cref="Opcode.BranchThroughFinally"/> so the intervening finalizers
+    /// run first (innermost out), mirroring the VM's
+    /// DivertReturnThroughFinally path for <c>return</c>.
     /// </remarks>
     private void EmitBreakOrContinue(Starling.Js.Lex.JsPosition where, bool isBreak, string? label)
     {
@@ -1374,9 +1374,27 @@ public sealed partial class JsCompiler
             targetFrame = _loops.Peek();
         }
 
-        if (_tryDepth > targetFrame.TryDepthAtEntry)
-            throw new NotSupportedException(
-                $"'{(isBreak ? "break" : "continue")}' across an enclosing try/finally is not yet supported (compiler at {where.Line}:{where.Column}).");
+        var crossedTryFrames = _tryDepth - targetFrame.TryDepthAtEntry;
+        if (crossedTryFrames > 0)
+        {
+            // wp:M3-15 — the break/continue exits the loop/switch across one or
+            // more enclosing try-frames. Per §14.15 every intervening finalizer
+            // must run (innermost first) before control reaches the loop's
+            // break/continue site. Emit BranchThroughFinally so the VM diverts
+            // the abrupt completion through those finalizers, then jumps to the
+            // (forward-patched) target. The i16 target slot is recorded on the
+            // same break/continue patch list as a plain Jump, so the loop's
+            // lowering pass patches it identically.
+            if (crossedTryFrames > byte.MaxValue)
+                throw new NotSupportedException(
+                    $"'{(isBreak ? "break" : "continue")}' crosses too many try/finally frames ({crossedTryFrames}) (compiler at {where.Line}:{where.Column}).");
+            _b.Emit(Opcode.BranchThroughFinally);
+            _b.EmitU8Raw(crossedTryFrames);
+            var finPatch = _b.Position;
+            _b.EmitU16Raw(0); // i16 target placeholder, patched by the loop pass.
+            (isBreak ? targetFrame.BreakPatches : targetFrame.ContinuePatches).Add(finPatch);
+            return;
+        }
 
         var patch = _b.EmitJump(Opcode.Jump);
         (isBreak ? targetFrame.BreakPatches : targetFrame.ContinuePatches).Add(patch);
@@ -1775,7 +1793,7 @@ public sealed partial class JsCompiler
             // PutValue on a super-reference, which needs separate super-update
             // opcodes (deferred; add them if the McMaster app needs it).
             if (me.Object is SuperPropertyExpression)
-                throw new NotSupportedException("update of super property not yet supported (wp:M3-08)");
+                throw new NotSupportedException("update of super property not yet supported (wp:M3-15)");
 
             var isIncrement = up.Op == "++";
 

@@ -126,6 +126,18 @@ public static class Disassembler
                       .Append(" finally→").Append(finallyOffset == -1 ? "<none>" : (i + finallyOffset).ToString("D4"));
                     break;
                 }
+                // u8 + i16 — BranchThroughFinally [unwindCount][target]
+                case Opcode.BranchThroughFinally:
+                {
+                    var unwindCount = code[i];
+                    i++;
+                    var offset = BinaryPrimitives.ReadInt16LittleEndian(code.AsSpan(i, 2));
+                    i += 2;
+                    sb.Append(op).Append(' ').Append(unwindCount).Append(' ').Append(offset);
+                    sb.Append("  ; unwind=").Append(unwindCount)
+                      .Append(" → ").Append((i + offset).ToString("D4"));
+                    break;
+                }
                 case Opcode.YieldDelegate:
                     sb.Append(op);
                     break;

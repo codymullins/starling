@@ -843,7 +843,29 @@ public sealed class JsVm
                             if (DivertReturnThroughFinally(tryStack, rv, ref ip)) break;
                             return rv;
                         }
+                        case PendingCompletion.Break:
+                        {
+                            // wp:M3-15 — resume an in-flight break/continue: run
+                            // any further intervening finalizers, then jump to
+                            // the loop/switch site. The finalizer just executed
+                            // completed normally, so the saved completion still
+                            // governs control flow (§14.15.3).
+                            DivertBranchThroughFinally(
+                                tryStack, frame.PendingTargetPc,
+                                frame.PendingUnwindRemaining, ref ip);
+                            break;
+                        }
                     }
+                    break;
+                }
+                // wp:M3-15 — break/continue exiting a loop/switch across one or
+                // more enclosing finalizers. Operand: [u8 unwindCount][i16 target].
+                case Opcode.BranchThroughFinally:
+                {
+                    int unwindCount = ReadU8();
+                    var delta = ReadI16();
+                    var targetPc = ip + delta; // i16 measured from after the operand
+                    DivertBranchThroughFinally(tryStack, targetPc, unwindCount, ref ip);
                     break;
                 }
 
@@ -1693,6 +1715,46 @@ public sealed class JsVm
             tryStack.Pop();
         }
         return false;
+    }
+
+    /// <summary>wp:M3-15 — drive a <c>break</c>/<c>continue</c> abrupt completion
+    /// out of <paramref name="unwindCount"/> enclosing try-frames, running each
+    /// frame's finalizer (innermost first) on the way to
+    /// <paramref name="targetPc"/> (the loop/switch break/continue site).
+    ///
+    /// <para>Pops up to <paramref name="unwindCount"/> frames. A popped frame
+    /// that is still in its try/catch phase and carries a finalizer suspends
+    /// the unwind: its finalizer runs as a <see cref="PendingCompletion.Break"/>
+    /// carrying the target PC and the remaining count, and <c>EndFinally</c>
+    /// re-enters this helper for the rest. Frames without a finalizer (or
+    /// already running one) are simply discarded. When all intervening
+    /// finalizers have run, control jumps to <paramref name="targetPc"/>.</para>
+    ///
+    /// <para>Per §14.15.3 a finalizer that itself completes abruptly overrides
+    /// the pending Break — that is handled naturally because the finalizer's
+    /// own break/continue/return/throw opcodes re-drive the try-stack and never
+    /// reach the <c>EndFinally</c> that would resume this one.</para></summary>
+    private static void DivertBranchThroughFinally(
+        Stack<TryFrame> tryStack, int targetPc, int unwindCount, ref int ip)
+    {
+        while (unwindCount > 0 && tryStack.Count > 0)
+        {
+            var frame = tryStack.Pop();
+            unwindCount--;
+            if (frame.Phase != TryPhase.RunningFinally && frame.FinallyPc != -1)
+            {
+                frame.Phase = TryPhase.RunningFinally;
+                frame.Pending = PendingCompletion.Break;
+                frame.PendingValue = JsValue.Undefined;
+                frame.PendingTargetPc = targetPc;
+                frame.PendingUnwindRemaining = unwindCount;
+                tryStack.Push(frame);
+                ip = frame.FinallyPc;
+                return;
+            }
+        }
+        // No (further) finalizer to run — jump straight to the loop/switch site.
+        ip = targetPc;
     }
 
     // -----------------------------------------------------------------------
@@ -2576,6 +2638,12 @@ internal enum PendingCompletion
     Normal,
     Throw,
     Return,
+    /// <summary>wp:M3-15 — a <c>break</c>/<c>continue</c> exiting a loop or
+    /// switch across this finalizer. <see cref="TryFrame.PendingTargetPc"/>
+    /// holds the loop's break/continue PC and
+    /// <see cref="TryFrame.PendingUnwindRemaining"/> the number of further
+    /// try-frames to unwind before reaching it.</summary>
+    Break,
 }
 
 /// <summary>§14.15 try-frame entry used by the VM dispatch loop.</summary>
@@ -2587,4 +2655,12 @@ internal struct TryFrame
     public TryPhase Phase;
     public PendingCompletion Pending;
     public JsValue PendingValue;
+    /// <summary>wp:M3-15 — for a pending <see cref="PendingCompletion.Break"/>,
+    /// the absolute PC of the loop/switch break/continue site to jump to once
+    /// every intervening finalizer has run.</summary>
+    public int PendingTargetPc;
+    /// <summary>wp:M3-15 — for a pending <see cref="PendingCompletion.Break"/>,
+    /// the number of additional enclosing try-frames still to unwind (and run
+    /// finalizers for) before reaching the target.</summary>
+    public int PendingUnwindRemaining;
 }

@@ -237,6 +237,19 @@ public enum Opcode : byte
     EnterTry,
     LeaveTry,
     EndFinally,
+    /// <summary>wp:M3-15 — §14.15 abrupt <c>break</c>/<c>continue</c> that exits
+    /// a loop or switch across one or more enclosing <c>try…finally</c> blocks.
+    /// Operand layout <c>[u8 unwindCount][i16 target]</c>: <c>unwindCount</c> is
+    /// the number of open try-frames between this instruction and the target
+    /// loop/switch site that must be unwound (running each frame's finalizer,
+    /// innermost first); <c>target</c> is the i16 forward offset (measured from
+    /// the byte after the operand, identical to <see cref="Jump"/>) of the
+    /// loop's break/continue PC. The VM diverts through the intervening
+    /// finalizers as a Break completion carrying the target PC and remaining
+    /// unwind count, then jumps to <c>target</c> once they have all run. A
+    /// finalizer that itself performs an abrupt completion (break/continue/
+    /// return/throw) overrides the pending Break per §14.15.3.</summary>
+    BranchThroughFinally,
 
     // ----- Operator bundle (gap:instanceof / gap:in / gap:delete) -----
     /// <summary>Pop right, pop left, push <c>left instanceof right</c>.
