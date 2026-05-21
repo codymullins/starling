@@ -189,6 +189,14 @@ public sealed class JsRealm
     /// <see cref="JsFunction"/> dispatch.</summary>
     public JsVm? ActiveVm { get; internal set; }
 
+    /// <summary>wp:M3-03c — the active module loader for this realm, if module
+    /// evaluation is in flight. Set by <see cref="Modules.ModuleLoader"/> on
+    /// construction so the VM can service dynamic <c>import()</c> and
+    /// <c>import.meta</c> opcodes (which need specifier resolution + the module
+    /// registry). Null in a pure classic-script realm with no loader; the VM's
+    /// <c>DynamicImport</c> handler throws a TypeError in that case.</summary>
+    public Modules.ModuleLoader? ModuleLoader { get; internal set; }
+
     public JsRealm()
     {
         // Bootstrap order matters: Object.prototype is the root; everything

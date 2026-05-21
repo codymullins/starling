@@ -48,6 +48,12 @@ public sealed class ModuleRecord
     /// lazily built on first <c>import * as ns</c> / namespace request.</summary>
     public JsObject? Namespace { get; internal set; }
 
+    /// <summary>wp:M3-03c — the module's <c>import.meta</c> object (§16.2.1.9
+    /// HostGetImportMetaProperties), lazily built by the loader on first
+    /// <c>import.meta</c> access. Carries at least <c>url</c> (the resolved
+    /// module URL). Null until first accessed.</summary>
+    internal JsObject? Meta { get; set; }
+
     /// <summary>§16.2.1.5 [[Status]] subset driving the linker state machine.</summary>
     public ModuleStatus Status { get; internal set; } = ModuleStatus.Unlinked;
 

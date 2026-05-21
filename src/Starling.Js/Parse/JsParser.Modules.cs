@@ -12,12 +12,65 @@ public sealed partial class JsParser
 {
     private Statement ParseProgramStatement()
     {
+        // wp:M3-03c — `import(` / `import.` start a dynamic-import call or
+        // `import.meta` *expression statement*, not a static ImportDeclaration.
+        // Disambiguate on the token after `import` so static `import …` decls
+        // stay routed here while the expression forms fall through to
+        // ParseStatement → ParseExpression → ParsePrimary.
+        if (_current.Kind == JsTokenKind.Import)
+        {
+            var next = _lex.Peek().Kind;
+            if (next is JsTokenKind.LParen or JsTokenKind.Dot)
+                return ParseStatement();
+            return ParseImportDeclaration();
+        }
+
         return _current.Kind switch
         {
-            JsTokenKind.Import => ParseImportDeclaration(),
             JsTokenKind.Export => ParseExportDeclaration(),
             _ => ParseStatement(),
         };
+    }
+
+    /// <summary>wp:M3-03c — parse the expression-context forms of <c>import</c>:
+    /// <c>import(specifier [, options])</c> (ES2024 §13.3.10 ImportCall) and
+    /// <c>import.meta</c> (§13.3.12 ImportMeta). The leading <c>import</c> token
+    /// is current on entry. Static <c>import …</c> declarations never reach here —
+    /// they are dispatched only at program scope by
+    /// <see cref="ParseProgramStatement"/>.</summary>
+    private Expression ParseImportExpression()
+    {
+        var start = _current.Start;
+        Advance(); // import
+
+        if (Check(JsTokenKind.Dot))
+        {
+            Advance(); // .
+            var meta = ExpectIdentifierName("expected 'meta' after 'import.'");
+            if (meta.Lexeme != "meta")
+                throw new JsParseException(
+                    $"the only valid meta-property for import is 'import.meta' (got 'import.{meta.Lexeme}')",
+                    meta.Start);
+            return new ImportMetaExpression(start, meta.End);
+        }
+
+        if (Check(JsTokenKind.LParen))
+        {
+            Advance(); // (
+            var specifier = ParseAssignment();
+            Expression? options = null;
+            if (Match(JsTokenKind.Comma) && !Check(JsTokenKind.RParen))
+                options = ParseAssignment(); // import attributes — parsed, ignored
+            // tolerate a trailing comma: import(spec,) / import(spec, opts,)
+            Match(JsTokenKind.Comma);
+            var end = _current.End;
+            Expect(JsTokenKind.RParen, "expected ')' to close dynamic import call");
+            return new ImportCallExpression(specifier, options, start, end);
+        }
+
+        throw new JsParseException(
+            "'import' is only valid as 'import(...)' or 'import.meta' in expression position",
+            _current.Start);
     }
 
     /// <summary>Parse ES2024 §16.2.2 ImportDeclaration.</summary>

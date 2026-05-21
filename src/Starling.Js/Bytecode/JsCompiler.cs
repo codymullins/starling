@@ -1344,6 +1344,24 @@ public sealed partial class JsCompiler
             case SuperCallExpression sc:
                 EmitSuperCall(sc);
                 return;
+            case ImportCallExpression ic:
+                // wp:M3-03c — `import(spec)`: evaluate the specifier, drop the
+                // (forward-compat, currently ignored) options arg, and let the
+                // runtime hand the string-coerced specifier + referrer to the
+                // loader, pushing the resulting Promise.
+                EmitExpression(ic.Specifier);
+                if (ic.Options is not null)
+                {
+                    // Evaluate options for side-effect order, then discard.
+                    EmitExpression(ic.Options);
+                    _b.Emit(Opcode.Pop);
+                }
+                _b.Emit(Opcode.DynamicImport);
+                return;
+            case ImportMetaExpression:
+                // wp:M3-03c — `import.meta`: push the running module's meta object.
+                _b.Emit(Opcode.LoadImportMeta);
+                return;
             case PrivateNameExpression:
                 throw new NotSupportedException(
                     "private-name reference used outside a member-expression context");

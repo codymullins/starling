@@ -1121,6 +1121,33 @@ public sealed class JsVm
                     Push(newTarget is null ? JsValue.Undefined : JsValue.Object(newTarget));
                     break;
                 }
+                case Opcode.DynamicImport:
+                {
+                    // wp:M3-03c — §13.3.10 import(specifier). Hand the specifier
+                    // value + this chunk's referrer URL to the active loader and
+                    // push the resulting Promise. Every load/eval failure is a
+                    // rejection inside ImportDynamic — the only synchronous throw
+                    // is when no loader is wired into the realm.
+                    var spec = Pop();
+                    var loader = _runtime.Realm.ModuleLoader
+                        ?? throw new JsThrow(_runtime.Realm.NewTypeError(
+                            "dynamic import() is not supported in this context (no module loader)"));
+                    Push(JsValue.Object(loader.ImportDynamic(spec, chunk.Name)));
+                    break;
+                }
+                case Opcode.LoadImportMeta:
+                {
+                    // wp:M3-03c — §13.3.12 import.meta. The chunk name is the
+                    // running module's resolved URL; ask the loader for that
+                    // module's lazily-built meta object.
+                    var loader = _runtime.Realm.ModuleLoader;
+                    var meta = loader?.ResolveMetaForUrl(chunk.Name);
+                    if (meta is null)
+                        throw new JsThrow(_runtime.Realm.NewSyntaxError(
+                            "import.meta is only valid inside a module"));
+                    Push(JsValue.Object(meta));
+                    break;
+                }
                 case Opcode.BindThis:
                 {
                     thisV = Pop();

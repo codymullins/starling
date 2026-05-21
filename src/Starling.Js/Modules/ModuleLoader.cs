@@ -45,6 +45,10 @@ public sealed class ModuleLoader
     {
         _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         _host = host ?? throw new ArgumentNullException(nameof(host));
+        // wp:M3-03c — publish ourselves on the realm so the VM's DynamicImport /
+        // LoadImportMeta opcodes can reach the loader (specifier resolution +
+        // module registry) without threading a reference through every frame.
+        _runtime.Realm.ModuleLoader = this;
     }
 
     /// <summary>Resolve, load, link and evaluate the module at
@@ -92,6 +96,95 @@ public sealed class ModuleLoader
         else
             PromiseCtor.Resolve(realm, settled, JsValue.Undefined);
         return settled;
+    }
+
+    // -----------------------------------------------------------------------
+    // wp:M3-03c — dynamic import() + import.meta
+    // -----------------------------------------------------------------------
+
+    /// <summary>wp:M3-03c — §13.3.10.2 HostLoadImportedModule + §16.2.1.8
+    /// ContinueDynamicImport. Resolve <paramref name="specifierValue"/> (string-
+    /// coerced) relative to <paramref name="referrer"/>, load + link the graph,
+    /// evaluate it (waiting
+    /// for any top-level await to settle), and return a <see cref="JsPromise"/>
+    /// that fulfils with the module's namespace object or rejects with the first
+    /// resolve/fetch/link/evaluation error. Never throws synchronously — every
+    /// failure path becomes a rejected promise, matching the spec's
+    /// "import() always returns a promise" contract.</summary>
+    internal JsPromise ImportDynamic(JsValue specifierValue, string? referrer)
+    {
+        var realm = _runtime.Realm;
+        var result = new JsPromise(realm.PromisePrototype);
+
+        ModuleRecord record;
+        JsPromise evalPromise;
+        try
+        {
+            // §13.3.10.1 step 5: ToString(specifier). A throw here (e.g. a
+            // Symbol specifier) becomes a rejection, not a synchronous throw.
+            var specifier = JsValue.ToStringValue(
+                specifierValue.IsObject
+                    ? AbstractOperations.ToPrimitive(realm.ActiveVm, specifierValue, "string")
+                    : specifierValue);
+            record = LoadGraph(specifier, referrer);
+            Link(record);
+            evalPromise = EvaluateToPromise(record);
+        }
+        catch (JsThrow ex)
+        {
+            // Synchronous resolve/fetch/link/sync-eval failure → rejected promise.
+            PromiseCtor.Reject(realm, result, ex.Value);
+            return result;
+        }
+
+        // Chain on the evaluation promise: fulfil with the namespace once the
+        // subtree (incl. any top-level await) settles; reject with its error.
+        var vm = realm.ActiveVm ?? new JsVm(_runtime);
+        var onFulfill = new JsNativeFunction("", (_, _) =>
+        {
+            try
+            {
+                PromiseCtor.Resolve(realm, result, JsValue.Object(GetOrBuildNamespace(record)));
+            }
+            catch (JsThrow ex)
+            {
+                PromiseCtor.Reject(realm, result, ex.Value);
+            }
+            return JsValue.Undefined;
+        }, isConstructor: false);
+        var onReject = new JsNativeFunction("", (_, args) =>
+        {
+            PromiseCtor.Reject(realm, result, args.Length > 0 ? args[0] : JsValue.Undefined);
+            return JsValue.Undefined;
+        }, isConstructor: false);
+        var then = AbstractOperations.Get(vm, evalPromise, "then");
+        AbstractOperations.Call(vm, then, JsValue.Object(evalPromise),
+            new[] { JsValue.Object(onFulfill), JsValue.Object(onReject) });
+        return result;
+    }
+
+    /// <summary>wp:M3-03c — return the running module's <c>import.meta</c> object
+    /// given its resolved URL (the chunk name the VM carries). Looks the record
+    /// up in the registry; returns null when no module is registered under that
+    /// URL (i.e. the code is a classic script, where <c>import.meta</c> is a
+    /// SyntaxError — the VM surfaces that).</summary>
+    internal JsObject? ResolveMetaForUrl(string? url)
+    {
+        if (url is null) return null;
+        return _registry.TryGetValue(url, out var record) ? GetOrBuildMeta(record) : null;
+    }
+
+    /// <summary>Lazily build (and cache) a module's <c>import.meta</c> object.
+    /// §16.2.1.9 HostGetImportMetaProperties supplies at least <c>url</c> (the
+    /// module's resolved URL). The object inherits from <c>Object.prototype</c>
+    /// per the spec's note that import.meta is an ordinary extensible object.</summary>
+    private JsObject GetOrBuildMeta(ModuleRecord record)
+    {
+        if (record.Meta is not null) return record.Meta;
+        var meta = _runtime.Realm.NewOrdinaryObject();
+        meta.Set("url", JsValue.String(record.Url));
+        record.Meta = meta;
+        return meta;
     }
 
     // -----------------------------------------------------------------------

@@ -295,5 +295,23 @@ public enum Opcode : byte
     /// undefined) to be <c>await</c>ed for AsyncIteratorClose (§7.4.11).</summary>
     AsyncIteratorClose,
 
+    // ----- Modules (wp:M3-03c — dynamic import + import.meta) -----
+    /// <summary>wp:M3-03c — §13.3.10 ImportCall. Pop the specifier value,
+    /// string-coerce it, and hand it to the active
+    /// <see cref="Starling.Js.Modules.ModuleLoader"/> (reached via
+    /// <c>Realm.ModuleLoader</c>) along with the running chunk's name as the
+    /// referrer URL. Push the Promise the loader returns — it resolves to the
+    /// imported module's namespace object once the subtree (including any
+    /// top-level await) settles, and rejects on resolve/fetch/eval failure.
+    /// Throws TypeError synchronously only when no loader is wired into the
+    /// realm.</summary>
+    DynamicImport,
+    /// <summary>wp:M3-03c — §13.3.12 ImportMeta. Push the running module's
+    /// host-populated <c>import.meta</c> object (lazily built, carries at least
+    /// <c>url</c>). Resolved by looking the current chunk's name (the module URL)
+    /// up in the active loader's registry. Throws SyntaxError when used outside
+    /// module code (no matching module record).</summary>
+    LoadImportMeta,
+
     Halt,           // end-of-program sentinel
 }

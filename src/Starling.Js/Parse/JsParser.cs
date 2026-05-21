@@ -728,6 +728,12 @@ public sealed partial class JsParser
             case JsTokenKind.TemplateNoSubstitution:
             case JsTokenKind.TemplateHead:
                 return ParseTemplateLiteral();
+            case JsTokenKind.Import:
+                // wp:M3-03c — `import(...)` (dynamic import call) and
+                // `import.meta` (meta-property) are the only expression-context
+                // forms of `import`. Static `import …` declarations are routed at
+                // program scope by ParseProgramStatement and never reach here.
+                return ParseImportExpression();
         }
         throw new JsParseException(
             $"unexpected token {t.Kind} '{t.Lexeme}'", t.Start);
