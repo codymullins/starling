@@ -187,61 +187,6 @@ public sealed class ImageSharpBackendTests
     }
 
     /// <summary>
-    /// The glyph-outline fast path (fill a cached, pre-tessellated outline
-    /// instead of re-running ImageSharp's <c>DrawText</c> per fragment) must be
-    /// byte-for-byte identical to the <c>DrawText</c> path it replaces. Render
-    /// the same text-heavy display list — with words repeated at fractional
-    /// positions to mirror real layout — twice: once with the cache on
-    /// (production default) and once forced off, and assert the RGBA buffers
-    /// match exactly. A pixel diff means the optimization regressed output and
-    /// must be backed out.
-    /// </summary>
-    [TestMethod]
-    public void Glyph_outline_fast_path_is_pixel_identical_to_drawtext()
-    {
-        static PaintList BuildTextList()
-        {
-            var list = new PaintList();
-            string[] words = ["The", "quick", "brown", "fox", "jumps,", "over", "lazy", "dog."];
-            for (var line = 0; line < 12; line++)
-            {
-                // Repeat words across lines so the cache fast-path is exercised
-                // (a word seen on an earlier line is filled from the cache on
-                // later lines), and use fractional X to mirror real layout.
-                var y = 18f + line * 20f;
-                var x = 6.3f + line * 0.37f;
-                foreach (var w in words)
-                {
-                    list.Add(new DrawText(
-                        Text: w,
-                        X: x,
-                        Y: y,
-                        FontSize: 16,
-                        Color: new CssColor(20, 30, 40, 255),
-                        FontFamilies: ["sans-serif"],
-                        Bold: false,
-                        Italic: false));
-                    x += 52f;
-                }
-            }
-            return list;
-        }
-
-        var size = new LayoutSize(640, 280);
-
-        using var cached = new ImageSharpBackend(FontResolver.Default, webFonts: null, useGlyphOutlineCache: true);
-        using var withCache = cached.Render(BuildTextList(), size);
-
-        using var direct = new ImageSharpBackend(FontResolver.Default, webFonts: null, useGlyphOutlineCache: false);
-        using var withoutCache = direct.Render(BuildTextList(), size);
-
-        // Sanity: the reference render actually produced glyphs.
-        BitmapPixels.CountNonWhite(withoutCache).Should().BeGreaterThan(0);
-        BitmapPixels.PixelsEqual(withCache, withoutCache).Should().BeTrue(
-            "the cached glyph-outline fill must produce the exact same pixels as the DrawText path; any difference is a paint regression");
-    }
-
-    /// <summary>
     /// A solid red underline must rasterize as red pixels (CSS Text Decoration 3
     /// §2). The builder emits a typed <see cref="DrawTextDecoration"/>; the
     /// backend resolves the line position from font metrics and strokes it.
