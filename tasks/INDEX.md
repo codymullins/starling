@@ -154,9 +154,9 @@ features previously listed as deferred — `:has`, `:nth-*`, `:is`, `:where`,
 | [wp:M5-img-srcset-sizes](M5/wp-M5-img-srcset-sizes.md) | 🟢 complete | agent-copilot-claude-opus-4.7 | Starling.Engine |
 | [wp:M5-img-svg-decode](M5/wp-M5-img-svg-decode.md) | 🟢 complete | agent-claude-cody-svg | Starling.Paint |
 | [wp:M5-css-12-text-3-inline](M5/wp-M5-css-12-text-3-inline.md) | 🟢 complete | agent-claude-cody-text3 | Starling.Layout |
-| [wp:M5-css-13-gradients](M5/wp-M5-css-13-gradients.md) | 🟡 claimed | agent-claude-cody-gradients | Starling.Paint |
+| [wp:M5-css-13-gradients](M5/wp-M5-css-13-gradients.md) | 🟢 complete | agent-claude-cody-gradients | Starling.Paint |
 | [wp:M5-css-14-radius-shadow-paint](M5/wp-M5-css-14-radius-shadow-paint.md) | 🟢 complete | agent-claude-cody-radshadow | Starling.Paint |
-| [wp:M5-css-15-text-decoration](M5/wp-M5-css-15-text-decoration.md) | 🟡 claimed | agent-claude-cody-textdecor | Starling.Paint |
+| [wp:M5-css-15-text-decoration](M5/wp-M5-css-15-text-decoration.md) | 🟢 complete | agent-claude-cody-textdecor | Starling.Paint |
 | [wp:M5-css-16-generated-content](M5/wp-M5-css-16-generated-content.md) | 🟢 complete | agent-claude-cody-content | Starling.Layout |
 
 > **M5 CSS rendering-coverage batch (2026-05-20, orchestrated).** Five parallel

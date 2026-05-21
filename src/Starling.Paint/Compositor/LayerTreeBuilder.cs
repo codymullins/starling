@@ -181,6 +181,7 @@ internal sealed class LayerTreeBuilder
         switch (item)
         {
             case FillRect f: bounds = f.Bounds; return true;
+            case FillGradient g: bounds = g.Bounds; return true;
             case StrokeRect s: bounds = s.Bounds; return true;
             case FillRoundedRect rf: bounds = rf.Bounds; return true;
             case StrokeRoundedRect rs: bounds = rs.Bounds; return true;
