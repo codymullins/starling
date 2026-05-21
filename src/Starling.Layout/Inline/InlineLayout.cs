@@ -68,13 +68,21 @@ internal sealed class InlineLayout
         var placedImages = new List<ImageBox>();
         var placedAtomics = new List<InlineBox>();
 
+        // CSS Text 3 §9.1 — `text-indent` offsets the start edge of the first
+        // line of a block container. Percentages resolve against the available
+        // inline-axis width. We apply it as the initial pen-X.
+        var indent = ResolveTextIndent(container.Style, fontSize, availableWidth);
+        if (indent != 0)
+            cursorX = indent;
+        var firstLine = true;
+
         foreach (var run in runs)
         {
             switch (run)
             {
                 case TextRun text:
                     LayoutText(text, container.Style, availableWidth, baseline,
-                        fragments, ref cursorX, ref cursorY, ref currentLineHeight);
+                        fragments, ref cursorX, ref cursorY, ref currentLineHeight, ref firstLine, indent);
                     break;
                 case ImageRun image:
                     LayoutImage(image.Box, availableWidth,
@@ -90,6 +98,7 @@ internal sealed class InlineLayout
                     cursorY += currentLineHeight;
                     cursorX = 0;
                     currentLineHeight = lineHeight;
+                    firstLine = false;
                     break;
             }
         }
@@ -107,70 +116,189 @@ internal sealed class InlineLayout
         List<(TextBox Owner, int Index)> fragments,
         ref double cursorX,
         ref double cursorY,
-        ref double currentLineHeight)
+        ref double currentLineHeight,
+        ref bool firstLine,
+        double indent)
     {
-        var normalized = NormalizeWhitespace(run.Text);
-        if (normalized.Length == 0) return;
-
         var effectiveStyle = run.Style ?? containerStyle;
         var localFontSize = ResolveFontSize(effectiveStyle);
         var localSpec = ResolveFontSpec(effectiveStyle);
         var localLineHeight = ResolveLineHeight(effectiveStyle, localFontSize, localSpec);
         var localBaseline = _measurer.Baseline(localFontSize, localSpec);
-        currentLineHeight = Math.Max(currentLineHeight, localLineHeight);
 
-        // Shape the whole normalized run once and slice per-word. This collapses
-        // the per-word native HarfBuzz call to a single call per text run.
-        // Slicing relies on a 1:1 glyph-to-character mapping; non-ASCII text
-        // with ligatures, combining marks, or surrogate pairs may shape to a
-        // different glyph count, in which case we fall back to per-word shaping
-        // to preserve correctness on complex scripts.
-        _diag.Counter("layout.text.measures", 1);
-        var whole = _measurer.Shape(normalized, localFontSize, localSpec);
-        var canSlice = whole.Glyphs.Length == normalized.Length;
+        // CSS Text 3 §3 / §4 — resolve the white-space behaviour and the
+        // spacing/tab/transform controls for this run from its effective style.
+        var ws = WhiteSpaceMode.Resolve(effectiveStyle);
+        var letterSpacing = ResolveSpacing(effectiveStyle, PropertyId.LetterSpacing, localFontSize);
+        var wordSpacing = ResolveSpacing(effectiveStyle, PropertyId.WordSpacing, localFontSize);
+        var tabSize = ResolveTabSize(effectiveStyle, localFontSize, localSpec);
+        var breakMode = ResolveBreakMode(effectiveStyle);
 
-        var charOffset = 0;
-        foreach (var word in SplitToWords(normalized))
+        // CSS Text 3 §2.1 — `text-transform` rewrites the rendered text before
+        // measuring/shaping so the produced glyphs and advances match the
+        // transformed string the painter will draw.
+        var text = TextTransformer.Apply(run.Text, TextTransformer.Resolve(effectiveStyle));
+        if (text.Length == 0) return;
+
+        // Segment the run into "lines" on forced breaks (preserved newlines),
+        // then lay each segment out as a sequence of break-separated tokens.
+        // For collapsing modes the whole run is a single segment with whitespace
+        // collapsed to single spaces.
+        var segments = ws.PreserveNewlines
+            ? SplitOnNewlines(text)
+            : new[] { ws.CollapseSpaces ? NormalizeWhitespace(text) : text };
+
+        for (var s = 0; s < segments.Length; s++)
         {
-            var wordStart = charOffset;
-            charOffset += word.Length;
-
-            if (word.Length == 0) continue;
-            // Collapse whitespace at the start of a line (white-space: normal).
-            if (cursorX == 0 && string.IsNullOrWhiteSpace(word)) continue;
-
-            var shaped = canSlice
-                ? whole.Slice(wordStart, wordStart + word.Length)
-                : ShapeWord(word, localFontSize, localSpec);
-            var width = shaped.Advance;
-            var leadingSpace = word.StartsWith(" ", StringComparison.Ordinal);
-
-            if (cursorX > 0 && cursorX + width > availableWidth)
+            if (s > 0)
             {
+                // Preserved forced line break between segments.
                 cursorY += currentLineHeight;
                 cursorX = 0;
                 currentLineHeight = localLineHeight;
-                if (leadingSpace)
-                {
-                    var trimmed = word.TrimStart(' ');
-                    if (trimmed.Length == 0) continue;
-                    // The trimmed slice starts past the run's leading spaces;
-                    // its glyph indices and char indices stay aligned because
-                    // every leading char was a space (1 glyph, 1 char).
-                    var trimmedStart = wordStart + (word.Length - trimmed.Length);
-                    var trimmedShape = canSlice
-                        ? whole.Slice(trimmedStart, trimmedStart + trimmed.Length)
-                        : ShapeWord(trimmed, localFontSize, localSpec);
-                    AddFragment(run.Owner, fragments,
-                        new TextFragment(trimmed, cursorX, cursorY, trimmedShape.Advance, currentLineHeight, containerBaseline, trimmedShape));
-                    cursorX += trimmedShape.Advance;
-                    continue;
-                }
+                firstLine = false;
             }
 
-            AddFragment(run.Owner, fragments,
-                new TextFragment(word, cursorX, cursorY, width, currentLineHeight, localBaseline, shaped));
-            cursorX += width;
+            var segment = segments[s];
+            currentLineHeight = Math.Max(currentLineHeight, localLineHeight);
+
+            foreach (var token in Tokenize(segment, ws, tabSize, localFontSize, localSpec))
+            {
+                LayoutToken(run.Owner, token, ws, breakMode, availableWidth,
+                    localFontSize, localSpec, localLineHeight, localBaseline,
+                    letterSpacing, wordSpacing,
+                    fragments, ref cursorX, ref cursorY, ref currentLineHeight, ref firstLine, indent);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Place one token (a word, a run of preserved spaces, or a tab) onto the
+    /// current line, soft-wrapping per the resolved white-space wrap policy and
+    /// applying letter-/word-spacing to the advance.
+    /// </summary>
+    private void LayoutToken(
+        TextBox owner,
+        Token token,
+        WhiteSpaceMode ws,
+        BreakMode breakMode,
+        double availableWidth,
+        double fontSize,
+        FontSpec spec,
+        double lineHeight,
+        double baseline,
+        double letterSpacing,
+        double wordSpacing,
+        List<(TextBox Owner, int Index)> fragments,
+        ref double cursorX,
+        ref double cursorY,
+        ref double currentLineHeight,
+        ref bool firstLine,
+        double indent)
+    {
+        if (token.Text.Length == 0) return;
+
+        var lineOrigin = firstLine ? indent : 0;
+        var atLineStart = cursorX <= lineOrigin + 0.0001;
+
+        if (token.IsSpace)
+        {
+            // In collapsing modes (white-space: normal/nowrap/pre-line) a
+            // collapsed space that would lead a line contributes nothing
+            // visible, so drop it (CSS Text 3 §4.1.1 trimming).
+            if (!ws.PreserveSpaces && atLineStart) return;
+
+            var spaceWidth = token.Advance;
+            // word-spacing adds to the advance of each space (CSS Text 3 §8.1).
+            // Tabs do not receive word-spacing.
+            if (!token.IsTab) spaceWidth += wordSpacing * token.SpaceCount;
+
+            AddFragment(owner, fragments,
+                new TextFragment(token.Text, cursorX, cursorY, spaceWidth, currentLineHeight, baseline, token.Shaped));
+            cursorX += spaceWidth;
+            return;
+        }
+
+        var width = token.Advance + letterSpacing * token.LetterCount;
+
+        if (ws.Wrap && cursorX > lineOrigin && cursorX + width > availableWidth)
+        {
+            // Soft-wrap: move to a new line before this word.
+            cursorY += currentLineHeight;
+            cursorX = 0;
+            currentLineHeight = lineHeight;
+            firstLine = false;
+        }
+
+        // If a single word still overflows the line and breaking inside words is
+        // allowed (overflow-wrap: anywhere/break-word or word-break: break-all),
+        // split it character-by-character at the available width.
+        if (ws.Wrap && breakMode != BreakMode.None && width > availableWidth && cursorX <= 0.0001)
+        {
+            LayoutBrokenWord(owner, token.Text, availableWidth, fontSize, spec,
+                lineHeight, baseline, letterSpacing,
+                fragments, ref cursorX, ref cursorY, ref currentLineHeight, ref firstLine);
+            return;
+        }
+
+        AddFragment(owner, fragments,
+            new TextFragment(token.Text, cursorX, cursorY, width, currentLineHeight, baseline, token.Shaped));
+        cursorX += width;
+    }
+
+    /// <summary>
+    /// Break an over-long unbreakable token across lines one character at a time
+    /// (CSS Text 3 §6.2 emergency breaking via <c>overflow-wrap</c>/<c>word-break</c>).
+    /// Each emitted slice is re-shaped from its substring so the painter gets a
+    /// faithful glyph run.
+    /// </summary>
+    private void LayoutBrokenWord(
+        TextBox owner,
+        string word,
+        double availableWidth,
+        double fontSize,
+        FontSpec spec,
+        double lineHeight,
+        double baseline,
+        double letterSpacing,
+        List<(TextBox Owner, int Index)> fragments,
+        ref double cursorX,
+        ref double cursorY,
+        ref double currentLineHeight,
+        ref bool firstLine)
+    {
+        var start = 0;
+        while (start < word.Length)
+        {
+            var count = 0;
+            double sliceWidth = 0;
+            // Accumulate characters until adding one more would overflow.
+            while (start + count < word.Length)
+            {
+                var ch = word[start + count].ToString();
+                var chW = _measurer.MeasureWidth(ch, fontSize, spec) + letterSpacing;
+                if (count > 0 && cursorX + sliceWidth + chW > availableWidth)
+                    break;
+                sliceWidth += chW;
+                count++;
+            }
+            if (count == 0) count = 1; // always make progress
+
+            var slice = word.Substring(start, count);
+            var shaped = ShapeWord(slice, fontSize, spec);
+            var w = shaped.Advance + letterSpacing * CountLetters(slice);
+            AddFragment(owner, fragments,
+                new TextFragment(slice, cursorX, cursorY, w, currentLineHeight, baseline, shaped));
+            cursorX += w;
+            start += count;
+
+            if (start < word.Length)
+            {
+                cursorY += currentLineHeight;
+                cursorX = 0;
+                currentLineHeight = lineHeight;
+                firstLine = false;
+            }
         }
     }
 
@@ -178,6 +306,279 @@ internal sealed class InlineLayout
     {
         _diag.Counter("layout.text.measures", 1);
         return _measurer.Shape(word, fontSize, spec);
+    }
+
+    // ---- CSS Text 3 helpers -------------------------------------------------
+
+    /// <summary>
+    /// One layout token produced by <see cref="Tokenize"/>: either a word (a
+    /// maximal run of non-space characters), a run of preserved spaces, or a
+    /// single tab. Carries the shaped run + base advance so callers add only
+    /// the letter-/word-spacing extras.
+    /// </summary>
+    private readonly record struct Token(
+        string Text,
+        ShapedRun Shaped,
+        double Advance,
+        bool IsSpace,
+        bool IsTab,
+        int SpaceCount,
+        int LetterCount);
+
+    /// <summary>
+    /// Split a run into tokens honouring the resolved white-space mode, shaping
+    /// the whole segment <em>once</em> and slicing each word out of it (the
+    /// per-run shape optimisation: a 9-word paragraph fires the shaper once, not
+    /// 10×). Slicing relies on a 1:1 glyph-to-character mapping; when that does
+    /// not hold (ligatures, combining marks, surrogate pairs) we fall back to
+    /// shaping each word on its own. Tabs expand to the next tab-stop; runs of
+    /// spaces are kept verbatim in preserving modes and collapsed to a single
+    /// space in collapsing modes (e.g. pre-line).
+    /// </summary>
+    private IEnumerable<Token> Tokenize(
+        string segment,
+        WhiteSpaceMode ws,
+        double tabSize,
+        double fontSize,
+        FontSpec spec)
+    {
+        if (segment.Length == 0) yield break;
+
+        // Shape the whole segment once; slice words from it when 1:1.
+        _diag.Counter("layout.text.measures", 1);
+        var whole = _measurer.Shape(segment, fontSize, spec);
+        var canSlice = whole.Glyphs.Length == segment.Length;
+
+        var i = 0;
+        while (i < segment.Length)
+        {
+            var c = segment[i];
+            if (ws.PreserveSpaces && c == '\t')
+            {
+                // Tab: advance to the next multiple of tab-size (CSS Text 3 §6.4).
+                var tabShape = canSlice ? whole.Slice(i, i + 1) : _measurer.Shape("\t", fontSize, spec);
+                yield return new Token("\t", tabShape, tabSize, IsSpace: true, IsTab: true, SpaceCount: 0, LetterCount: 0);
+                i++;
+                continue;
+            }
+            if (c == ' ' || c == '\t')
+            {
+                // Run of whitespace. In collapsing modes (e.g. pre-line) a run
+                // of spaces becomes a single space; in preserving modes the run
+                // is kept verbatim.
+                var start = i;
+                while (i < segment.Length && (segment[i] == ' ' || segment[i] == '\t')) i++;
+                if (ws.PreserveSpaces)
+                {
+                    var spaces = segment[start..i];
+                    var shaped = canSlice ? whole.Slice(start, i) : _measurer.Shape(spaces, fontSize, spec);
+                    yield return new Token(spaces, shaped, shaped.Advance, IsSpace: true, IsTab: false, SpaceCount: spaces.Length, LetterCount: 0);
+                }
+                else
+                {
+                    // Collapsed: a single space; its exact glyph data is unused
+                    // by the painter (whitespace-only fragments are skipped).
+                    var shaped = _measurer.Shape(" ", fontSize, spec);
+                    yield return new Token(" ", shaped, shaped.Advance, IsSpace: true, IsTab: false, SpaceCount: 1, LetterCount: 0);
+                }
+                continue;
+            }
+
+            // Word: maximal run of non-space characters.
+            var wordStart = i;
+            while (i < segment.Length && segment[i] != ' ' && segment[i] != '\t') i++;
+            var word = segment[wordStart..i];
+            var wordShaped = canSlice ? whole.Slice(wordStart, i) : _measurer.Shape(word, fontSize, spec);
+            yield return new Token(word, wordShaped, wordShaped.Advance, IsSpace: false, IsTab: false, SpaceCount: 0, LetterCount: CountLetters(word));
+        }
+    }
+
+    /// <summary>Number of typographic letter units a letter-spacing extra is added after.</summary>
+    private static int CountLetters(string word) => word.Length;
+
+    /// <summary>Split text on \n into forced-line segments, dropping the newlines.</summary>
+    private static string[] SplitOnNewlines(string text)
+    {
+        // Normalize CRLF / CR to LF first so a forced break is a single split.
+        var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal)
+                             .Replace('\r', '\n');
+        return normalized.Split('\n');
+    }
+
+    /// <summary>
+    /// Resolve <c>letter-spacing</c> / <c>word-spacing</c> to px. The initial
+    /// keyword <c>normal</c> is zero extra spacing; lengths resolve against the
+    /// element font size for em (CSS Text 3 §8).
+    /// </summary>
+    private double ResolveSpacing(ComputedStyle? style, PropertyId id, double fontSize)
+    {
+        if (style is null) return 0;
+        return style.Get(id) switch
+        {
+            CssKeyword { Name: "normal" } => 0,
+            CssLength len => ToPxRelative(len, fontSize),
+            CssNumber n => n.Value,
+            CssPercentage pct => fontSize * pct.Value / 100d, // word-spacing % is font-relative
+            _ => 0,
+        };
+    }
+
+    /// <summary>
+    /// Resolve <c>text-indent</c> to px. Percentages resolve against the
+    /// containing block's available inline-axis width (CSS Text 3 §9.1).
+    /// </summary>
+    private double ResolveTextIndent(ComputedStyle? style, double fontSize, double availableWidth)
+    {
+        if (style is null) return 0;
+        return style.Get(PropertyId.TextIndent) switch
+        {
+            CssLength len => ToPxRelative(len, fontSize),
+            CssPercentage pct => availableWidth * pct.Value / 100d,
+            CssNumber n => n.Value,
+            _ => 0,
+        };
+    }
+
+    /// <summary>
+    /// Resolve <c>tab-size</c> to px. A bare number is that many advance widths
+    /// of the space (U+0020) glyph; a length is used directly (CSS Text 3 §6.4).
+    /// </summary>
+    private double ResolveTabSize(ComputedStyle? style, double fontSize, FontSpec spec)
+    {
+        var spaceWidth = _measurer.MeasureWidth(" ", fontSize, spec);
+        if (spaceWidth <= 0) spaceWidth = fontSize * 0.28;
+        if (style is null) return 8 * spaceWidth;
+        return style.Get(PropertyId.TabSize) switch
+        {
+            CssNumber n => n.Value * spaceWidth,
+            CssLength len => ToPxRelative(len, fontSize),
+            _ => 8 * spaceWidth,
+        };
+    }
+
+    /// <summary>
+    /// Length-to-px that resolves <c>em</c> against the actual element font size
+    /// (the shared <see cref="Block.BlockLayout.ToPx(CssLength, Size?)"/> assumes
+    /// a 16px em). Other units defer to the shared helper.
+    /// </summary>
+    private double ToPxRelative(CssLength len, double fontSize)
+        => len.Unit switch
+        {
+            CssLengthUnit.Em => len.Value * fontSize,
+            CssLengthUnit.Rem => len.Value * 16d,
+            _ => Block.BlockLayout.ToPx(len, _viewport),
+        };
+
+    /// <summary>How an over-long word may break inside itself.</summary>
+    private enum BreakMode { None, Anywhere }
+
+    /// <summary>
+    /// Resolve the in-word emergency break policy from <c>overflow-wrap</c> and
+    /// <c>word-break</c> (CSS Text 3 §6.2 / §6.4). <c>overflow-wrap: anywhere |
+    /// break-word</c> and <c>word-break: break-all</c> all permit breaking a
+    /// word that would otherwise overflow; <c>word-break: keep-all</c> and the
+    /// initial values do not.
+    /// </summary>
+    private static BreakMode ResolveBreakMode(ComputedStyle? style)
+    {
+        if (style is null) return BreakMode.None;
+        if (style.Get(PropertyId.OverflowWrap) is CssKeyword { Name: "anywhere" or "break-word" })
+            return BreakMode.Anywhere;
+        if (style.Get(PropertyId.WordBreak) is CssKeyword { Name: "break-all" })
+            return BreakMode.Anywhere;
+        return BreakMode.None;
+    }
+
+    /// <summary>
+    /// Resolved CSS Text white-space behaviour. Bundles the three axes the
+    /// inline engine needs: whether to collapse runs of spaces, whether to
+    /// preserve segment-breaking newlines, and whether soft-wrapping is allowed.
+    /// Built from the legacy <c>white-space</c> keyword or the modern
+    /// <c>white-space-collapse</c> + <c>text-wrap</c> longhands (CSS Text 4 §3).
+    /// </summary>
+    private readonly record struct WhiteSpaceMode(bool CollapseSpaces, bool PreserveNewlines, bool Wrap)
+    {
+        public bool PreserveSpaces => !CollapseSpaces;
+
+        public static WhiteSpaceMode Resolve(ComputedStyle? style)
+        {
+            if (style is null) return new WhiteSpaceMode(CollapseSpaces: true, PreserveNewlines: false, Wrap: true);
+
+            // Legacy shorthand keyword first — it is what authors and the UA
+            // sheet (e.g. `pre { white-space: pre }`) overwhelmingly set.
+            if (style.Get(PropertyId.WhiteSpace) is CssKeyword { Name: var ws } && ws != "normal")
+            {
+                switch (ws)
+                {
+                    case "nowrap":
+                        return new WhiteSpaceMode(CollapseSpaces: true, PreserveNewlines: false, Wrap: false);
+                    case "pre":
+                        return new WhiteSpaceMode(CollapseSpaces: false, PreserveNewlines: true, Wrap: false);
+                    case "pre-wrap":
+                        return new WhiteSpaceMode(CollapseSpaces: false, PreserveNewlines: true, Wrap: true);
+                    case "pre-line":
+                        return new WhiteSpaceMode(CollapseSpaces: true, PreserveNewlines: true, Wrap: true);
+                }
+            }
+
+            // Modern longhands: white-space-collapse {collapse|preserve|
+            // preserve-breaks|...} + text-wrap {wrap|nowrap|...}.
+            var collapseKw = (style.Get(PropertyId.WhiteSpaceCollapse) as CssKeyword)?.Name ?? "collapse";
+            var wrapKw = (style.Get(PropertyId.TextWrap) as CssKeyword)?.Name ?? "wrap";
+
+            var collapse = collapseKw is "collapse" or "preserve-breaks";
+            var preserveNewlines = collapseKw is "preserve" or "preserve-breaks";
+            var wrap = wrapKw != "nowrap";
+            return new WhiteSpaceMode(collapse, preserveNewlines, wrap);
+        }
+    }
+
+    /// <summary>CSS Text 3 §2.1 — <c>text-transform</c> kinds.</summary>
+    private static class TextTransformer
+    {
+        public enum Kind { None, Uppercase, Lowercase, Capitalize }
+
+        public static Kind Resolve(ComputedStyle? style)
+            => style?.Get(PropertyId.TextTransform) is CssKeyword k
+                ? k.Name switch
+                {
+                    "uppercase" => Kind.Uppercase,
+                    "lowercase" => Kind.Lowercase,
+                    "capitalize" => Kind.Capitalize,
+                    _ => Kind.None,
+                }
+                : Kind.None;
+
+        public static string Apply(string text, Kind kind)
+        {
+            if (kind == Kind.None || text.Length == 0) return text;
+            switch (kind)
+            {
+                case Kind.Uppercase:
+                    return text.ToUpperInvariant();
+                case Kind.Lowercase:
+                    return text.ToLowerInvariant();
+                case Kind.Capitalize:
+                    var chars = text.ToCharArray();
+                    var atWordStart = true;
+                    for (var i = 0; i < chars.Length; i++)
+                    {
+                        if (char.IsWhiteSpace(chars[i]))
+                        {
+                            atWordStart = true;
+                        }
+                        else
+                        {
+                            if (atWordStart && char.IsLetter(chars[i]))
+                                chars[i] = char.ToUpperInvariant(chars[i]);
+                            atWordStart = false;
+                        }
+                    }
+                    return new string(chars);
+                default:
+                    return text;
+            }
+        }
     }
 
     /// <summary>

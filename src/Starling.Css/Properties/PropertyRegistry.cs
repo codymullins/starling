@@ -523,6 +523,15 @@ public static class PropertyRegistry
                     yield return item;
                 break;
 
+            // ---- white-space shorthand (CSS Text 4 §3) ----
+            // Sets the white-space-collapse + text-wrap longhands from the legacy
+            // single keyword, while preserving the `white-space` value itself so
+            // existing consumers (and serialization) still see it.
+            case "white-space":
+                foreach (var item in ExpandWhiteSpace(values, important))
+                    yield return item;
+                break;
+
             // ---- Transition / Animation shorthands (simplified: single layer only) ----
             // TODO(lane-B): Multi-layer comma-separated transition/animation requires CssValueList splitting on top-level commas.
             case "transition":
@@ -831,6 +840,34 @@ public static class PropertyRegistry
                 yield return new PropertyDeclaration(PropertyId.TextDecorationColor, v, important);
             else if (v is CssLength or CssPercentage)
                 yield return new PropertyDeclaration(PropertyId.TextDecorationThickness, v, important);
+        }
+    }
+
+    private static IEnumerable<PropertyDeclaration> ExpandWhiteSpace(List<CssValue> values, bool important)
+    {
+        // CSS Text 4 §3 maps the legacy `white-space` keyword onto the
+        // white-space-collapse + text-wrap longhands. We emit those longhands
+        // *and* keep the `white-space` longhand itself so layout's legacy
+        // fast-path and DevTools-style serialization both keep working.
+        var keyword = values[0] is CssKeyword k ? k.Name.ToLowerInvariant() : "normal";
+
+        // Pass values like `normal` / global keywords (inherit/initial/unset)
+        // through to the white-space longhand untouched.
+        yield return new PropertyDeclaration(PropertyId.WhiteSpace, values[0], important);
+
+        (string collapse, string wrap)? mapped = keyword switch
+        {
+            "normal" => ("collapse", "wrap"),
+            "nowrap" => ("collapse", "nowrap"),
+            "pre" => ("preserve", "nowrap"),
+            "pre-wrap" => ("preserve", "wrap"),
+            "pre-line" => ("preserve-breaks", "wrap"),
+            _ => null,
+        };
+        if (mapped is { } m)
+        {
+            yield return new PropertyDeclaration(PropertyId.WhiteSpaceCollapse, new CssKeyword(m.collapse), important);
+            yield return new PropertyDeclaration(PropertyId.TextWrap, new CssKeyword(m.wrap), important);
         }
     }
 
