@@ -85,6 +85,9 @@ structure).
 | [wp:M3-04g-js-async-generators](M3/wp-M3-04g-js-async-generators.md) | 🟢 complete | agent-claude-cody-asyncgen | Starling.Js |
 | [wp:M3-03b-js-top-level-await](M3/wp-M3-03b-js-top-level-await.md) | 🟢 complete | agent-claude-cody-tla | Starling.Js |
 | [wp:M3-03c-js-dynamic-import](M3/wp-M3-03c-js-dynamic-import.md) | 🟢 complete | agent-claude-cody-dynimport | Starling.Js |
+| [wp:M3-03d-js-async-module-cycles](M3/wp-M3-03d-js-async-module-cycles.md) | 🟡 claimed | agent-claude-cody-modcycles | Starling.Js |
+| [wp:M3-04c2-js-method-capture-cell](M3/wp-M3-04c2-js-method-capture-cell.md) | 🟡 claimed | agent-claude-cody-capturecell | Starling.Js |
+| [wp:M3-04h-js-computed-super](M3/wp-M3-04h-js-computed-super.md) | ⚫ blocked | — | Starling.Js |
 | [wp:M3-06-native-interop-pivot](M3/wp-M3-06-native-interop-pivot.md) | 🟢 complete | agent-claude-cody | build |
 | [wp:M3-06a-native-scaffold](M3/wp-M3-06a-native-scaffold.md) | 🟢 complete | agent-claude-cody-native | build |
 | [wp:M3-06b-native-build](M3/wp-M3-06b-native-build.md) | 🟢 complete | agent-claude-cody-native | build |
