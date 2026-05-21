@@ -213,7 +213,7 @@ quality monotonically improves at every step.
 | [wp:M12-09-compositor-anim](M12/wp-M12-09-compositor-anim.md) | ⚫ blocked | — | Starling.Paint |
 | [wp:M12-10-render-on-demand](M12/wp-M12-10-render-on-demand.md) | 🔵 available | — | Starling.Paint |
 | [wp:M12-11-glyph-atlas-cpu](M12/wp-M12-11-glyph-atlas-cpu.md) | 🔵 available | — | Starling.Paint |
-| [wp:M12-12-webgpu-scene-cache](M12/wp-M12-12-webgpu-scene-cache.md) | 🔵 available | — | Starling.Paint |
+| [wp:M12-12-webgpu-scene-cache](M12/wp-M12-12-webgpu-scene-cache.md) | ⚫ closed (not viable — RenderScene bakes transform) | — | Starling.Paint |
 
 ## Available right now (no dependencies pending)
 

@@ -1,7 +1,7 @@
 ---
 id: wp:M12-12-webgpu-scene-cache
 milestone: M12
-status: "available"
+status: "closed-not-viable"
 claimed_by: ""
 claimed_at: ""
 completed_at: ""
@@ -16,7 +16,50 @@ plan_refs:
 
 # wp:M12-12-webgpu-scene-cache — Retained-scene caching for the WebGPU backend
 
-## Goal
+## OUTCOME — CLOSED, NOT VIABLE (do not implement)
+
+Spiked to the gating question and it **fails**: `DrawingCanvas.RenderScene` **bakes
+the transform at encode time and ignores the replay-time canvas transform**, so a
+single encoded scene cannot be replayed at a different scroll offset or scale —
+every viewport needs a re-encode, which is the expensive operation the cache was
+meant to avoid.
+
+Controlled single-primitive pixel-extent experiments (WebGPU, scale=2, throwaway
+`SceneCacheValidationTests`, since removed):
+
+| Experiment | Result | Conclusion |
+|---|---|---|
+| direct fill under `Save(scale2)`, no scene | 100px → **199** | `Save` scales direct draws ✓ |
+| encode at identity, **replay** `Save(scale2)` | **99** | replay scale **ignored** |
+| **encode** under `Save(scale2)`, replay identity | 199 | transform **baked at encode** |
+| encode `Save(scale2)`, replay `Save(scale2)` | 199 (not 399) | only encode transform applies |
+| encode identity, replay `Save(translate +60)` (fill) | minX **0** | replay translate **ignored** |
+| encode identity, replay `Save(translate +120)` (text) | minX **1** | ignored for text too |
+
+So the picture-cache cases this WP targeted collapse:
+
+- **Scrolling** needs a different transform per offset → re-encode each frame → no
+  saving. The shipped sliding-window picture cache (`PictureCache`) already makes
+  scrolling cheap on WebGPU: it pixel-blits the retained overlap and re-encodes
+  only the thin newly-exposed strip.
+- **Same-viewport re-render** (the only thing scene replay *can* do, since the
+  baked transform matches) is already served by the picture cache as a **pixel
+  blit with zero GPU work** — strictly cheaper than a scene replay.
+
+The earlier "Phase 0.5" same-transform replay numbers below are real but only
+apply when the replay transform equals the encode transform — i.e. the exact case
+the picture cache already wins. An earlier transform spike (`SceneTransformSpike`)
+appeared to show replay-time composition working; the single-primitive experiments
+above are more rigorous and contradict it — treat that earlier result as an
+artifact.
+
+**Net:** the retained-scene API is the wrong shape for this engine's needs. No
+code landed (backend scene primitives + tests were prototyped and reverted). The
+original plan is retained below for context only.
+
+---
+
+## Goal (original plan — not pursued)
 
 Encode a page's display list into a Vello retained scene once
 (`DrawingCanvas.CreateScene`) and replay it with `DrawingCanvas.RenderScene` on
