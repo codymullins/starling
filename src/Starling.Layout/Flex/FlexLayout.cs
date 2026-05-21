@@ -65,7 +65,14 @@ internal sealed class FlexLayout
         if (children.Count == 0)
             return explicitHeight ?? 0;
 
-        // ---- step 1: resolve each item's flex base size + min/max ----
+        // ---- step 1: resolve each item's flex base size + box model ----
+        // MainSize / CrossSize are tracked as *content-box* sizes throughout;
+        // the per-axis padding+border (MainPad / CrossPad) is added back only
+        // when distributing free space and sizing frames. Keeping content-box
+        // internally lets the final block pass over each item subtract its own
+        // padding exactly once — without this a padded item (e.g. a button with
+        // `padding: 16px 32px`) had its padding subtracted twice and collapsed
+        // to a sliver, wrapping its label.
         var items = new Item[children.Count];
         for (var i = 0; i < children.Count; i++)
         {
@@ -79,27 +86,30 @@ internal sealed class FlexLayout
                 Props = itemProps,
                 Basis = basis,
                 MainSize = basis,
+                MainPad = props.IsRow
+                    ? child.Padding.Horizontal + child.Border.Horizontal
+                    : child.Padding.Vertical + child.Border.Vertical,
+                CrossPad = props.IsRow
+                    ? child.Padding.Vertical + child.Border.Vertical
+                    : child.Padding.Horizontal + child.Border.Horizontal,
             };
         }
 
         // ---- step 2: distribute free space along the main axis ----
+        // Free space compares the container's content-box main size against the
+        // items' *outer* (content + padding + border) main sizes, plus gaps.
         var gapTotal = props.MainGap * Math.Max(0, items.Length - 1);
-        var hypotheticalSum = 0d;
-        for (var i = 0; i < items.Length; i++) hypotheticalSum += items[i].MainSize;
-        var free = mainSize - hypotheticalSum - gapTotal;
+        var outerSum = 0d;
+        for (var i = 0; i < items.Length; i++) outerSum += items[i].MainSize + items[i].MainPad;
+        var free = mainSize - outerSum - gapTotal;
 
         if (free > 0)
         {
             var totalGrow = 0d;
             for (var i = 0; i < items.Length; i++) totalGrow += items[i].Props.Grow;
             if (totalGrow > 0)
-            {
                 for (var i = 0; i < items.Length; i++)
-                {
-                    var share = free * (items[i].Props.Grow / totalGrow);
-                    items[i].MainSize += share;
-                }
-            }
+                    items[i].MainSize += free * (items[i].Props.Grow / totalGrow);
         }
         else if (free < 0)
         {
@@ -109,49 +119,37 @@ internal sealed class FlexLayout
             var totalShrink = 0d;
             for (var i = 0; i < items.Length; i++) totalShrink += items[i].Props.Shrink;
             if (totalShrink > 0)
-            {
                 for (var i = 0; i < items.Length; i++)
-                {
-                    var share = free * (items[i].Props.Shrink / totalShrink);
-                    items[i].MainSize = Math.Max(0, items[i].MainSize + share);
-                }
-            }
+                    items[i].MainSize = Math.Max(0, items[i].MainSize + free * (items[i].Props.Shrink / totalShrink));
         }
 
-        // ---- step 3: lay each item out at its main size, measure cross size ----
-        var maxCross = 0d;
+        // ---- step 3: measure each item's cross size (content-box) ----
+        var maxCrossOuter = 0d;
         for (var i = 0; i < items.Length; i++)
         {
-            var item = items[i];
-            var child = item.Box;
-            // Width on the child in main = main size for row; for column the
-            // child uses its width property (cross axis).
-            var crossSelf = MeasureCrossSize(child, props, item.MainSize, containerWidth, crossSize);
+            var crossSelf = MeasureCrossSize(items[i].Box, props, items[i].MainSize, containerWidth, crossSize);
             items[i].CrossSize = crossSelf;
-            if (crossSelf > maxCross) maxCross = crossSelf;
+            maxCrossOuter = Math.Max(maxCrossOuter, crossSelf + items[i].CrossPad);
         }
 
-        // Resolved cross-axis line size: explicit container cross size if
-        // given, else the tallest item.
-        var lineCrossSize = !double.IsNaN(crossSize) && crossSize > 0 ? crossSize : maxCross;
+        // Resolved cross-axis line size (a border-box extent): the explicit
+        // container cross size if given, else the tallest item's outer cross.
+        var lineCrossSize = !double.IsNaN(crossSize) && crossSize > 0 ? crossSize : maxCrossOuter;
 
-        // ---- step 4: apply align-items, including stretch ----
+        // ---- step 4: align-items: stretch grows auto-cross items to the line ----
         for (var i = 0; i < items.Length; i++)
         {
             if (props.Align == AlignItems.Stretch && ChildCrossSizeIsAuto(items[i].Box, props))
-                items[i].CrossSize = lineCrossSize;
+                items[i].CrossSize = Math.Max(0, lineCrossSize - items[i].CrossPad);
         }
 
-        // ---- step 5: lay each item's contents at the chosen main+cross sizes ----
+        // ---- step 5: lay each item's contents at the chosen content size ----
         for (var i = 0; i < items.Length; i++)
-        {
             LayoutItemContents(items[i], props);
-        }
 
         // ---- step 6: position items along main + cross axes ----
-        var usedMain = 0d;
-        for (var i = 0; i < items.Length; i++) usedMain += items[i].MainSize;
-        usedMain += gapTotal;
+        var usedMain = gapTotal;
+        for (var i = 0; i < items.Length; i++) usedMain += items[i].MainSize + items[i].MainPad;
 
         var (leadingMain, betweenMain) = ResolveMainAxisSpacing(props.Justify, mainSize, usedMain, items.Length, props.MainGap);
 
@@ -163,47 +161,31 @@ internal sealed class FlexLayout
             for (var i = 0; i < items.Length; i++)
             {
                 logicalPositions[i] = cursor;
-                cursor += items[i].MainSize + betweenMain;
+                cursor += items[i].MainSize + items[i].MainPad + betweenMain;
             }
         }
 
         for (var paintIdx = 0; paintIdx < items.Length; paintIdx++)
         {
             var item = items[paintIdx];
+            // Frame spans the border box (content + padding + border).
+            var mainExtent = item.MainSize + item.MainPad;
+            var crossExtent = item.CrossSize + item.CrossPad;
+
             // For *-reverse the main-start edge is on the right (row-reverse)
             // or bottom (column-reverse). Mirror the logical position across
             // the container's main axis so item[0] ends up at the far end of
             // the container while paint order (children[0..n]) is preserved.
             var logical = logicalPositions[paintIdx];
-            var mainPos = props.IsReverse
-                ? mainSize - logical - item.MainSize
-                : logical;
-            var cross = ResolveCrossOffset(props.Align, lineCrossSize, item.CrossSize);
+            var mainPos = props.IsReverse ? mainSize - logical - mainExtent : logical;
+            var cross = ResolveCrossOffset(props.Align, lineCrossSize, crossExtent);
 
-            double frameX, frameY, frameW, frameH;
-            if (props.IsRow)
-            {
-                frameX = mainPos;
-                frameY = cross;
-                frameW = item.MainSize;
-                frameH = item.CrossSize;
-            }
-            else
-            {
-                frameX = cross;
-                frameY = mainPos;
-                frameW = item.CrossSize;
-                frameH = item.MainSize;
-            }
-
-            // The child's outer rect spans content + padding + border. The
-            // flex algorithm consumes the *outer* size; the child's own
-            // margin offsets are already baked into MainSize via ResolveBasis.
-            item.Box.Frame = new Rect(frameX, frameY, frameW, frameH);
+            item.Box.Frame = props.IsRow
+                ? new Rect(mainPos, cross, mainExtent, crossExtent)
+                : new Rect(cross, mainPos, crossExtent, mainExtent);
         }
 
-        var totalCross = lineCrossSize;
-        return props.IsRow ? totalCross : usedMain;
+        return props.IsRow ? lineCrossSize : usedMain;
     }
 
     private struct Item
@@ -213,6 +195,10 @@ internal sealed class FlexLayout
         public double Basis;
         public double MainSize;
         public double CrossSize;
+        /// <summary>Main-axis padding + border (both edges), in px.</summary>
+        public double MainPad;
+        /// <summary>Cross-axis padding + border (both edges), in px.</summary>
+        public double CrossPad;
     }
 
     /// <summary>
@@ -249,13 +235,35 @@ internal sealed class FlexLayout
         if (props.IsRow)
         {
             const double measureWidth = 1_000_000d;
-            _block.LayoutChildren(child, measureWidth, measure: true);
-            // LayoutChildren returns consumed height; we want consumed width.
-            return Math.Min(containerWidth, MeasureUsedWidth(child));
+            _block.LayoutItem(child, measureWidth, null, measure: true);
+            // LayoutItem returns consumed height; we want consumed width.
+            return Math.Min(containerWidth, UsedMainWidth(child));
         }
         // Column direction: measure the child's natural height at the
         // container width.
-        return _block.LayoutChildren(child, containerWidth, measure: true);
+        return _block.LayoutItem(child, containerWidth, null, measure: true);
+    }
+
+    /// <summary>
+    /// Rightmost content edge of a measured item, in its own content-box space.
+    /// For a nested flex container the item's content lives on its flex
+    /// children's frames (positioned along the main axis), so the extent is the
+    /// max child right edge — <see cref="MeasureUsedWidth"/>'s text-fragment
+    /// walk would miss those per-item offsets and under-measure the row.
+    /// </summary>
+    private static double UsedMainWidth(Box.Box box)
+    {
+        // An AnonymousBlockBox inherits its parent's ComputedStyle (for text
+        // inheritance), so its Display can read "flex"/"inline-flex" even though
+        // it is really an inline-run wrapper — never treat it as a flex
+        // container, or this would read its (frame-less) text children as items
+        // and report width 0.
+        if (box.Kind == BoxKind.AnonymousBlock || !BlockLayout.IsFlexContainer(box.Style))
+            return MeasureUsedWidth(box);
+        double max = 0;
+        foreach (var item in box.Children)
+            max = Math.Max(max, item.Frame.X + item.Frame.Width);
+        return max;
     }
 
     private static double MeasureUsedWidth(Box.Box box)
@@ -264,16 +272,31 @@ internal sealed class FlexLayout
         Walk(box);
         return max;
 
+        // Mirror Inline.InlineLayout.MeasureUsedWidth: take the rightmost edge
+        // of *content* (text fragments, replaced boxes, atomic inlines) only.
+        // Block/anonymous container frames are sized to the measurement width
+        // (1,000,000px) during the max-content pass, so counting their
+        // Frame.Width here would report the measurement width as the item's
+        // content size — the bug that made every flex item balloon to the
+        // container width. We descend through containers but never read their
+        // own frame.
         void Walk(Box.Box node)
         {
-            if (node != box)
-                max = Math.Max(max, node.Frame.X + node.Frame.Width);
-            foreach (var child in node.Children) Walk(child);
-            if (node is TextBox tb)
+            switch (node)
             {
-                foreach (var frag in tb.Fragments)
-                    max = Math.Max(max, frag.X + frag.Width);
+                case TextBox tb:
+                    foreach (var frag in tb.Fragments)
+                        max = Math.Max(max, frag.X + frag.Width);
+                    return;
+                case ImageBox img:
+                    max = Math.Max(max, img.Frame.X + img.Frame.Width);
+                    return;
+                case InlineBox ib when ib != box
+                    && ib.Style?.Get(PropertyId.Display) is CssKeyword { Name: "inline-block" }:
+                    max = Math.Max(max, ib.Frame.X + ib.Frame.Width);
+                    return;
             }
+            foreach (var child in node.Children) Walk(child);
         }
     }
 
@@ -292,13 +315,13 @@ internal sealed class FlexLayout
         // the natural cross size.
         if (props.IsRow)
         {
-            return _block.LayoutChildren(child, itemMainSize, measure: true);
+            return _block.LayoutItem(child, itemMainSize, null, measure: true);
         }
         else
         {
             const double measureWidth = 1_000_000d;
-            _block.LayoutChildren(child, measureWidth, measure: true);
-            return Math.Min(containerWidth, MeasureUsedWidth(child));
+            _block.LayoutItem(child, measureWidth, null, measure: true);
+            return Math.Min(containerWidth, UsedMainWidth(child));
         }
     }
 
@@ -317,18 +340,19 @@ internal sealed class FlexLayout
     private void LayoutItemContents(Item item, FlexContainerProps props)
     {
         var child = item.Box;
-        var (boxW, boxH) = props.IsRow
+        // MainSize / CrossSize are already content-box sizes (see step 1), so
+        // they map straight to the block pass's content width/height — no
+        // padding subtraction here (that's what double-counted before).
+        var (contentWidth, contentHeight) = props.IsRow
             ? (item.MainSize, item.CrossSize)
             : (item.CrossSize, item.MainSize);
-        var contentWidth = Math.Max(0, boxW - child.Padding.Horizontal - child.Border.Horizontal);
         // The item's used cross/main sizes are definite by the time we get
         // here (resolved by main-axis distribution + align-items: stretch),
         // so descendants with `height: 100%` should see the item's content
         // height as their containing block — not collapse to 0. Without this
         // a flex chain like  navbar(height:60) > brand(height:100%) >
         // logo(height:100%, background-image)  renders the logo as zero.
-        var contentHeight = Math.Max(0, boxH - child.Padding.Vertical - child.Border.Vertical);
-        _block.LayoutChildren(child, contentWidth, contentHeight);
+        _block.LayoutItem(child, Math.Max(0, contentWidth), Math.Max(0, contentHeight));
     }
 
     /// <summary>
@@ -368,6 +392,19 @@ internal sealed class FlexLayout
 
     private void ResolveBoxModel(Box.Box box, double containerWidth)
     {
+        // An anonymous flex item (a bare-text run wrapper) inherits the
+        // container's ComputedStyle for text properties, but box-model
+        // properties are not inherited — they take their initial value of 0.
+        // Without this it would pick up the container's own padding/border (e.g.
+        // a padded button), double-applying it and over-sizing the item.
+        if (box.Kind == BoxKind.AnonymousBlock)
+        {
+            box.Margin = Edges.Zero;
+            box.Padding = Edges.Zero;
+            box.Border = Edges.Zero;
+            return;
+        }
+
         box.Margin = new Edges(
             BlockLayout.ResolveLength(box.Style, PropertyId.MarginTop, _viewport.Height, _viewport) ?? 0,
             BlockLayout.ResolveLength(box.Style, PropertyId.MarginRight, containerWidth, _viewport) ?? 0,
@@ -380,8 +417,10 @@ internal sealed class FlexLayout
             BlockLayout.ResolveLength(box.Style, PropertyId.PaddingBottom, _viewport.Height, _viewport) ?? 0,
             BlockLayout.ResolveLength(box.Style, PropertyId.PaddingLeft, containerWidth, _viewport) ?? 0);
 
-        // Border resolution lives on BlockLayout; we don't need full pixel
-        // values for flex test scope yet — leave as zero.
-        box.Border = Edges.Zero;
+        box.Border = new Edges(
+            BlockLayout.ResolveBorderWidth(box.Style, PropertyId.BorderTopWidth, PropertyId.BorderTopStyle, _viewport),
+            BlockLayout.ResolveBorderWidth(box.Style, PropertyId.BorderRightWidth, PropertyId.BorderRightStyle, _viewport),
+            BlockLayout.ResolveBorderWidth(box.Style, PropertyId.BorderBottomWidth, PropertyId.BorderBottomStyle, _viewport),
+            BlockLayout.ResolveBorderWidth(box.Style, PropertyId.BorderLeftWidth, PropertyId.BorderLeftStyle, _viewport));
     }
 }

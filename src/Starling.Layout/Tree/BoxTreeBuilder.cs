@@ -59,6 +59,14 @@ internal sealed class BoxTreeBuilder
 
     private void BuildChildren(Node parentNode, ComputedStyle parentStyle, Box.Box parentBox, CascadeCache cache)
     {
+        // CSS Flexbox §4 / Grid §6: the in-flow children of a flex or grid
+        // container are *blockified* — an inline-level child computes its
+        // display to the equivalent block-level box and becomes its own flex/
+        // grid item. Without this an inline child (e.g. a nav's <a>) would be
+        // merged with its siblings into a single anonymous block by
+        // WrapInlinesInAnonymousBlocks, collapsing the whole row into one item.
+        var blockifyChildren = EstablishesFlexOrGridItems(parentStyle);
+
         for (var child = parentNode.FirstChild; child is not null; child = child.NextSibling)
         {
             switch (child)
@@ -88,7 +96,14 @@ internal sealed class BoxTreeBuilder
                         BuildSvgFallback(element, elementStyle, parentBox);
                         continue;
                     }
-                    Box.Box box = display == "inline" || display == "inline-block"
+                    // inline-flex / inline-grid are inline-LEVEL but establish a
+                    // flex/grid formatting context internally: they place as
+                    // atomic inlines in their parent's line box (shrink-to-fit),
+                    // so they're InlineBoxes here. When the parent itself
+                    // blockifies its children (a flex/grid container), the child
+                    // becomes a block-level item regardless.
+                    var isInlineLevel = display is "inline" or "inline-block" or "inline-flex" or "inline-grid";
+                    Box.Box box = isInlineLevel && !blockifyChildren
                         ? new InlineBox(elementStyle, element)
                         : new BlockBox(elementStyle, element);
                     box.Hints = StackingContextResolver.Resolve(box, elementStyle);
@@ -154,8 +169,13 @@ internal sealed class BoxTreeBuilder
         // An inline box with no block-level descendants flattens into the
         // enclosing IFC; no wrapping needed. Only when an inline (including
         // inline-block) has mixed block + inline children do we treat it like
-        // a block container for anonymous-block wrapping.
-        if (parent.Kind == BoxKind.Inline && !HasBlockLevelChild(parent))
+        // a block container for anonymous-block wrapping. An inline-flex /
+        // inline-grid box is the exception: it establishes a flex/grid context,
+        // so its raw text/inline runs must still be wrapped into anonymous
+        // items — otherwise a bare TextBox becomes a flex item the formatting
+        // context can't lay out (the text silently vanishes).
+        if (parent.Kind == BoxKind.Inline && !HasBlockLevelChild(parent)
+            && !EstablishesFlexOrGridItems(parent.Style))
         {
             foreach (var child in parent.Children) WrapInlinesInAnonymousBlocks(child);
             return;
@@ -236,6 +256,17 @@ internal sealed class BoxTreeBuilder
 
     private static string DisplayKeyword(ComputedStyle style)
         => style.Get(PropertyId.Display) is CssKeyword k ? k.Name.ToLowerInvariant() : "inline";
+
+    /// <summary>
+    /// True when <paramref name="style"/> establishes a flex or grid formatting
+    /// context, whose in-flow children become blockified flex/grid items.
+    /// </summary>
+    private static bool EstablishesFlexOrGridItems(ComputedStyle? style)
+        => style?.Get(PropertyId.Display) is CssKeyword k
+            && (k.Name.Equals("flex", StringComparison.OrdinalIgnoreCase)
+                || k.Name.Equals("inline-flex", StringComparison.OrdinalIgnoreCase)
+                || k.Name.Equals("grid", StringComparison.OrdinalIgnoreCase)
+                || k.Name.Equals("inline-grid", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Build an <c>&lt;img&gt;</c> as an <see cref="ImageBox"/> when the

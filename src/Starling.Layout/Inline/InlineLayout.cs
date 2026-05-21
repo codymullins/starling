@@ -221,7 +221,13 @@ internal sealed class InlineLayout
 
         var width = token.Advance + letterSpacing * token.LetterCount;
 
-        if (ws.Wrap && cursorX > lineOrigin && cursorX + width > availableWidth)
+        // Sub-pixel tolerance: when a box is sized to its own max-content width
+        // (e.g. a shrink-to-fit flex item), the sum of word advances equals the
+        // available width exactly in theory, but float accumulation can push the
+        // final word a hair over and trigger a spurious wrap. Allow a fraction
+        // of a pixel of slack so exact-fit content stays on one line.
+        const double wrapTolerance = 0.05;
+        if (ws.Wrap && cursorX > lineOrigin && cursorX + width > availableWidth + wrapTolerance)
         {
             // Soft-wrap: move to a new line before this word.
             cursorY += currentLineHeight;
@@ -624,7 +630,48 @@ internal sealed class InlineLayout
         double contentWidth;
         double contentHeight;
 
-        if (HasBlockLevelChild(box))
+        if (Block.BlockLayout.IsFlexContainer(box.Style))
+        {
+            Activity.Current?.SetTag("atomic.path", "flex");
+            // display:inline-flex — an atomic inline whose contents lay out as
+            // a flex container, shrunk-to-fit. Mirror the two-pass approach of
+            // the BFC path: lay flex out at "infinite" main size (grow=0 keeps
+            // items at their flex base size) to read the max-content width from
+            // the placed item frames, clamp to the space left on the line, then
+            // re-run flex at that width so descendants settle.
+            var viewport = _viewport ?? new Size(availableWidth, 0);
+            var explicitInner = ResolveLength(box.Style, PropertyId.Width, availableWidth);
+            double subWidth;
+            if (explicitInner is { } iw)
+            {
+                subWidth = iw;
+            }
+            else
+            {
+                using (_diag.Span("layout", "inline.measure_pass"))
+                {
+                    const double measureWidth = 1_000_000d;
+                    var measureBlock = new Block.BlockLayout(_measurer, viewport, _diag);
+                    var measureFlex = new Starling.Layout.Flex.FlexLayout(measureBlock, viewport);
+                    measureFlex.Layout(box, measureWidth, null);
+                    // Flex items are direct children placed along the main axis;
+                    // their frames carry the used main extent. (MeasureUsedWidth
+                    // can't be reused here: item text fragments are positioned
+                    // relative to each item, not the flex container.)
+                    double maxContent = 0;
+                    foreach (var item in box.Children)
+                        maxContent = Math.Max(maxContent, item.Frame.X + item.Frame.Width);
+                    var available = Math.Max(0, availableWidth - cursorX);
+                    subWidth = Math.Min(maxContent, available);
+                }
+            }
+
+            var block = new Block.BlockLayout(_measurer, viewport, _diag);
+            var flex = new Starling.Layout.Flex.FlexLayout(block, viewport);
+            contentHeight = flex.Layout(box, subWidth, null);
+            contentWidth = subWidth;
+        }
+        else if (HasBlockLevelChild(box))
         {
             Activity.Current?.SetTag("atomic.path", "bfc");
             // Inline-block with mixed/block children: run a BFC sub-pass.
@@ -1110,7 +1157,9 @@ internal sealed class InlineLayout
     {
         if (box.Style is null) return false;
         return box.Style.Get(PropertyId.Display) is CssKeyword k
-            && k.Name.Equals("inline-block", StringComparison.OrdinalIgnoreCase);
+            && (k.Name.Equals("inline-block", StringComparison.OrdinalIgnoreCase)
+                || k.Name.Equals("inline-flex", StringComparison.OrdinalIgnoreCase)
+                || k.Name.Equals("inline-grid", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

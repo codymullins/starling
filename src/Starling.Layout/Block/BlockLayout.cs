@@ -61,6 +61,32 @@ internal sealed class BlockLayout
         => LayoutChildren(parent, containerWidth, containerHeight: null, measure: false);
 
     /// <summary>
+    /// Lay out a flex/grid item's contents. Identical to <c>LayoutChildren</c>
+    /// for a normal block-level item, but a bare-text "anonymous flex item"
+    /// (CSS Flexbox §4) is itself an <see cref="BoxKind.AnonymousBlock"/> whose
+    /// children are raw inline boxes with no enclosing anonymous block — so it
+    /// must establish the inline formatting context directly instead of trying
+    /// to block-stack its text (which silently drops it).
+    /// </summary>
+    internal double LayoutItem(Box.Box item, double containerWidth, double? containerHeight, bool measure = false)
+    {
+        if (item.Kind == BoxKind.AnonymousBlock)
+            return _inline.Layout(item, containerWidth, measure);
+        // A flex/grid item can itself be a flex container (nested flex — e.g. a
+        // navbar's <ul> that is both an item of the nav row and a flex row of
+        // its own <li>s). LayoutChildren would block-stack the inner items;
+        // route back through the flex formatting context so the inner row lays
+        // out as a row. (Normal block flow reaches this via LayoutBlock; items
+        // bypass that path, so the dispatch must be repeated here.)
+        if (IsFlexContainer(item.Style))
+        {
+            var flex = new Starling.Layout.Flex.FlexLayout(this, _viewport);
+            return flex.Layout(item, containerWidth, containerHeight);
+        }
+        return LayoutChildren(item, containerWidth, containerHeight, measure);
+    }
+
+    /// <summary>
     /// Lay out children with the option of running in measurement mode, used
     /// by the inline-block shrink-to-fit pass. In measurement mode the inline
     /// formatting context skips its post-layout alignment shifts so the
@@ -410,7 +436,7 @@ internal sealed class BlockLayout
         return ResolveLength(style, property, percentageBasis, viewport);
     }
 
-    private static double ResolveBorderWidth(ComputedStyle? style, PropertyId widthId, PropertyId styleId, Size? viewport = null)
+    internal static double ResolveBorderWidth(ComputedStyle? style, PropertyId widthId, PropertyId styleId, Size? viewport = null)
     {
         if (style is null) return 0;
         var styleValue = style.Get(styleId);
