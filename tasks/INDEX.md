@@ -148,6 +148,7 @@ structure).
 | [wp:M3-25-js-arrow-rest-params](M3/wp-M3-25-js-arrow-rest-params.md) | 🟢 complete | agent-claude-cody | Starling.Js |
 | [wp:M3-26-js-object-accessor-shorthand](M3/wp-M3-26-js-object-accessor-shorthand.md) | 🟢 complete | agent-claude-cody | Starling.Js |
 | [wp:M3-27-js-method-rest-params](M3/wp-M3-27-js-method-rest-params.md) | 🟢 complete | agent-claude-sonnet-4-6 | Starling.Js |
+| [wp:M3-28-js-logical-assignment](M3/wp-M3-28-js-logical-assignment.md) | 🟢 complete | agent-claude-cody | Starling.Js |
 
 ## M5 — Avalonia shell + interactivity polish
 

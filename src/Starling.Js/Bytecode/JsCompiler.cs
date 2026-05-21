@@ -1923,6 +1923,15 @@ public sealed partial class JsCompiler
             _b.Emit(Opcode.LoadLocal, (byte)rhsSlot);
             return;
         }
+        // §13.15.2 — the three logical assignment operators short-circuit and
+        // therefore have entirely different control flow from the arithmetic /
+        // bitwise compound operators handled by the branches below. Intercept
+        // them here, before the generic compound paths, for every target form.
+        if (IsLogicalAssignOp(a.Op))
+        {
+            EmitLogicalAssignment(a);
+            return;
+        }
         if (a.Target is Identifier id)
         {
             if (a.Op != "=")
@@ -2055,6 +2064,140 @@ public sealed partial class JsCompiler
         // in between. Anything reaching here (e.g. `f() = x`, `1 = x`) is an
         // invalid assignment target — §13.15.1 makes these early SyntaxErrors.
         throw new NotSupportedException($"invalid assignment target '{a.Target.GetType().Name}'");
+    }
+
+    /// <summary>
+    /// Lower one of the three ES2021 logical assignment operators
+    /// (<c>||=</c>, <c>&amp;&amp;=</c>, <c>??=</c>) per ECMA-262 §13.15.2.
+    /// These are NOT <c>a = a op b</c>: they short-circuit. The shape for
+    /// every target form is the same:
+    /// <list type="number">
+    ///   <item>Evaluate the target reference (object/key) EXACTLY ONCE.</item>
+    ///   <item>Read the current value; Dup it and run the short-circuit jump.
+    ///         If the jump is taken, no read of the RHS and no store happens,
+    ///         and the current value is the result.</item>
+    ///   <item>Otherwise Pop the current value, evaluate the RHS, and store
+    ///         through the same reference, leaving the stored value as the
+    ///         result (the whole expression yields the final target value).</item>
+    /// </list>
+    /// At the merge point the stack holds exactly one value (current value on
+    /// the short-circuit path, stored value on the assign path).
+    /// </summary>
+    private void EmitLogicalAssignment(AssignmentExpression a)
+    {
+        var jmp = LogicalAssignShortCircuitJump(a.Op);
+
+        if (a.Target is Identifier id)
+        {
+            // Resolve the binding once; the same kind (local / upvalue /
+            // global) is used for both the read and the write so the
+            // closure write-back path matches the plain `=` case.
+            if (TryResolveLocal(id.Name, out var slot))
+            {
+                EmitLoadLocalSlot(slot);            // [cur]
+                _b.Emit(Opcode.Dup);                // [cur, cur]
+                var j = _b.EmitJump(jmp);           // pops one cur; [cur] if short-circuit
+                _b.Emit(Opcode.Pop);                // assign path: drop cur → []
+                EmitExpression(a.Value);            // [rhs]
+                _b.Emit(Opcode.Dup);                // [rhs, rhs] — keep result after store
+                EmitStoreLocalSlot(slot);           // [rhs]
+                _b.PatchJump(j);                    // merge: [cur] or [rhs]
+                return;
+            }
+            if (TryResolveUpvalue(id.Name, out var upIdx))
+            {
+                _b.Emit(Opcode.LoadUpvalue, (byte)upIdx); // [cur]
+                _b.Emit(Opcode.Dup);
+                var j = _b.EmitJump(jmp);
+                _b.Emit(Opcode.Pop);
+                EmitExpression(a.Value);
+                _b.Emit(Opcode.Dup);
+                _b.Emit(Opcode.StoreUpvalue, (byte)upIdx); // [rhs]
+                _b.PatchJump(j);
+                return;
+            }
+            // Global / script-top var target.
+            var nameIdx = _b.AddConstant(id.Name);
+            _b.EmitU16(Opcode.LoadGlobal, nameIdx);   // [cur]
+            _b.Emit(Opcode.Dup);
+            var jg = _b.EmitJump(jmp);
+            _b.Emit(Opcode.Pop);
+            EmitExpression(a.Value);
+            _b.Emit(Opcode.Dup);
+            _b.EmitU16(Opcode.StoreGlobal, nameIdx);  // [rhs]
+            _b.PatchJump(jg);
+            return;
+        }
+
+        if (a.Target is MemberExpression me)
+        {
+            // super.x ??= … would require PutValue on a super-reference; the
+            // plain `=`/compound super paths above use dedicated opcodes and
+            // netclaw doesn't need the logical form, so defer it explicitly.
+            if (me.Object is SuperPropertyExpression)
+                throw new NotSupportedException("logical assignment to a super property is not supported");
+            // Private-name logical assignment (this.#x ??= …) needs PrivateGet
+            // + PrivateSet on a dup'd receiver; not exercised by netclaw, defer.
+            if (!me.Computed && me.Property is PrivateNameExpression)
+                throw new NotSupportedException("logical assignment to a private field is not supported");
+
+            if (me.Computed)
+            {
+                // Evaluate base AND key exactly once, then keep both for a
+                // possible store via Dup2 (same once-eval pattern as the
+                // computed member-update lowering in EmitUpdate).
+                EmitExpression(me.Object);          // [obj]
+                EmitExpression(me.Property);        // [obj, key]
+                _b.Emit(Opcode.Dup2);               // [obj, key, obj, key]
+                _b.Emit(Opcode.LoadComputed);       // [obj, key, cur]
+                _b.Emit(Opcode.Dup);                // [obj, key, cur, cur]
+                var j = _b.EmitJump(jmp);           // pops one cur
+                // Assign path: [obj, key, cur]. Drop cur, eval RHS, store
+                // (StoreComputed pops obj,key,rhs and RE-PUSHES rhs).
+                _b.Emit(Opcode.Pop);                // [obj, key]
+                EmitExpression(a.Value);            // [obj, key, rhs]
+                _b.Emit(Opcode.StoreComputed);      // [rhs]
+                var jEnd = _b.EmitJump(Opcode.Jump);
+                // Short-circuit path: stack is [obj, key, cur]; discard the
+                // dup'd base + key, leaving cur as the result.
+                _b.PatchJump(j);                    // [obj, key, cur]
+                // Remove obj and key from underneath cur. We have no swap-N
+                // opcode, so reorder via a temp local.
+                var tmp = _b.ReserveLocal();
+                EmitStoreLocalSlot(tmp);            // [obj, key]
+                _b.Emit(Opcode.Pop);                // [obj]
+                _b.Emit(Opcode.Pop);                // []
+                EmitLoadLocalSlot(tmp);             // [cur]
+                _b.PatchJump(jEnd);                 // merge: [rhs] or [cur]
+                return;
+            }
+            else
+            {
+                var nameIdx = _b.AddConstant(((Identifier)me.Property).Name);
+                EmitExpression(me.Object);          // [obj]
+                _b.Emit(Opcode.Dup);                // [obj, obj]
+                _b.EmitU16(Opcode.LoadProperty, nameIdx); // [obj, cur]
+                _b.Emit(Opcode.Dup);                // [obj, cur, cur]
+                var j = _b.EmitJump(jmp);           // pops one cur
+                // Assign path: [obj, cur]. Drop cur, eval RHS, store
+                // (StoreProperty pops obj,rhs and RE-PUSHES rhs).
+                _b.Emit(Opcode.Pop);                // [obj]
+                EmitExpression(a.Value);            // [obj, rhs]
+                _b.EmitU16(Opcode.StoreProperty, nameIdx); // [rhs]
+                var jEnd = _b.EmitJump(Opcode.Jump);
+                // Short-circuit path: stack is [obj, cur]; drop the dup'd base
+                // from underneath, leaving cur. Use a temp to reorder.
+                _b.PatchJump(j);                    // [obj, cur]
+                var tmp = _b.ReserveLocal();
+                EmitStoreLocalSlot(tmp);            // [obj]
+                _b.Emit(Opcode.Pop);                // []
+                EmitLoadLocalSlot(tmp);             // [cur]
+                _b.PatchJump(jEnd);                 // merge: [rhs] or [cur]
+                return;
+            }
+        }
+
+        throw new NotSupportedException($"invalid logical-assignment target '{a.Target.GetType().Name}'");
     }
 
     /// <summary>wp:M3-23 — record the AST node's source position against the
@@ -2930,5 +3073,32 @@ public sealed partial class JsCompiler
         "|=" => Opcode.BitOr, "&=" => Opcode.BitAnd, "^=" => Opcode.BitXor,
         "<<=" => Opcode.Shl, ">>=" => Opcode.Shr, ">>>=" => Opcode.Ushr,
         _ => throw new NotSupportedException($"compound op '{op}'"),
+    };
+
+    /// <summary>The three ES2021 logical assignment operators (§13.15.2).
+    /// Unlike the arithmetic/bitwise compound ops these short-circuit, so
+    /// they need a dedicated conditional-jump lowering in
+    /// <see cref="EmitLogicalAssignment"/> rather than the binary-op path.</summary>
+    private static bool IsLogicalAssignOp(string op) => op is "||=" or "&&=" or "??=";
+
+    /// <summary>Map a logical assignment operator to the conditional jump that
+    /// detects its short-circuit case (when no assignment occurs and the
+    /// current value is the result):
+    /// <list type="bullet">
+    ///   <item><c>||=</c> short-circuits when the current value is truthy →
+    ///         <see cref="Opcode.JumpIfTrue"/>.</item>
+    ///   <item><c>&amp;&amp;=</c> short-circuits when falsy →
+    ///         <see cref="Opcode.JumpIfFalse"/>.</item>
+    ///   <item><c>??=</c> short-circuits when non-nullish →
+    ///         <see cref="Opcode.JumpIfNotNullish"/>.</item>
+    /// </list>
+    /// Each of these jumps POPS the test operand, so the lowering Dups the
+    /// current value first (mirroring <see cref="EmitLogical"/>).</summary>
+    private static Opcode LogicalAssignShortCircuitJump(string op) => op switch
+    {
+        "||=" => Opcode.JumpIfTrue,
+        "&&=" => Opcode.JumpIfFalse,
+        "??=" => Opcode.JumpIfNotNullish,
+        _ => throw new NotSupportedException($"logical assign op '{op}'"),
     };
 }
