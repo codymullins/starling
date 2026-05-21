@@ -77,8 +77,42 @@ public sealed class ModuleRecord
     /// it settles when the body finishes (or rejects on a top-level-await
     /// rejection / synchronous throw). Null for a synchronous module (no
     /// async settling needed). The loader chains dependents on this so an
-    /// importer's body waits for this module to finish.</summary>
+    /// importer's body waits for this module to finish.
+    /// <para>wp:M3-03d — for a module that belongs to an <em>async</em> strongly
+    /// connected component (a cycle containing a top-level-await module), this
+    /// holds the SCC's shared settlement promise: every member of the SCC is
+    /// assigned the same promise, so a dependent that chains on any member waits
+    /// for the whole cycle to settle (no partial-binding read of an in-flight
+    /// async member).</para></summary>
     internal JsPromise? EvaluationPromise { get; set; }
+
+    // -----------------------------------------------------------------------
+    // wp:M3-03d — async-module cycle (SCC) ordering. A pragmatic Tarjan-style
+    // strongly-connected-component grouping over the evaluation DFS. Full
+    // [[DFSIndex]] fidelity is approximated: we record DFS discovery / low-link
+    // indices on the stack so an SCC root can gather its members and settle the
+    // whole component jointly when it contains an async (TLA) module.
+    // -----------------------------------------------------------------------
+
+    /// <summary>§16.2.1.5 [[DFSIndex]] — discovery order during the evaluation
+    /// DFS. -1 until visited.</summary>
+    internal int DfsIndex { get; set; } = -1;
+
+    /// <summary>§16.2.1.5 [[DFSAncestorIndex]] — Tarjan low-link: the lowest
+    /// <see cref="DfsIndex"/> reachable through this module's subtree, used to
+    /// detect the root of a strongly connected component (cycle). -1 until
+    /// visited.</summary>
+    internal int DfsAncestorIndex { get; set; } = -1;
+
+    /// <summary>True while this module sits on the evaluation DFS stack — i.e. a
+    /// dependency edge that lands here is a cyclic back-edge.</summary>
+    internal bool OnEvalStack { get; set; }
+
+    /// <summary>§16.2.1.5 [[AsyncEvaluation]] — set once this module is known to
+    /// be part of an async evaluation (its own top-level await, or membership in
+    /// a strongly connected component that contains a top-level-await module).
+    /// Drives the deferred, jointly-settled SCC body execution.</summary>
+    internal bool AsyncEvaluation { get; set; }
 
     public ModuleRecord(
         string url,
