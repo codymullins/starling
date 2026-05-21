@@ -121,6 +121,48 @@ public sealed class Document : Node
         return new LiveElementCollection(this, element =>
             classes.Length > 0 && classes.All(element.ClassList.Contains));
     }
+
+    /// <summary>
+    /// DOM §4.5.1 — create and initialize a new Document with a minimal HTML
+    /// skeleton: a doctype, an &lt;html&gt; root, a &lt;head&gt; (optionally with
+    /// a &lt;title&gt; child whose text is <paramref name="title"/>), and a
+    /// &lt;body&gt;. Returns the document ready for use as an off-screen context
+    /// for fragment parsing (e.g. DOMImplementation.createHTMLDocument).
+    /// </summary>
+    /// <param name="title">
+    /// The text content for the &lt;title&gt; element. When <c>null</c> the spec
+    /// says no &lt;title&gt; element is created; an empty string creates a
+    /// &lt;title&gt; with empty text (matching jQuery's
+    /// <c>createHTMLDocument("")</c> call).
+    /// </param>
+    public static Document CreateHtmlDocument(string? title = null)
+    {
+        var doc = new Document();
+
+        // 1. DOCTYPE
+        var doctype = doc.CreateDocumentType("html");
+        doc.AppendChild(doctype);
+
+        // 2. <html>
+        var html = doc.CreateElement("html");
+        doc.AppendChild(html);
+
+        // 3. <head> (+ optional <title>)
+        var head = doc.CreateElement("head");
+        html.AppendChild(head);
+        if (title is not null)
+        {
+            var titleEl = doc.CreateElement("title");
+            titleEl.AppendChild(doc.CreateTextNode(title));
+            head.AppendChild(titleEl);
+        }
+
+        // 4. <body>
+        var body = doc.CreateElement("body");
+        html.AppendChild(body);
+
+        return doc;
+    }
 }
 
 public enum QuirksMode

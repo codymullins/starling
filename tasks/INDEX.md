@@ -143,6 +143,7 @@ structure).
 | ID | Status | Owner | Subsystem |
 |---|---|---|---|
 | [wp:M4-01-api-gap-mcmaster](M4/web-api-gap-mcmaster.md) | 🟢 complete | agent-claude-cody | Starling.Bindings |
+| [wp:M3-22-dom-implementation](M3/wp-M3-22-dom-implementation.md) | 🟢 complete | agent-claude-cody | Starling.Dom / Starling.Bindings |
 
 ## M5 — Avalonia shell + interactivity polish
 

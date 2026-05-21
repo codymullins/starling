@@ -686,6 +686,20 @@ public static class NodeBindings
         EventTargetBinding.DefineAccessor(realm, docProto, "visibilityState",
             (_, _) => JsValue.String("visible"));
 
+        // DOM §4.5 — document.implementation returns a DOMImplementation object.
+        // One singleton per document is fine (cached on the wrapper with a hidden key).
+        EventTargetBinding.DefineAccessor(realm, docProto, "implementation", (thisV, _) =>
+        {
+            var wrapper = thisV.IsObject ? thisV.AsObject : null;
+            if (wrapper is null) return JsValue.Null;
+            const string cacheKey = "__domImpl__";
+            var cached = wrapper.Get(cacheKey);
+            if (!cached.IsUndefined) return cached;
+            var impl = BuildDomImplementation(realm);
+            wrapper.Set(cacheKey, JsValue.Object(impl));
+            return JsValue.Object(impl);
+        });
+
         EventTargetBinding.DefineMethod(realm, docProto, "getElementById", (thisV, args) =>
         {
             if (DomWrappers.UnwrapDocument(thisV) is not { } d || args.Length == 0) return JsValue.Null;
@@ -762,6 +776,38 @@ public static class NodeBindings
     }
 
     // ---- helpers ---------------------------------------------------------
+
+    /// <summary>Build a DOMImplementation JS object for the given realm.
+    /// DOM §4.5 — exposes <c>createHTMLDocument([title])</c>,
+    /// <c>createDocumentFragment()</c>, and <c>hasFeature()</c> (always true).
+    /// The returned document is wrapped with the realm's full Document prototype
+    /// so all Document methods work on it.</summary>
+    private static JsObject BuildDomImplementation(JsRealm realm)
+    {
+        var impl = new JsObject(realm.ObjectPrototype);
+
+        // createHTMLDocument([title]) — DOM §4.5.1
+        EventTargetBinding.DefineMethod(realm, impl, "createHTMLDocument", (_, args) =>
+        {
+            // title arg: if absent → null (no title el); if present (even "") → create title
+            string? title = args.Length > 0 ? JsValue.ToStringValue(args[0]) : null;
+            var doc = Document.CreateHtmlDocument(title);
+            return JsValue.Object(DomWrappers.Wrap(realm, doc));
+        }, length: 1);
+
+        // createDocumentFragment() — convenience stub
+        EventTargetBinding.DefineMethod(realm, impl, "createDocumentFragment", (_, _) =>
+        {
+            var doc = new Document();
+            return JsValue.Object(DomWrappers.Wrap(realm, doc.CreateDocumentFragment()));
+        }, length: 0);
+
+        // hasFeature() — DOM §4.5 always returns true per spec
+        EventTargetBinding.DefineMethod(realm, impl, "hasFeature",
+            (_, _) => JsValue.True, length: 0);
+
+        return impl;
+    }
 
     /// <summary>Build a real <see cref="JsArray"/> snapshot of a DOM result list.
     /// <para>Spec note: <c>Element.children</c>, <c>Element.childNodes</c>,
