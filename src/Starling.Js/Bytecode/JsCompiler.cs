@@ -839,11 +839,15 @@ public sealed partial class JsCompiler
 
     private void EmitVarDecl(VariableDeclaration vd)
     {
+        // `var` is function-scoped (§14.3.2): its bindings live in the
+        // function-variable scope, not the enclosing block, so a `var` declared
+        // inside a block (and captured by a closure) shares the one binding.
+        var functionScoped = vd.Kind == "var";
         foreach (var d in vd.Declarations)
         {
             // ECMA-262 §14.3.3 BindingPattern: declarations reserve all
             // binding names first, then initialize by walking the pattern.
-            DeclarePatternBindings(d.Id);
+            DeclarePatternBindings(d.Id, functionScoped);
             if (d.Init is not null)
             {
                 if (d.Id is Identifier id)
@@ -1846,7 +1850,24 @@ public sealed partial class JsCompiler
             // receiver `this`, while the read for compound forms resolves
             // through the home object's prototype.
             if (!sptarget.Computed)
-                throw new NotSupportedException("super.x = v is not supported in B1b-2a");
+            {
+                // super.name = v (and compound super.name op= v). Per spec the
+                // write targets the receiver `this`; the compound read resolves
+                // through the home object's prototype. LoadSuperProperty /
+                // StoreSuperProperty carry the name as a constant operand.
+                var name = ((Identifier)sptarget.Property).Name;
+                if (a.Op != "=")
+                {
+                    _b.EmitU16(Opcode.LoadSuperProperty, _b.AddConstant(name));  // [oldVal]
+                    EmitExpression(a.Value);                                     // [oldVal, rhs]
+                    _b.Emit(CompoundOpToBinaryOpcode(a.Op));                     // [newVal]
+                    _b.EmitU16(Opcode.StoreSuperProperty, _b.AddConstant(name)); // [newVal]
+                    return;
+                }
+                EmitExpression(a.Value);                                         // [value]
+                _b.EmitU16(Opcode.StoreSuperProperty, _b.AddConstant(name));     // [value]
+                return;
+            }
             if (a.Op != "=")
             {
                 // Compound `super[k] op= v`: evaluate the key once, dup it for the
@@ -2241,7 +2262,19 @@ public sealed partial class JsCompiler
         }
     }
 
-    private void DeclarePatternBindings(Expression pattern)
+    /// <summary>Reserve local slots / register scope bindings for every name in
+    /// a binding pattern (declaration side), before the initializer is walked.</summary>
+    /// <param name="pattern">The binding pattern (identifier, array/object
+    /// pattern, or the cover-grammar expression forms reinterpreted as targets).</param>
+    /// <param name="functionScoped">True for <c>var</c> bindings (§14.3.2):
+    /// the name binds in the function-variable scope (<c>_scopes[0]</c>), not a
+    /// block-local slot. A block-local slot would shadow the function-top cell
+    /// that <see cref="PreallocateCapturedVarBindings"/> reserves for a captured
+    /// <c>var</c>, stranding the closure's binding — the initializer would write
+    /// the block-local slot while the closure reads the (never-initialized)
+    /// cell, yielding <c>undefined</c>/<c>NaN</c>. <c>let</c>/<c>const</c> and
+    /// catch/parameter bindings stay block-scoped (false).</param>
+    private void DeclarePatternBindings(Expression pattern, bool functionScoped = false)
     {
         switch (pattern)
         {
@@ -2258,10 +2291,14 @@ public sealed partial class JsCompiler
                     _b.EmitU16(Opcode.DeclareGlobalVar, _b.AddConstant(id.Name));
                     return;
                 }
-                if (!_scopes[^1].ContainsKey(id.Name))
+                // `var` is function-scoped: bind in _scopes[0]. If it's already
+                // there (e.g. preallocated as a captured-var cell, or a prior
+                // var/param of the same name), reuse it — no shadowing block slot.
+                var scope = functionScoped ? _scopes[0] : _scopes[^1];
+                if (!scope.ContainsKey(id.Name))
                 {
                     var slot = _b.ReserveLocal();
-                    _scopes[^1][id.Name] = slot;
+                    scope[id.Name] = slot;
                     // gap:closure-write-back — captured bindings use a Cell.
                     if (IsNameCaptured(id.Name))
                     {
@@ -2275,10 +2312,10 @@ public sealed partial class JsCompiler
                 }
                 return;
             case AssignmentExpression { Op: "=" } a:
-                DeclarePatternBindings(a.Target);
+                DeclarePatternBindings(a.Target, functionScoped);
                 return;
             case AssignmentPattern a:
-                DeclarePatternBindings(a.Target);
+                DeclarePatternBindings(a.Target, functionScoped);
                 return;
             case ArrayPattern arr:
                 foreach (var element in arr.Elements)
@@ -2286,34 +2323,34 @@ public sealed partial class JsCompiler
                     switch (element)
                     {
                         case ArrayPatternBindingElement binding:
-                            DeclarePatternBindings(binding.Target);
+                            DeclarePatternBindings(binding.Target, functionScoped);
                             break;
                         case ArrayPatternRestElement rest:
-                            DeclarePatternBindings(rest.Target);
+                            DeclarePatternBindings(rest.Target, functionScoped);
                             break;
                     }
                 }
                 return;
             case ObjectPattern obj:
-                foreach (var prop in obj.Properties) DeclarePatternBindings(prop.Target);
-                if (obj.Rest is not null) DeclarePatternBindings(obj.Rest.Argument);
+                foreach (var prop in obj.Properties) DeclarePatternBindings(prop.Target, functionScoped);
+                if (obj.Rest is not null) DeclarePatternBindings(obj.Rest.Argument, functionScoped);
                 return;
             case ArrayExpression arr:
                 foreach (var element in arr.Elements)
                 {
                     if (element is null) continue;
-                    DeclarePatternBindings(element is SpreadElement spread ? spread.Argument : element);
+                    DeclarePatternBindings(element is SpreadElement spread ? spread.Argument : element, functionScoped);
                 }
                 return;
             case ObjectExpression obj:
                 foreach (var prop in obj.Properties)
                 {
-                    if (prop.Value is SpreadElement spread) DeclarePatternBindings(spread.Argument);
-                    else DeclarePatternBindings(prop.Value);
+                    if (prop.Value is SpreadElement spread) DeclarePatternBindings(spread.Argument, functionScoped);
+                    else DeclarePatternBindings(prop.Value, functionScoped);
                 }
                 return;
             case SpreadElement spread:
-                DeclarePatternBindings(spread.Argument);
+                DeclarePatternBindings(spread.Argument, functionScoped);
                 return;
         }
     }

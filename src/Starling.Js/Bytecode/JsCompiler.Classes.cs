@@ -29,7 +29,9 @@ public sealed partial class JsCompiler
         // snapshot-captured upvalue (which would see the pre-write value
         // and force a TDZ workaround). Pin a follow-up to revisit when
         // block-scoped classes are needed.
-        EmitClassValue(cd.Name, cd.BaseClass, cd.Body);
+        // bindNameToGlobal: bind the name before static elements run so a
+        // `static { … C … }` block or `static p = C.q` field sees the class.
+        EmitClassValue(cd.Name, cd.BaseClass, cd.Body, bindNameToGlobal: true);
         _b.Emit(Opcode.Dup); // assignment is an expression — leave value on stack briefly
         _b.EmitU16(Opcode.StoreGlobal, _b.AddConstant(cd.Name.Name));
         _b.Emit(Opcode.Pop);
@@ -40,7 +42,8 @@ public sealed partial class JsCompiler
         EmitClassValue(ce.Name, ce.BaseClass, ce.Body);
     }
 
-    private void EmitClassValue(Identifier? name, Expression? baseExpr, ClassBody body)
+    private void EmitClassValue(Identifier? name, Expression? baseExpr, ClassBody body,
+        bool bindNameToGlobal = false)
     {
         // Evaluate the base class first (if any) so it's on the stack before
         // method upvalues.
@@ -118,7 +121,8 @@ public sealed partial class JsCompiler
                 methodEntries,
                 fieldEntries,
                 staticBlockEntries,
-                classId);
+                classId,
+                bindNameToGlobal);
             _b.EmitU16(Opcode.BuildClass, _b.AddConstant(template));
         }
         finally

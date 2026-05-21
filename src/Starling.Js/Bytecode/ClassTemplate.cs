@@ -50,6 +50,15 @@ public sealed class ClassTemplate
     /// classes that declare <c>#x</c> can't collide.</summary>
     public int ClassId { get; }
 
+    /// <summary>True for class <em>declarations</em>: the constructor is bound
+    /// to its <see cref="Name"/> (currently the global binding, a B1b
+    /// simplification) <em>before</em> static fields/blocks run, so static
+    /// elements can reference the class by name (§15.7.14 ClassDefinition
+    /// Evaluation binds the class name before static element evaluation). Named
+    /// class <em>expressions</em> leave this false — their name stays scoped to
+    /// the body and must not leak to the global.</summary>
+    public bool BindNameToGlobal { get; }
+
     public ClassTemplate(
         string name,
         JsFunction constructorTemplate,
@@ -58,7 +67,8 @@ public sealed class ClassTemplate
         IReadOnlyList<MethodEntry> methods,
         IReadOnlyList<FieldEntry> fields,
         IReadOnlyList<StaticBlockEntry> staticBlocks,
-        int classId)
+        int classId,
+        bool bindNameToGlobal = false)
     {
         ConstructorUpvalueCount = constructorUpvalueCount;
         Name = name ?? throw new ArgumentNullException(nameof(name));
@@ -68,6 +78,7 @@ public sealed class ClassTemplate
         Fields = fields ?? throw new ArgumentNullException(nameof(fields));
         StaticBlocks = staticBlocks ?? throw new ArgumentNullException(nameof(staticBlocks));
         ClassId = classId;
+        BindNameToGlobal = bindNameToGlobal;
     }
 
     private static int s_nextClassId;

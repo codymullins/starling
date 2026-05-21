@@ -1892,6 +1892,15 @@ public sealed class JsVm
             }
         }
 
+        // §15.7.14 — for a class *declaration*, bind the class name to the
+        // constructor BEFORE static elements run, so `static { … C … }` blocks
+        // and `static p = C.q` field initializers can reference the class by
+        // name. (Class expressions keep their inner name scoped to the body;
+        // BindNameToGlobal is false for them, so this does not leak.)
+        if (template.BindNameToGlobal && template.Name.Length > 0)
+            AbstractOperations.Set(this, realm.GlobalObject, template.Name,
+                JsValue.Object(ctorInstance), JsValue.Object(realm.GlobalObject));
+
         // Static fields + static blocks: run in interleaved declaration order
         // per ES2022. Field thunks and static-block thunks both invoked with
         // this = constructor.

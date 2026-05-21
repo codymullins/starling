@@ -89,6 +89,9 @@ structure).
 | [wp:M3-03d-js-async-module-cycles](M3/wp-M3-03d-js-async-module-cycles.md) | 🟢 complete | agent-claude-cody-modcycles | Starling.Js |
 | [wp:M3-04c2-js-method-capture-cell](M3/wp-M3-04c2-js-method-capture-cell.md) | 🟢 complete | agent-claude-cody-capturecell | Starling.Js |
 | [wp:M3-04h-js-computed-super](M3/wp-M3-04h-js-computed-super.md) | 🟢 complete | agent-claude-cody-compsuper | Starling.Js |
+| [wp:M3-04i-js-named-super-write](M3/wp-M3-04i-js-named-super-write.md) | 🟢 complete | agent-claude-cody | Starling.Js |
+| [wp:M3-04c3-js-var-block-scope](M3/wp-M3-04c3-js-var-block-scope.md) | 🟢 complete | agent-claude-cody | Starling.Js |
+| [wp:M3-04j-js-static-block-class-name](M3/wp-M3-04j-js-static-block-class-name.md) | 🟢 complete | agent-claude-cody | Starling.Js |
 | [wp:M3-03e-js-switch-statement](M3/wp-M3-03e-js-switch-statement.md) | 🟢 complete | agent-claude-cody-switch | Starling.Js |
 | [wp:M3-06-native-interop-pivot](M3/wp-M3-06-native-interop-pivot.md) | 🟢 complete | agent-claude-cody | build |
 | [wp:M3-06a-native-scaffold](M3/wp-M3-06a-native-scaffold.md) | 🟢 complete | agent-claude-cody-native | build |
@@ -234,19 +237,16 @@ ordering for async cycles). ✅ computed `super[expr]` read/call/write/compound
 (`wp:M3-04h`). JS suite now **1208 green**; downstream Bindings 136 + Engine 121
 green.
 
-Remaining JS work: Test262 ≥ 80% (`wp:M3-02e`) and three small pre-existing gaps
-surfaced along the way (reproduce independent of recent work, not yet ticketed):
-- **class name unbound inside a `static {}` block** — `C.x = …` sees `C`
-  undefined inside a static block (binds to global only after `BuildClass` runs
-  static blocks); workaround `this.x` works.
-- **captured + mutated `var` in an inner block** mis-binds to a block-local slot
-  (yields `NaN`) — general `var`-in-block hoisting/capture interaction in
-  `PreallocateCapturedVarBindings`/`DeclarePatternBindings`, reproduces in plain
-  functions too.
-- **named super-write + member update forms** — `super.name = v` is still
-  unwired (throws; the `StoreSuperProperty` VM handler exists — trivial to emit),
-  and `obj.x++`/`super[k]++` update forms only support identifier targets
-  (`EmitUpdate` limitation).
+**Second-wave follow-ups (2026-05-21) — ALL DONE.** ✅ named super-write
+`super.name = v` + compound (`wp:M3-04i`). ✅ `var` is function-scoped — fixes
+captured/`var`-in-block mis-binding (`wp:M3-04c3`). ✅ class name bound before
+static elements run, so `static {}` / static fields can reference the class
+(`wp:M3-04j`). JS suite now **1232 green**; downstream Bindings 136 + Engine 122
+green.
+
+Remaining JS work: Test262 ≥ 80% (`wp:M3-02e`). One small known gap left:
+- **member/super update forms** — `obj.x++` / `super[k]++` only support
+  identifier targets (`EmitUpdate` limitation). Low priority.
 
 ## Recently completed
 
