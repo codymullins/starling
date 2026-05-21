@@ -86,6 +86,53 @@ If `dotnet build` errors with permission-denied apphost deletions in a
 sandbox or container, pass `-p:UseAppHost=false`. This is a sandbox quirk
 only — CI runs without the flag.
 
+## Getting traces & telemetry from Aspire
+
+When you need to debug runtime behavior — a slow request, a failing fetch, an
+unexpected span — pull traces from the Aspire dashboard's telemetry API instead
+of adding `Console.WriteLine`. **This only works while the AppHost is running**
+(`aspire run` against `Starling.AppHost`, or via the `aspire` skill); the
+telemetry API is served by that running dashboard.
+
+There are three ways in, listed in the order you should reach for them.
+
+**1. MCP tools (preferred — already wired in `.mcp.json` via `aspire agent mcp`).**
+No setup; just call them. The drill-down path:
+
+- `mcp__aspire__list_traces` — list distributed traces (trace IDs, the resources
+  each spans, duration, error flag). Optional `resourceName` narrows to one
+  resource; omit it for all. Use this first to find the trace ID you care about.
+- `mcp__aspire__list_trace_structured_logs` — given a `traceId`, the structured
+  logs for that trace, grouped by span. **Prefer this over per-resource logs
+  when investigating a specific trace.**
+- Supporting tools: `mcp__aspire__list_structured_logs`,
+  `mcp__aspire__list_console_logs`, `mcp__aspire__list_resources`.
+
+Typical loop: `list_traces` (optionally filtered to a resource) → pick the
+`traceId` → `list_trace_structured_logs` for span-level detail.
+
+**2. Aspire CLI (`aspire otel`).** Same telemetry API, handy for ad-hoc shell
+use and for full OTLP JSON you can pipe to `jq`:
+
+```bash
+aspire otel traces [<resource>] --format Json   # list traces (Table is default)
+aspire otel traces -t <trace-id> --format Json   # one trace's spans, full detail
+aspire otel traces --has-error -n 20             # only failing traces, cap 20
+aspire otel spans  <resource>  --format Json     # raw spans for a resource
+aspire otel logs   <resource>  --format Json     # structured logs
+```
+
+Note the local CLI (Aspire 13.3.x) uses `-t/--trace-id` to select a trace (not a
+positional id) and `-n/--limit` to cap results; there is no `--search` flag. For
+a standalone dashboard, pass `--dashboard-url http://localhost:18888`
+(and `--api-key` if it requires one).
+
+**3. Raw REST API.** If you want the complete OTLP `ResourceSpans` payload
+programmatically, hit the dashboard directly (auth via the dashboard API token):
+`GET /api/telemetry/traces?resource=&hasError=&limit=` for the list and
+`GET /api/telemetry/traces/{traceId}` for one full trace. The CLI and MCP tools
+are wrappers over these.
+
 ## Spec coverage & the bug-fix workflow
 
 Most bugs in this engine are a spec compliance gap wearing a disguise. Before

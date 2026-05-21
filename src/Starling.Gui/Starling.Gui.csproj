@@ -4,6 +4,14 @@
          no per-platform TFM shape needed (unlike the MAUI Starling.Gui). -->
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
+    <!-- NativeAOT. Setting this unconditionally is a no-op for ordinary builds
+         (it only triggers native codegen on `dotnet publish -r <rid>`), but it
+         keeps the trim/AOT analyzers on during every build so AOT regressions
+         surface immediately. Verified: the engine + JS interop are reflection-
+         free, Avalonia 12 / OpenTelemetry / ImageSharp are AOT-clean, and the
+         WebGPU backend resolves its native dylib under AOT via WgpuNativeLoader.
+         Publish e.g.: dotnet publish src/Starling.Gui -c Release -r osx-arm64 -->
+    <PublishAot>true</PublishAot>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Starling.Gui</RootNamespace>

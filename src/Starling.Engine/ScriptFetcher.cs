@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 using Starling.Common.Diagnostics;
@@ -38,7 +39,9 @@ internal sealed class ScriptFetcher : IDisposable
 {
     private readonly IDiagnostics _diag;
     private readonly Func<StarlingHttpClient> _httpFactory;
-    private readonly Dictionary<string, string> _byUrl = new(StringComparer.Ordinal);
+    // Concurrent because FetchAllAsync starts multiple external fetches in
+    // parallel; their cache writes (on the network continuation) can race.
+    private readonly ConcurrentDictionary<string, string> _byUrl = new(StringComparer.Ordinal);
     private readonly List<LoadedScript> _scripts = new();
     private readonly List<LoadedScript> _moduleScripts = new();
     private StarlingHttpClient? _sharedHttp;
@@ -83,6 +86,15 @@ internal sealed class ScriptFetcher : IDisposable
     {
         ArgumentNullException.ThrowIfNull(document);
 
+        // Two-pass fetch so external scripts download in parallel while their
+        // results stay bucketed in document order. HTML §4.12.1 constrains
+        // execution order (classic non-async scripts run in document order), not
+        // fetch order — browsers fetch speculatively in parallel. Pass 1 walks
+        // in document order and kicks off each fetch without awaiting (the
+        // synchronous prefix — DOM reads, cache probe — still runs sequentially
+        // here; only the network I/O overlaps). Pass 2 awaits in order and
+        // appends, preserving per-list document order.
+        var pending = new List<(bool IsModule, Task<LoadedScript?> Task)>();
         foreach (var script in document.GetElementsByTagName("script"))
         {
             ct.ThrowIfCancellationRequested();
@@ -91,14 +103,28 @@ internal sealed class ScriptFetcher : IDisposable
             // collected but evaluated via the ModuleLoader, not the classic VM.
             if (IsModuleScript(script))
             {
-                await CollectModuleScriptAsync(script, baseUrl, ct).ConfigureAwait(false);
+                pending.Add((IsModule: true, LoadModuleAsync(script, baseUrl, ct)));
                 continue;
             }
 
             if (!IsClassicJavascript(script)) continue;
 
-            var loaded = await LoadAsync(script, baseUrl, ct).ConfigureAwait(false);
-            if (loaded is not null) _scripts.Add(loaded);
+            pending.Add((IsModule: false, LoadAsync(script, baseUrl, ct)));
+        }
+
+        if (pending.Count == 0) return;
+
+        // Await all fetches before bucketing. Task.WhenAll observes every task,
+        // so a cancellation can't leave an unobserved faulted task behind; it
+        // also surfaces cancellation the same way the old sequential loop did.
+        await Task.WhenAll(pending.Select(static p => p.Task)).ConfigureAwait(false);
+
+        foreach (var (isModule, task) in pending)
+        {
+            var loaded = task.Result; // completed; null = not runnable / fetch failed
+            if (loaded is null) continue;
+            if (isModule) _moduleScripts.Add(loaded);
+            else _scripts.Add(loaded);
         }
     }
 
@@ -161,30 +187,29 @@ internal sealed class ScriptFetcher : IDisposable
     /// their resolved <c>src</c> URL so the loader can fetch + parse the import
     /// graph rooted there. Module scripts are deferred (run after parse via the
     /// <c>ModuleLoader</c>), so they carry <see cref="ScriptDisposition.Defer"/>.</summary>
-    private async Task CollectModuleScriptAsync(Element script, StarlingUrl? baseUrl, CancellationToken ct)
+    private async Task<LoadedScript?> LoadModuleAsync(Element script, StarlingUrl? baseUrl, CancellationToken ct)
     {
         var src = script.GetAttribute("src");
         if (string.IsNullOrWhiteSpace(src))
         {
             var inline = script.TextContent;
-            if (string.IsNullOrWhiteSpace(inline)) return;
-            _moduleScripts.Add(new LoadedScript(script, inline, baseUrl, IsInline: true, ScriptDisposition.Defer));
-            return;
+            if (string.IsNullOrWhiteSpace(inline)) return null;
+            return new LoadedScript(script, inline, baseUrl, IsInline: true, ScriptDisposition.Defer);
         }
 
         var absolute = ResolveAbsolute(src, baseUrl);
         if (absolute is null)
         {
             _diag.Log(DiagLevel.Warn, "engine", $"Could not resolve <script type=module src='{src}'>");
-            return;
+            return null;
         }
 
         // Pre-warm the fetch cache so the loader's host can reuse the body. We
         // still record the URL (not the body) so the loader treats it as the
         // entry module and resolves its imports relative to it.
         var source = await FetchAsync(absolute, ct).ConfigureAwait(false);
-        if (source is null) return;
-        _moduleScripts.Add(new LoadedScript(script, source, absolute, IsInline: false, ScriptDisposition.Defer));
+        if (source is null) return null;
+        return new LoadedScript(script, source, absolute, IsInline: false, ScriptDisposition.Defer);
     }
 
     /// <summary>Fetch a module's source through the engine's shared script-fetch

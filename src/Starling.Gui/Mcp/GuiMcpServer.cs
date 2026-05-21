@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Starling.Gui.Mcp;
 
@@ -11,8 +12,6 @@ public sealed class GuiMcpServer : IAsyncDisposable
     private const string DefaultUrl = "http://127.0.0.1:3077/mcp";
     private const int MaxHeaderBytes = 32 * 1024;
     private const int MaxBodyBytes = 1024 * 1024;
-
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly BrowserTools _tools;
     private readonly CancellationTokenSource _shutdown = new();
@@ -110,7 +109,7 @@ public sealed class GuiMcpServer : IAsyncDisposable
                 return;
             }
 
-            await WriteJsonResponseAsync(stream, response.Value, serverToken).ConfigureAwait(false);
+            await WriteJsonResponseAsync(stream, response, serverToken).ConfigureAwait(false);
         }
         catch (JsonException)
         {
@@ -132,7 +131,7 @@ public sealed class GuiMcpServer : IAsyncDisposable
         }
     }
 
-    private async Task<JsonElement?> HandleJsonRpcAsync(byte[] body, CancellationToken ct)
+    private async Task<JsonNode?> HandleJsonRpcAsync(byte[] body, CancellationToken ct)
     {
         using var doc = JsonDocument.Parse(body);
         var root = doc.RootElement;
@@ -147,14 +146,14 @@ public sealed class GuiMcpServer : IAsyncDisposable
         return method switch
         {
             "initialize" => JsonRpcResult(id, InitializeResult(root)),
-            "ping" => JsonRpcResult(id, new { }),
+            "ping" => JsonRpcResult(id, new JsonObject()),
             "tools/list" => JsonRpcResult(id, ToolsList()),
             "tools/call" => JsonRpcResult(id, await CallToolAsync(root, ct).ConfigureAwait(false)),
             _ => JsonRpcError(id, -32601, $"Method not found: {method}"),
         };
     }
 
-    private async Task<object> CallToolAsync(JsonElement request, CancellationToken ct)
+    private async Task<JsonNode> CallToolAsync(JsonElement request, CancellationToken ct)
     {
         if (!request.TryGetProperty("params", out var @params) ||
             !@params.TryGetProperty("name", out var nameElement))
@@ -202,7 +201,7 @@ public sealed class GuiMcpServer : IAsyncDisposable
         return string.Empty;
     }
 
-    private static object InitializeResult(JsonElement request)
+    private static JsonNode InitializeResult(JsonElement request)
     {
         var protocolVersion = "2025-11-25";
         if (request.TryGetProperty("params", out var @params) &&
@@ -213,119 +212,128 @@ public sealed class GuiMcpServer : IAsyncDisposable
             protocolVersion = requested.GetString()!;
         }
 
-        return new
+        return new JsonObject
         {
-            protocolVersion,
-            capabilities = new
+            ["protocolVersion"] = protocolVersion,
+            ["capabilities"] = new JsonObject
             {
-                tools = new
+                ["tools"] = new JsonObject
                 {
-                    listChanged = false,
+                    ["listChanged"] = false,
                 },
             },
-            serverInfo = new
+            ["serverInfo"] = new JsonObject
             {
-                name = "starling-gui",
-                title = "Starling GUI",
-                version = "0.1.0",
+                ["name"] = "starling-gui",
+                ["title"] = "Starling GUI",
+                ["version"] = "0.1.0",
             },
         };
     }
 
-    private static object ToolsList() => new
-    {
-        tools = new object[]
+    // The tool catalogue is fully static, so parse it from a constant rather
+    // than building it with JsonArray collection initializers — JsonArray's
+    // generic Add<T> carries [RequiresDynamicCode]/[RequiresUnreferencedCode],
+    // whereas JsonNode.Parse is NativeAOT-safe. Parsing yields a fresh tree per
+    // call, so callers are free to mutate/attach it. (JsonObject built via the
+    // indexer setter, by contrast, is already AOT-safe and used elsewhere here.)
+    private static JsonNode ToolsList() => JsonNode.Parse(ToolsListJson)!;
+
+    private const string ToolsListJson = """
         {
-            new
+          "tools": [
             {
-                name = "browser_navigate",
-                description = "Navigate the visible Starling browser window to a URL.",
-                inputSchema = new
-                {
-                    type = "object",
-                    properties = new
-                    {
-                        url = new
-                        {
-                            type = "string",
-                            description = "The absolute URL to load, for example https://example.com.",
-                        },
-                    },
-                    required = new[] { "url" },
+              "name": "browser_navigate",
+              "description": "Navigate the visible Starling browser window to a URL.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "description": "The absolute URL to load, for example https://example.com."
+                  }
                 },
+                "required": ["url"]
+              }
             },
-            new
             {
-                name = "browser_back",
-                description = "Navigate the visible Starling browser window back in history.",
-                inputSchema = EmptyInputSchema(),
+              "name": "browser_back",
+              "description": "Navigate the visible Starling browser window back in history.",
+              "inputSchema": { "type": "object", "properties": {} }
             },
-            new
             {
-                name = "browser_forward",
-                description = "Navigate the visible Starling browser window forward in history.",
-                inputSchema = EmptyInputSchema(),
+              "name": "browser_forward",
+              "description": "Navigate the visible Starling browser window forward in history.",
+              "inputSchema": { "type": "object", "properties": {} }
             },
-            new
             {
-                name = "browser_refresh",
-                description = "Reload the current page in the visible Starling browser window.",
-                inputSchema = EmptyInputSchema(),
-            },
+              "name": "browser_refresh",
+              "description": "Reload the current page in the visible Starling browser window.",
+              "inputSchema": { "type": "object", "properties": {} }
+            }
+          ]
+        }
+        """;
+
+    private static JsonNode ToolResult(BrowserControlResult result)
+    {
+        // Hand-build the JSON DOM so the whole MCP surface stays NativeAOT-safe
+        // (no reflection-based JsonSerializer). `text` carries the same payload
+        // string the structuredContent object holds, so parse a fresh copy for
+        // the structured field — a JsonNode can't be attached to two parents.
+        var text = ResultObject(result).ToJsonString();
+        // JsonArray's params-ctor takes JsonNode? items directly (AOT-safe),
+        // unlike the { } collection initializer which routes through Add<T>.
+        return new JsonObject
+        {
+            ["content"] = new JsonArray(
+                new JsonObject
+                {
+                    ["type"] = "text",
+                    ["text"] = text,
+                }),
+            ["structuredContent"] = JsonNode.Parse(text),
+            ["isError"] = !result.Ok,
+        };
+    }
+
+    private static JsonObject ResultObject(BrowserControlResult result) => new()
+    {
+        ["ok"] = result.Ok,
+        ["url"] = result.Url,
+        ["title"] = result.Title,
+        ["canGoBack"] = result.CanGoBack,
+        ["canGoForward"] = result.CanGoForward,
+        ["isBusy"] = result.IsBusy,
+        ["error"] = result.Error,
+    };
+
+    private static JsonNode JsonRpcResult(JsonElement? id, JsonNode result) => new JsonObject
+    {
+        ["jsonrpc"] = "2.0",
+        ["id"] = IdToNode(id),
+        ["result"] = result,
+    };
+
+    private static JsonNode JsonRpcError(JsonElement? id, int code, string message) => new JsonObject
+    {
+        ["jsonrpc"] = "2.0",
+        ["id"] = IdToNode(id),
+        ["error"] = new JsonObject
+        {
+            ["code"] = code,
+            ["message"] = message,
         },
     };
 
-    private static object EmptyInputSchema() => new
-    {
-        type = "object",
-        properties = new { },
-    };
-
-    private static object ToolResult(BrowserControlResult result)
-    {
-        var json = JsonSerializer.Serialize(result, JsonOptions);
-        var structured = JsonSerializer.Deserialize<JsonElement>(json, JsonOptions);
-        return new
-        {
-            content = new[]
-            {
-                new
-                {
-                    type = "text",
-                    text = json,
-                },
-            },
-            structuredContent = structured,
-            isError = !result.Ok,
-        };
-    }
-
-    private static JsonElement JsonRpcResult(JsonElement? id, object result)
-        => JsonSerializer.SerializeToElement(
-            new
-            {
-                jsonrpc = "2.0",
-                id,
-                result,
-            },
-            JsonOptions);
-
-    private static JsonElement JsonRpcError(JsonElement? id, int code, string message)
-        => JsonSerializer.SerializeToElement(
-            new
-            {
-                jsonrpc = "2.0",
-                id,
-                error = new
-                {
-                    code,
-                    message,
-                },
-            },
-            JsonOptions);
-
     private static JsonElement? TryCloneId(JsonElement root)
         => root.TryGetProperty("id", out var id) ? id.Clone() : null;
+
+    // The request id echoes back verbatim (string, number, or null per JSON-RPC).
+    // Round-trip through the raw text so any of those shapes is preserved without
+    // reflection; a JSON null id yields a null node → "id": null.
+    private static JsonNode? IdToNode(JsonElement? id)
+        => id is { } element ? JsonNode.Parse(element.GetRawText()) : null;
 
     private static async Task<HttpRequest?> ReadRequestAsync(Stream stream, CancellationToken ct)
     {
@@ -450,9 +458,9 @@ public sealed class GuiMcpServer : IAsyncDisposable
         return Encoding.ASCII.GetString(bytes.ToArray());
     }
 
-    private async Task WriteJsonResponseAsync(Stream stream, JsonElement json, CancellationToken ct)
+    private async Task WriteJsonResponseAsync(Stream stream, JsonNode json, CancellationToken ct)
     {
-        var body = JsonSerializer.SerializeToUtf8Bytes(json, JsonOptions);
+        var body = Encoding.UTF8.GetBytes(json.ToJsonString());
         await WriteResponseAsync(stream, 200, "OK", "application/json", body, ct).ConfigureAwait(false);
     }
 
