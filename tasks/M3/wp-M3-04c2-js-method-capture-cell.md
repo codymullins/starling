@@ -2,9 +2,10 @@
 id: "wp:M3-04c2-js-method-capture-cell"
 parent: "wp:M3-04c-js-closures-snapshot"
 milestone: "M3"
-status: "claimed"
+status: "complete"
 claimed_by: "agent-claude-cody-capturecell"
 claimed_at: "2026-05-21T01:51:31Z"
+completed_at: "2026-05-21T02:01:39Z"
 branch: "main"
 depends_on: []
 blocks:
@@ -93,3 +94,6 @@ returns 10 fine).
 
 ## Handoff log
 - 2026-05-21T01:51:31Z — created + claimed for agent-claude-cody-capturecell. Root cause localized to class-member body compile not running mutated-capture → Cell promotion (orchestrator diagnosis included above).
+- 2026-05-21T02:01Z — COMPLETE (cherry-picked to main as `ea25fa3`). Confirmed root cause: class member bodies (`CompileMethodTemplate`/`CompileConstructorTemplate`/`CompileStaticBlockEntry`/`CompileFieldEntry`) skipped the three steps `EmitFunctionBody` runs for plain functions — `RunCaptureAnalysisForFunction` (before `BindFunctionParameters` so captured+mutated params promote via `PromoteParamCell`), `PreallocateCapturedVarBindings`, `HoistFunctionDeclarations`. Fix routes all four class-member paths through the identical pipeline (32 lines in `JsCompiler.Classes.cs`). 13 tests in `MethodCaptureCellTests.cs`; full JS suite 1196 green; downstream Bindings 136 + Engine 121 green.
+  - **WP expectation corrected:** the iterator shape sums to **3**, not 6 (`done: i++>=3` reads value pre-increment → values 0,1,2; verified vs Node). The fix is proven (no longer throws; spec-correct value). My WP had the wrong expected number.
+  - **Two pre-existing, out-of-scope bugs found + flagged (see INDEX follow-ups):** (1) class name not yet bound to global inside a static block (`C.x` undefined in `static { … }`; use `this`); (2) a captured+mutated `var` declared in an *inner block* mis-binds to a block-local slot (NaN) — reproduces in plain functions too, so it's a general `var`-in-block hoisting/capture interaction, not class-specific.

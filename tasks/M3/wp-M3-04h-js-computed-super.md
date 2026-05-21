@@ -2,9 +2,9 @@
 id: "wp:M3-04h-js-computed-super"
 parent: "wp:M3-04-js-vm"
 milestone: "M3"
-status: "blocked"
-claimed_by: ""
-claimed_at: ""
+status: "claimed"
+claimed_by: "agent-claude-cody-compsuper"
+claimed_at: "2026-05-21T02:01:39Z"
 branch: "main"
 depends_on:
   - "wp:M3-04c2-js-method-capture-cell"
@@ -70,3 +70,4 @@ throwing.
 
 ## Handoff log
 - 2026-05-21T01:51:31Z — created as blocked (sequenced after wp:M3-04c2 to avoid JsCompiler.Classes.cs/JsVm.cs conflict)
+- 2026-05-21T02:01:39Z — unblocked (wp:M3-04c2 complete + landed on main) + claimed for agent-claude-cody-compsuper

@@ -2,9 +2,10 @@
 id: "wp:M3-03d-js-async-module-cycles"
 parent: "wp:M3-03-js-compiler"
 milestone: "M3"
-status: "claimed"
+status: "complete"
 claimed_by: "agent-claude-cody-modcycles"
 claimed_at: "2026-05-21T01:51:31Z"
+completed_at: "2026-05-21T02:01:39Z"
 branch: "main"
 depends_on:
   - "wp:M3-03b-js-top-level-await"
@@ -85,3 +86,5 @@ reasonable for this engine.
 
 ## Handoff log
 - 2026-05-21T01:51:31Z — created + claimed for agent-claude-cody-modcycles (parallel with wp:M3-04c2)
+- 2026-05-21T02:01Z — COMPLETE (cherry-picked to main as `a76b307`). Replaced per-module recursive `Evaluate` with a Tarjan SCC DFS (`InnerEvaluate` + `DfsIndex`/`DfsAncestorIndex`/`OnEvalStack` on `ModuleRecord`). Sync components run bodies in DFS post-order (byte-for-byte old fast path; sync graphs + sync cycles unchanged). Async components (any TLA member or forward async dep) share one SCC settlement promise; after forward async deps join, bodies run **async-then-sync** so cyclic sync members read settled exports. Rejection fails the whole component → propagates to dependents. 11 tests in `AsyncModuleCycleTests.cs`; full JS suite 1196 green.
+  - **Documented deviation (stronger than spec, per WP intent):** does not implement the full `[[CycleRoot]]`/`[[AsyncParentModules]]`/`[[PendingAsyncDependencies]]` re-entry walk; the async-then-sync reordering gives cyclic sync members settled reads where strict ECMA-262/Node would give TDZ/partial reads (verified against Node 26). Acyclic async, fully-sync, and sync-cycle graphs match spec exactly.

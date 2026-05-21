@@ -85,9 +85,9 @@ structure).
 | [wp:M3-04g-js-async-generators](M3/wp-M3-04g-js-async-generators.md) | 🟢 complete | agent-claude-cody-asyncgen | Starling.Js |
 | [wp:M3-03b-js-top-level-await](M3/wp-M3-03b-js-top-level-await.md) | 🟢 complete | agent-claude-cody-tla | Starling.Js |
 | [wp:M3-03c-js-dynamic-import](M3/wp-M3-03c-js-dynamic-import.md) | 🟢 complete | agent-claude-cody-dynimport | Starling.Js |
-| [wp:M3-03d-js-async-module-cycles](M3/wp-M3-03d-js-async-module-cycles.md) | 🟡 claimed | agent-claude-cody-modcycles | Starling.Js |
-| [wp:M3-04c2-js-method-capture-cell](M3/wp-M3-04c2-js-method-capture-cell.md) | 🟡 claimed | agent-claude-cody-capturecell | Starling.Js |
-| [wp:M3-04h-js-computed-super](M3/wp-M3-04h-js-computed-super.md) | ⚫ blocked | — | Starling.Js |
+| [wp:M3-03d-js-async-module-cycles](M3/wp-M3-03d-js-async-module-cycles.md) | 🟢 complete | agent-claude-cody-modcycles | Starling.Js |
+| [wp:M3-04c2-js-method-capture-cell](M3/wp-M3-04c2-js-method-capture-cell.md) | 🟢 complete | agent-claude-cody-capturecell | Starling.Js |
+| [wp:M3-04h-js-computed-super](M3/wp-M3-04h-js-computed-super.md) | 🟡 claimed | agent-claude-cody-compsuper | Starling.Js |
 | [wp:M3-06-native-interop-pivot](M3/wp-M3-06-native-interop-pivot.md) | 🟢 complete | agent-claude-cody | build |
 | [wp:M3-06a-native-scaffold](M3/wp-M3-06a-native-scaffold.md) | 🟢 complete | agent-claude-cody-native | build |
 | [wp:M3-06b-native-build](M3/wp-M3-06b-native-build.md) | 🟢 complete | agent-claude-cody-native | build |
@@ -210,13 +210,24 @@ generators (`wp:M3-04g`, incl. `for await…of`), computed class member keys
 (`wp:M3-04f`), module-scope destructuring (`wp:M3-03a`). Await spine:
 top-level await (`wp:M3-03b`) then dynamic `import()` / `import.meta`
 (`wp:M3-03c`). Full JS suite **1172 green**; downstream Bindings (136) + Engine
-(121) green. Remaining JS work is now just Test262 ≥ 80% (`wp:M3-02e`) plus
-deferred follow-ups: computed `super[expr]` (needs new stack-keyed super
-opcodes); a pre-existing class-method/`let` closure-capture bug (returns an
-object whose method captures a method-body `let` → `value is Number, not
-Object`; reproduces on plain string-keyed methods, M3-04c territory); and
-fuller spec fidelity for async-module cycle ordering (`[[CycleRoot]]` /
-`[[AsyncEvaluation]]` not modeled — acyclic async graphs are correct).
+(121) green.
+
+**Follow-ups (2026-05-21):** ✅ class-method capture-cell bug fixed
+(`wp:M3-04c2` — was actually mutation-through-upvalue in class-member bodies, not
+a snapshot issue). ✅ async-module cycle ordering (`wp:M3-03d` — Tarjan SCC,
+stronger-than-spec settled-read ordering for async cycles). 🟡 computed
+`super[expr]` (`wp:M3-04h`) in progress. JS suite now **1196 green**.
+
+Remaining JS work: Test262 ≥ 80% (`wp:M3-02e`) and two NEW pre-existing bugs
+surfaced during `wp:M3-04c2` (both reproduce independent of recent work, not yet
+ticketed):
+- **class name unbound inside a `static {}` block** — `C.x = …` sees `C`
+  undefined inside a static block (the class binds to global only after
+  `BuildClass` runs static blocks); workaround `this.x` works.
+- **captured + mutated `var` in an inner block** mis-binds to a block-local slot
+  (yields `NaN`) — general `var`-in-block hoisting/capture interaction in
+  `PreallocateCapturedVarBindings`/`DeclarePatternBindings`, reproduces in plain
+  functions too.
 
 ## Recently completed
 
