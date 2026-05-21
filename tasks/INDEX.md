@@ -173,23 +173,30 @@ formally re-blessing BouncyCastle as the long-term TLS path**) are catalogued
 in `wp:M3-06-native-interop-pivot`'s handoff log — file them as new WPs when
 picked up.
 
-Otherwise the next high-impact work toward "view any site with JS" is at the
-DOM/HTML-integration seam, **not** the language core — the JS engine already
-ships intrinsics, Promise + microtasks, async/await, classes, generators, and
-destructuring in declarations/parameters. Ranked (file as WPs when picked up):
+The high-impact "view any site with JS" work was at the DOM/HTML-integration
+seam, **not** the language core (the JS engine already shipped intrinsics,
+Promise + microtasks, async/await, classes, generators, and destructuring). That
+slice has now landed:
 
 1. ~~Full-grammar `querySelector`/`querySelectorAll`/`matches`/`closest`~~ —
-   **done**; the JS bindings now delegate to the `Starling.Css` selector engine.
-2. Destructuring **assignment** + computed class member keys in the bytecode
-   compiler (`JsCompiler.cs`) — one unsupported node aborts a whole script.
-3. `innerHTML`/`outerHTML` parse + serialize (thread the `Starling.Html`
-   fragment parser into the binding layer).
-4. ES modules — compile `import`/`export` + a module loader + run
-   `<script type="module">`.
-5. Dynamic `<script>` execution + `async`/`defer` ordering.
-6. Incremental re-layout / live geometry reads after JS mutations.
+   **done**; the JS bindings delegate to the `Starling.Css` selector engine.
+2. ~~Destructuring **assignment**~~ — **done** (already wired via the
+   `EmitPatternFromStack` lowering; verified + tested). Computed class member
+   keys remain (separate B1b-2a, needs new VM opcode support).
+3. ~~`innerHTML`/`outerHTML` parse + serialize~~ — **done**; `Starling.Bindings`
+   references `Starling.Html` for fragment parsing + a new `HtmlSerializer`,
+   plus `insertAdjacentHTML`.
+4. ~~ES modules — compile `import`/`export` + module loader + run
+   `<script type="module">`~~ — **done** for the static slice. Deferred:
+   top-level await, dynamic `import()`/`import.meta`, module-scope destructuring
+   binding patterns.
+5. ~~Dynamic `<script>` execution + `async`/`defer` ordering~~ — **done**;
+   injected scripts run via a `Document.NodeConnected` hook.
+6. ~~Incremental re-layout / live geometry reads after JS mutations~~ — **done**;
+   geometry reads lazily re-layout on `MutationVersion` change.
 
-Still measured separately: Test262 ≥ 80% (`wp:M3-02e`).
+Still measured separately: Test262 ≥ 80% (`wp:M3-02e`). Remaining language gaps:
+async generators (stubbed), top-level await, dynamic `import()`.
 
 ## Recently completed
 
