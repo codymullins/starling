@@ -12,6 +12,13 @@ public sealed class HttpResponse
     public HttpHeaders Headers { get; }
     public ReadOnlyMemory<byte> Body { get; }
 
+    /// <summary>
+    /// Security context of the connection this response arrived on (protocol,
+    /// encryption, certificate). Attached by <see cref="StarlingHttpClient"/>
+    /// after the response is parsed; null when not populated (e.g. unit tests).
+    /// </summary>
+    public ConnectionSecurity? Security { get; set; }
+
     public HttpResponse(
         string httpVersion,
         int statusCode,

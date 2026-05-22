@@ -7,4 +7,7 @@ public interface ITlsTransport : IDisposable
 {
     Stream Stream { get; }
     string? NegotiatedApplicationProtocol { get; }
+
+    /// <summary>The verified leaf certificate presented by the peer, or null.</summary>
+    CertificateSummary? PeerCertificate { get; }
 }

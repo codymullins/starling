@@ -3,6 +3,7 @@ using Starling.Dom;
 using Starling.Layout;
 using Starling.Layout.Box;
 using Starling.Layout.Tree;
+using Starling.Net.Http;
 using Starling.Paint;
 
 namespace Starling.Engine;
@@ -43,7 +44,8 @@ public sealed class LaidOutPage : IDisposable
         ImageFetcher images,
         StylesheetFetcher stylesheets,
         FontFaceRegistry webFonts,
-        float? defaultFontSize)
+        float? defaultFontSize,
+        ConnectionSecurity? security = null)
     {
         Root = root;
         Document = document;
@@ -51,6 +53,7 @@ public sealed class LaidOutPage : IDisposable
         Viewport = viewport;
         Url = url;
         Title = title;
+        Security = security;
         _images = images;
         _stylesheets = stylesheets;
         _webFonts = webFonts;
@@ -81,6 +84,13 @@ public sealed class LaidOutPage : IDisposable
     public Size Viewport { get; }
     public string Url { get; }
     public string? Title { get; }
+
+    /// <summary>
+    /// Security context of the main-document fetch (HTTP version, encryption,
+    /// certificate) — backs the shell's lock affordance. Null for non-network
+    /// documents (file://) or when the fetch didn't record it.
+    /// </summary>
+    public ConnectionSecurity? Security { get; }
 
     /// <summary>
     /// The full laid-out page height in CSS px — typically taller than the
@@ -119,7 +129,7 @@ public sealed class LaidOutPage : IDisposable
         _resourcesTransferred = true;
         return new LaidOutPage(
             root, Document, style, viewport, Url, Title,
-            _images, _stylesheets, _webFonts, DefaultFontSize);
+            _images, _stylesheets, _webFonts, DefaultFontSize, Security);
     }
 
     public void Dispose()

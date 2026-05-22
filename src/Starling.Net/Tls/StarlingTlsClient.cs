@@ -22,8 +22,11 @@ internal sealed class StarlingTlsClient : DefaultTlsClient
 
     public string? NegotiatedApplicationProtocol { get; private set; }
 
+    /// <summary>The verified leaf certificate, available after the handshake.</summary>
+    public CertificateSummary? PeerCertificate { get; private set; }
+
     public override TlsAuthentication GetAuthentication() =>
-        new StarlingTlsAuthentication(_options, _roots);
+        new StarlingTlsAuthentication(_options, _roots, cert => PeerCertificate = cert);
 
     public override IDictionary<int, byte[]> GetClientExtensions()
     {

@@ -25,6 +25,7 @@ internal sealed class PooledHttpTransport : IHttpTransport
     public OriginKey Origin { get; }
     public Stream Stream { get; }
     public string? Alpn { get; }
+    public CertificateSummary? PeerCertificate { get; }
 
     public bool IsOpen => !_disposed && _tcp.IsOpen;
 
@@ -34,7 +35,8 @@ internal sealed class PooledHttpTransport : IHttpTransport
         BcTlsTransport? tls,
         TcpConnectionStream? plainStream,
         Stream stream,
-        string? alpn)
+        string? alpn,
+        CertificateSummary? peerCertificate)
     {
         Origin = origin;
         _tcp = tcp;
@@ -42,6 +44,7 @@ internal sealed class PooledHttpTransport : IHttpTransport
         _plainStream = plainStream;
         Stream = stream;
         Alpn = alpn;
+        PeerCertificate = peerCertificate;
     }
 
     public static PooledHttpTransport ForPlainHttp(
@@ -49,7 +52,8 @@ internal sealed class PooledHttpTransport : IHttpTransport
     {
         ArgumentNullException.ThrowIfNull(tcp);
         var stream = new TcpConnectionStream(tcp);
-        return new PooledHttpTransport(origin, tcp, tls: null, plainStream: stream, stream, alpn: null);
+        return new PooledHttpTransport(
+            origin, tcp, tls: null, plainStream: stream, stream, alpn: null, peerCertificate: null);
     }
 
     public static PooledHttpTransport ForTls(
@@ -58,7 +62,8 @@ internal sealed class PooledHttpTransport : IHttpTransport
         ArgumentNullException.ThrowIfNull(tcp);
         ArgumentNullException.ThrowIfNull(tls);
         return new PooledHttpTransport(
-            origin, tcp, tls, plainStream: null, tls.Stream, tls.NegotiatedApplicationProtocol);
+            origin, tcp, tls, plainStream: null, tls.Stream,
+            tls.NegotiatedApplicationProtocol, tls.PeerCertificate);
     }
 
     public async ValueTask DisposeAsync()

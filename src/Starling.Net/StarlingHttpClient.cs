@@ -370,6 +370,8 @@ public sealed class StarlingHttpClient : IDisposable
             }
 
             var response = parseResult.Value;
+            response.Security = new ConnectionSecurity(
+                response.HttpVersion, url.IsHttps, transport.PeerCertificate);
 
             StoreResponseCookies(response, url);
 
@@ -439,7 +441,11 @@ public sealed class StarlingHttpClient : IDisposable
             return null;
 
         if (result.IsOk)
+        {
+            result.Value.Security = new ConnectionSecurity(
+                result.Value.HttpVersion, url.IsHttps, conn.PeerCertificate);
             StoreResponseCookies(result.Value, url);
+        }
         return result;
     }
 

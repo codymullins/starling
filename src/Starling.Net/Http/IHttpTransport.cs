@@ -31,6 +31,9 @@ public interface IHttpTransport : IAsyncDisposable
     /// </summary>
     string? Alpn { get; }
 
+    /// <summary>The verified leaf certificate for a TLS transport, else null.</summary>
+    Starling.Net.Tls.CertificateSummary? PeerCertificate { get; }
+
     /// <summary>True until either side closes the connection.</summary>
     bool IsOpen { get; }
 }

@@ -19,15 +19,21 @@ public sealed class BcTlsTransport : ITlsTransport
     private readonly BcDuplexTlsStream _stream;
     private bool _disposed;
 
-    private BcTlsTransport(TlsClientProtocol protocol, BcDuplexTlsStream stream, string? negotiatedApplicationProtocol)
+    private BcTlsTransport(
+        TlsClientProtocol protocol,
+        BcDuplexTlsStream stream,
+        string? negotiatedApplicationProtocol,
+        CertificateSummary? peerCertificate)
     {
         _protocol = protocol;
         _stream = stream;
         NegotiatedApplicationProtocol = negotiatedApplicationProtocol;
+        PeerCertificate = peerCertificate;
     }
 
     public Stream Stream => _stream;
     public string? NegotiatedApplicationProtocol { get; }
+    public CertificateSummary? PeerCertificate { get; }
 
     public static async Task<Result<BcTlsTransport, TlsError>> ConnectAsync(
         ITcpConnection tcpConnection,
@@ -51,7 +57,7 @@ public sealed class BcTlsTransport : ITlsTransport
             var stream = await BcDuplexTlsStream.HandshakeAsync(protocol, client, tcpStream, ct)
                 .ConfigureAwait(false);
             return Result<BcTlsTransport, TlsError>.Ok(
-                new BcTlsTransport(protocol, stream, client.NegotiatedApplicationProtocol));
+                new BcTlsTransport(protocol, stream, client.NegotiatedApplicationProtocol, client.PeerCertificate));
         }
         catch (TlsFatalAlert alert) when (alert.AlertDescription is AlertDescription.bad_certificate
             or AlertDescription.certificate_expired

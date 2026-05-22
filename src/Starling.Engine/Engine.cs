@@ -111,7 +111,7 @@ public sealed class StarlingEngine
             }
             else if (u.IsHttp || u.IsHttps)
             {
-                Result<(string Html, StarlingUrl FinalUrl), RenderError> fetched;
+                Result<(string Html, StarlingUrl FinalUrl, Starling.Net.Http.ConnectionSecurity? Security), RenderError> fetched;
                 using (_diag.Span("engine", "fetch_html"))
                 {
                     fetched = await FetchHtmlAsync(u, http, ct).ConfigureAwait(false);
@@ -364,6 +364,7 @@ public sealed class StarlingEngine
 
         var u = parsed.Value;
         string html;
+        Starling.Net.Http.ConnectionSecurity? security = null;
         try
         {
             if (u.IsFile)
@@ -380,12 +381,13 @@ public sealed class StarlingEngine
                 // one shared pool to this path needs the client's lifetime bound
                 // to the returned LaidOutPage (which owns the fetchers); that is
                 // a follow-up. RenderAsync already shares one pool per page.
-                Result<(string Html, StarlingUrl FinalUrl), RenderError> fetched;
+                Result<(string Html, StarlingUrl FinalUrl, Starling.Net.Http.ConnectionSecurity? Security), RenderError> fetched;
                 using (var htmlHttp = _httpFactory())
                     fetched = await FetchHtmlAsync(u, htmlHttp, ct).ConfigureAwait(false);
                 if (fetched.IsErr)
                     return Result<LaidOutPage, RenderError>.Err(fetched.Error);
                 html = fetched.Value.Html;
+                security = fetched.Value.Security;
                 // Use the post-redirect URL as the base for relative resource
                 // resolution. See FetchHtmlAsync docstring.
                 u = fetched.Value.FinalUrl;
@@ -458,7 +460,7 @@ public sealed class StarlingEngine
 
             var title = ExtractTitle(doc);
             return Result<LaidOutPage, RenderError>.Ok(
-                new LaidOutPage(root, doc, style, viewport, url, title, images, stylesheets, webFonts, options.FontSize));
+                new LaidOutPage(root, doc, style, viewport, url, title, images, stylesheets, webFonts, options.FontSize, security));
         }
         catch
         {
@@ -958,7 +960,7 @@ public sealed class StarlingEngine
     /// and the page's `&lt;img src="/images/..."&gt;` must resolve against
     /// the www host; the original (pre-redirect) URL would 404.
     /// </summary>
-    private async Task<Result<(string Html, StarlingUrl FinalUrl), RenderError>> FetchHtmlAsync(
+    private async Task<Result<(string Html, StarlingUrl FinalUrl, Starling.Net.Http.ConnectionSecurity? Security), RenderError>> FetchHtmlAsync(
         StarlingUrl url, StarlingHttpClient http, CancellationToken ct)
     {
         var current = url;
@@ -969,34 +971,35 @@ public sealed class StarlingEngine
             var response = await http.GetAsync(current, ct).ConfigureAwait(false);
             NativeCallTrace.Mark("http.get.done", response.IsErr ? "err" : "ok");
             if (response.IsErr)
-                return Result<(string, StarlingUrl), RenderError>.Err(new RenderError(
+                return Result<(string, StarlingUrl, Starling.Net.Http.ConnectionSecurity?), RenderError>.Err(new RenderError(
                     $"Network error fetching {current}: {response.Error}"));
 
             var resp = response.Value;
             if (IsRedirect(resp.StatusCode))
             {
                 if (redirects == MaxRedirects)
-                    return Result<(string, StarlingUrl), RenderError>.Err(new RenderError(
+                    return Result<(string, StarlingUrl, Starling.Net.Http.ConnectionSecurity?), RenderError>.Err(new RenderError(
                         $"Too many redirects fetching {url}"));
 
                 var redirected = ResolveRedirect(current, resp);
                 if (redirected.IsErr)
-                    return Result<(string, StarlingUrl), RenderError>.Err(redirected.Error);
+                    return Result<(string, StarlingUrl, Starling.Net.Http.ConnectionSecurity?), RenderError>.Err(redirected.Error);
 
                 current = redirected.Value;
                 continue;
             }
 
             if (resp.StatusCode is < 200 or >= 400)
-                return Result<(string, StarlingUrl), RenderError>.Err(new RenderError(
+                return Result<(string, StarlingUrl, Starling.Net.Http.ConnectionSecurity?), RenderError>.Err(new RenderError(
                     $"HTTP {resp.StatusCode} {resp.ReasonPhrase} from {current}"));
 
             var contentType = resp.Headers.GetFirst("Content-Type");
             var encoding = ResolveEncoding(contentType, resp.Body.Span);
-            return Result<(string, StarlingUrl), RenderError>.Ok((encoding.GetString(resp.Body.Span), current));
+            return Result<(string, StarlingUrl, Starling.Net.Http.ConnectionSecurity?), RenderError>.Ok(
+                (encoding.GetString(resp.Body.Span), current, resp.Security));
         }
 
-        return Result<(string, StarlingUrl), RenderError>.Err(new RenderError(
+        return Result<(string, StarlingUrl, Starling.Net.Http.ConnectionSecurity?), RenderError>.Err(new RenderError(
             $"Too many redirects fetching {url}"));
     }
 

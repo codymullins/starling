@@ -63,6 +63,9 @@ internal sealed class H2Connection : IAsyncDisposable
 
     public OriginKey Origin { get; }
 
+    /// <summary>The verified leaf certificate of the underlying TLS transport, if any.</summary>
+    public Tls.CertificateSummary? PeerCertificate => _transport.PeerCertificate;
+
     private H2Connection(IHttpTransport transport, OriginKey origin, IDiagnostics diag, Action<H2Connection>? onClosed)
     {
         _transport = transport;

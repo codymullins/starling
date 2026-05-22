@@ -52,5 +52,15 @@ public class LiveHttpsTests
         resp.HttpVersion.Should().Be("HTTP/2", "ALPN should have negotiated h2");
         resp.StatusCode.Should().Be(200);
         Encoding.UTF8.GetString(resp.Body.Span).Should().Contain("<html");
+
+        // Connection security is captured for the lock popover.
+        resp.Security.Should().NotBeNull();
+        resp.Security!.Protocol.Should().Be("HTTP/2");
+        resp.Security.IsEncrypted.Should().BeTrue();
+        resp.Security.IsSecure.Should().BeTrue("the chain validated against the bundled root store");
+        resp.Security.Certificate.Should().NotBeNull();
+        resp.Security.Certificate!.Subject.Should().NotBeNullOrWhiteSpace();
+        resp.Security.Certificate.Issuer.Should().NotBeNullOrWhiteSpace();
+        resp.Security.Certificate.NotAfter.Should().BeAfter(DateTimeOffset.UtcNow);
     }
 }

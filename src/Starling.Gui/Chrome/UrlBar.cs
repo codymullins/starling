@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Animation;
 using Avalonia.Animation.Easings;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using Avalonia.Layout;
@@ -36,6 +37,11 @@ public sealed class UrlBar : Border
     private DispatcherTimer? _progressTimer;
     private DateTime _progressStarted;
 
+    private readonly Border _lockCell;
+    private SiteSecurity? _security;
+    private Popup? _securityPopup;
+    private bool _detailsExpanded;
+
     /// <summary>The editable address field (hidden until focused).</summary>
     public TextBox Address { get; }
 
@@ -48,17 +54,23 @@ public sealed class UrlBar : Border
         _tm = tm;
         var t = tm.Tokens;
 
-        // Lock cell on the left
+        // Lock cell on the left. Its icon/colour and the popover it opens are
+        // refreshed per navigation via SetSecurity.
         var lockIcon = Icons.Make(secure ? Icons.Lock : Icons.Shield,
             secure ? t.Accent : t.Muted, 13);
-        var lockCell = new Border
+        _lockCell = new Border
         {
             Width = 38,
             Child = lockIcon,
             Background = new SolidColorBrush(Colors.Transparent),
         };
+        var lockCell = _lockCell;
         global::Avalonia.Automation.AutomationProperties.SetName(lockCell, secure ? "Secure connection" : "Connection not secure");
-        ChromeKit.AttachClick(lockCell, () => LockClicked?.Invoke(this, EventArgs.Empty));
+        ChromeKit.AttachClick(lockCell, () =>
+        {
+            LockClicked?.Invoke(this, EventArgs.Empty);
+            ToggleSecurityPopover();
+        });
 
         // Segmented URL display (visible by default)
         _schemeText = MonoSegment("https", t.Faint);
@@ -492,7 +504,263 @@ public sealed class UrlBar : Border
             _progressMs.Foreground = new SolidColorBrush(t.Faint);
         }
     }
+
+    // ---- Connection security (lock icon + popover) -------------------------
+
+    /// <summary>
+    /// Update the lock affordance for the page just loaded: swaps the lock/shield
+    /// icon and tint, and refreshes the popover content if it's open. Pass null
+    /// to reset to a neutral state (e.g. about:blank).
+    /// </summary>
+    public void SetSecurity(SiteSecurity? security)
+    {
+        _security = security;
+        var t = _tm.Tokens;
+
+        var (data, color, name) = security switch
+        {
+            { Secure: true } => (Icons.Lock, t.Accent, "Connection is secure"),
+            { Encrypted: true } => (Icons.Lock, t.Warn, "Connection encrypted (certificate unverified)"),
+            { Encrypted: false } => (Icons.Shield, t.Warn, "Connection not secure"),
+            _ => (Icons.Shield, t.Muted, "Connection security"),
+        };
+        _lockCell.Child = Icons.Make(data, color, 13);
+        global::Avalonia.Automation.AutomationProperties.SetName(_lockCell, name);
+
+        if (_securityPopup is { IsOpen: true })
+            _securityPopup.Child = BuildSecurityCard();
+    }
+
+    private void ToggleSecurityPopover()
+    {
+        _securityPopup ??= CreatePopup();
+        if (_securityPopup.IsOpen)
+        {
+            _securityPopup.IsOpen = false;
+            return;
+        }
+        _detailsExpanded = false;
+        _securityPopup.Child = BuildSecurityCard();
+        _securityPopup.IsOpen = true;
+    }
+
+    private Popup CreatePopup()
+    {
+        var popup = new Popup
+        {
+            PlacementTarget = _lockCell,
+            Placement = PlacementMode.BottomEdgeAlignedLeft,
+            IsLightDismissEnabled = true,
+            HorizontalOffset = 2,
+            VerticalOffset = 8,
+        };
+        // Park it in the grid so it shares our visual tree; a Popup takes no
+        // layout space, so the column assignment is cosmetic.
+        _grid.Children.Add(popup);
+        Grid.SetColumn(popup, 0);
+        return popup;
+    }
+
+    /// <summary>Test hook: build the popover card for the current security state.</summary>
+    internal Control BuildSecurityCardForTest() => BuildSecurityCard();
+
+    private Control BuildSecurityCard()
+    {
+        var t = _tm.Tokens;
+        var s = _security;
+
+        var rows = new StackPanel { Orientation = Orientation.Vertical, Spacing = 10 };
+
+        // Header: icon + title.
+        var secure = s is { Secure: true };
+        var encrypted = s is { Encrypted: true };
+        var headColor = secure ? t.Ok : encrypted ? t.Warn : t.Muted;
+        var title = secure ? "Connection is secure"
+            : encrypted ? "Connection encrypted"
+            : s is null ? "Connection security" : "Not secure";
+        var header = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 9,
+            Children =
+            {
+                Icons.Make(secure ? Icons.Lock : Icons.Shield, headColor, 16),
+                ChromeKit.Sans(_tm, title, 13.5, t.Text),
+            },
+        };
+        ((TextBlock)header.Children[1]).FontWeight = FontWeight.SemiBold;
+        ((TextBlock)header.Children[1]).VerticalAlignment = VerticalAlignment.Center;
+        rows.Children.Add(header);
+
+        var subtitle = secure
+            ? "Your connection to this site is encrypted and the certificate is valid."
+            : encrypted
+                ? "This site is encrypted but its certificate could not be summarised."
+                : s is null
+                    ? "Navigate to a site to see its connection details."
+                    : "This site is served over plain HTTP, so it isn't encrypted.";
+        rows.Children.Add(WrapText(subtitle, t.Muted));
+
+        rows.Children.Add(Hairline(t));
+
+        // Protocol row.
+        var protocol = string.IsNullOrEmpty(s?.Protocol) ? "—" : s!.Protocol;
+        rows.Children.Add(InfoRow("Protocol", protocol));
+
+        // Certificate status + optional expandable details.
+        if (s is { Certificate: true })
+        {
+            rows.Children.Add(StatusRow("Certificate", "Valid", t.Ok));
+            rows.Children.Add(BuildCertDetails(s, t));
+        }
+        else if (encrypted)
+        {
+            rows.Children.Add(StatusRow("Certificate", "Unverified", t.Warn));
+        }
+        else
+        {
+            rows.Children.Add(StatusRow("Certificate", "None", t.Muted));
+        }
+
+        rows.Children.Add(Hairline(t));
+
+        // Fail-closed policy note.
+        rows.Children.Add(WrapText(
+            "Starling rejects sites with invalid certificates outright — there is no "
+            + "click-through past a certificate error.", t.Faint, 11.5));
+
+        return new Border
+        {
+            Width = 320,
+            Background = new SolidColorBrush(t.Panel),
+            BorderBrush = new SolidColorBrush(t.Border),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(16, 14, 16, 14),
+            Child = rows,
+            BoxShadow = new BoxShadows(new BoxShadow
+            {
+                OffsetX = 0, OffsetY = 8, Blur = 28, Spread = -6,
+                Color = Color.FromArgb(90, 0, 0, 0),
+            }),
+        };
+    }
+
+    private Control BuildCertDetails(SiteSecurity s, ThemeTokens t)
+    {
+        var details = new StackPanel
+        {
+            Orientation = Orientation.Vertical,
+            Spacing = 6,
+            IsVisible = _detailsExpanded,
+            Margin = new Thickness(0, 2, 0, 0),
+        };
+        details.Children.Add(InfoRow("Issued to", s.CertSubject ?? "—"));
+        details.Children.Add(InfoRow("Issued by", s.CertIssuer ?? "—"));
+        details.Children.Add(InfoRow("Valid from", FormatDate(s.CertNotBefore)));
+        details.Children.Add(InfoRow("Valid to", FormatDate(s.CertNotAfter)));
+
+        var chevron = Icons.Make(_detailsExpanded ? Icons.TriDown : Icons.TriRight, t.Muted, 12);
+        var label = ChromeKit.Sans(_tm, _detailsExpanded ? "Hide details" : "Show details", 12, t.Accent);
+        var toggle = new Border
+        {
+            Background = new SolidColorBrush(Colors.Transparent),
+            Padding = new Thickness(0, 2, 0, 0),
+            Child = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 5,
+                Children = { chevron, label },
+            },
+        };
+        ChromeKit.AttachClick(toggle, () =>
+        {
+            _detailsExpanded = !_detailsExpanded;
+            details.IsVisible = _detailsExpanded;
+            chevron.Data = Geometry.Parse(_detailsExpanded ? Icons.TriDown : Icons.TriRight);
+            label.Text = _detailsExpanded ? "Hide details" : "Show details";
+        });
+
+        return new StackPanel
+        {
+            Orientation = Orientation.Vertical,
+            Spacing = 4,
+            Children = { toggle, details },
+        };
+    }
+
+    private Control InfoRow(string label, string value)
+    {
+        var t = _tm.Tokens;
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("90,*") };
+        var l = ChromeKit.Sans(_tm, label, 12, t.Muted);
+        l.VerticalAlignment = VerticalAlignment.Top;
+        var v = new TextBlock
+        {
+            Text = value,
+            FontFamily = new FontFamily(_tm.MonoFont),
+            FontSize = 12,
+            Foreground = new SolidColorBrush(t.Text),
+            TextWrapping = TextWrapping.Wrap,
+        };
+        grid.Children.Add(l); Grid.SetColumn(l, 0);
+        grid.Children.Add(v); Grid.SetColumn(v, 1);
+        return grid;
+    }
+
+    private Control StatusRow(string label, string status, Color statusColor)
+    {
+        var t = _tm.Tokens;
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("90,*") };
+        var l = ChromeKit.Sans(_tm, label, 12, t.Muted);
+        var chip = new Border
+        {
+            Background = new SolidColorBrush(WithAlpha(statusColor, 34)),
+            CornerRadius = new CornerRadius(5),
+            Padding = new Thickness(7, 1, 7, 2),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Child = ChromeKit.Sans(_tm, status, 11.5, statusColor),
+        };
+        grid.Children.Add(l); Grid.SetColumn(l, 0);
+        grid.Children.Add(chip); Grid.SetColumn(chip, 1);
+        return grid;
+    }
+
+    private TextBlock WrapText(string text, Color color, double size = 12) => new()
+    {
+        Text = text,
+        FontFamily = new FontFamily(_tm.SansFont),
+        FontSize = size,
+        Foreground = new SolidColorBrush(color),
+        TextWrapping = TextWrapping.Wrap,
+    };
+
+    private static Border Hairline(ThemeTokens t) => new()
+    {
+        Height = 1,
+        Background = new SolidColorBrush(t.Hair),
+        Margin = new Thickness(0, 1, 0, 1),
+    };
+
+    private static Color WithAlpha(Color c, byte alpha) => Color.FromArgb(alpha, c.R, c.G, c.B);
+
+    private static string FormatDate(DateTimeOffset? d) =>
+        d is { } dt ? dt.ToLocalTime().ToString("d MMM yyyy", System.Globalization.CultureInfo.InvariantCulture) : "—";
 }
+
+/// <summary>
+/// Presentation view of a page's connection security for the lock popover.
+/// Mapped from the engine's <c>LaidOutPage.Security</c> by the shell.
+/// </summary>
+public sealed record SiteSecurity(
+    bool Encrypted,
+    bool Secure,
+    string Protocol,
+    bool Certificate,
+    string? CertSubject,
+    string? CertIssuer,
+    DateTimeOffset? CertNotBefore,
+    DateTimeOffset? CertNotAfter);
 
 internal static class TokensExt
 {

@@ -27,6 +27,36 @@ public static class CertificateVerifier
         return ChainsToTrustedRoot(chain[^1], roots.Certificates);
     }
 
+    /// <summary>
+    /// Build a display summary of the leaf (end-entity) certificate. Returns
+    /// null when the chain is empty. Intended for UI surfaces (the lock popover)
+    /// after <see cref="Verify"/> has already accepted the chain.
+    /// </summary>
+    public static CertificateSummary? Summarize(Certificate certificate)
+    {
+        if (certificate is null) throw new ArgumentNullException(nameof(certificate));
+        var chain = DecodeChain(certificate);
+        if (chain.Count == 0) return null;
+        var leaf = chain[0];
+        return new CertificateSummary(
+            FriendlyName(leaf.SubjectDN),
+            FriendlyName(leaf.IssuerDN),
+            new DateTimeOffset(leaf.NotBefore.ToUniversalTime(), TimeSpan.Zero),
+            new DateTimeOffset(leaf.NotAfter.ToUniversalTime(), TimeSpan.Zero));
+    }
+
+    // Prefer the common name; fall back to the organisation, then the full DN.
+    private static string FriendlyName(X509Name dn)
+    {
+        foreach (var oid in new[] { X509Name.CN, X509Name.O })
+        {
+            var values = dn.GetValueList(oid);
+            if (values.Count > 0 && values[0] is string s && !string.IsNullOrWhiteSpace(s))
+                return s;
+        }
+        return dn.ToString();
+    }
+
     private static List<X509Certificate> DecodeChain(Certificate certificate)
     {
         var parser = new X509CertificateParser();

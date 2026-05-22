@@ -408,6 +408,7 @@ public sealed class MainWindow : Window, IBrowserController
             else
             {
                 _webview.ShowPage(result.Value);
+                _urlBar.SetSecurity(MapSecurity(result.Value.Security));
                 Title = string.IsNullOrWhiteSpace(result.Value.Title)
                     ? string.Empty
                     : result.Value.Title;
@@ -469,6 +470,21 @@ public sealed class MainWindow : Window, IBrowserController
         _reloadButton.IsVisible = true;
         _urlBar.HideProgress();
         UpdateNavButtonStates();
+    }
+
+    private static SiteSecurity? MapSecurity(Starling.Net.Http.ConnectionSecurity? cs)
+    {
+        if (cs is null) return null;
+        var cert = cs.Certificate;
+        return new SiteSecurity(
+            Encrypted: cs.IsEncrypted,
+            Secure: cs.IsSecure,
+            Protocol: cs.Protocol,
+            Certificate: cert is not null,
+            CertSubject: cert?.Subject,
+            CertIssuer: cert?.Issuer,
+            CertNotBefore: cert?.NotBefore,
+            CertNotAfter: cert?.NotAfter);
     }
 
     private string HistoryLabel()

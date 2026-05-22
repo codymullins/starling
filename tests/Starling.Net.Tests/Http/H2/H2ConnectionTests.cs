@@ -199,6 +199,7 @@ public class H2ConnectionTests
         public OriginKey Origin { get; } = origin;
         public Stream Stream { get; } = stream;
         public string? Alpn => "h2";
+        public Starling.Net.Tls.CertificateSummary? PeerCertificate => null;
         public bool IsOpen { get; private set; } = true;
 
         public ValueTask DisposeAsync()
