@@ -63,7 +63,12 @@ public sealed class Test262Runner
     {
         // Stage-3 proposals (not in any published edition):
         "decorators", "explicit-resource-management", "Temporal",
-        "import-attributes", "import-assertions", "source-phase-import",
+        "import-attributes", "import-assertions",
+        // Source-phase imports (`import source x from …`, `import.source(…)`):
+        // a Stage-3 proposal beyond ES2024. Test262 tags it `source-phase-imports`
+        // (plural); the earlier singular spelling never matched, so these were
+        // run and counted as failures.
+        "source-phase-imports", "source-phase-import",
         "import-defer", "tail-call-optimization",
         // Worker-only shared memory (browser-plan: M8+, out of v1 scope):
         "Atomics", "SharedArrayBuffer",
