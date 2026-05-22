@@ -20,6 +20,14 @@ public sealed partial class JsParser
     private readonly JsLexer _lex;
     private JsToken _current;
     private int _disallowInDepth;
+
+    /// <summary>§13.6 — identity set of expression nodes that were written
+    /// inside parentheses (a grouping / sequence). Used to permit a grouped
+    /// unary base of <c>**</c> (<c>(-1) ** 2</c>) while rejecting the bare form
+    /// (<c>-1 ** 2</c>) as an early SyntaxError. Reference identity is enough:
+    /// every grouped node is a distinct AST instance.</summary>
+    private readonly HashSet<Expression> _parenthesized =
+        new(ReferenceEqualityComparer.Instance);
     /// <summary>Nesting depth of ordinary (non-arrow) function bodies. Arrow
     /// functions do NOT have their own <c>new.target</c>; they inherit the
     /// enclosing function's, so they don't bump this. <c>new.target</c> is an
@@ -563,6 +571,14 @@ public sealed partial class JsParser
         var left = ParseUnary();
         if (Check(JsTokenKind.StarStar))
         {
+            // §13.6 — ExponentiationExpression : UpdateExpression ** Exponentiation.
+            // The base must be an UpdateExpression, NOT a UnaryExpression: a
+            // prefix unary operator (`-`/`+`/`~`/`!`/`typeof`/`void`/`delete`) or
+            // `await` directly before `**` is an early SyntaxError. Prefix/postfix
+            // `++`/`--` ARE UpdateExpressions, so they remain valid bases.
+            if (left is UnaryExpression or AwaitExpression && !_parenthesized.Contains(left))
+                throw new JsParseException(
+                    "unary operator used immediately before '**' must be parenthesized", left.Start);
             var op = _current.Lexeme; Advance();
             var right = ParseExponentiation();
             return new BinaryExpression(op, left, right, left.Start, right.End);
@@ -925,9 +941,15 @@ public sealed partial class JsParser
                     do { parts.Add(ParseAssignment()); }
                     while (Match(JsTokenKind.Comma));
                     Expect(JsTokenKind.RParen, "expected ')' to close grouping");
-                    return new SequenceExpression(parts, parts[0].Start, parts[^1].End);
+                    var seq = new SequenceExpression(parts, parts[0].Start, parts[^1].End);
+                    _parenthesized.Add(seq);
+                    return seq;
                 }
                 Expect(JsTokenKind.RParen, "expected ')' to close grouping");
+                // §13.6 — record that this expression was parenthesized so a
+                // grouped unary base of `**` (e.g. `(-1) ** 2`) is accepted while
+                // a bare one (`-1 ** 2`) is rejected as an early error.
+                _parenthesized.Add(inner);
                 return inner;
             case JsTokenKind.LBracket:
                 return ParseArrayLiteral();
