@@ -1900,10 +1900,10 @@ public sealed partial class JsCompiler
         {
             // Reject `delete super.x` — §13.5.1.2 throws SyntaxError.
             if (me.Object is SuperPropertyExpression)
-                throw new NotSupportedException("delete of super property is a SyntaxError");
+                throw new Parse.JsParseException("delete of super property is a SyntaxError", u.Start);
             // Private fields cannot be deleted (early error per §13.5.1).
             if (!me.Computed && me.Property is PrivateNameExpression)
-                throw new NotSupportedException("delete of a private field is a SyntaxError");
+                throw new Parse.JsParseException("delete of a private field is a SyntaxError", u.Start);
             EmitExpression(me.Object);
             if (me.Computed) EmitExpression(me.Property);
             else _b.EmitU16(Opcode.LoadConst, _b.AddConstant(((Identifier)me.Property).Name));
@@ -1930,7 +1930,7 @@ public sealed partial class JsCompiler
             // §13.15.1: a destructuring (array/object) assignment target only
             // pairs with the plain `=` operator — a compound operator such as
             // `[a] += x` is an early SyntaxError.
-            if (a.Op != "=") throw new NotSupportedException("compound assignment with a destructuring target is a SyntaxError");
+            if (a.Op != "=") throw new Parse.JsParseException("compound assignment with a destructuring target is a SyntaxError", a.Start);
             // ECMA-262 §13.15 destructuring assignment evaluates the RHS once,
             // performs the pattern writes, and the whole expression returns the RHS.
             var rhsSlot = _b.ReserveLocal();
@@ -2080,7 +2080,7 @@ public sealed partial class JsCompiler
         // IsPattern branch above; member and identifier targets by the branches
         // in between. Anything reaching here (e.g. `f() = x`, `1 = x`) is an
         // invalid assignment target — §13.15.1 makes these early SyntaxErrors.
-        throw new NotSupportedException($"invalid assignment target '{a.Target.GetType().Name}'");
+        throw new Parse.JsParseException($"invalid assignment target '{a.Target.GetType().Name}'", a.Start);
     }
 
     /// <summary>
@@ -2214,7 +2214,7 @@ public sealed partial class JsCompiler
             }
         }
 
-        throw new NotSupportedException($"invalid logical-assignment target '{a.Target.GetType().Name}'");
+        throw new Parse.JsParseException($"invalid logical-assignment target '{a.Target.GetType().Name}'", a.Start);
     }
 
     /// <summary>wp:M3-23 — record the AST node's source position against the
@@ -2814,7 +2814,7 @@ public sealed partial class JsCompiler
                 EmitPatternFromStack(rest.Argument, isDeclaration);
                 return;
             default:
-                throw new NotSupportedException($"invalid destructuring target '{pattern.GetType().Name}'");
+                throw new Parse.JsParseException($"invalid destructuring target '{pattern.GetType().Name}'", pattern.Start);
         }
     }
 

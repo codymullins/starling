@@ -966,6 +966,7 @@ public sealed class JsLexer
         if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) return true;
         if (c == '_' || c == '$') return true;
         if (c < 0x80) return false;
+        if (IsOtherIdStart(c)) return true; // \u00A712.6 Other_ID_Start
         var cat = CharUnicodeInfo.GetUnicodeCategory(c);
         return cat is UnicodeCategory.UppercaseLetter
             or UnicodeCategory.LowercaseLetter
@@ -980,12 +981,42 @@ public sealed class JsLexer
         if (IsIdStart(c)) return true;
         if (c >= '0' && c <= '9') return true;
         if (c == '\u200C' || c == '\u200D') return true; // ZWNJ/ZWJ
+        if (IsOtherIdContinue(c)) return true; // \u00A712.6 Other_ID_Continue
         var cat = CharUnicodeInfo.GetUnicodeCategory(c);
         return cat is UnicodeCategory.NonSpacingMark
             or UnicodeCategory.SpacingCombiningMark
             or UnicodeCategory.DecimalDigitNumber
             or UnicodeCategory.ConnectorPunctuation;
     }
+
+    /// <summary>ECMAScript \u00A712.6 IdentifierStartChar includes the Unicode
+    /// <c>Other_ID_Start</c> property code points, which are NOT in the letter
+    /// categories tested above. Enumerate them explicitly.</summary>
+    private static bool IsOtherIdStart(char c)
+        => c is '\u1885'   // MONGOLIAN LETTER ALI GALI BALUDA
+            or '\u1886'    // MONGOLIAN LETTER ALI GALI THREE BALUDA
+            or '\u2118'    // SCRIPT CAPITAL P (U+2118 wp / weierstrass p)
+            or '\u212E'    // ESTIMATED SYMBOL
+            or '\u309B'    // KATAKANA-HIRAGANA VOICED SOUND MARK
+            or '\u309C';   // KATAKANA-HIRAGANA SEMI-VOICED SOUND MARK
+
+    /// <summary>ECMAScript \u00A712.6 IdentifierPartChar includes the Unicode
+    /// <c>Other_ID_Continue</c> property code points (plus the
+    /// Other_ID_Start set), none of which are in the mark/number/punctuation
+    /// categories tested above. Enumerate the Other_ID_Continue set here.</summary>
+    private static bool IsOtherIdContinue(char c)
+        => c is '\u00B7'   // MIDDLE DOT (\u00B7)
+            or '\u0387'    // GREEK ANO TELEIA
+            or '\u1369'    // ETHIOPIC DIGIT ONE
+            or '\u136A'
+            or '\u136B'
+            or '\u136C'
+            or '\u136D'
+            or '\u136E'
+            or '\u136F'
+            or '\u1370'
+            or '\u1371'    // ETHIOPIC DIGIT NINE
+            or '\u19DA';   // NEW TAI LUE THAM DIGIT ONE
 
     // ----- §12.6 IdentifierName UnicodeEscapeSequence support -----------------
 
