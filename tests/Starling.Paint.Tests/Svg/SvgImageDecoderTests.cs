@@ -79,6 +79,44 @@ public sealed class SvgImageDecoderTests
         img.Height.Should().Be(150);
     }
 
+    // --- root-element presentation attribute inheritance --------------------
+
+    [Spec("svg11", SvgUrl, section: "painting.html#FillProperty")]
+    [SpecFact]
+    public void Root_fill_none_and_stroke_inherit_to_children()
+    {
+        // `fill="none" stroke=…` on the <svg> root must inherit to the circle,
+        // so it paints as a ring — not a solid disc from the default black fill.
+        // This is the shape almost every "line" icon uses (the netclaw search
+        // magnifying glass, Heroicons/Lucide outline icons, …).
+        using var img = SvgImageDecoder.DecodeText(
+            "<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' " +
+            "fill='none' stroke='#ff0000' stroke-width='2'><circle cx='12' cy='12' r='8'/></svg>");
+
+        // Center is inside the ring → no fill → transparent.
+        PixelAt(img, 12, 12).A.Should().Be(0);
+        // A red stroke ring is present.
+        CountWhere(img, p => p.A > 0 && p.R > 150 && p.G < 80 && p.B < 80).Should().BeGreaterThan(0);
+        // Nothing painted as the default opaque black fill.
+        CountWhere(img, p => p.A > 200 && p.R < 40 && p.G < 40 && p.B < 40).Should().Be(0);
+    }
+
+    [Spec("svg11", SvgUrl, section: "color.html#ColorProperty")]
+    [SpecFact]
+    public void Root_stroke_currentColor_uses_supplied_color()
+    {
+        // stroke="currentColor" on the root resolves against the caller-supplied
+        // currentColor (the element's computed CSS color for inline <svg>).
+        using var img = SvgImageDecoder.DecodeText(
+            "<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' " +
+            "fill='none' stroke='currentColor' stroke-width='2'><circle cx='12' cy='12' r='8'/></svg>",
+            currentColor: Color.FromPixel(new SixLabors.ImageSharp.PixelFormats.Rgba32(0, 128, 255, 255)));
+
+        // The ring is drawn in the supplied blue, not the default black.
+        CountWhere(img, p => p.A > 0 && p.B > 150 && p.R < 80).Should().BeGreaterThan(0);
+        CountWhere(img, p => p.A > 200 && p.R < 40 && p.G < 40 && p.B < 40).Should().Be(0);
+    }
+
     // --- golden colour spot-checks on synthetic SVGs ------------------------
 
     [Spec("svg11", SvgUrl, section: "shapes.html#RectElement")]

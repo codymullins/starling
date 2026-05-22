@@ -95,7 +95,13 @@ public static class SvgImageDecoder
         using var image = new Image<Rgba32>(pxW, pxH, new Rgba32(0, 0, 0, 0));
         image.Mutate(ctx => ctx.Paint(canvas =>
         {
-            RenderChildren(canvas, root, rootStyle, viewportTransform, sheet);
+            // Render the <svg> root as an element (not just its children) so its
+            // own presentation attributes — `fill="none"`, `stroke`,
+            // `stroke-width`, … — apply and inherit down the tree. Many icons
+            // (e.g. stroke-only line icons with fill="none" stroke="currentColor"
+            // on the root) otherwise fall back to the default black fill and
+            // paint as a solid blob.
+            RenderElement(canvas, root, rootStyle, viewportTransform, sheet);
         }));
 
         var buffer = new byte[checked(pxW * pxH * 4)];

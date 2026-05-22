@@ -33,6 +33,9 @@ internal sealed class ImageFetcher : IImageResolver, IDisposable
 {
     private readonly Dictionary<Element, ResolvedImage> _byElement = [];
     private readonly Dictionary<string, DecodedImage> _byUrl = new(StringComparer.Ordinal);
+    // Inline-<svg> rasters are decoded on demand (during layout) and aren't
+    // keyed by URL, so track them separately for disposal.
+    private readonly List<DecodedImage> _inlineSvg = [];
     private readonly IDiagnostics _diag;
     private readonly Func<StarlingHttpClient> _httpFactory;
     private StarlingHttpClient? _sharedHttp;
@@ -71,6 +74,38 @@ internal sealed class ImageFetcher : IImageResolver, IDisposable
 
     public bool TryResolve(Element element, out ResolvedImage image)
         => _byElement.TryGetValue(element, out image);
+
+    /// <summary>
+    /// Rasterize an inline <c>&lt;svg&gt;</c> on demand: serialize the subtree
+    /// to an SVG document and run the managed rasterizer, resolving
+    /// <c>currentColor</c> against the element's computed color. Cached per
+    /// element so repeated layout passes decode once. Fail-soft — a malformed or
+    /// empty SVG returns false and layout falls back to the accessible name.
+    /// </summary>
+    public bool TryResolveInlineSvg(Element svg, Starling.Css.Values.CssColor currentColor, out ResolvedImage image)
+    {
+        if (_byElement.TryGetValue(svg, out image)) return true;
+        try
+        {
+            var doc = InlineSvgSerializer.Serialize(svg);
+            var srgb = currentColor.ToSrgb();
+            var color = SixLabors.ImageSharp.Color.FromPixel(
+                new SixLabors.ImageSharp.PixelFormats.Rgba32(srgb.R, srgb.G, srgb.B, srgb.A));
+            var decoded = SvgImageDecoder.DecodeText(doc, color);
+            image = new ResolvedImage(decoded.Width, decoded.Height, decoded);
+            _byElement[svg] = image;
+            _inlineSvg.Add(decoded);
+            _diag.Counter("engine.inline_svg", 1);
+            return true;
+        }
+        catch (Exception ex) when (ex is SvgDecodeException or System.Xml.XmlException)
+        {
+            _diag.Log(DiagLevel.Warn, "engine", $"Inline <svg> decode failed: {ex.Message}");
+            _diag.Counter("engine.inline_svg.failed", 1);
+            image = default;
+            return false;
+        }
+    }
 
     public bool TryResolveUrl(string url, out DecodedImage image)
     {
@@ -321,6 +356,9 @@ internal sealed class ImageFetcher : IImageResolver, IDisposable
         foreach (var decoded in _byUrl.Values)
             decoded.Dispose();
         _byUrl.Clear();
+        foreach (var decoded in _inlineSvg)
+            decoded.Dispose();
+        _inlineSvg.Clear();
         _byElement.Clear();
         if (_ownsHttp) _sharedHttp?.Dispose();
         _sharedHttp = null;

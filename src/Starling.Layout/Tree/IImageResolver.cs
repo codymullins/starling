@@ -1,4 +1,5 @@
 using Starling.Common.Image;
+using Starling.Css.Values;
 using Starling.Dom;
 
 namespace Starling.Layout.Tree;
@@ -25,6 +26,20 @@ public interface IImageResolver
     bool TryResolveUrl(string url, out DecodedImage image)
     {
         image = null!;
+        return false;
+    }
+
+    /// <summary>
+    /// Rasterize an inline <c>&lt;svg&gt;</c> element to a decoded image.
+    /// <paramref name="currentColor"/> is the element's computed <c>color</c>,
+    /// used to resolve <c>currentColor</c> (and the default fill/stroke that
+    /// inherit it) inside the SVG. Returns <c>false</c> when SVG rendering is
+    /// unavailable or the element yields no drawable geometry, so layout falls
+    /// back to the element's accessible name. Defaults to no-op.
+    /// </summary>
+    bool TryResolveInlineSvg(Element svg, CssColor currentColor, out ResolvedImage image)
+    {
+        image = default;
         return false;
     }
 }

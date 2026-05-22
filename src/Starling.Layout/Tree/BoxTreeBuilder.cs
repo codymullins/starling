@@ -87,13 +87,7 @@ internal sealed class BoxTreeBuilder
                     }
                     if (string.Equals(element.LocalName, "svg", StringComparison.OrdinalIgnoreCase))
                     {
-                        // We don't have an SVG renderer yet. Real browsers paint
-                        // the vector graphics; we degrade to the inline element's
-                        // accessible name so an icon like Google's logo
-                        // (<svg aria-label="Google">) at least surfaces *something*
-                        // recognisable instead of an empty box. Path/Rect/etc.
-                        // children carry no text and would otherwise vanish.
-                        BuildSvgFallback(element, elementStyle, parentBox);
+                        BuildSvg(element, elementStyle, parentBox);
                         continue;
                     }
                     // inline-flex / inline-grid are inline-LEVEL but establish a
@@ -292,14 +286,31 @@ internal sealed class BoxTreeBuilder
     }
 
     /// <summary>
-    /// We don't paint SVG yet (no vector renderer + no SVG DOM). Until we do,
-    /// keep accessibility-driven content visible: render the inline element's
-    /// accessible name (aria-label / title / alt-on-image-children) as text
-    /// so a labelled icon like Google's <c>&lt;svg aria-label="Google"&gt;</c>
-    /// shows up as the word "Google" rather than a vanishing inline.
+    /// Build an inline <c>&lt;svg&gt;</c>. We rasterize it through the image
+    /// resolver (which serializes the subtree and runs the managed SVG
+    /// rasterizer) and place the result as a replaced <see cref="ImageBox"/>,
+    /// so the box is sized by the same CSS width/height path as <c>&lt;img&gt;</c>
+    /// (e.g. a <c>width:16px</c> icon). <c>currentColor</c> resolves against the
+    /// element's computed <c>color</c> so a <c>stroke="currentColor"</c> icon
+    /// picks up the surrounding text color.
+    /// <para>
+    /// When the resolver can't render the SVG (no renderer wired, or no drawable
+    /// geometry) we keep accessibility-driven content visible by degrading to the
+    /// element's accessible name — so a labelled icon like Google's logo
+    /// (<c>&lt;svg aria-label="Google"&gt;</c>) still surfaces the word "Google"
+    /// rather than vanishing.
+    /// </para>
     /// </summary>
-    private void BuildSvgFallback(Element svg, ComputedStyle style, Box.Box parentBox)
+    private void BuildSvg(Element svg, ComputedStyle style, Box.Box parentBox)
     {
+        var currentColor = style.GetColor(PropertyId.Color);
+        if (_images.TryResolveInlineSvg(svg, currentColor, out var resolved))
+        {
+            var (width, height) = ResolveImageSize(svg, resolved);
+            parentBox.AppendChild(new ImageBox(style, svg, width, height, resolved.Source));
+            return;
+        }
+
         var label = AccessibleName(svg);
         if (string.IsNullOrEmpty(label)) return;
         // Inline the label; the surrounding context controls block/inline
