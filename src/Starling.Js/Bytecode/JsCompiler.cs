@@ -39,6 +39,28 @@ public sealed partial class JsCompiler
     private readonly ChunkBuilder _b = new();
     private readonly List<Dictionary<string, int>> _scopes = [new()];
 
+    /// <summary>TDZ — names in each <see cref="_scopes"/> frame that are
+    /// lexical bindings (<c>let</c>/<c>const</c>/<c>class</c>) and therefore
+    /// subject to the Temporal Dead Zone. Parallel to <see cref="_scopes"/>:
+    /// index <c>i</c> here is the lexical-name set for scope frame <c>i</c>.
+    /// Reads/writes resolved to a name in this set emit the TDZ-checking
+    /// opcode variants; <c>var</c>/param/function bindings are absent and use
+    /// the plain (no-check) opcodes. A name's presence is set when the binding
+    /// is instantiated in the uninitialized state and cleared (removed) once
+    /// the binding has provably been initialized in straight-line code, so a
+    /// declaration's own initializer store and post-declaration reads skip the
+    /// check.</summary>
+    private readonly List<HashSet<string>> _lexicalScopes = [new(StringComparer.Ordinal)];
+
+    /// <summary>TDZ — true while emitting a <c>let</c>/<c>const</c>
+    /// declaration's own initializer store (including destructuring leaves).
+    /// In this window a store to an in-scope lexical binding is the
+    /// initialization itself, so it must use the UNCHECKED store opcode (the
+    /// slot legitimately still holds the TDZ sentinel). Outside this window,
+    /// assignments to a lexical binding emit the checked store so a write
+    /// before initialization throws ReferenceError.</summary>
+    private bool _inLexicalDeclInit;
+
     /// <summary>Stack of class private-name scopes — each frame maps the
     /// source-level name (e.g. <c>#x</c>) to its mangled own-property key
     /// for the active class. Resolution walks outer-to-inner so nested
@@ -126,6 +148,68 @@ public sealed partial class JsCompiler
     /// the local at this slot? Used by load/store emission sites.</summary>
     private bool IsSlotCaptured(int slot) => _b.IsCaptured(slot);
 
+    /// <summary>TDZ — is <paramref name="name"/> a lexical binding
+    /// (<c>let</c>/<c>const</c>/<c>class</c>) in some currently-open scope of
+    /// THIS function? Walks innermost-out, mirroring
+    /// <see cref="TryResolveLocal"/>, and stops at the first frame that
+    /// declares the name as a local so an inner <c>var</c> shadowing the same
+    /// name (only legal across function boundaries) doesn't misfire.</summary>
+    private bool IsLexicalLocal(string name)
+    {
+        for (var i = _scopes.Count - 1; i >= 0; i--)
+        {
+            if (_scopes[i].ContainsKey(name))
+                return _lexicalScopes[i].Contains(name);
+        }
+        return false;
+    }
+
+    /// <summary>TDZ — mark <paramref name="name"/> as a lexical binding in the
+    /// innermost scope frame (must already be reserved as a local there).</summary>
+    private void MarkLexical(string name) => _lexicalScopes[^1].Add(name);
+
+    /// <summary>Push a fresh lexical scope frame, keeping
+    /// <see cref="_scopes"/> and <see cref="_lexicalScopes"/> aligned.</summary>
+    private void PushScope()
+    {
+        _scopes.Add(new());
+        _lexicalScopes.Add(new(StringComparer.Ordinal));
+    }
+
+    /// <summary>Pop the innermost lexical scope frame.</summary>
+    private void PopScope()
+    {
+        _scopes.RemoveAt(_scopes.Count - 1);
+        _lexicalScopes.RemoveAt(_lexicalScopes.Count - 1);
+    }
+
+    /// <summary>TDZ — is <paramref name="name"/> a lexical binding in one of
+    /// the enclosing functions (i.e. captured as an upvalue)? Walks the parent
+    /// compiler chain the same way <see cref="TryResolveUpvalue"/> does.</summary>
+    private bool IsLexicalUpvalue(string name)
+    {
+        if (_parent is null) return false;
+        if (_parent.IsLexicalLocalForChild(name, out var found)) return found;
+        return _parent.IsLexicalUpvalue(name);
+    }
+
+    /// <summary>TDZ helper for <see cref="IsLexicalUpvalue"/>: report whether
+    /// the parent resolves <paramref name="name"/> as one of ITS locals, and
+    /// if so whether that local is lexical.</summary>
+    private bool IsLexicalLocalForChild(string name, out bool isLexical)
+    {
+        for (var i = _scopes.Count - 1; i >= 0; i--)
+        {
+            if (_scopes[i].ContainsKey(name))
+            {
+                isLexical = _lexicalScopes[i].Contains(name);
+                return true;
+            }
+        }
+        isLexical = false;
+        return false;
+    }
+
     /// <summary>gap:script-top-var-not-global — true when this compiler is
     /// emitting the top-level script chunk (i.e. not inside any function or
     /// arrow body). Script-top <c>var</c> / <c>let</c> / <c>const</c>
@@ -134,6 +218,14 @@ public sealed partial class JsCompiler
     /// StoreGlobal / DeclareGlobalVar) rather than allocated to local
     /// slots.</summary>
     private bool IsScriptTop => _parent is null;
+
+    /// <summary>TDZ — true only in the OUTERMOST script lexical scope, where a
+    /// top-level <c>let</c>/<c>const</c> binds on the global object (§16.1.7)
+    /// rather than a local slot. Global-lexical TDZ is deferred, so these
+    /// bindings are not TDZ-hoisted. A <c>let</c>/<c>const</c> inside any
+    /// nested scope (block, switch, loop body, …) — even at script top — is a
+    /// true block-scoped lexical binding and IS subject to TDZ.</summary>
+    private bool IsGlobalLexicalScope => IsScriptTop && _scopes.Count == 1;
 
     public static Chunk Compile(Program program, string? name = "<script>")
     {
@@ -390,6 +482,9 @@ public sealed partial class JsCompiler
         HoistFunctionDeclarations(fd.Body.Body);
         // wp:M3-20 — synthesize the `arguments` object if the body reads it.
         MaybeBindArguments(fd.Params, fd.Body.Body);
+        // TDZ — instantiate top-level let/const of the function body in the
+        // uninitialized state so reads before their declaration throw.
+        HoistLexicalDeclarations(fd.Body.Body);
         foreach (var inner in fd.Body.Body) EmitStatement(inner);
         // Implicit `return undefined` if the body didn't return.
         _b.Emit(Opcode.ReturnUndefined);
@@ -418,8 +513,18 @@ public sealed partial class JsCompiler
         switch (s)
         {
             case VariableDeclaration vd:
-                foreach (var d in vd.Declarations) PreallocateCapturedInPattern(d.Id);
+            {
+                // TDZ — a captured let/const reserves its function-lifetime cell
+                // in the uninitialized (sentinel) state so a read before the
+                // declaration's initializer throws ReferenceError even through a
+                // closure. `var` keeps the undefined-seeded cell.
+                var lexical = vd.Kind is "let" or "const";
+                foreach (var d in vd.Declarations) PreallocateCapturedInPattern(d.Id, lexical);
                 return;
+            }
+            // ClassDeclaration: block-scoped class TDZ is deferred; the class
+            // name still binds on the global object (EmitClassDeclaration), so
+            // it is not preallocated as a captured lexical cell here.
             case BlockStatement b: foreach (var x in b.Body) PreallocateCapturedInStatement(x); return;
             case IfStatement i:
                 PreallocateCapturedInStatement(i.Consequent);
@@ -429,17 +534,26 @@ public sealed partial class JsCompiler
             case DoWhileStatement dw: PreallocateCapturedInStatement(dw.Body); return;
             case ForStatement f:
                 if (f.Init is VariableDeclaration fvd)
-                    foreach (var d in fvd.Declarations) PreallocateCapturedInPattern(d.Id);
+                {
+                    var lex = fvd.Kind is "let" or "const";
+                    foreach (var d in fvd.Declarations) PreallocateCapturedInPattern(d.Id, lex);
+                }
                 PreallocateCapturedInStatement(f.Body);
                 return;
             case ForInStatement fi:
                 if (fi.Left is VariableDeclaration vdi)
-                    foreach (var d in vdi.Declarations) PreallocateCapturedInPattern(d.Id);
+                {
+                    var lex = vdi.Kind is "let" or "const";
+                    foreach (var d in vdi.Declarations) PreallocateCapturedInPattern(d.Id, lex);
+                }
                 PreallocateCapturedInStatement(fi.Body);
                 return;
             case ForOfStatement fo:
                 if (fo.Left is VariableDeclaration vdo)
-                    foreach (var d in vdo.Declarations) PreallocateCapturedInPattern(d.Id);
+                {
+                    var lex = vdo.Kind is "let" or "const";
+                    foreach (var d in vdo.Declarations) PreallocateCapturedInPattern(d.Id, lex);
+                }
                 PreallocateCapturedInStatement(fo.Body);
                 return;
             case SwitchStatement sw:
@@ -456,7 +570,7 @@ public sealed partial class JsCompiler
         }
     }
 
-    private void PreallocateCapturedInPattern(Expression? pattern)
+    private void PreallocateCapturedInPattern(Expression? pattern, bool lexical = false)
     {
         if (pattern is null) return;
         switch (pattern)
@@ -467,42 +581,143 @@ public sealed partial class JsCompiler
                     var slot = _b.ReserveLocal();
                     _scopes[^1][id.Name] = slot;
                     _b.MarkCaptured(slot);
-                    _b.EmitSlot(Opcode.InitCellLocal, slot);
+                    if (lexical)
+                    {
+                        MarkLexical(id.Name);
+                        _b.EmitSlot(Opcode.InitCellLocalTdz, slot);
+                    }
+                    else
+                    {
+                        _b.EmitSlot(Opcode.InitCellLocal, slot);
+                    }
                 }
                 return;
-            case AssignmentExpression a when a.Op == "=": PreallocateCapturedInPattern(a.Target); return;
-            case AssignmentPattern a: PreallocateCapturedInPattern(a.Target); return;
+            case AssignmentExpression a when a.Op == "=": PreallocateCapturedInPattern(a.Target, lexical); return;
+            case AssignmentPattern a: PreallocateCapturedInPattern(a.Target, lexical); return;
             case ArrayPattern arr:
                 foreach (var el in arr.Elements)
                 {
                     switch (el)
                     {
-                        case ArrayPatternBindingElement binding: PreallocateCapturedInPattern(binding.Target); break;
-                        case ArrayPatternRestElement rest: PreallocateCapturedInPattern(rest.Target); break;
+                        case ArrayPatternBindingElement binding: PreallocateCapturedInPattern(binding.Target, lexical); break;
+                        case ArrayPatternRestElement rest: PreallocateCapturedInPattern(rest.Target, lexical); break;
                     }
                 }
                 return;
             case ObjectPattern obj:
-                foreach (var prop in obj.Properties) PreallocateCapturedInPattern(prop.Target);
-                if (obj.Rest is not null) PreallocateCapturedInPattern(obj.Rest.Argument);
+                foreach (var prop in obj.Properties) PreallocateCapturedInPattern(prop.Target, lexical);
+                if (obj.Rest is not null) PreallocateCapturedInPattern(obj.Rest.Argument, lexical);
                 return;
             case ArrayExpression arr:
                 foreach (var el in arr.Elements)
                 {
                     if (el is null) continue;
-                    PreallocateCapturedInPattern(el is SpreadElement sp ? sp.Argument : el);
+                    PreallocateCapturedInPattern(el is SpreadElement sp ? sp.Argument : el, lexical);
                 }
                 return;
             case ObjectExpression obj:
                 foreach (var prop in obj.Properties)
                 {
-                    if (prop.Value is SpreadElement sp) PreallocateCapturedInPattern(sp.Argument);
-                    else PreallocateCapturedInPattern(prop.Value);
+                    if (prop.Value is SpreadElement sp) PreallocateCapturedInPattern(sp.Argument, lexical);
+                    else PreallocateCapturedInPattern(prop.Value, lexical);
                 }
                 return;
-            case SpreadElement spread: PreallocateCapturedInPattern(spread.Argument); return;
-            case RestElement rest: PreallocateCapturedInPattern(rest.Argument); return;
+            case SpreadElement spread: PreallocateCapturedInPattern(spread.Argument, lexical); return;
+            case RestElement rest: PreallocateCapturedInPattern(rest.Argument, lexical); return;
         }
+    }
+
+    /// <summary>TDZ — §14.2.3 BlockDeclarationInstantiation. At entry to a
+    /// block (or function body / switch case-block), every <c>let</c>,
+    /// <c>const</c>, and <c>class</c> declared at the IMMEDIATE level of that
+    /// scope is instantiated in the uninitialized ("TDZ") state BEFORE any
+    /// statement runs, so a read or write that textually precedes the
+    /// declaration throws ReferenceError. This does NOT descend into nested
+    /// blocks, loop bodies, or function bodies (those open their own scopes),
+    /// and ignores <c>var</c>/function declarations (which hoist initialized).
+    /// Captured lexical bindings are already instantiated to a TDZ cell at
+    /// function entry by <see cref="PreallocateCapturedVarBindings"/>, so they
+    /// are skipped here (their slot lives in the function scope, reachable via
+    /// the normal innermost-out resolution).</summary>
+    private void HoistLexicalDeclarations(IReadOnlyList<Statement> body)
+    {
+        foreach (var s in body)
+        {
+            switch (s)
+            {
+                case VariableDeclaration vd when vd.Kind is "let" or "const":
+                    foreach (var d in vd.Declarations) HoistLexicalPattern(d.Id);
+                    break;
+                // ClassDeclaration also introduces a lexical binding, but its
+                // block-scoped TDZ is deferred together with global-lexical TDZ
+                // (the class-decl lowering still binds the name on the global
+                // object — see EmitClassDeclaration). Not hoisted here so reads
+                // resolve through that existing path without regressing the
+                // passing class suite.
+                //
+                // A labeled declaration is only ever a (var-hoisted) function
+                // declaration per Annex B; lexical declarations cannot be
+                // labeled, so labels need no lexical hoisting.
+            }
+        }
+    }
+
+    private void HoistLexicalPattern(Expression pattern)
+    {
+        switch (pattern)
+        {
+            case Identifier id: HoistLexicalName(id.Name); return;
+            case AssignmentExpression { Op: "=" } a: HoistLexicalPattern(a.Target); return;
+            case AssignmentPattern a: HoistLexicalPattern(a.Target); return;
+            case ArrayPattern arr:
+                foreach (var el in arr.Elements)
+                {
+                    switch (el)
+                    {
+                        case ArrayPatternBindingElement b: HoistLexicalPattern(b.Target); break;
+                        case ArrayPatternRestElement r: HoistLexicalPattern(r.Target); break;
+                    }
+                }
+                return;
+            case ObjectPattern obj:
+                foreach (var prop in obj.Properties) HoistLexicalPattern(prop.Target);
+                if (obj.Rest is not null) HoistLexicalPattern(obj.Rest.Argument);
+                return;
+            case ArrayExpression arr:
+                foreach (var el in arr.Elements)
+                {
+                    if (el is null) continue;
+                    HoistLexicalPattern(el is SpreadElement sp ? sp.Argument : el);
+                }
+                return;
+            case ObjectExpression obj:
+                foreach (var prop in obj.Properties)
+                    HoistLexicalPattern(prop.Value is SpreadElement sp ? sp.Argument : prop.Value);
+                return;
+            case SpreadElement spread: HoistLexicalPattern(spread.Argument); return;
+            case RestElement rest: HoistLexicalPattern(rest.Argument); return;
+        }
+    }
+
+    /// <summary>TDZ — instantiate one lexical binding name in the innermost
+    /// scope in the uninitialized state. Captured names are already handled at
+    /// function entry; non-captured names get a fresh block-local slot seeded
+    /// with the TDZ sentinel via <see cref="Opcode.DeclareLocalTdz"/>.</summary>
+    private void HoistLexicalName(string name)
+    {
+        // Global-lexical TDZ is deferred — a top-level script let/const binds on
+        // the global object, so don't reserve a local slot for it here.
+        if (IsGlobalLexicalScope) return;
+        // Captured lexical bindings are preallocated (as TDZ cells) at function
+        // entry and marked lexical there — leave them alone.
+        if (IsNameCaptured(name)) return;
+        // Already instantiated in this scope (e.g. a redeclaration the parser
+        // let through, or double-processing) — keep the first slot.
+        if (_scopes[^1].ContainsKey(name)) return;
+        var slot = _b.ReserveLocal();
+        _scopes[^1][name] = slot;
+        MarkLexical(name);
+        _b.EmitSlot(Opcode.DeclareLocalTdz, slot);
     }
 
     // -----------------------------------------------------------------------
@@ -519,9 +734,10 @@ public sealed partial class JsCompiler
                 _b.Emit(Opcode.Pop);
                 return;
             case BlockStatement bs:
-                _scopes.Add(new());
+                PushScope();
+                HoistLexicalDeclarations(bs.Body);
                 foreach (var inner in bs.Body) EmitStatement(inner);
-                _scopes.RemoveAt(_scopes.Count - 1);
+                PopScope();
                 return;
             case VariableDeclaration vd:
                 EmitVarDecl(vd);
@@ -653,7 +869,7 @@ public sealed partial class JsCompiler
                 throw new InvalidOperationException("try/catch catch offset overflows i16");
             _b.PatchI16(catchOperandPos, (short)catchTargetDelta);
 
-            _scopes.Add(new());
+            PushScope();
             var handler = ts.Handler!;
             if (handler.Param is Identifier idParam)
             {
@@ -684,7 +900,7 @@ public sealed partial class JsCompiler
                 EmitPatternFromLocal(handler.Param, srcSlot, isDeclaration: true);
             }
             foreach (var inner in handler.Body.Body) EmitStatement(inner);
-            _scopes.RemoveAt(_scopes.Count - 1);
+            PopScope();
             _b.Emit(Opcode.LeaveTry);
         }
 
@@ -776,16 +992,20 @@ public sealed partial class JsCompiler
 
         // Open a single shared lexical scope for the entire switch body
         // (§14.12.2 CaseBlock — one LexicalEnvironment for all clauses).
-        _scopes.Add(new());
+        PushScope();
 
         // Push the loop frame (IsSwitch=true so that bare `continue` skips it).
         var frame = new LoopFrame { TryDepthAtEntry = _tryDepth, IsSwitch = true, Label = outerLabel };
         _loops.Push(frame);
 
         // Hoist any function declarations visible at the top of the switch body.
-        // (let/const are declared per-body in normal statement lowering.)
         var allConsequent = sw.Cases.SelectMany(c => c.Consequent).ToList();
         HoistFunctionDeclarations(allConsequent);
+        // TDZ — §14.12.2: let/const declared in ANY clause are instantiated in
+        // the uninitialized state across the whole switch's shared lexical
+        // scope, so a read in an earlier clause (before the textual declaration
+        // in a later clause) throws ReferenceError.
+        HoistLexicalDeclarations(allConsequent);
 
         // Locate the default clause index (if any).
         int defaultIdx = -1;
@@ -853,7 +1073,7 @@ public sealed partial class JsCompiler
         // Patch all break jumps to the current position (switch end).
         foreach (var p in frame.BreakPatches) _b.PatchJump(p);
         _loops.Pop();
-        _scopes.RemoveAt(_scopes.Count - 1);
+        PopScope();
     }
 
     private void EmitVarDecl(VariableDeclaration vd)
@@ -862,8 +1082,20 @@ public sealed partial class JsCompiler
         // function-variable scope, not the enclosing block, so a `var` declared
         // inside a block (and captured by a closure) shares the one binding.
         var functionScoped = vd.Kind == "var";
+        // TDZ — `let`/`const` bindings (outside script top, which still routes
+        // through the global object) were instantiated in the uninitialized
+        // state at scope entry (HoistLexicalDeclarations / preallocate). Here
+        // the declaration's initializer transitions the binding out of the TDZ,
+        // so its store must be UNCHECKED (the slot legitimately still holds the
+        // sentinel at this point). A bare `let x;` initializes to undefined.
+        var lexical = (vd.Kind is "let" or "const") && !IsGlobalLexicalScope;
         foreach (var d in vd.Declarations)
         {
+            if (lexical)
+            {
+                EmitLexicalDeclarator(d);
+                continue;
+            }
             // ECMA-262 §14.3.3 BindingPattern: declarations reserve all
             // binding names first, then initialize by walking the pattern.
             DeclarePatternBindings(d.Id, functionScoped);
@@ -895,6 +1127,37 @@ public sealed partial class JsCompiler
                 }
             }
         }
+    }
+
+    /// <summary>TDZ — emit the initializer for one <c>let</c>/<c>const</c>
+    /// declarator whose binding(s) were already instantiated (in the TDZ) at
+    /// scope entry. The store is unchecked because this IS the initialization;
+    /// a bare <c>let x;</c> stores <c>undefined</c>. For a binding pattern, the
+    /// per-leaf stores route through <see cref="StoreBindingIdentifier"/>,
+    /// which emits the unchecked store for an in-scope lexical binding when
+    /// invoked during a declaration (<see cref="_inLexicalDeclInit"/>).</summary>
+    private void EmitLexicalDeclarator(VariableDeclarator d)
+    {
+        if (d.Id is Identifier id)
+        {
+            if (d.Init is not null) EmitExpression(d.Init);
+            else _b.Emit(Opcode.LoadUndefined);
+            if (!TryResolveLocal(id.Name, out var slot))
+                throw new InvalidOperationException($"missing declared lexical '{id.Name}'");
+            EmitStoreLocalSlot(slot); // unchecked — this is the initializer
+            return;
+        }
+        // Destructuring let/const: evaluate the init into a temp, then bind
+        // each leaf. Leaf stores happen inside a declaration initializer, so
+        // they must be unchecked even though the leaf names are lexical.
+        var srcSlot = _b.ReserveLocal();
+        if (d.Init is not null) EmitExpression(d.Init);
+        else _b.Emit(Opcode.LoadUndefined);
+        _b.EmitSlot(Opcode.StoreLocal, srcSlot);
+        var prev = _inLexicalDeclInit;
+        _inLexicalDeclInit = true;
+        EmitPatternFromLocal(d.Id, srcSlot, isDeclaration: true);
+        _inLexicalDeclInit = prev;
     }
 
     /// <summary>§14.7.3 WhileStatement — emits a label-top / test / body /
@@ -954,7 +1217,7 @@ public sealed partial class JsCompiler
     /// </remarks>
     private void EmitFor(ForStatement f, string? label = null)
     {
-        _scopes.Add(new());
+        PushScope();
 
         // Per-iteration let/const bindings: route the init through a
         // Cell-backed local slot, then emit RefreshLetBinding at loopStart.
@@ -1029,7 +1292,7 @@ public sealed partial class JsCompiler
         // break-target.
         foreach (var p in loop.BreakPatches) _b.PatchJump(p);
         _loops.Pop();
-        _scopes.RemoveAt(_scopes.Count - 1);
+        PopScope();
     }
 
     /// <summary>Allocate Cell-backed local slots for each identifier declared
@@ -1124,7 +1387,7 @@ public sealed partial class JsCompiler
     private void EmitForOf(ForOfStatement fo, string? label = null)
     {
         // Open a fresh scope so loop-var bindings don't leak.
-        _scopes.Add(new());
+        PushScope();
 
         // Step 1: evaluate the iterable + materialise an iterator-record handle.
         // wp:M3-04g — `for await` resolves an async iterator; the per-iteration
@@ -1224,7 +1487,7 @@ public sealed partial class JsCompiler
 
         _b.PatchJump(jPastNormal);
         _loops.Pop();
-        _scopes.RemoveAt(_scopes.Count - 1);
+        PopScope();
     }
 
     /// <summary>wp:M3-04g — emit the IteratorClose for a for-of cleanup path.
@@ -1252,7 +1515,7 @@ public sealed partial class JsCompiler
     /// at loop entry per spec, so mutations during iteration don't appear.</summary>
     private void EmitForIn(ForInStatement fi, string? label = null)
     {
-        _scopes.Add(new());
+        PushScope();
 
         // Materialize the key snapshot. EnumerateKeys handles null/undefined
         // by yielding an empty array (spec: silently skip the loop body).
@@ -1324,7 +1587,7 @@ public sealed partial class JsCompiler
         _b.PatchJump(jExit);
         foreach (var p in loop.BreakPatches) _b.PatchJump(p);
         _loops.Pop();
-        _scopes.RemoveAt(_scopes.Count - 1);
+        PopScope();
     }
 
     /// <summary>B7-followup-b / wp:M3-03e — emit a forward <see cref="Opcode.Jump"/> for
@@ -1617,6 +1880,10 @@ public sealed partial class JsCompiler
                 // wp:M3-03c — `import.meta`: push the running module's meta object.
                 _b.Emit(Opcode.LoadImportMeta);
                 return;
+            case NewTargetExpression:
+                // §13.3.12 — `new.target`: push the active frame's [[NewTarget]].
+                _b.Emit(Opcode.LoadNewTarget);
+                return;
             case PrivateNameExpression:
                 throw new NotSupportedException(
                     "private-name reference used outside a member-expression context");
@@ -1680,14 +1947,26 @@ public sealed partial class JsCompiler
     {
         if (TryResolveLocal(name, out var slot))
         {
-            EmitLoadLocalSlot(slot);
+            // TDZ — reads of a lexical binding (let/const/class) check the
+            // sentinel; var/param/function reads use the plain fast path.
+            if (IsLexicalLocal(name))
+            {
+                _b.EmitSlot(IsSlotCaptured(slot)
+                    ? Opcode.LoadCellLocalChecked : Opcode.LoadLocalChecked, slot);
+            }
+            else
+            {
+                EmitLoadLocalSlot(slot);
+            }
             return;
         }
         if (TryResolveUpvalue(name, out var upIdx))
         {
             // gap:closure-write-back — every upvalue is a Cell now, so
-            // LoadUpvalue dereferences it transparently.
-            _b.EmitUpvalue(Opcode.LoadUpvalue, upIdx);
+            // LoadUpvalue dereferences it transparently. TDZ — a captured
+            // lexical binding from an enclosing scope checks the sentinel.
+            _b.EmitUpvalue(IsLexicalUpvalue(name)
+                ? Opcode.LoadUpvalueChecked : Opcode.LoadUpvalue, upIdx);
             return;
         }
         _b.EmitU16(Opcode.LoadGlobal, _b.AddConstant(name));
@@ -1767,7 +2046,13 @@ public sealed partial class JsCompiler
             // gap:closure-write-back — try local first, then upvalue, then global.
             if (TryResolveLocal(id.Name, out var slot))
             {
-                EmitLoadLocalSlot(slot);
+                // TDZ — the load checks the sentinel (throws if read before
+                // init); the subsequent store can be unchecked since a
+                // successful load proves the binding is initialized.
+                var lexical = IsLexicalLocal(id.Name);
+                if (lexical) _b.EmitSlot(IsSlotCaptured(slot)
+                    ? Opcode.LoadCellLocalChecked : Opcode.LoadLocalChecked, slot);
+                else EmitLoadLocalSlot(slot);
                 if (!up.Prefix) _b.Emit(Opcode.Dup);
                 _b.EmitU16(Opcode.LoadConst, _b.AddConstant(1.0));
                 _b.Emit(up.Op == "++" ? Opcode.Add : Opcode.Sub);
@@ -1777,7 +2062,8 @@ public sealed partial class JsCompiler
             }
             if (TryResolveUpvalue(id.Name, out var upIdx))
             {
-                _b.EmitUpvalue(Opcode.LoadUpvalue, upIdx);
+                _b.EmitUpvalue(IsLexicalUpvalue(id.Name)
+                    ? Opcode.LoadUpvalueChecked : Opcode.LoadUpvalue, upIdx);
                 if (!up.Prefix) _b.Emit(Opcode.Dup);
                 _b.EmitU16(Opcode.LoadConst, _b.AddConstant(1.0));
                 _b.Emit(up.Op == "++" ? Opcode.Add : Opcode.Sub);
@@ -1966,10 +2252,24 @@ public sealed partial class JsCompiler
             // gap:closure-write-back — assigning to a captured upvalue must
             // route through the shared cell; assignment to a captured local
             // routes through StoreCellLocal.
+            // TDZ — a write to a lexical binding before initialization throws.
+            // For a compound assignment the preceding EmitIdLoad already checked
+            // the sentinel, so only the plain `=` form needs the checked store.
+            var needsTdzCheck = a.Op == "=";
             if (TryResolveLocal(id.Name, out var slot))
-                EmitStoreLocalSlot(slot);
+            {
+                if (needsTdzCheck && IsLexicalLocal(id.Name))
+                {
+                    if (IsSlotCaptured(slot)) _b.EmitSlot(Opcode.StoreCellLocalChecked, slot);
+                    else EmitTdzLocalStore(id.Name, slot);
+                }
+                else EmitStoreLocalSlot(slot);
+            }
             else if (TryResolveUpvalue(id.Name, out var upIdx))
-                _b.EmitUpvalue(Opcode.StoreUpvalue, upIdx);
+            {
+                _b.EmitUpvalue(needsTdzCheck && IsLexicalUpvalue(id.Name)
+                    ? Opcode.StoreUpvalueChecked : Opcode.StoreUpvalue, upIdx);
+            }
             else
                 _b.EmitU16(Opcode.StoreGlobal, _b.AddConstant(id.Name));
             return;
@@ -2024,7 +2324,7 @@ public sealed partial class JsCompiler
             // Private name assignment: this.#x = v
             if (!me.Computed && me.Property is PrivateNameExpression pne)
             {
-                var mangled = ResolvePrivateName(pne.Name);
+                var mangled = ResolvePrivateName(pne.Name, pne.Start);
                 EmitExpression(me.Object);
                 EmitExpression(a.Value);
                 if (a.Op != "=")
@@ -2111,7 +2411,11 @@ public sealed partial class JsCompiler
             // closure write-back path matches the plain `=` case.
             if (TryResolveLocal(id.Name, out var slot))
             {
-                EmitLoadLocalSlot(slot);            // [cur]
+                // TDZ — the initial read checks the sentinel; the store can stay
+                // unchecked since a successful read proves initialization.
+                if (IsLexicalLocal(id.Name)) _b.EmitSlot(IsSlotCaptured(slot)
+                    ? Opcode.LoadCellLocalChecked : Opcode.LoadLocalChecked, slot);
+                else EmitLoadLocalSlot(slot);       // [cur]
                 _b.Emit(Opcode.Dup);                // [cur, cur]
                 var j = _b.EmitJump(jmp);           // pops one cur; [cur] if short-circuit
                 _b.Emit(Opcode.Pop);                // assign path: drop cur → []
@@ -2123,7 +2427,8 @@ public sealed partial class JsCompiler
             }
             if (TryResolveUpvalue(id.Name, out var upIdx))
             {
-                _b.EmitUpvalue(Opcode.LoadUpvalue, upIdx); // [cur]
+                _b.EmitUpvalue(IsLexicalUpvalue(id.Name)
+                    ? Opcode.LoadUpvalueChecked : Opcode.LoadUpvalue, upIdx); // [cur]
                 _b.Emit(Opcode.Dup);
                 var j = _b.EmitJump(jmp);
                 _b.Emit(Opcode.Pop);
@@ -2229,7 +2534,7 @@ public sealed partial class JsCompiler
         // Private name: obj.#name
         if (!m.Computed && m.Property is PrivateNameExpression pne)
         {
-            var mangled = ResolvePrivateName(pne.Name);
+            var mangled = ResolvePrivateName(pne.Name, pne.Start);
             EmitExpression(m.Object);
             RecordPos(m);
             _b.EmitU16(Opcode.PrivateGet, _b.AddConstant(mangled));
@@ -2306,7 +2611,7 @@ public sealed partial class JsCompiler
             }
             else if (me.Property is PrivateNameExpression pne)
             {
-                var mangled = ResolvePrivateName(pne.Name);
+                var mangled = ResolvePrivateName(pne.Name, pne.Start);
                 RecordPos(me);
                 _b.EmitU16(Opcode.PrivateGet, _b.AddConstant(mangled));  // [obj, fn]
             }
@@ -2412,6 +2717,9 @@ public sealed partial class JsCompiler
         // *declarations* bind in the enclosing scope (HoistFunctionDeclarations)
         // and must not double-bind here.
         if (!isArrow && fe.Name is not null) sub.MaybeBindSelfName(fe.Name.Name);
+        // TDZ — instantiate top-level let/const of the body in the
+        // uninitialized state so reads before their declaration throw.
+        sub.HoistLexicalDeclarations(fe.Body.Body);
         foreach (var s in fe.Body.Body) sub.EmitStatement(s);
         sub._b.Emit(Opcode.ReturnUndefined);
         // Per ES2024 §15.2 NamedEvaluation, anonymous FunctionExpression
@@ -2836,11 +3144,48 @@ public sealed partial class JsCompiler
     {
         // gap:closure-write-back — captured-local writes route through the cell.
         if (TryResolveLocal(name, out var slot))
-            EmitStoreLocalSlot(slot);
+        {
+            // TDZ — a write to a lexical binding before initialization throws,
+            // UNLESS this store is the declaration's own initializer (which is
+            // what transitions the binding out of the TDZ).
+            if (IsLexicalLocal(name) && !_inLexicalDeclInit)
+            {
+                if (IsSlotCaptured(slot)) _b.EmitSlot(Opcode.StoreCellLocalChecked, slot);
+                else EmitTdzLocalStore(name, slot);
+            }
+            else
+            {
+                EmitStoreLocalSlot(slot);
+            }
+        }
         else if (TryResolveUpvalue(name, out var upIdx))
-            _b.EmitUpvalue(Opcode.StoreUpvalue, upIdx);
+        {
+            _b.EmitUpvalue(
+                IsLexicalUpvalue(name) && !_inLexicalDeclInit
+                    ? Opcode.StoreUpvalueChecked : Opcode.StoreUpvalue, upIdx);
+        }
         else
             _b.EmitU16(Opcode.StoreGlobal, _b.AddConstant(name));
+    }
+
+    /// <summary>TDZ — emit a checked store to a NON-captured lexical local. A
+    /// non-captured lexical lives in a plain slot (not a Cell), but the
+    /// checked-store opcodes only operate on cells, so a write-before-init
+    /// check for a plain-slot lexical would need a slot-read first. Such a
+    /// write is exceedingly rare (it requires assigning to a block-local
+    /// let/const before its declaration in straight-line code, which the
+    /// parser usually rejects or which is a genuine TDZ violation). We model it
+    /// by reading the slot through the checked load (which throws on the
+    /// sentinel) for its side effect, discarding the loaded value, then storing
+    /// — preserving evaluation order (value already on the stack below).</summary>
+    private void EmitTdzLocalStore(string name, int slot)
+    {
+        _ = name;
+        // Stack on entry: [value]. Verify the binding is initialized: a checked
+        // load throws ReferenceError if the slot still holds the sentinel.
+        _b.EmitSlot(Opcode.LoadLocalChecked, slot); // [value, current] (throws if TDZ)
+        _b.Emit(Opcode.Pop);                        // [value]
+        _b.EmitSlot(Opcode.StoreLocal, slot);       // []
     }
 
     private void StoreMemberTarget(MemberExpression me)

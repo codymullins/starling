@@ -34,6 +34,41 @@ public enum Opcode : byte
     StoreLocal,     // [u16 slot] → pop value, store to local slot
     DeclareLocal,   // [u16 slot] → make slot live (initialized to undefined)
 
+    // ----- Lexical bindings / Temporal Dead Zone (let/const/class) -----
+    /// <summary>[u16 slot] — instantiate a <c>let</c>/<c>const</c>/<c>class</c>
+    /// binding in the uninitialized ("TDZ") state: store the realm's
+    /// <see cref="Starling.Js.Runtime.JsRealm.TdzSentinel"/> in the slot. Emitted
+    /// at scope entry in place of <see cref="DeclareLocal"/> for a non-captured
+    /// lexical binding. A read or write before the initializer runs throws
+    /// ReferenceError (§§9.1.1.1.4 / 13.3.1.1).</summary>
+    DeclareLocalTdz,
+    /// <summary>[u16 slot] — like <see cref="InitCellLocal"/> but the fresh
+    /// <see cref="Starling.Js.Runtime.Cell"/> holds the TDZ sentinel rather than
+    /// undefined. Emitted for a captured lexical binding at scope entry.</summary>
+    InitCellLocalTdz,
+    /// <summary>[u16 slot] — like <see cref="LoadLocal"/> but throws
+    /// ReferenceError when the slot still holds the TDZ sentinel. Emitted for
+    /// reads of a non-captured lexical binding.</summary>
+    LoadLocalChecked,
+    /// <summary>[u16 slot] — like <see cref="LoadCellLocal"/> but throws
+    /// ReferenceError when the cell still holds the TDZ sentinel. Emitted for
+    /// reads of a captured lexical binding owned by this function.</summary>
+    LoadCellLocalChecked,
+    /// <summary>[u16 slot] — like <see cref="StoreCellLocal"/> but throws
+    /// ReferenceError when the cell still holds the TDZ sentinel (write before
+    /// initialization to a lexical binding). Emitted for assignments (not the
+    /// declaration's own initializer) to a captured lexical binding.</summary>
+    StoreCellLocalChecked,
+    /// <summary>[u16 idx] — like <see cref="LoadUpvalue"/> but throws
+    /// ReferenceError when the captured cell still holds the TDZ sentinel.
+    /// Emitted for reads of an outer-scope lexical binding from a nested
+    /// function.</summary>
+    LoadUpvalueChecked,
+    /// <summary>[u16 idx] — like <see cref="StoreUpvalue"/> but throws
+    /// ReferenceError when the captured cell still holds the TDZ sentinel
+    /// (write before initialization through a closure).</summary>
+    StoreUpvalueChecked,
+
     // ----- Captured locals (gap:closure-write-back / wp:M3-04c2) -----
     /// <summary>[u16 slot] — allocate a fresh <c>Cell { Value = Undefined }</c>
     /// and store it as the slot's value. Emitted in place of
