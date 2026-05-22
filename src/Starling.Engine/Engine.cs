@@ -376,9 +376,17 @@ public sealed class StarlingEngine
     // round-trips. The caller owns its lifetime; this method neither disposes it
     // nor hands it to the returned page. When null, a throwaway client is created
     // for this page load and bound to the returned LaidOutPage (disposed with it).
+    //
+    // onFirstPaint: optional progressive-render sink (interactive path). When
+    // supplied and the page has scripts, only render-blocking scripts run before
+    // first paint; the laid-out page is handed to this callback, then the async
+    // (deferred) scripts settle and — only if they mutated the DOM — a reflowed
+    // successor page is returned. When null, all scripts run before the single
+    // returned page (snapshot semantics, e.g. the headless/PNG callers).
     public async Task<Result<LaidOutPage, RenderError>> LayoutPageAsync(
         string url, RenderOptions options, CancellationToken ct = default,
-        StarlingHttpClient? sharedHttp = null)
+        StarlingHttpClient? sharedHttp = null,
+        Action<LaidOutPage>? onFirstPaint = null)
     {
         ArgumentNullException.ThrowIfNull(url);
         ArgumentNullException.ThrowIfNull(options);
@@ -446,32 +454,44 @@ public sealed class StarlingEngine
             var doc = Html.HtmlParser.Parse(html, _diag, scriptingEnabled: true);
 
             // Page resources outlive this method — the caller's LaidOutPage owns
-            // and disposes them (and the shared http client). On any path that
-            // doesn't return Ok we dispose here so callers don't have to.
+            // and disposes them (and, when minted here, the http client). On any
+            // path that doesn't return Ok we dispose here so callers don't have
+            // to. Once progressive first paint hands a page to the caller, the
+            // displayed page owns these resources — the catch must not free them.
             var images = new ImageFetcher(_diag, http);
             var stylesheets = new StylesheetFetcher(_diag, http);
             var webFonts = new FontFaceRegistry();
+            var resourcesHandedToPage = false;
+
+            // The ScriptFetcher must outlive the critical phase in progressive
+            // mode (the deferred phase reads its scripts and the dynamic runner
+            // fetches through it), so it can't be a single `using`. Dispose it
+            // idempotently once the deferred phase finishes (or on the way out).
+            var scripts = new ScriptFetcher(_diag, http);
+            var scriptsDisposed = false;
+            void DisposeScripts()
+            {
+                if (scriptsDisposed) return;
+                scriptsDisposed = true;
+                scripts.Dispose();
+            }
+
             try
             {
-                using (var scripts = new ScriptFetcher(_diag, http))
-                {
-                    // Start external script downloads now, concurrently with the
-                    // stylesheet/image fetch below (and the font fetch that
-                    // follows). Scripts have no data dependency on stylesheets or
-                    // fonts being *downloaded* — only script *execution* must wait
-                    // for stylesheets to apply, which is enforced where scripts run
-                    // below — so serializing the downloads only inflates the
-                    // critical path. FetchAllAsync enumerates the <script> elements
-                    // synchronously before its first await, so this reads the DOM
-                    // before any concurrent fetch can touch it. The task is awaited
-                    // just before scripts execute. (Mirrors RenderAsync.)
-                    var scriptsFetch = scripts.FetchAllAsync(doc, baseUrl: u, ct);
+                // Start external script downloads now, concurrently with the
+                // stylesheet/image/font fetch below — only script *execution*
+                // must wait for stylesheets, so serializing the downloads just
+                // inflates the critical path. FetchAllAsync enumerates the
+                // <script> elements synchronously before its first await, so this
+                // reads the DOM before any concurrent fetch can touch it.
+                var scriptsFetch = scripts.FetchAllAsync(doc, baseUrl: u, ct);
 
-                    // Fonts depend on the @font-face rules in the stylesheets, not
-                    // on the images — chain the font fetch onto the stylesheet
-                    // fetch and run it alongside the image fetch so web fonts
-                    // start as soon as the sheets land. (Mirrors RenderAsync.)
-                    using var fontFaceFetcher = new FontFaceFetcher(_diag, http);
+                // Fonts depend on the @font-face rules in the stylesheets, not on
+                // the images — chain the font fetch onto the stylesheet fetch and
+                // run it alongside the image fetch so web fonts start as soon as
+                // the sheets land. (Mirrors RenderAsync.)
+                using (var fontFaceFetcher = new FontFaceFetcher(_diag, http))
+                {
                     async Task FetchSheetsThenFontsAsync()
                     {
                         await stylesheets.FetchAllAsync(doc, baseUrl: u, ct).ConfigureAwait(false);
@@ -484,54 +504,145 @@ public sealed class StarlingEngine
                         images.FetchAllAsync(doc, baseUrl: u, options.Viewport.Width, options.FontSize, ct),
                         FetchSheetsThenFontsAsync()
                     ).ConfigureAwait(false);
+                }
 
-                    // The script downloads were kicked off above and have been
-                    // running concurrently with the stylesheet/font fetch; await
-                    // their completion now, before any script executes.
-                    await scriptsFetch.ConfigureAwait(false);
-                    if (scripts.Scripts.Count > 0 || scripts.ModuleScripts.Count > 0)
+                // The script downloads were kicked off above and ran concurrently
+                // with the stylesheet/font fetch; await their completion now,
+                // before any script executes.
+                await scriptsFetch.ConfigureAwait(false);
+
+                var hasScripts = scripts.Scripts.Count > 0 || scripts.ModuleScripts.Count > 0;
+                var viewport = new LayoutSize(options.Viewport.Width, options.Viewport.Height);
+
+                // Lazy pre-script layout — see RenderAsync for rationale.
+                (Starling.Layout.Box.BlockBox Root, Starling.Css.Cascade.StyleEngine Style) Prelayout()
+                {
+                    using (_diag.Span("engine", "prelayout_for_js"))
+                        return _painter.LayoutDocumentWithStyle(
+                            doc, viewport, options.FontSize, images, stylesheets.Resolve, webFonts,
+                            colorScheme: options.PreferredColorScheme);
+                }
+
+                // Re-fetch resources a script run injected (new <img> / <link>),
+                // plus CSS background images, before laying out for paint.
+                async Task FetchInjectedAndBackgroundsAsync()
+                {
+                    await Task.WhenAll(
+                        images.FetchAllAsync(doc, baseUrl: u, options.Viewport.Width, options.FontSize, ct),
+                        stylesheets.FetchAllAsync(doc, baseUrl: u, ct)
+                    ).ConfigureAwait(false);
+                    await images
+                        .FetchBackgroundsAsync(EnumerateAuthorSheets(doc, u, stylesheets), u, ct)
+                        .ConfigureAwait(false);
+                }
+
+                // Lay out the current DOM for paint and build the owning page.
+                // Only hand the client to the page when we own it; a shared
+                // session client outlives the page and is disposed by the caller.
+                LaidOutPage BuildPage()
+                {
+                    var (root, style) = _painter.LayoutDocumentWithStyle(
+                        doc, viewport, options.FontSize, images, stylesheets.Resolve, webFonts,
+                        colorScheme: options.PreferredColorScheme);
+                    return new LaidOutPage(
+                        root, doc, style, viewport, url, ExtractTitle(doc), images, stylesheets, webFonts,
+                        options.FontSize, security, ownsHttp ? http : null);
+                }
+
+                // ---- Progressive path: run only render-blocking scripts, paint,
+                // then settle deferred (async) scripts and reflow only if they
+                // changed the DOM. Used by the interactive shell. ----
+                if (onFirstPaint is not null && hasScripts)
+                {
+                    var session = BeginScripts(doc, u, scripts, new BoxLayoutHost(doc, Prelayout), ct);
+                    var sessionEnded = false;
+                    void EndSessionOnce() { if (!sessionEnded) { sessionEnded = true; EndScripts(session); } }
+                    try
                     {
-                        var preViewport = new LayoutSize(options.Viewport.Width, options.Viewport.Height);
-                        // Lazy pre-script layout — see RenderAsync for rationale.
-                        (Starling.Layout.Box.BlockBox Root, Starling.Css.Cascade.StyleEngine Style) Relayout()
+                        using (var critSpan = _diag.Span("engine", "run_scripts.critical"))
                         {
-                            using (_diag.Span("engine", "prelayout_for_js"))
-                                return _painter.LayoutDocumentWithStyle(
-                                    doc, preViewport, options.FontSize, images, stylesheets.Resolve, webFonts,
-                                    colorScheme: options.PreferredColorScheme);
+                            Activity.Current?.SetTag("script.count", scripts.Scripts.Count);
+                            Activity.Current?.SetTag("script.module_count", scripts.ModuleScripts.Count);
+                            RunCriticalScripts(session, deferAsync: true, ct);
                         }
-                        var layoutHost = new BoxLayoutHost(doc, Relayout);
-                        await RunScriptsAsync(doc, u, scripts, layoutHost, ct).ConfigureAwait(false);
-                        await Task.WhenAll(
-                            images.FetchAllAsync(doc, baseUrl: u, options.Viewport.Width, options.FontSize, ct),
-                            stylesheets.FetchAllAsync(doc, baseUrl: u, ct)
-                        ).ConfigureAwait(false);
+
+                        // First paint: lay out the post-critical DOM and hand it to
+                        // the caller. From here the displayed page owns the shared
+                        // resources + http client, so the catch must not free them.
+                        await FetchInjectedAndBackgroundsAsync().ConfigureAwait(false);
+                        var page1 = BuildPage();
+                        httpHandedToPage = ownsHttp;
+                        resourcesHandedToPage = true;
+
+                        var versionAtPaint = doc.MutationVersion;
+                        onFirstPaint(page1);
+
+                        // Deferred (async) scripts settle here, after first paint.
+                        using (_diag.Span("engine", "run_scripts.deferred"))
+                            await RunDeferredScriptsAsync(session, deferAsync: true, ct).ConfigureAwait(false);
+
+                        EndSessionOnce();
+                        DisposeScripts();
+
+                        // Common case (analytics/beacons): deferred work touched no
+                        // DOM, so page1 is still correct — return it unchanged.
+                        if (doc.MutationVersion == versionAtPaint)
+                            return Result<LaidOutPage, RenderError>.Ok(page1);
+
+                        // Deferred scripts mutated the DOM: re-fetch what they
+                        // injected and reflow into a successor. Relayout transfers
+                        // page1's shared resources to it and marks page1 inert, so
+                        // the caller can dispose page1 safely.
+                        await FetchInjectedAndBackgroundsAsync().ConfigureAwait(false);
+                        var (root2, style2) = _painter.LayoutDocumentWithStyle(
+                            doc, viewport, options.FontSize, images, stylesheets.Resolve, webFonts,
+                            colorScheme: options.PreferredColorScheme);
+                        return Result<LaidOutPage, RenderError>.Ok(page1.Relayout(root2, style2, viewport));
+                    }
+                    catch
+                    {
+                        // After first paint the caller owns the resources; only
+                        // tear the session/fetcher down and propagate (the outer
+                        // catch skips resource disposal via resourcesHandedToPage).
+                        EndSessionOnce();
+                        DisposeScripts();
+                        throw;
                     }
                 }
 
-                await images
-                    .FetchBackgroundsAsync(EnumerateAuthorSheets(doc, u, stylesheets), u, ct)
-                    .ConfigureAwait(false);
+                // ---- Non-progressive path: run everything before painting the
+                // single returned page (snapshot semantics / no callback). ----
+                if (hasScripts)
+                {
+                    await RunScriptsAsync(doc, u, scripts, new BoxLayoutHost(doc, Prelayout), ct).ConfigureAwait(false);
+                    DisposeScripts();
+                    await FetchInjectedAndBackgroundsAsync().ConfigureAwait(false);
+                }
+                else
+                {
+                    DisposeScripts();
+                    await images
+                        .FetchBackgroundsAsync(EnumerateAuthorSheets(doc, u, stylesheets), u, ct)
+                        .ConfigureAwait(false);
+                }
 
-                var viewport = new LayoutSize(options.Viewport.Width, options.Viewport.Height);
-                var (root, style) = _painter.LayoutDocumentWithStyle(
-                    doc, viewport, options.FontSize, images, stylesheets.Resolve, webFonts,
-                    colorScheme: options.PreferredColorScheme);
-
-                var title = ExtractTitle(doc);
-                // Only hand the client to the page when we own it; a shared
-                // session client outlives the page and is disposed by the caller.
-                var page = new LaidOutPage(
-                    root, doc, style, viewport, url, title, images, stylesheets, webFonts,
-                    options.FontSize, security, ownsHttp ? http : null);
+                var page = BuildPage();
                 httpHandedToPage = ownsHttp;
+                resourcesHandedToPage = true;
                 return Result<LaidOutPage, RenderError>.Ok(page);
             }
             catch
             {
-                images.Dispose();
-                stylesheets.Dispose();
-                webFonts.Dispose();
+                // The ScriptFetcher is never owned by the page; always dispose it.
+                DisposeScripts();
+                // Resources become the displayed page's once first paint hands
+                // them over — don't free them out from under it.
+                if (!resourcesHandedToPage)
+                {
+                    images.Dispose();
+                    stylesheets.Dispose();
+                    webFonts.Dispose();
+                }
                 throw;
             }
         }
@@ -627,9 +738,73 @@ public sealed class StarlingEngine
         Document document, StarlingUrl baseUrl, ScriptFetcher scriptFetcher,
         ILayoutHost? layoutHost, CancellationToken ct)
     {
-        var scripts = scriptFetcher.Scripts;
+        // One span over the whole execution phase — compile + run, the
+        // DOMContentLoaded/load events, and the microtask/timer/dynamic-script
+        // pumping that follows. On script-heavy pages this is usually the
+        // dominant *non-network* cost, and without this span it shows up in
+        // traces only as an unattributed gap between fetch_scripts and layout.
+        //
+        // The PNG/headless path runs both phases back-to-back (deferAsync:false
+        // preserves the historical ordering — async classic scripts run before
+        // DOMContentLoaded). The interactive path splits the phases around first
+        // paint via the Begin/RunCritical/RunDeferred/End primitives below.
+        using var span = _diag.Span("engine", "run_scripts");
+        Activity.Current?.SetTag("script.count", scriptFetcher.Scripts.Count);
+        Activity.Current?.SetTag("script.module_count", scriptFetcher.ModuleScripts.Count);
+
+        var session = BeginScripts(document, baseUrl, scriptFetcher, layoutHost, ct);
+        try
+        {
+            RunCriticalScripts(session, deferAsync: false, ct);
+            await RunDeferredScriptsAsync(session, deferAsync: false, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            EndScripts(session);
+        }
+    }
+
+    /// <summary>
+    /// Holds the live JS state shared across the critical and deferred script
+    /// phases: the realm/VM, the simulated event loop, the dynamic-script runner,
+    /// the dedup set, and the JS-owned HTTP client. Created by
+    /// <see cref="BeginScripts"/>, torn down by <see cref="EndScripts"/>.
+    /// </summary>
+    private sealed class ScriptSession
+    {
+        public required JsRuntime Runtime { get; init; }
+        public required WebEventLoop Loop { get; init; }
+        public required HashSet<Element> Executed { get; init; }
+        public required StarlingHttpClient Http { get; init; }
+        public required Document Document { get; init; }
+        public required StarlingUrl BaseUrl { get; init; }
+        public required ScriptFetcher Fetcher { get; init; }
+        public DynamicScriptRunner DynamicRunner { get; set; } = null!;
+        public int ConsoleErrors;
+    }
+
+    /// <summary>
+    /// Stand up the JS realm, window/timer/rAF bindings, the tree-mutation and
+    /// <c>src</c>-set hooks, and the dynamic-script runner — everything needed to
+    /// run a page's scripts. The returned session must be torn down with
+    /// <see cref="EndScripts"/> (it owns an HTTP client and installed hooks).
+    /// </summary>
+    private ScriptSession BeginScripts(
+        Document document, StarlingUrl baseUrl, ScriptFetcher scriptFetcher,
+        ILayoutHost? layoutHost, CancellationToken ct)
+    {
         var runtime = new JsRuntime();
-        var consoleErrors = 0;
+        var session = new ScriptSession
+        {
+            Runtime = runtime,
+            Document = document,
+            BaseUrl = baseUrl,
+            Fetcher = scriptFetcher,
+            Executed = new HashSet<Element>(ReferenceEqualityComparer.Instance),
+            Http = _httpFactory(),
+            Loop = new WebEventLoop(),
+        };
+
         var previousSink = runtime.Realm.ConsoleSink;
         runtime.Realm.ConsoleSink = (level, message) =>
         {
@@ -641,13 +816,12 @@ public sealed class StarlingEngine
                 _ => DiagLevel.Info,
             };
             _diag.Log(diagLevel, "engine.js", $"[{level}] {message}");
-            if (level == ConsoleLevel.Error) consoleErrors++;
+            if (level == ConsoleLevel.Error) session.ConsoleErrors++;
         };
 
-        using var http = _httpFactory();
         WindowBinding.Install(runtime, document, new WindowInstallOptions(
             DocumentUrl: baseUrl.ToString(),
-            HttpClient: http,
+            HttpClient: session.Http,
             LayoutHost: layoutHost));
 
         // setTimeout / setInterval ride on a simulated WebEventLoop clock.
@@ -657,86 +831,103 @@ public sealed class StarlingEngine
         // ride the same clock; `AdvanceBy` routes through `RunFrame`, so a
         // page that bootstraps via `requestAnimationFrame` instead of
         // `setTimeout` settles on the same pump.
-        var loop = new WebEventLoop();
-        TimersBinding.Install(runtime, loop);
-        AnimationFrameBinding.Install(runtime, loop);
-
-        // Track which <script> elements have already executed so the
-        // runtime-injection hook never double-runs a parser-found script and
-        // an injected script can't be re-run if it is moved within the tree.
-        var executed = new HashSet<Element>(ReferenceEqualityComparer.Instance);
-
-        // Wire the runtime-injection hook: when JS appends a freshly created
-        // <script> to the connected DOM, fetch (for src) + execute it through
-        // the same compile+run path. Parser-inserted vs script-inserted async
-        // defaults: a <script> created via createElement and connected at
-        // runtime is "non-parser-inserted", so the spec defaults it to async;
-        // the headless engine has no streaming parser to overlap with, so it
-        // honours the element's async/defer attributes verbatim and otherwise
-        // runs the injected script synchronously on insertion (an acceptable
-        // approximation — see browser-plan note in the test).
-        document.NodeConnected = node =>
-            OnNodeConnected(node, runtime, scriptFetcher, baseUrl, executed, ct);
+        TimersBinding.Install(runtime, session.Loop);
+        AnimationFrameBinding.Install(runtime, session.Loop);
 
         // Dynamic <script src=…> path (HTML §4.12.1 "prepare a script"): when a
         // running script sets src on a not-yet-started <script>, queue it for
         // fetch+execute and fire load/error. Deferred-bundle loaders depend on
-        // this. The runner shares the ScriptFetcher cache + scheme handling.
-        var dynamicRunner = new DynamicScriptRunner(
+        // this. The runner shares the ScriptFetcher cache + scheme handling, and
+        // is created before the NodeConnected hook so the hook can route
+        // script-inserted async/external scripts to it.
+        session.DynamicRunner = new DynamicScriptRunner(
             _diag, runtime, baseUrl,
             (url, token) => scriptFetcher.FetchSourceAsync(url, token));
-        ScriptSrcHook.Register(runtime.Realm, dynamicRunner.OnSrcSet);
+        ScriptSrcHook.Register(runtime.Realm, session.DynamicRunner.OnSrcSet);
 
-        try
+        // Wire the runtime-injection hook: when JS appends a freshly created
+        // <script> to the connected DOM, run (or, for script-inserted async /
+        // external scripts, defer to the dynamic-script pump) it through the same
+        // compile+run path. A <script> created via createElement and connected at
+        // runtime is "non-parser-inserted", so the spec defaults it to async;
+        // OnNodeConnected routes those to the runner above so they don't block
+        // the (progressive) first paint, while inline non-async injected scripts
+        // still run synchronously on insertion.
+        document.NodeConnected = node =>
+            OnNodeConnected(node, runtime, scriptFetcher, session.DynamicRunner, baseUrl, session.Executed, ct);
+
+        return session;
+    }
+
+    /// <summary>
+    /// Render-blocking script phase: the ordered (non-async) classic scripts,
+    /// the module scripts, then <c>DOMContentLoaded</c> — everything that must
+    /// run before a correct first paint. With <paramref name="deferAsync"/> the
+    /// <c>async</c> classic scripts are held back for <see cref="RunDeferredScriptsAsync"/>
+    /// (so they no longer block first paint); otherwise they run here, preserving
+    /// the historical pre-DOMContentLoaded ordering.
+    /// </summary>
+    private void RunCriticalScripts(ScriptSession s, bool deferAsync, CancellationToken ct)
+    {
+        // Ordered scripts (neither async nor defer, then defer) run in document
+        // order (HTML §4.12.1).
+        RunOrderedScripts(s.Runtime, s.Fetcher.Scripts, s.Executed, ct);
+        if (!deferAsync)
+            RunAsyncScripts(s.Runtime, s.Fetcher.Scripts, s.Executed, ct);
+
+        // Module scripts run after the classic scripts, deferred and in document
+        // order, before DOMContentLoaded.
+        RunModuleScripts(s.Runtime, s.BaseUrl, s.Fetcher, ct);
+
+        // Mark every parser-batch script "already started" so a deferred loader's
+        // later `src` write never re-runs a script that already executed.
+        foreach (var sc in s.Fetcher.Scripts) s.DynamicRunner.MarkStarted(sc.Element);
+        foreach (var sc in s.Fetcher.ModuleScripts) s.DynamicRunner.MarkStarted(sc.Element);
+
+        // DOMContentLoaded — synchronous handlers see the parsed DOM.
+        s.Runtime.WithActiveVm(() => WindowBinding.FireDomContentLoaded(s.Runtime));
+    }
+
+    /// <summary>
+    /// Deferred script phase, run after first paint on the interactive path: the
+    /// <c>async</c> classic scripts (when <paramref name="deferAsync"/>), then the
+    /// async-work pump (fetch/XHR completions, microtasks, simulated timers/rAF,
+    /// and src-triggered dynamic scripts), the <c>load</c> event, and a final
+    /// pump. This is where analytics/beacon work and lazily-injected scripts
+    /// settle.
+    /// </summary>
+    private async Task RunDeferredScriptsAsync(ScriptSession s, bool deferAsync, CancellationToken ct)
+    {
+        if (deferAsync)
+            RunAsyncScripts(s.Runtime, s.Fetcher.Scripts, s.Executed, ct);
+
+        // Pump in-flight async work AND src-triggered dynamic script fetches,
+        // re-pumping after each settles. Sequential bundle loaders chain off
+        // `load`, so this loop is what lets bundle #2..N run after #1.
+        await PumpWithDynamicScriptsAsync(s.Runtime, s.Loop, s.DynamicRunner, ct).ConfigureAwait(false);
+
+        // load event after subresources have settled, then one more drain pass
+        // for listeners that schedule further work.
+        s.Runtime.WithActiveVm(() => WindowBinding.FireLoad(s.Runtime));
+        await PumpWithDynamicScriptsAsync(s.Runtime, s.Loop, s.DynamicRunner, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Detach the tree-mutation / <c>src</c>-set hooks so the document is inert
+    /// again, dispose the JS-owned HTTP client, and surface any console-error
+    /// count. Safe to call exactly once per <see cref="BeginScripts"/>.
+    /// </summary>
+    private void EndScripts(ScriptSession s)
+    {
+        s.Document.NodeConnected = null;
+        ScriptSrcHook.Register(s.Runtime.Realm, null);
+        s.Http.Dispose();
+
+        if (s.ConsoleErrors > 0)
         {
-            // §0: ordered scripts (neither async nor defer, then defer) run in
-            // document order; async scripts run order-independently. We run the
-            // ordered batch first, then the async batch — both before
-            // DOMContentLoaded. See ScriptFetcher remarks (HTML §4.12.1).
-            RunOrderedScripts(runtime, scriptFetcher.Scripts, executed, ct);
-            RunAsyncScripts(runtime, scriptFetcher.Scripts, executed, ct);
-
-            // Module scripts (<script type="module">) run after the classic
-            // scripts, deferred and in document order (HTML §4.12.1). Each is the
-            // entry of its own import graph, loaded + linked + evaluated through
-            // the shared ModuleLoader, before DOMContentLoaded.
-            RunModuleScripts(runtime, baseUrl, scriptFetcher, ct);
-
-            // Mark every parser-batch script "already started" in the dynamic
-            // runner so a deferred loader's later `src` write never re-runs a
-            // script that already executed. Empty deferred placeholders (no src,
-            // empty body) are not collected into these batches (ScriptFetcher
-            // drops them), so they stay eligible for the src-set path above.
-            foreach (var s in scriptFetcher.Scripts) dynamicRunner.MarkStarted(s.Element);
-            foreach (var s in scriptFetcher.ModuleScripts) dynamicRunner.MarkStarted(s.Element);
-
-            // §1: DOMContentLoaded — synchronous handlers see the parsed DOM. A
-            // deferred loader runs here and copies data-deferred-src onto src,
-            // which the hook turns into queued dynamic-script work.
-            runtime.WithActiveVm(() => WindowBinding.FireDomContentLoaded(runtime));
-
-            // §2: pump in-flight async work (fetch / XHR completions, chained
-            // microtasks, simulated timers/rAF) AND src-triggered dynamic script
-            // fetches, re-pumping after each settles. Sequential bundle loaders
-            // chain off `load`, so this loop is what lets bundle #2..N run after #1.
-            await PumpWithDynamicScriptsAsync(runtime, loop, dynamicRunner, ct).ConfigureAwait(false);
-
-            // §3: load event after subresources have settled. Listeners that
-            // schedule more work (including more dynamic scripts) get one more
-            // drain pass before we return.
-            runtime.WithActiveVm(() => WindowBinding.FireLoad(runtime));
-            await PumpWithDynamicScriptsAsync(runtime, loop, dynamicRunner, ct).ConfigureAwait(false);
+            _diag.Counter("engine.script.console_errors", s.ConsoleErrors);
+            Activity.Current?.SetTag("script.console_errors", s.ConsoleErrors);
         }
-        finally
-        {
-            // Detach the hooks so the document is inert again once scripting is
-            // done — a later layout/paint mutation must not re-enter the VM.
-            document.NodeConnected = null;
-            ScriptSrcHook.Register(runtime.Realm, null);
-        }
-
-        if (consoleErrors > 0)
-            _diag.Counter("engine.script.console_errors", consoleErrors);
     }
 
     /// <summary>Run the non-<c>async</c> classic scripts in document order: the
@@ -803,19 +994,32 @@ public sealed class StarlingEngine
     }
 
     /// <summary>
-    /// Tree-mutation hook: when JS connects a node to the document, fetch and
-    /// execute any classic <c>&lt;script&gt;</c> it brings in. Runs synchronously
-    /// on the insertion (we are inside a VM frame), so the injected script's
-    /// side effects are visible to the code that appended it once control
-    /// returns. An external <c>src</c> is fetched here; the wait is bounded by
-    /// the fetcher's per-URL cache and the engine's overall cancellation token.
+    /// Tree-mutation hook: when JS connects a <c>&lt;script&gt;</c> to the
+    /// document, either defer it (script-inserted external / async scripts → the
+    /// dynamic-script pump, so they don't block first paint) or, for inline
+    /// non-async injected scripts, fetch and execute it synchronously on the
+    /// insertion (we are inside a VM frame), so its side effects are visible to
+    /// the code that appended it once control returns.
     /// </summary>
     private void OnNodeConnected(
-        Node node, JsRuntime runtime, ScriptFetcher fetcher, StarlingUrl baseUrl,
-        HashSet<Element> executed, CancellationToken ct)
+        Node node, JsRuntime runtime, ScriptFetcher fetcher, DynamicScriptRunner dynamicRunner,
+        StarlingUrl baseUrl, HashSet<Element> executed, CancellationToken ct)
     {
         if (node is not Element { LocalName: "script" } script) return;
         if (executed.Contains(script)) return;
+
+        // Script-inserted external scripts (and any async-flagged script) are
+        // async by default — defer them to the dynamic-script pump rather than
+        // running them inline so they don't block the (progressive) first paint.
+        // EnqueueInjectedExternal is idempotent, so a script whose `src` write
+        // already queued it (the common createElement→src→append order) is not
+        // double-queued or double-run here.
+        var hasSrc = !string.IsNullOrWhiteSpace(script.GetAttribute("src"));
+        if (hasSrc || script.HasAttribute("async"))
+        {
+            if (hasSrc) dynamicRunner.EnqueueInjectedExternal(script);
+            return;
+        }
 
         // Resolve relative src against the document's base URL. Block on the
         // fetch: the headless engine has no streaming parser to overlap with,

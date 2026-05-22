@@ -75,6 +75,16 @@ internal sealed class DynamicScriptRunner
         _pending.Enqueue(script);
     }
 
+    /// <summary>Queue a script-inserted external <c>&lt;script&gt;</c> for the
+    /// deferred phase instead of running it inline on insertion. Per HTML
+    /// §4.12.1 a non-parser-inserted external script defaults to async, so it
+    /// must not block first paint; the connection hook routes such scripts here
+    /// rather than fetching+executing them synchronously. Idempotent: a script
+    /// already claimed (e.g. its <c>src</c> write already went through
+    /// <see cref="OnSrcSet"/>) is left alone, so it never double-queues or
+    /// double-runs.</summary>
+    public void EnqueueInjectedExternal(Element script) => OnSrcSet(script);
+
     /// <summary>Drain every queued script: fetch, execute on the realm, then
     /// fire load/error. Each execution can itself enqueue the next script (a
     /// chained loader sets src #N+1 from #N's load handler), so we loop until

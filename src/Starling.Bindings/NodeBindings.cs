@@ -323,6 +323,24 @@ public static class NodeBindings
                 }
                 return JsValue.Undefined;
             });
+        // `script.async` IDL property. Reflects the boolean `async` content
+        // attribute so `el.async = true` is observable by the engine's script
+        // classification (HTML §4.12.1). A script-inserted external script
+        // defaults to async; analytics snippets (ga.js/gtag) set this flag, so
+        // reflecting it is what lets the engine defer them past first paint.
+        EventTargetBinding.DefineAccessor(realm, elProto, "async",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e
+                ? JsValue.Boolean(e.HasAttribute("async"))
+                : JsValue.False,
+            (thisV, args) =>
+            {
+                if (DomWrappers.UnwrapElement(thisV) is { } e)
+                {
+                    if (args.Length > 0 && JsValue.ToBoolean(args[0])) e.SetAttribute("async", "");
+                    else e.RemoveAttribute("async");
+                }
+                return JsValue.Undefined;
+            });
         EventTargetBinding.DefineMethod(realm, elProto, "hasAttribute", (thisV, args) =>
             DomWrappers.UnwrapElement(thisV) is { } e && args.Length > 0
                 ? JsValue.Boolean(e.HasAttribute(JsValue.ToStringValue(args[0])))
