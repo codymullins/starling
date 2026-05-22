@@ -6,6 +6,7 @@ using Avalonia.Controls.Chrome;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Starling.Gui.Chrome;
 using Starling.Gui.Controls;
@@ -67,6 +68,13 @@ public sealed class MainWindow : Window, IBrowserController
 
     private CancellationTokenSource? _navCts;
     private bool _busy;
+
+    // The page reference currently handed to the webview. Progressive rendering
+    // shows page1 at first paint then may return a successor page2; tracking the
+    // last-shown reference lets the success branch skip a redundant re-show when
+    // the deferred phase changed nothing and returned the same page1 instance
+    // (re-showing it would dispose the live page out from under itself).
+    private LaidOutPage? _lastShownPage;
 
     public MainWindow()
     {
@@ -285,7 +293,7 @@ public sealed class MainWindow : Window, IBrowserController
         // construction time, so flipping the theme has to re-run the load
         // for `@media (prefers-color-scheme: dark)` rules to apply.
         if (_session.History.Current is not null && !_busy)
-            await RunNavigation(ct => _session.ReloadInteractiveAsync(BuildOptions(), ct), "Theme reload");
+            await RunNavigation((ct, fp) => _session.ReloadInteractiveAsync(BuildOptions(), ct, fp), "Theme reload");
     }
 
     private void ToggleDevTools()
@@ -313,19 +321,19 @@ public sealed class MainWindow : Window, IBrowserController
     private async void BackClicked(object? s, EventArgs e)
     {
         if (!_session.History.CanGoBack || _busy) return;
-        await RunNavigation(ct => _session.BackInteractiveAsync(BuildOptions(), ct), "Back");
+        await RunNavigation((ct, fp) => _session.BackInteractiveAsync(BuildOptions(), ct, fp), "Back");
     }
 
     private async void ForwardClicked(object? s, EventArgs e)
     {
         if (!_session.History.CanGoForward || _busy) return;
-        await RunNavigation(ct => _session.ForwardInteractiveAsync(BuildOptions(), ct), "Forward");
+        await RunNavigation((ct, fp) => _session.ForwardInteractiveAsync(BuildOptions(), ct, fp), "Forward");
     }
 
     private async void ReloadClicked(object? s, EventArgs e)
     {
         if (_session.History.Current is null || _busy) return;
-        await RunNavigation(ct => _session.ReloadInteractiveAsync(BuildOptions(), ct), "Reload");
+        await RunNavigation((ct, fp) => _session.ReloadInteractiveAsync(BuildOptions(), ct, fp), "Reload");
     }
 
     private void StopClicked(object? s, EventArgs e) => _navCts?.Cancel();
@@ -370,11 +378,11 @@ public sealed class MainWindow : Window, IBrowserController
             return;
         }
         if (_urlBar.Address.Text != url) _urlBar.Address.Text = url;
-        await RunNavigation(ct => _session.NavigateInteractiveAsync(url, BuildOptions(), ct), $"GET {url}");
+        await RunNavigation((ct, fp) => _session.NavigateInteractiveAsync(url, BuildOptions(), ct, fp), $"GET {url}");
     }
 
     private async Task RunNavigation(
-        Func<CancellationToken, Task<Result<LaidOutPage, RenderError>>> navigate,
+        Func<CancellationToken, Action<LaidOutPage>, Task<Result<LaidOutPage, RenderError>>> navigate,
         string opLabel)
     {
         var previousCts = _navCts;
@@ -394,9 +402,21 @@ public sealed class MainWindow : Window, IBrowserController
         // would show one ever-growing trace instead of one trace per navigation.
         Activity.Current = null;
         using var navSpan = _diag.Span("gui", "navigate");
+
+        // Progressive first paint: the engine invokes this from a background
+        // continuation once render-blocking scripts have run, before deferred
+        // scripts settle. Marshal to the UI thread and, if this navigation is
+        // still current, show the page immediately so the user sees content
+        // without waiting on async/analytics scripts.
+        void OnFirstPaint(LaidOutPage page) => Dispatcher.UIThread.Post(() =>
+        {
+            if (!ReferenceEquals(_navCts, myCts)) return;
+            ApplyShownPage(page, opLabel, sw.ElapsedMilliseconds);
+        });
+
         try
         {
-            var result = await navigate(myCts.Token);
+            var result = await navigate(myCts.Token, OnFirstPaint);
             sw.Stop();
             if (!ReferenceEquals(_navCts, myCts)) return;
 
@@ -407,21 +427,12 @@ public sealed class MainWindow : Window, IBrowserController
             }
             else
             {
-                _webview.ShowPage(result.Value);
-                _urlBar.SetSecurity(MapSecurity(result.Value.Security));
-                Title = string.IsNullOrWhiteSpace(result.Value.Title)
-                    ? string.Empty
-                    : result.Value.Title;
-                var current = _session.History.Current;
-                if (!string.IsNullOrEmpty(current) && _urlBar.Address.Text != current)
-                    _urlBar.Address.Text = current;
-
-                _statusBar.SetState(StatusState.Ready);
-                _statusBar.SetHint($"{opLabel} → {sw.ElapsedMilliseconds} ms");
-                _statusBar.SetInfo(
-                    view: $"{result.Value.Viewport.Width}×{result.Value.Viewport.Height}",
-                    doc:  $"{(int)result.Value.DocumentHeight} px",
-                    hist: HistoryLabel());
+                // Avoid a redundant double-show: when the deferred phase changed
+                // nothing it returns the very page already shown via OnFirstPaint.
+                // Re-showing it would dispose the live page (ShowPage disposes the
+                // outgoing page, which would be this same instance).
+                if (!ReferenceEquals(result.Value, _lastShownPage))
+                    ApplyShownPage(result.Value, opLabel, sw.ElapsedMilliseconds);
             }
         }
         catch (OperationCanceledException) when (myCts.IsCancellationRequested)
@@ -449,6 +460,29 @@ public sealed class MainWindow : Window, IBrowserController
             }
             myCts.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Hand <paramref name="page"/> to the webview and sync the chrome (security
+    /// lock, window title, URL bar, status info). Shared by progressive first
+    /// paint and the final navigation result. Must run on the UI thread.
+    /// </summary>
+    private void ApplyShownPage(LaidOutPage page, string opLabel, long elapsedMs)
+    {
+        _webview.ShowPage(page);
+        _lastShownPage = page;
+        _urlBar.SetSecurity(MapSecurity(page.Security));
+        Title = string.IsNullOrWhiteSpace(page.Title) ? string.Empty : page.Title;
+        var current = _session.History.Current;
+        if (!string.IsNullOrEmpty(current) && _urlBar.Address.Text != current)
+            _urlBar.Address.Text = current;
+
+        _statusBar.SetState(StatusState.Ready);
+        _statusBar.SetHint($"{opLabel} → {elapsedMs} ms");
+        _statusBar.SetInfo(
+            view: $"{page.Viewport.Width}×{page.Viewport.Height}",
+            doc:  $"{(int)page.DocumentHeight} px",
+            hist: HistoryLabel());
     }
 
     private void BeginBusy(string label)
@@ -544,7 +578,7 @@ public sealed class MainWindow : Window, IBrowserController
     {
         if (!_session.History.CanGoBack)
             return Snapshot(success: false, error: "No back history.");
-        await RunNavigation(c => _session.BackInteractiveAsync(BuildOptions(), c), "Back");
+        await RunNavigation((c, fp) => _session.BackInteractiveAsync(BuildOptions(), c, fp), "Back");
         return Snapshot(success: true);
     }
 
@@ -552,7 +586,7 @@ public sealed class MainWindow : Window, IBrowserController
     {
         if (!_session.History.CanGoForward)
             return Snapshot(success: false, error: "No forward history.");
-        await RunNavigation(c => _session.ForwardInteractiveAsync(BuildOptions(), c), "Forward");
+        await RunNavigation((c, fp) => _session.ForwardInteractiveAsync(BuildOptions(), c, fp), "Forward");
         return Snapshot(success: true);
     }
 
@@ -560,7 +594,7 @@ public sealed class MainWindow : Window, IBrowserController
     {
         if (_session.History.Current is null)
             return Snapshot(success: false, error: "Nothing to reload.");
-        await RunNavigation(c => _session.ReloadInteractiveAsync(BuildOptions(), c), "Reload");
+        await RunNavigation((c, fp) => _session.ReloadInteractiveAsync(BuildOptions(), c, fp), "Reload");
         return Snapshot(success: true);
     }
 

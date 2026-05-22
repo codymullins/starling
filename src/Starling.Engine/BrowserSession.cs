@@ -62,11 +62,12 @@ public sealed class BrowserSession : IDisposable
     public async Task<Result<LaidOutPage, RenderError>> NavigateInteractiveAsync(
         string url,
         RenderOptions options,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Action<LaidOutPage>? onFirstPaint = null)
     {
         return await TrackAsync("navigate", url, async () =>
         {
-            var result = await _engine.LayoutPageAsync(url, options, ct, sharedHttp: _http).ConfigureAwait(false);
+            var result = await _engine.LayoutPageAsync(url, options, ct, sharedHttp: _http, onFirstPaint: onFirstPaint).ConfigureAwait(false);
             if (result.IsOk)
                 History.Navigate(url);
             return result;
@@ -75,26 +76,29 @@ public sealed class BrowserSession : IDisposable
 
     public Task<Result<LaidOutPage, RenderError>> BackInteractiveAsync(
         RenderOptions options,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Action<LaidOutPage>? onFirstPaint = null)
     {
         var url = History.Back();
-        return TrackAsync("back", url, () => _engine.LayoutPageAsync(url, options, ct, sharedHttp: _http));
+        return TrackAsync("back", url, () => _engine.LayoutPageAsync(url, options, ct, sharedHttp: _http, onFirstPaint: onFirstPaint));
     }
 
     public Task<Result<LaidOutPage, RenderError>> ForwardInteractiveAsync(
         RenderOptions options,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Action<LaidOutPage>? onFirstPaint = null)
     {
         var url = History.Forward();
-        return TrackAsync("forward", url, () => _engine.LayoutPageAsync(url, options, ct, sharedHttp: _http));
+        return TrackAsync("forward", url, () => _engine.LayoutPageAsync(url, options, ct, sharedHttp: _http, onFirstPaint: onFirstPaint));
     }
 
     public Task<Result<LaidOutPage, RenderError>> ReloadInteractiveAsync(
         RenderOptions options,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Action<LaidOutPage>? onFirstPaint = null)
     {
         var url = History.Reload();
-        return TrackAsync("reload", url, () => _engine.LayoutPageAsync(url, options, ct, sharedHttp: _http));
+        return TrackAsync("reload", url, () => _engine.LayoutPageAsync(url, options, ct, sharedHttp: _http, onFirstPaint: onFirstPaint));
     }
 
     /// <summary>

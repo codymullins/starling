@@ -630,6 +630,127 @@ public sealed class EngineJsExecutionTests
         outcome.DisplayText.Should().Contain("runs=1");
     }
 
+    [TestMethod]
+    public async Task Injected_async_external_script_runs_via_dynamic_runner()
+    {
+        // GA/gtag pattern: an inline script createElements a <script>, sets
+        // async + src, and appends it. Per HTML §4.12.1 a script-inserted
+        // external script defaults to async, so the engine routes it to the
+        // dynamic-script pump (deferred phase) instead of running it inline on
+        // insertion. On the headless path the pump still drains before paint, so
+        // its DOM mutation is visible in the final render.
+        await using var server = await BundleServer.StartAsync(new()
+        {
+            ["/ga.js"] = "document.getElementById('status').textContent='GA_RAN';",
+        });
+        var html = $@"<!doctype html><html><head>
+<script>
+  (function(){{
+    var el = document.createElement('script');
+    el.async = true;
+    el.src = '{server.BaseUrl}/ga.js';
+    document.head.appendChild(el);
+  }})();
+</script></head><body>
+<p id=""status"">GA_PENDING</p>
+</body></html>";
+        var outcome = await RenderHtmlAsync(html);
+        outcome.DisplayText.Should().Contain("GA_RAN");
+        outcome.DisplayText.Should().NotContain("GA_PENDING");
+    }
+
+    [TestMethod]
+    public async Task Progressive_layout_first_paints_then_reflows_after_deferred_dom_change()
+    {
+        await using var server = await BundleServer.StartAsync(new()
+        {
+            // Deferred (injected async external) script mutates the DOM.
+            ["/defer.js"] = "document.getElementById('out').textContent='DEFERRED';",
+        });
+        var html = $@"<!doctype html><html><head>
+<script>
+  document.getElementById; // critical phase runs synchronously
+</script></head><body>
+<p id=""out"">CRITICAL</p>
+<script>
+  var el = document.createElement('script');
+  el.async = true;
+  el.src = '{server.BaseUrl}/defer.js';
+  document.head.appendChild(el);
+</script>
+</body></html>";
+        var fixture = Path.Combine(Path.GetTempPath(), $"starling-prog-{Guid.NewGuid():N}.html");
+        await File.WriteAllTextAsync(fixture, html);
+        try
+        {
+            var engine = new StarlingEngine();
+            LaidOutPage? firstPaintPage = null;
+            var result = await engine.LayoutPageAsync(
+                "file://" + fixture.Replace('\\', '/'),
+                DefaultOptions,
+                CancellationToken.None,
+                onFirstPaint: p => firstPaintPage = p);
+
+            result.IsOk.Should().BeTrue(result.IsErr ? result.Error.Message : "");
+            firstPaintPage.Should().NotBeNull("onFirstPaint must fire for a scripted page");
+            // The deferred script mutated the DOM, so the returned page is a
+            // successor distinct from the first-paint page.
+            ReferenceEquals(result.Value, firstPaintPage).Should().BeFalse();
+            using var page = result.Value;
+            var outEl = page.Document.GetElementById("out");
+            outEl!.TextContent.Should().Be("DEFERRED");
+            // Clean up the inert first-paint page.
+            firstPaintPage!.Dispose();
+        }
+        finally
+        {
+            if (File.Exists(fixture)) File.Delete(fixture);
+        }
+    }
+
+    [TestMethod]
+    public async Task Progressive_layout_returns_same_page_when_deferred_changes_nothing()
+    {
+        // The analytics-only common case: deferred scripts fire beacons but do
+        // not mutate the DOM, so the engine returns the very page handed to
+        // onFirstPaint (no successor reflow). The GUI relies on this reference
+        // identity to skip a redundant re-show.
+        var html = @"<!doctype html><html><head>
+<script>window.__x = 1; // critical, no DOM change</script>
+</head><body>
+<p id=""out"">STABLE</p>
+<script>
+  // Injected async script that does NOT touch the DOM.
+  var el = document.createElement('script');
+  el.async = true;
+  el.src = ""data:text/javascript,window.__beacon = true;"";
+  document.head.appendChild(el);
+</script>
+</body></html>";
+        var fixture = Path.Combine(Path.GetTempPath(), $"starling-prog-{Guid.NewGuid():N}.html");
+        await File.WriteAllTextAsync(fixture, html);
+        try
+        {
+            var engine = new StarlingEngine();
+            LaidOutPage? firstPaintPage = null;
+            var result = await engine.LayoutPageAsync(
+                "file://" + fixture.Replace('\\', '/'),
+                DefaultOptions,
+                CancellationToken.None,
+                onFirstPaint: p => firstPaintPage = p);
+
+            result.IsOk.Should().BeTrue(result.IsErr ? result.Error.Message : "");
+            firstPaintPage.Should().NotBeNull();
+            // No DOM mutation in the deferred phase → same page instance back.
+            ReferenceEquals(result.Value, firstPaintPage).Should().BeTrue();
+            result.Value.Dispose();
+        }
+        finally
+        {
+            if (File.Exists(fixture)) File.Delete(fixture);
+        }
+    }
+
     // -------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------
