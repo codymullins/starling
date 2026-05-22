@@ -1,4 +1,6 @@
 using System.Text;
+using Starling.Js.Bytecode;
+using Starling.Js.Parse;
 using Starling.Js.Runtime;
 
 namespace Starling.Js.Intrinsics;
@@ -12,6 +14,7 @@ public static class Globals
     public static void Install(JsRealm realm)
     {
         ArgumentNullException.ThrowIfNull(realm);
+        DefineGlobal(realm, "eval", (_, args) => PerformEval(realm, args), 1);
         DefineGlobal(realm, "parseInt", (_, args) => NumberCtor.ParseInt(args), 2);
         DefineGlobal(realm, "parseFloat", (_, args) => NumberCtor.ParseFloat(args), 1);
         DefineGlobal(realm, "isNaN", (_, args) => JsValue.Boolean(double.IsNaN(NumberCtor.ToNumber(args.Length > 0 ? args[0] : JsValue.Undefined))), 1);
@@ -20,6 +23,41 @@ public static class Globals
         DefineGlobal(realm, "encodeURIComponent", (_, args) => JsValue.String(Encode(args.Length > 0 ? args[0] : JsValue.Undefined, string.Empty, realm)), 1);
         DefineGlobal(realm, "decodeURI", (_, args) => JsValue.String(Decode(args.Length > 0 ? args[0] : JsValue.Undefined, preserveReserved: true, realm)), 1);
         DefineGlobal(realm, "decodeURIComponent", (_, args) => JsValue.String(Decode(args.Length > 0 ? args[0] : JsValue.Undefined, preserveReserved: false, realm)), 1);
+    }
+
+    /// <summary>§19.2.1 eval — global (indirect) eval. A non-String argument is
+    /// returned unchanged (step 2). A String is parsed as a Script and evaluated
+    /// in the global variable environment with <c>this</c> = global; its
+    /// completion value is returned. A parse failure surfaces as a SyntaxError.
+    /// NOTE: this implements indirect/global eval. Direct eval that reads the
+    /// caller's local bindings is a follow-up (the global path still covers
+    /// top-level direct eval and all indirect eval).</summary>
+    internal static JsValue PerformEval(JsRealm realm, JsValue[] args)
+    {
+        var x = args.Length > 0 ? args[0] : JsValue.Undefined;
+        if (!x.IsString) return x;
+        return RunGlobalSource(realm, x.AsString, "<eval>");
+    }
+
+    /// <summary>Parse <paramref name="source"/> as a Script, compile it in
+    /// global (eval) scope, and run it on the current realm's VM, returning the
+    /// completion value. Shared by <c>eval</c> and the <c>Function</c>
+    /// constructor. A parse error becomes a SyntaxError.</summary>
+    internal static JsValue RunGlobalSource(JsRealm realm, string source, string name)
+    {
+        Chunk chunk;
+        try
+        {
+            var program = new JsParser(source).ParseProgram();
+            chunk = JsCompiler.CompileForEval(program, name);
+        }
+        catch (JsParseException ex)
+        {
+            throw new JsThrow(realm.NewSyntaxError(ex.Message));
+        }
+        var vm = realm.ActiveVm
+            ?? throw new JsThrow(realm.NewTypeError("eval requires an active execution context"));
+        return vm.RunEval(chunk);
     }
 
     /// <summary>§19.2.6.4 Encode — percent-encode UTF-8 bytes, preserving encodeURI's reserved set.</summary>

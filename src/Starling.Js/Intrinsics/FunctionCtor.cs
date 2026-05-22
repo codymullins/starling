@@ -39,14 +39,12 @@ public static class FunctionCtor
         var funcProto = realm.FunctionPrototype;
 
         // ----------------------------------------------------------- Constructor
-        // Spec 20.2.1 — dynamic source compilation is intentionally not
-        // supported. The constructor exists so `x instanceof Function` works
-        // and so the global symbol is callable.
-        var ctor = new JsNativeFunction("Function", (thisV, args) =>
-        {
-            throw new JsThrow(realm.NewTypeError(
-                "Function constructor (dynamic code eval) is not supported"));
-        }, isConstructor: true);
+        // Spec 20.2.1 — `Function(p1, …, pN, body)` builds a function from source:
+        // the last argument is the body, the rest are comma-joined into the
+        // parameter list. We synthesize `(function anonymous(<params>){<body>})`,
+        // compile it in global (eval) scope, and return the resulting function.
+        var ctor = new JsNativeFunction("Function", (thisV, args) => BuildDynamicFunction(realm, args),
+            isConstructor: true);
         // The constructor inherits from its own prototype object.
         ctor.SetPrototypeOf(funcProto);
         ctor.DefineOwnProperty("prototype",
@@ -75,6 +73,22 @@ public static class FunctionCtor
         realm.FunctionConstructor = ctor;
         realm.GlobalObject.DefineOwnProperty("Function",
             PropertyDescriptor.Data(JsValue.Object(ctor), writable: true, enumerable: false, configurable: true));
+    }
+
+    /// <summary>Spec 20.2.1.1 CreateDynamicFunction — assemble source from the
+    /// argument list (last arg = body, the rest = parameters) and compile it as a
+    /// function expression in global scope. A malformed parameter list or body
+    /// surfaces as a SyntaxError via the shared eval path.</summary>
+    private static JsValue BuildDynamicFunction(JsRealm realm, JsValue[] args)
+    {
+        var body = args.Length > 0 ? JsValue.ToStringValue(args[^1]) : "";
+        var paramList = args.Length > 1
+            ? string.Join(",", args[..^1].Select(JsValue.ToStringValue))
+            : "";
+        // The trailing newline before ')' guards against a `//`-comment in the
+        // last parameter chunk; the newline before '}' likewise guards the body.
+        var source = "(function anonymous(" + paramList + "\n) {\n" + body + "\n})";
+        return Globals.RunGlobalSource(realm, source, "<anonymous>");
     }
 
     // ====================================================================

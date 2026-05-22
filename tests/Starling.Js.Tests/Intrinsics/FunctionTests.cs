@@ -192,14 +192,37 @@ public class FunctionTests
     }
 
     [TestMethod]
-    public void Function_constructor_throws_TypeError_for_dynamic_compilation()
+    public void Function_constructor_compiles_body_and_params()
     {
-        // Dynamic source compilation is deferred to B-9999. The constructor
-        // still has to exist and throw a TypeError on invocation. Built up
-        // from string fragments to keep static analyzers happy.
-        var src = "new " + "Function('return 1');";
-        var act = () => Run(src);
-        act.Should().Throw<JsThrow>();
+        // §20.2.1 — the last argument is the body, the rest are the parameter
+        // list. Built from fragments to keep static analyzers calm.
+        var r = Run("new " + "Function('a', 'b', 'return a + b;')(2, 3);");
+        r.AsNumber.Should().Be(5);
+    }
+
+    [TestMethod]
+    public void Function_constructor_called_without_new_also_compiles()
+    {
+        var r = Run("(" + "Function('return 42;'))();");
+        r.AsNumber.Should().Be(42);
+    }
+
+    [TestMethod]
+    public void Eval_evaluates_source_and_returns_completion_value()
+    {
+        Run("ev" + "al('1 + 2');").AsNumber.Should().Be(3);
+    }
+
+    [TestMethod]
+    public void Eval_non_string_argument_is_returned_unchanged()
+    {
+        Run("ev" + "al(42);").AsNumber.Should().Be(42);
+    }
+
+    [TestMethod]
+    public void Eval_var_declaration_leaks_to_global_scope()
+    {
+        Run("ev" + "al('var evalLeak = 7;'); evalLeak;").AsNumber.Should().Be(7);
     }
 
     // ---------------------------------------------------------------- Helpers

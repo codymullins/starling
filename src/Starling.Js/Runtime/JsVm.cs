@@ -77,6 +77,17 @@ public sealed class JsVm
             upvalues: Array.Empty<JsValue>(), drainMicrotasks: true,
             currentFunction: null, newTarget: null);
 
+    /// <summary>Re-entrant evaluation entry for the <c>eval</c> builtin and the
+    /// <c>Function</c> constructor (§19.2.1 / §20.2.1). Runs a freshly compiled
+    /// global-scope chunk against the current realm with <c>this</c> = the global
+    /// object, WITHOUT draining microtasks (the outermost frame owns the drain).
+    /// Returns the completion value the chunk left on the stack.</summary>
+    public JsValue RunEval(Chunk chunk) =>
+        Run(chunk, args: Array.Empty<JsValue>(),
+            thisValue: JsValue.Object(_runtime.Realm.GlobalObject),
+            upvalues: Array.Empty<JsValue>(), drainMicrotasks: false,
+            currentFunction: null, newTarget: null);
+
     /// <summary>Invoke a JS function with an explicit <c>this</c> and args.
     /// Used by <see cref="AbstractOperations.Call"/>. B1b-2c: when the
     /// callee is async / generator / async-generator, this entry instead
