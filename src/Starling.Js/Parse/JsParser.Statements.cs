@@ -15,12 +15,53 @@ public sealed partial class JsParser
     {
         var start = _current.Start;
         var body = new List<Statement>();
+        // §11.2.1 / §16.1.1 — scan the directive prologue first. A "use strict"
+        // directive anywhere in the prologue makes the WHOLE script strict, so
+        // strictness must be established before parsing the rest (early errors
+        // in the body depend on it). The prologue is parsed twice-tolerant: we
+        // collect the leading string-literal statements, set _strict if any is
+        // "use strict", then continue parsing the body under that strictness.
+        ScanDirectivePrologue(body, ParseProgramStatement);
         while (!Check(JsTokenKind.EndOfFile))
         {
             body.Add(ParseProgramStatement());
         }
         var end = _current.End;
-        return new Program(body, start, end);
+        return new Program(body, start, end, Strict: _strict);
+    }
+
+    /// <summary>§11.2.1 — parse the directive prologue (leading
+    /// ExpressionStatements that are bare StringLiterals) using
+    /// <paramref name="parseOne"/>, appending each parsed statement to
+    /// <paramref name="into"/>. Sets <see cref="_strict"/> if a "use strict"
+    /// directive is present. Stops at (and does not consume) the first
+    /// non-directive statement.</summary>
+    private void ScanDirectivePrologue(List<Statement> into, Func<Statement> parseOne)
+    {
+        // §11.2.1 — if a "use strict" directive appears, any directive in the
+        // prologue that contained a legacy octal escape is a SyntaxError, even
+        // though that directive was lexed/parsed before strictness was known.
+        JsPosition? sawOctalDirective = null;
+        while (_current.Kind == JsTokenKind.StringLiteral)
+        {
+            // Capture the RAW lexeme + octal tag before parsing — only an
+            // unescaped "use strict" / 'use strict' counts (§11.2.2).
+            var lexeme = _current.Lexeme;
+            var octal = _current.LegacyOctal;
+            var octalPos = _current.Start;
+            var stmt = parseOne();
+            into.Add(stmt);
+            if (!IsDirective(stmt))
+                break; // a string used as part of a larger expression ends the prologue
+            if (octal && sawOctalDirective is null) sawOctalDirective = octalPos;
+            if (IsUseStrictDirective(stmt, lexeme))
+            {
+                _strict = true;
+                if (sawOctalDirective is { } p)
+                    throw new JsParseException(
+                        "octal escape sequences are not allowed in a strict-mode directive prologue", p);
+            }
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -47,6 +88,7 @@ public sealed partial class JsParser
             case JsTokenKind.Class:     return ParseClassDeclarationWithExtendsTracking();
             case JsTokenKind.Var:       return ParseVar("var");
             case JsTokenKind.Const:     return ParseVar("const");
+            case JsTokenKind.With:      return ParseWith();
         }
         // 'let' is contextual; treat as variable decl when followed by an
         // identifier or pattern starter, else expression statement.
@@ -120,6 +162,18 @@ public sealed partial class JsParser
     {
         var t = Advance();
         return new EmptyStatement(t.Start, t.End);
+    }
+
+    /// <summary>§14.11 / §14.11.1 — the <c>with</c> statement is a strict-mode
+    /// SyntaxError (the canonical strict early error). The engine does not
+    /// otherwise implement <c>with</c>, so the sloppy form is unsupported and
+    /// also surfaces as a parse error.</summary>
+    private Statement ParseWith()
+    {
+        var start = _current.Start;
+        if (_strict)
+            throw new JsParseException("'with' statements are not allowed in strict mode", start);
+        throw new JsParseException("'with' statements are not supported", start);
     }
 
     private ExpressionStatement ParseExpressionStatement()
@@ -357,6 +411,8 @@ public sealed partial class JsParser
             if (Match(JsTokenKind.LParen))
             {
                 param = ParseBindingTarget();
+                // §14.15.1 — a catch binding may not be `eval`/`arguments` in strict.
+                CheckPatternBindingNames(param);
                 Expect(JsTokenKind.RParen, "expected ')' after catch parameter");
             }
             var body = ParseBlock();
@@ -458,6 +514,9 @@ public sealed partial class JsParser
         {
             var dstart = _current.Start;
             var idNode = ParseBindingTarget();
+            // §13.3.1.1 — `eval`/`arguments`/strict-reserved binding names error
+            // in strict code (covers var/let/const, simple or destructured).
+            CheckPatternBindingNames(idNode);
             Expression? init = null;
             if (Match(JsTokenKind.Eq))
                 init = ParseAssignment();
@@ -485,17 +544,27 @@ public sealed partial class JsParser
     {
         Advance(); // 'function'
         var generator = Match(JsTokenKind.Star);
-        Identifier? name = null;
-        if (Check(JsTokenKind.Identifier))
+        var savedStrict = _strict;
+        try
         {
-            var tok = Advance();
-            name = new Identifier(tok.Lexeme, tok.Start, tok.End);
+            Identifier? fnName = null;
+            if (Check(JsTokenKind.Identifier))
+            {
+                var tok = Advance();
+                fnName = new Identifier(tok.Lexeme, tok.Start, tok.End);
+            }
+            Expect(JsTokenKind.LParen, "( expected after function expression");
+            var parameters = ParseParameterList();
+            Expect(JsTokenKind.RParen, "expected ')'");
+            var (body, strict) = ParseFunctionBody();
+            // §15.2.1 — the function-name and parameter early errors use the
+            // function's OWN strictness (the body may have flipped to strict).
+            if (strict && fnName is not null) CheckBindingIdentifier(fnName.Name, fnName.Start);
+            ValidateParameters(parameters, strict);
+            return new FunctionExpression(fnName, parameters, body, generator, start, body.End,
+                Async: isAsync, Strict: strict);
         }
-        Expect(JsTokenKind.LParen, "( expected after function expression");
-        var parameters = ParseParameterList();
-        Expect(JsTokenKind.RParen, "expected ')'");
-        var body = ParseBlock();
-        return new FunctionExpression(name, parameters, body, generator, start, body.End, Async: isAsync);
+        finally { _strict = savedStrict; }
     }
 
     private FunctionDeclaration ParseFunctionDeclaration()
@@ -510,11 +579,21 @@ public sealed partial class JsParser
         var generator = Match(JsTokenKind.Star);
         var nameTok = Expect(JsTokenKind.Identifier, "function name expected");
         var name = new Identifier(nameTok.Lexeme, nameTok.Start, nameTok.End);
-        Expect(JsTokenKind.LParen, "( expected after function name");
-        var parameters = ParseParameterList();
-        Expect(JsTokenKind.RParen, "expected ')'");
-        var body = ParseBlock();
-        return new FunctionDeclaration(name, parameters, body, generator, start, body.End, Async: isAsync);
+        var savedStrict = _strict;
+        try
+        {
+            Expect(JsTokenKind.LParen, "( expected after function name");
+            var parameters = ParseParameterList();
+            Expect(JsTokenKind.RParen, "expected ')'");
+            var (body, strict) = ParseFunctionBody();
+            // §15.2.1 — name + parameter early errors use the function's own
+            // strictness (a "use strict" body directive applies to both).
+            if (strict) CheckBindingIdentifier(name.Name, name.Start);
+            ValidateParameters(parameters, strict);
+            return new FunctionDeclaration(name, parameters, body, generator, start, body.End,
+                Async: isAsync, Strict: strict);
+        }
+        finally { _strict = savedStrict; }
     }
 
     // -----------------------------------------------------------------------

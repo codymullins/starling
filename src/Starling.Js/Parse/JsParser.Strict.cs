@@ -1,0 +1,233 @@
+using Starling.Js.Ast;
+using Starling.Js.Lex;
+
+namespace Starling.Js.Parse;
+
+/// <summary>
+/// ES strict-mode support for the parser: directive-prologue detection and the
+/// strict early-error checks (§§12.1, 13.5.1, 13.4.1, 14.3.1, 14.7.5.1, 15.5,
+/// 15.7, B.1.2). Strictness is tracked by <see cref="JsParser._strict"/> with a
+/// stack discipline; the per-scope helpers here save and restore it.
+/// </summary>
+public sealed partial class JsParser
+{
+    /// <summary>§11.2.2 — true when <paramref name="s"/> is a "use strict"
+    /// directive: an ExpressionStatement consisting of a single StringLiteral
+    /// whose RAW source slice is exactly <c>"use strict"</c> or
+    /// <c>'use strict'</c> (no escapes, no continuations).</summary>
+    private static bool IsUseStrictDirective(Statement s, string rawLexeme)
+        => s is ExpressionStatement { Expression: StringLiteral }
+        && (rawLexeme == "\"use strict\"" || rawLexeme == "'use strict'");
+
+    /// <summary>True when a parsed statement could still be part of the
+    /// directive prologue — i.e. it is an ExpressionStatement wrapping a bare
+    /// StringLiteral. Once a non-string-literal statement appears, the prologue
+    /// ends (§11.2.1 / §16.1.1).</summary>
+    private static bool IsDirective(Statement s)
+        => s is ExpressionStatement { Expression: StringLiteral };
+
+    // -----------------------------------------------------------------------
+    // Strict early errors (§§12, 13, 14). Each is a no-op unless _strict.
+    // -----------------------------------------------------------------------
+
+    /// <summary>The strict-mode FutureReservedWords (§12.7.2) that may not be
+    /// used as a BindingIdentifier when the scope is strict.</summary>
+    private static bool IsStrictReservedWord(string name) => name is
+        "implements" or "interface" or "let" or "package" or "private"
+        or "protected" or "public" or "static" or "yield";
+
+    /// <summary>§13.1.1 / §14.3.1 — a BindingIdentifier may not be
+    /// <c>eval</c> or <c>arguments</c> in strict code, nor a strict
+    /// FutureReservedWord. Applies to function/generator names, formal
+    /// parameters, var/let/const binding names, class names, and catch
+    /// parameters. No-op when not strict.</summary>
+    private void CheckBindingIdentifier(string name, JsPosition pos)
+    {
+        if (!_strict) return;
+        if (name is "eval" or "arguments")
+            throw new JsParseException(
+                $"'{name}' may not be used as a binding identifier in strict mode", pos);
+        if (IsStrictReservedWord(name))
+            throw new JsParseException(
+                $"'{name}' is a reserved word and may not be used as a binding identifier in strict mode", pos);
+    }
+
+    /// <summary>§12.9.3 / B.1.2 — in strict code a legacy octal integer
+    /// literal (<c>0123</c>), a NonOctalDecimalInteger (<c>08</c>/<c>09</c>),
+    /// or a string with a legacy octal / <c>\8</c>/<c>\9</c> escape is a
+    /// SyntaxError. The lexer tags these tokens; we raise the error here when
+    /// the scope is strict. No-op otherwise (legacy sloppy semantics).</summary>
+    private void CheckLegacyOctalLiteral(JsToken t)
+    {
+        if (_strict && t.LegacyOctal)
+            throw new JsParseException(
+                "octal literals and octal escape sequences are not allowed in strict mode", t.Start);
+    }
+
+    /// <summary>§13.5.1.1 — true when an expression is a bare (possibly
+    /// parenthesized) Identifier reference, which <c>delete</c> may not target
+    /// in strict code. Member accesses (<c>delete a.b</c>) are fine. Grouping
+    /// parentheses are transparent here because <c>delete (x)</c> still deletes
+    /// the reference <c>x</c>.</summary>
+    private static bool IsUnqualifiedReference(Expression e) => e is Identifier;
+
+    /// <summary>§15.7.1 — a class binding name is always checked under strict
+    /// rules (class definitions are strict code), independent of the surrounding
+    /// scope. <c>eval</c>/<c>arguments</c> and strict reserved words are errors.</summary>
+    private void CheckClassBindingName(Identifier name)
+    {
+        if (name.Name is "eval" or "arguments")
+            throw new JsParseException(
+                $"'{name.Name}' may not be used as a class name", name.Start);
+        if (IsStrictReservedWord(name.Name))
+            throw new JsParseException(
+                $"'{name.Name}' is a reserved word and may not be used as a class name", name.Start);
+    }
+
+    /// <summary>§13.3.1.1 / §14.3.1 — recursively check every BindingIdentifier
+    /// in a binding target (identifier or destructuring pattern) against the
+    /// strict binding-name rules. No-op when not strict. Used for
+    /// <c>var</c>/<c>let</c>/<c>const</c> and catch-clause binding names.</summary>
+    private void CheckPatternBindingNames(Expression target)
+    {
+        if (!_strict) return;
+        switch (target)
+        {
+            case Identifier id:
+                CheckBindingIdentifier(id.Name, id.Start);
+                break;
+            case AssignmentPattern ap:
+                CheckPatternBindingNames(ap.Target);
+                break;
+            case ArrayPattern arr:
+                foreach (var el in arr.Elements)
+                {
+                    if (el is ArrayPatternBindingElement be) CheckPatternBindingNames(be.Target);
+                    else if (el is ArrayPatternRestElement re) CheckPatternBindingNames(re.Target);
+                }
+                break;
+            case ObjectPattern obj:
+                foreach (var prop in obj.Properties) CheckPatternBindingNames(prop.Target);
+                if (obj.Rest is not null) CheckPatternBindingNames(obj.Rest.Argument);
+                break;
+            case RestElement rest:
+                CheckPatternBindingNames(rest.Argument);
+                break;
+        }
+    }
+
+    /// <summary>§13.5.1 / §13.4.1 — in strict code an assignment or
+    /// increment/decrement may not target the identifier <c>eval</c> or
+    /// <c>arguments</c>. No-op when not strict.</summary>
+    private void CheckAssignmentTarget(Expression target, JsPosition pos)
+    {
+        if (!_strict) return;
+        if (target is Identifier { Name: "eval" or "arguments" } id)
+            throw new JsParseException(
+                $"'{id.Name}' may not be assigned in strict mode", pos);
+    }
+
+    /// <summary>§15.2.1 / §15.3.1 / §14.1.2 — validate a function's formal
+    /// parameters once the function's effective strictness is known. Checks:
+    /// (a) no BindingIdentifier is <c>eval</c>/<c>arguments</c> or a strict
+    /// FutureReservedWord when <paramref name="strict"/>; (b) no duplicate
+    /// parameter names when <paramref name="strict"/> OR the list is
+    /// non-simple (any default/rest/destructuring element). A simple sloppy
+    /// parameter list still permits duplicates (§B.3.1 legacy).</summary>
+    private void ValidateParameters(IReadOnlyList<Expression> @params, bool strict)
+    {
+        var simple = AreSimpleParams(@params);
+        var forbidDuplicates = strict || !simple;
+        HashSet<string>? seen = forbidDuplicates ? new HashSet<string>(StringComparer.Ordinal) : null;
+        foreach (var p in @params)
+            ValidateParameterElement(p, strict, forbidDuplicates, seen);
+    }
+
+    private void ValidateParameterElement(Expression p, bool strict, bool forbidDuplicates, HashSet<string>? seen)
+    {
+        switch (p)
+        {
+            case Identifier id:
+                if (strict) CheckBindingIdentifier(id.Name, id.Start);
+                if (forbidDuplicates && seen is not null && !seen.Add(id.Name))
+                    throw new JsParseException(
+                        $"duplicate parameter name '{id.Name}'", id.Start);
+                break;
+            case AssignmentPattern ap:
+                ValidateParameterElement(ap.Target, strict, forbidDuplicates, seen);
+                break;
+            case SpreadElement sp:
+                ValidateParameterElement(sp.Argument, strict, forbidDuplicates, seen);
+                break;
+            case RestElement re:
+                ValidateParameterElement(re.Argument, strict, forbidDuplicates, seen);
+                break;
+            case ArrayPattern arr:
+                foreach (var el in arr.Elements) ValidateArrayPatternElement(el, strict, forbidDuplicates, seen);
+                break;
+            case ObjectPattern obj:
+                foreach (var prop in obj.Properties)
+                    ValidateParameterElement(prop.Target, strict, forbidDuplicates, seen);
+                if (obj.Rest is not null) ValidateParameterElement(obj.Rest, strict, forbidDuplicates, seen);
+                break;
+        }
+    }
+
+    private void ValidateArrayPatternElement(ArrayPatternElement el, bool strict, bool forbidDuplicates, HashSet<string>? seen)
+    {
+        switch (el)
+        {
+            case ArrayPatternBindingElement be:
+                ValidateParameterElement(be.Target, strict, forbidDuplicates, seen);
+                break;
+            case ArrayPatternRestElement re:
+                ValidateParameterElement(re.Target, strict, forbidDuplicates, seen);
+                break;
+        }
+    }
+
+    /// <summary>§15.1.3 IsSimpleParameterList — true when every element is a
+    /// plain BindingIdentifier (no defaults, rest, or destructuring). A
+    /// non-simple list forbids duplicate names even in sloppy mode.</summary>
+    private static bool AreSimpleParams(IReadOnlyList<Expression> @params)
+    {
+        foreach (var p in @params)
+            if (p is not Identifier) return false;
+        return true;
+    }
+
+    // -----------------------------------------------------------------------
+    // Function-body parse path with directive-prologue strictness (§15.2.1).
+    // -----------------------------------------------------------------------
+
+    /// <summary>Parse a <c>{ … }</c> function body, establishing the function's
+    /// own strictness from its directive prologue (§11.2.1). The body inherits
+    /// the surrounding <see cref="_strict"/> and ORs in any <c>"use strict"</c>
+    /// directive. Returns the parsed block and the body's effective strictness.
+    /// The caller is responsible for saving/restoring <see cref="_strict"/>
+    /// around its whole parse (including the parameter list, whose early errors
+    /// use the resulting strictness per §15.2.1 — the directive prologue's
+    /// effect applies to the entire function definition).</summary>
+    private (BlockStatement Body, bool Strict) ParseFunctionBody()
+    {
+        var start = _current.Start;
+        Expect(JsTokenKind.LBrace, "{ expected");
+        var savedNoIn = _disallowInDepth;
+        _disallowInDepth = 0;
+        try
+        {
+            var body = new List<Statement>();
+            // The directive prologue can flip this body to strict.
+            ScanDirectivePrologue(body, ParseStatement);
+            while (!Check(JsTokenKind.RBrace) && !Check(JsTokenKind.EndOfFile))
+                body.Add(ParseStatement());
+            var end = _current.End;
+            Expect(JsTokenKind.RBrace, "expected '}' to close block");
+            return (new BlockStatement(body, start, end), _strict);
+        }
+        finally
+        {
+            _disallowInDepth = savedNoIn;
+        }
+    }
+}

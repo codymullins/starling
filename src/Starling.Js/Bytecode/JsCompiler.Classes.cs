@@ -33,7 +33,12 @@ public sealed partial class JsCompiler
         // `static { … C … }` block or `static p = C.q` field sees the class.
         EmitClassValue(cd.Name, cd.BaseClass, cd.Body, bindNameToGlobal: true);
         _b.Emit(Opcode.Dup); // assignment is an expression — leave value on stack briefly
-        _b.EmitU16(Opcode.StoreGlobal, _b.AddConstant(cd.Name.Name));
+        // Declare the global binding first so the store is not rejected as an
+        // assignment to an undeclared global in strict mode (a top-level class
+        // declaration introduces a binding before its initializer runs).
+        var classNameIdx = _b.AddConstant(cd.Name.Name);
+        _b.EmitU16(Opcode.DeclareGlobalVar, classNameIdx);
+        _b.EmitU16(Opcode.StoreGlobal, classNameIdx);
         _b.Emit(Opcode.Pop);
     }
 
@@ -149,6 +154,7 @@ public sealed partial class JsCompiler
         out IReadOnlyList<UpvalueRef> upvalues)
     {
         var sub = new JsCompiler(parent: this);
+        sub._b.IsStrict = true; // §15.7 — class constructor bodies are strict
         sub._privateScopes.Push(_privateScopes.Peek());
         sub._classMethodDepth = 1;
         MethodDefinition? userCtor = body.Constructor;
@@ -238,6 +244,7 @@ public sealed partial class JsCompiler
         MethodDefinition md, int classId)
     {
         var sub = new JsCompiler(parent: this);
+        sub._b.IsStrict = true; // §15.7 — class method/accessor bodies are strict
         sub._privateScopes.Push(_privateScopes.Peek());
         sub._classMethodDepth = 1;
         // wp:M3-04c2 — method/accessor bodies use the same mutated-capture →
@@ -335,6 +342,7 @@ public sealed partial class JsCompiler
         //   Computed keys (wp:M3-04f): just `return <init>` — the runtime owns
         //   the (already-coerced) key and performs the define.
         var sub = new JsCompiler(parent: this);
+        sub._b.IsStrict = true; // §15.7 — field initializers are strict
         sub._privateScopes.Push(_privateScopes.Peek());
         sub._classMethodDepth = 1;
         // wp:M3-04c2 — the field-init thunk is a single expression, but run the
@@ -374,6 +382,7 @@ public sealed partial class JsCompiler
     private (StaticBlockEntry Entry, IReadOnlyList<UpvalueRef> Upvalues) CompileStaticBlockEntry(BlockStatement block)
     {
         var sub = new JsCompiler(parent: this);
+        sub._b.IsStrict = true; // §15.7 — static blocks are strict
         sub._privateScopes.Push(_privateScopes.Peek());
         sub._classMethodDepth = 1;
         // wp:M3-04c2 — static-block bodies run their own statement list and so

@@ -181,6 +181,17 @@ public sealed class JsRealm
     /// throws ReferenceError per ES2024 §10.2.1.1.</summary>
     public JsObject UninitializedThisSentinel { get; } = new();
 
+    /// <summary>§10.2.4.1 %ThrowTypeError% — the shared, frozen poison-pill
+    /// function whose [[Call]] always throws a TypeError. Used as the
+    /// <c>callee</c> getter/setter on a strict-mode <c>arguments</c> object.
+    /// Created lazily once per realm.</summary>
+    private JsNativeFunction? _throwTypeError;
+    public JsNativeFunction ThrowTypeErrorIntrinsic =>
+        _throwTypeError ??= new JsNativeFunction(this, "", length: 0,
+            (_, _) => throw new JsThrow(NewTypeError(
+                "'callee' may not be accessed on a strict mode arguments object")),
+            isConstructor: false);
+
     /// <summary>The VM currently executing against this realm, if any. Set
     /// by <see cref="JsVm"/> on entry to <c>Run</c>. Native intrinsics that
     /// need to call back into JS (e.g. <c>JSON.parse</c>'s reviver,
@@ -267,6 +278,12 @@ public sealed class JsRealm
     /// that reads <c>arguments.length</c> / <c>arguments[i]</c> and does
     /// <c>Array.prototype.slice.call(arguments)</c>.</summary>
     public JsObject CreateArgumentsObject(IReadOnlyList<JsValue> args)
+        => CreateArgumentsObject(args, strict: false);
+
+    /// <summary>§10.4.4.6 — as above, but when <paramref name="strict"/> install
+    /// the §10.4.4.6 step-7 <c>callee</c> poison-pill accessor (a non-enumerable,
+    /// non-configurable accessor whose get/set is %ThrowTypeError%).</summary>
+    public JsObject CreateArgumentsObject(IReadOnlyList<JsValue> args, bool strict)
     {
         var obj = new JsObject(ObjectPrototype);
         for (var i = 0; i < args.Count; i++)
@@ -281,6 +298,15 @@ public sealed class JsRealm
         if (arrayIter is { } iterDesc && iterDesc.Value.IsObject)
             obj.DefineOwnProperty(Intrinsics.SymbolCtor.Iterator,
                 PropertyDescriptor.BuiltinMethod(iterDesc.Value));
+        // §10.4.4.6 step 7 — strict-mode arguments objects expose a
+        // non-configurable `callee` accessor that throws on get or set.
+        if (strict)
+        {
+            var poison = JsValue.Object(ThrowTypeErrorIntrinsic);
+            obj.DefineOwnProperty("callee",
+                PropertyDescriptor.Accessor(poison.AsObject, poison.AsObject,
+                    enumerable: false, configurable: false));
+        }
         return obj;
     }
 

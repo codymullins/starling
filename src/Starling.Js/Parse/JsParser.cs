@@ -21,6 +21,15 @@ public sealed partial class JsParser
     private JsToken _current;
     private int _disallowInDepth;
 
+    /// <summary>ES strict mode. True while the parser is inside a strict scope
+    /// (a script/function whose directive prologue had <c>"use strict"</c>, code
+    /// lexically nested in such a scope, or any class body — which is always
+    /// strict per §15.7). Maintained as a save/restore stack discipline around
+    /// every function/program/class scope. Drives the strict early-error checks
+    /// (§§12, 13, 14, 15) and is stamped onto the AST so the compiler can thread
+    /// strictness into the bytecode chunk.</summary>
+    private bool _strict;
+
     public JsParser(string source)
         : this(new JsLexer(source)) { }
 
@@ -233,9 +242,13 @@ public sealed partial class JsParser
         if (IsAssignmentOp(_current.Kind))
         {
             var op = _current.Lexeme;
+            var opPos = _current.Start;
             Advance();
             var right = ParseAssignment(); // right-associative
             var target = op == "=" ? ReinterpretAssignmentTarget(left) : left;
+            // §13.15.1 / §13.5.1 — assignment to `eval`/`arguments` is a strict
+            // SyntaxError.
+            CheckAssignmentTarget(target, opPos);
             return new AssignmentExpression(op, target, right, target.Start, right.End);
         }
         return left;
@@ -243,19 +256,32 @@ public sealed partial class JsParser
 
     private ArrowFunctionExpression ParseArrowBody(IReadOnlyList<Expression> @params, JsPosition start, bool async = false)
     {
-        if (Check(JsTokenKind.LBrace))
+        var savedStrict = _strict;
+        try
         {
-            var block = ParseBlock();
-            return new ArrowFunctionExpression(@params, block, IsExpression: false, Async: async, start, block.End);
+            if (Check(JsTokenKind.LBrace))
+            {
+                var (block, strict) = ParseFunctionBody();
+                // §15.3.1 — arrow parameter early errors use the arrow's own
+                // strictness; arrow param lists are always checked for dups.
+                ValidateParameters(@params, strict);
+                return new ArrowFunctionExpression(@params, block, IsExpression: false,
+                    Async: async, start, block.End, Strict: strict);
+            }
+            // The concise body is AssignmentExpression[+In]; a for-header [NoIn]
+            // restriction never reaches an arrow body, so allow `in` again here.
+            // A concise body has no directive prologue, so strictness is just
+            // the inherited surrounding strictness.
+            var savedNoIn = _disallowInDepth;
+            _disallowInDepth = 0;
+            Expression expr;
+            try { expr = ParseAssignment(); }
+            finally { _disallowInDepth = savedNoIn; }
+            ValidateParameters(@params, _strict);
+            return new ArrowFunctionExpression(@params, expr, IsExpression: true,
+                Async: async, start, expr.End, Strict: _strict);
         }
-        // The concise body is AssignmentExpression[+In]; a for-header [NoIn]
-        // restriction never reaches an arrow body, so allow `in` again here.
-        var savedNoIn = _disallowInDepth;
-        _disallowInDepth = 0;
-        Expression expr;
-        try { expr = ParseAssignment(); }
-        finally { _disallowInDepth = savedNoIn; }
-        return new ArrowFunctionExpression(@params, expr, IsExpression: true, Async: async, start, expr.End);
+        finally { _strict = savedStrict; }
     }
 
     /// <summary>Continue ParseAssignment after consuming an unexpected lead
@@ -498,6 +524,11 @@ public sealed partial class JsParser
             {
                 var t = Advance();
                 var arg = ParseUnary();
+                // §13.5.1.1 — in strict code `delete` of a bare/parenthesized
+                // unqualified identifier reference is a SyntaxError.
+                if (t.Kind == JsTokenKind.Delete && _strict && IsUnqualifiedReference(arg))
+                    throw new JsParseException(
+                        "'delete' of an unqualified identifier is not allowed in strict mode", t.Start);
                 return new UnaryExpression(t.Lexeme, arg, Prefix: true, t.Start, arg.End);
             }
             case JsTokenKind.PlusPlus:
@@ -505,6 +536,8 @@ public sealed partial class JsParser
             {
                 var t = Advance();
                 var arg = ParseUnary();
+                // §13.4.1 — ++/-- of `eval`/`arguments` is a strict SyntaxError.
+                CheckAssignmentTarget(arg, t.Start);
                 return new UpdateExpression(t.Lexeme, arg, Prefix: true, t.Start, arg.End);
             }
             case JsTokenKind.Identifier when _current.Lexeme == "await":
@@ -542,6 +575,8 @@ public sealed partial class JsParser
             && !_current.PrecededByLineTerminator)
         {
             var t = Advance();
+            // §13.4.1 — postfix ++/-- of `eval`/`arguments` is a strict SyntaxError.
+            CheckAssignmentTarget(arg, t.Start);
             return new UpdateExpression(t.Lexeme, arg, Prefix: false, arg.Start, t.End);
         }
         return arg;
@@ -715,12 +750,14 @@ public sealed partial class JsParser
         switch (t.Kind)
         {
             case JsTokenKind.NumericLiteral:
+                CheckLegacyOctalLiteral(t);
                 Advance();
                 return new NumericLiteral((double)t.Value!, t.Start, t.End);
             case JsTokenKind.BigIntLiteral:
                 Advance();
                 return new BigIntLiteral(ParseBigIntLexeme(t.Lexeme, t.Start), t.Start, t.End);
             case JsTokenKind.StringLiteral:
+                CheckLegacyOctalLiteral(t);
                 Advance();
                 return new StringLiteral((string)t.Value!, t.Start, t.End);
             case JsTokenKind.RegExpLiteral:
@@ -906,9 +943,9 @@ public sealed partial class JsParser
         if (mAsync || mGenerator)
         {
             var (mkey, mcomputed) = ParsePropertyKey();
-            var (mparams, mbody, mend) = ParseMethodTail();
+            var (mparams, mbody, mend, mstrict) = ParseMethodTail();
             var mname = mkey is Identifier mki ? mki : null;
-            var mfn = MakeFnExpression(mname, mparams, mbody, start, mend, mGenerator, mAsync);
+            var mfn = MakeFnExpression(mname, mparams, mbody, start, mend, mGenerator, mAsync, mstrict);
             return new ObjectProperty(mkey, mfn,
                 Shorthand: false, Computed: mcomputed, start, mend);
         }
@@ -929,13 +966,13 @@ public sealed partial class JsParser
                 var kind = _current.Lexeme == "get" ? MethodKind.Get : MethodKind.Set;
                 Advance(); // consume 'get' / 'set'
                 var (akey, acomputed) = ParsePropertyKey();
-                var (parameters, body, endPos) = ParseMethodTail();
+                var (parameters, body, endPos, astrict) = ParseMethodTail();
                 // §15.4.1 well-formedness: getter takes 0 params, setter exactly 1.
                 if (kind == MethodKind.Get && parameters.Count != 0)
                     throw new JsParseException("getter must have no parameters", start);
                 if (kind == MethodKind.Set && parameters.Count != 1)
                     throw new JsParseException("setter must have exactly one parameter", start);
-                var fn = MakeFnExpression(name: null, parameters, body, start, endPos);
+                var fn = MakeFnExpression(name: null, parameters, body, start, endPos, strict: astrict);
                 return new ObjectProperty(akey, fn,
                     Shorthand: false, Computed: acomputed, start, endPos, kind);
             }
@@ -946,9 +983,9 @@ public sealed partial class JsParser
         // Method shorthand: { foo() { … }, [bar](x) { … } }
         if (Check(JsTokenKind.LParen))
         {
-            var (parameters, body, endPos) = ParseMethodTail();
+            var (parameters, body, endPos, mstrict) = ParseMethodTail();
             var methodName = key is Identifier ki ? ki : null;
-            var method = MakeFnExpression(methodName, parameters, body, start, endPos);
+            var method = MakeFnExpression(methodName, parameters, body, start, endPos, strict: mstrict);
             return new ObjectProperty(key, method,
                 Shorthand: false, Computed: computed, start, endPos);
         }
@@ -1025,8 +1062,8 @@ public sealed partial class JsParser
     private static FunctionExpression MakeFnExpression(
         Identifier? name, IReadOnlyList<Expression> @params, BlockStatement body,
         JsPosition start, JsPosition end,
-        bool generator = false, bool async = false)
-        => new(name, @params, body, generator, start, end, Async: async);
+        bool generator = false, bool async = false, bool strict = false)
+        => new(name, @params, body, generator, start, end, Async: async, Strict: strict);
 
     /// <summary>True when <paramref name="kind"/> can begin a method/property
     /// name immediately after an <c>async</c> or <c>*</c> method modifier
@@ -1045,13 +1082,19 @@ public sealed partial class JsParser
     /// method shorthand, having already consumed the property key.
     /// Delegates to <see cref="ParseParameterList"/> so that a trailing
     /// <c>...rest</c> element is accepted (wp:M3-27).</summary>
-    private (List<Expression> Params, BlockStatement Body, JsPosition End) ParseMethodTail()
+    private (List<Expression> Params, BlockStatement Body, JsPosition End, bool Strict) ParseMethodTail()
     {
-        Expect(JsTokenKind.LParen, "expected '(' for method parameters");
-        var parameters = ParseParameterList();
-        Expect(JsTokenKind.RParen, "expected ')' after method parameters");
-        var body = ParseBlock();
-        return (parameters, body, body.End);
+        var savedStrict = _strict;
+        try
+        {
+            Expect(JsTokenKind.LParen, "expected '(' for method parameters");
+            var parameters = ParseParameterList();
+            Expect(JsTokenKind.RParen, "expected ')' after method parameters");
+            var (body, strict) = ParseFunctionBody();
+            ValidateParameters(parameters, strict);
+            return (parameters, body, body.End, strict);
+        }
+        finally { _strict = savedStrict; }
     }
 
     /// <summary>

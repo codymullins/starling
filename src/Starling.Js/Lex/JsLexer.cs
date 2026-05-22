@@ -38,6 +38,11 @@ public sealed class JsLexer
     private int _col = 1;
     private JsToken? _peeked;
     private bool _precedingLineTerm;
+    /// <summary>§B.1.2 — set by <see cref="ScanEscape"/> when the escape it
+    /// just consumed was a legacy octal escape (<c>\1</c>…<c>\377</c>) or a
+    /// <c>\8</c>/<c>\9</c> NonOctalDecimalEscapeSequence. <see cref="ScanString"/>
+    /// reads it to tag the resulting string token as a strict-mode error.</summary>
+    private bool _lastEscapeWasLegacyOctal;
 
     public JsLexer(string source, IJsLexErrorSink? errors = null)
     {
@@ -531,7 +536,28 @@ public sealed class JsLexer
             _errors.Report(JsLexError.InvalidNumericLiteral, start, lex);
             value = double.NaN;
         }
-        return MakeToken(JsTokenKind.NumericLiteral, lex, start, CurrentPos(), precededByLT, value);
+        // §12.9.3 / B.1.2 — a literal that starts with `0` immediately followed
+        // by a decimal digit is either a LegacyOctalIntegerLiteral (`0123`) or a
+        // NonOctalDecimalIntegerLiteral (`08`, `09`). Both are strict-mode
+        // SyntaxErrors. Tag the token so the parser can raise the error when the
+        // surrounding scope is strict. A leading-zero literal with a `.` or `e`
+        // (e.g. `0.5`, `0e3`) is an ordinary DecimalLiteral and not tagged.
+        var legacyOctal = isInteger && lex.Length >= 2 && lex[0] == '0' && IsAsciiDigit(lex[1]);
+        // Legacy octal literals (`010`) denote a base-8 value; .NET parses the
+        // lexeme as decimal above (`010` → 10). Recompute octal-style when every
+        // digit is 0-7 so the runtime sees the spec value in sloppy mode.
+        if (legacyOctal && AllOctalDigits(lex))
+        {
+            value = 0;
+            for (var k = 0; k < lex.Length; k++) value = value * 8 + (lex[k] - '0');
+        }
+        return MakeToken(JsTokenKind.NumericLiteral, lex, start, CurrentPos(), precededByLT, value, legacyOctal);
+    }
+
+    private static bool AllOctalDigits(string s)
+    {
+        foreach (var ch in s) if (ch < '0' || ch > '7') return false;
+        return true;
     }
 
     private JsToken ScanRadixNumber(JsPosition start, bool precededByLT, int begin, int radix)
@@ -614,6 +640,7 @@ public sealed class JsLexer
         var begin = _i;
         Advance(); // skip opening quote
         var sb = new StringBuilder();
+        var legacyOctal = false; // §B.1.2 — a legacy octal / \8 / \9 escape was seen
         while (_i < _src.Length)
         {
             var c = _src[_i];
@@ -621,7 +648,7 @@ public sealed class JsLexer
             {
                 Advance();
                 return MakeToken(JsTokenKind.StringLiteral, _src[begin.._i],
-                    start, CurrentPos(), precededByLT, sb.ToString());
+                    start, CurrentPos(), precededByLT, sb.ToString(), legacyOctal);
             }
             if (IsLineTerminator(c))
             {
@@ -639,6 +666,7 @@ public sealed class JsLexer
                     break;
                 }
                 sb.Append(ScanEscape(start));
+                if (_lastEscapeWasLegacyOctal) legacyOctal = true;
                 continue;
             }
             sb.Append(c);
@@ -651,6 +679,7 @@ public sealed class JsLexer
 
     private string ScanEscape(JsPosition start)
     {
+        _lastEscapeWasLegacyOctal = false;
         var e = _src[_i];
         Advance();
         switch (e)
@@ -662,6 +691,17 @@ public sealed class JsLexer
             case 'f': return "\f";
             case 'v': return "\v";
             case '0' when _i >= _src.Length || !IsAsciiDigit(_src[_i]): return "\0";
+            // §B.1.2 LegacyOctalEscapeSequence — `\` followed by an octal digit
+            // (incl. `\0` followed by another digit). Decode the octal value
+            // (sloppy semantics) and tag it as a strict-mode error.
+            case >= '0' and <= '7':
+                return ScanLegacyOctalEscape(e);
+            // §B.1.2 NonOctalDecimalEscapeSequence — `\8` / `\9`. The value is
+            // just the digit, but it is a strict-mode error.
+            case '8':
+            case '9':
+                _lastEscapeWasLegacyOctal = true;
+                return e.ToString();
             case '\'': return "'";
             case '"': return "\"";
             case '\\': return "\\";
@@ -700,6 +740,25 @@ public sealed class JsLexer
             default:
                 return e.ToString();
         }
+    }
+
+    /// <summary>§B.1.2 LegacyOctalEscapeSequence — decode <c>\NNN</c> where the
+    /// first octal digit <paramref name="first"/> has already been consumed.
+    /// One to three octal digits: if the first digit is 0-3 up to three digits
+    /// follow; if 4-7 only one more. Sets <see cref="_lastEscapeWasLegacyOctal"/>
+    /// so the surrounding string is flagged a strict-mode error.</summary>
+    private string ScanLegacyOctalEscape(char first)
+    {
+        _lastEscapeWasLegacyOctal = true;
+        var value = first - '0';
+        var maxMore = first <= '3' ? 2 : 1;
+        for (var k = 0; k < maxMore; k++)
+        {
+            if (_i >= _src.Length || _src[_i] < '0' || _src[_i] > '7') break;
+            value = value * 8 + (_src[_i] - '0');
+            Advance();
+        }
+        return ((char)value).ToString();
     }
 
     private string ScanHexEscape(JsPosition start, int digits)
@@ -893,6 +952,10 @@ public sealed class JsLexer
 
     private static JsToken MakeToken(
         JsTokenKind kind, string lexeme, JsPosition start, JsPosition end,
-        bool precededByLT, object? value = null)
-        => new(kind, lexeme, start, end, value) { PrecededByLineTerminator = precededByLT };
+        bool precededByLT, object? value = null, bool legacyOctal = false)
+        => new(kind, lexeme, start, end, value)
+        {
+            PrecededByLineTerminator = precededByLT,
+            LegacyOctal = legacyOctal,
+        };
 }

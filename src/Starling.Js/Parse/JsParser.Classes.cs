@@ -29,6 +29,10 @@ public sealed partial class JsParser
         Advance(); // 'class'
         var nameTok = Expect(JsTokenKind.Identifier, "expected class name");
         var name = new Identifier(nameTok.Lexeme, nameTok.Start, nameTok.End);
+        // §15.7.1 — a class definition is strict code, so its name binding may
+        // not be `eval`/`arguments` or a strict reserved word, regardless of
+        // the surrounding scope's strictness.
+        CheckClassBindingName(name);
         var (baseClass, body, end) = ParseClassTail(start);
         return new ClassDeclaration(name, baseClass, body, start, end);
     }
@@ -45,6 +49,7 @@ public sealed partial class JsParser
         {
             var t = Advance();
             name = new Identifier(t.Lexeme, t.Start, t.End);
+            CheckClassBindingName(name);
         }
         var (baseClass, body, end) = ParseClassTail(start);
         return new ClassExpression(name, baseClass, body, start, end);
@@ -74,6 +79,12 @@ public sealed partial class JsParser
         var start = _current.Start;
         Expect(JsTokenKind.LBrace, "expected '{' to open class body");
 
+        // §15.7 — all code in a class body (methods, constructor, field
+        // initializers, static blocks) is strict mode code, regardless of the
+        // surrounding scope. Save/restore around the whole body.
+        var savedStrict = _strict;
+        _strict = true;
+
         // Pre-scan declared private names so any forward reference inside
         // an earlier method body resolves correctly.
         var privateScope = new HashSet<string>(StringComparer.Ordinal);
@@ -101,6 +112,7 @@ public sealed partial class JsParser
         finally
         {
             _classPrivateScopes.Pop();
+            _strict = savedStrict;
         }
     }
 
@@ -227,7 +239,11 @@ public sealed partial class JsParser
             Expect(JsTokenKind.LParen, "expected '(' in method definition");
             parameters = ParseParameterList();
             Expect(JsTokenKind.RParen, "expected ')' after method parameters");
-            body = ParseBlock();
+            // Class bodies are always strict (§15.7), so _strict is already
+            // true here; ParseFunctionBody preserves it (no prologue can clear
+            // it). Validate params under strict semantics.
+            (body, _) = ParseFunctionBody();
+            ValidateParameters(parameters, strict: true);
             endPos = body.End;
         }
         finally
@@ -237,7 +253,7 @@ public sealed partial class JsParser
 
         var method = new MethodDefinition(key, methodKind, isStatic, computed,
             parameters, body, memberStart, endPos,
-            Generator: isGenerator, Async: isAsync);
+            Generator: isGenerator, Async: isAsync, Strict: true);
         if (isCtor)
         {
             if (existingCtor is not null)

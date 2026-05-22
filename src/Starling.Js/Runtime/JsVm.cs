@@ -85,14 +85,15 @@ public sealed class JsVm
     /// <see cref="StartAsyncBody"/>.</summary>
     public JsValue CallFunction(JsFunction fn, JsValue thisValue, JsValue[] args)
     {
-        // §10.2.1.2 OrdinaryCallBindThis (sloppy mode — Starling has no strict
-        // mode yet, so every function is sloppy): a function called with a
-        // nullish `this` binds the global object, not undefined. This makes the
+        // §10.2.1.2 OrdinaryCallBindThis: a SLOPPY function called with a nullish
+        // `this` binds the global object, not undefined. This makes the
         // ubiquitous global-detection idiom `(function(){return this})()` and
-        // legacy libs (jQuery/Backbone/YUI feature-detection) work. Arrows
+        // legacy libs (jQuery/Backbone/YUI feature-detection) work. A STRICT
+        // function leaves `this` as the passed value (undefined/null). Arrows
         // capture `this` lexically and ignore this argument; class constructors
         // only run via [[Construct]] with a real `this`, so neither is affected.
-        if (thisValue.IsNullish && fn.ConstructorKind == ClassConstructorKind.None)
+        if (thisValue.IsNullish && fn.ConstructorKind == ClassConstructorKind.None
+            && !fn.Body.IsStrict)
             thisValue = JsValue.Object(_runtime.Realm.GlobalObject);
 
         if (fn.Kind == JsFunctionKind.Generator)
@@ -231,6 +232,10 @@ public sealed class JsVm
         var constants = chunk.Constants;
         var ip = 0;
         var thisV = thisValue;
+        // ES strict mode — whether this frame's code runs as strict mode code.
+        // Drives strict StoreGlobal (assignment to undeclared global throws) and
+        // strict Set/delete failures.
+        var frameStrict = chunk.IsStrict;
 
         void Push(JsValue v)
         {
@@ -390,7 +395,18 @@ public sealed class JsVm
                     var name = (string)constants[idx]!;
                     var value = Pop();
                     var globalObj = _runtime.Realm.GlobalObject;
-                    AbstractOperations.Set(this, globalObj, name, value, JsValue.Object(globalObj));
+                    // §9.1.1.4.16 / §13.15.2 — in strict code, assigning to an
+                    // identifier that resolves to no existing binding is a
+                    // ReferenceError (no implicit global creation). Walk the
+                    // prototype chain since inherited accessors/props count.
+                    if (frameStrict && !globalObj.Has(name))
+                        throw new JsThrow(_runtime.Realm.NewReferenceError(name + " is not defined"));
+                    // §10.1.9 — a strict assignment that the [[Set]] rejects
+                    // (non-writable prop, accessor without setter) throws TypeError.
+                    var ok = AbstractOperations.Set(this, globalObj, name, value, JsValue.Object(globalObj));
+                    if (!ok && frameStrict)
+                        throw new JsThrow(_runtime.Realm.NewTypeError(
+                            "Cannot assign to read-only property '" + name + "'"));
                     break;
                 }
                 // gap:script-top-var-not-global — idempotent CreateGlobalVarBinding
@@ -637,7 +653,22 @@ public sealed class JsVm
                     var name = (string)constants[idx]!;
                     var value = Pop();
                     var obj = Pop();
-                    if (obj.IsObject) AbstractOperations.Set(this, obj.AsObject, name, value);
+                    if (obj.IsObject)
+                    {
+                        var ok = AbstractOperations.Set(this, obj.AsObject, name, value);
+                        // §10.1.9 / §13.15.2 — a strict assignment the [[Set]]
+                        // rejects (non-writable data prop, accessor without a
+                        // setter, or add to a non-extensible object) throws.
+                        if (!ok && frameStrict)
+                            throw new JsThrow(_runtime.Realm.NewTypeError(
+                                "Cannot assign to read-only property '" + name + "'"));
+                    }
+                    else if (frameStrict && obj.IsNullish)
+                    {
+                        // §13.15.2 PutValue on a nullish base is always a TypeError.
+                        throw new JsThrow(_runtime.Realm.NewTypeError(
+                            "Cannot set property '" + name + "' of " + JsValue.ToStringValue(obj)));
+                    }
                     Push(value);
                     break;
                 }
@@ -656,7 +687,14 @@ public sealed class JsVm
                     var value = Pop();
                     var key = Pop();
                     var obj = Pop();
-                    if (obj.IsObject) AbstractOperations.Set(this, obj.AsObject, AbstractOperations.ToPropertyKey(key), value);
+                    if (obj.IsObject)
+                    {
+                        var pk = AbstractOperations.ToPropertyKey(key);
+                        var ok = AbstractOperations.Set(this, obj.AsObject, pk, value);
+                        if (!ok && frameStrict)
+                            throw new JsThrow(_runtime.Realm.NewTypeError(
+                                "Cannot assign to read-only property '" + pk + "'"));
+                    }
                     Push(value);
                     break;
                 }
@@ -989,7 +1027,14 @@ public sealed class JsVm
                         Push(JsValue.Boolean(boxed.Delete(AbstractOperations.ToPropertyKey(key))));
                         break;
                     }
-                    Push(JsValue.Boolean(receiver.AsObject.Delete(AbstractOperations.ToPropertyKey(key))));
+                    var delKey = AbstractOperations.ToPropertyKey(key);
+                    var deleted = receiver.AsObject.Delete(delKey);
+                    // §13.5.1.2 — in strict code, `delete` of a non-configurable
+                    // own property is a TypeError (sloppy returns false instead).
+                    if (!deleted && frameStrict)
+                        throw new JsThrow(_runtime.Realm.NewTypeError(
+                            "Cannot delete property '" + delKey + "'"));
+                    Push(JsValue.Boolean(deleted));
                     break;
                 }
 
@@ -1322,7 +1367,7 @@ public sealed class JsVm
                     // captures `arguments`), write through the cell so the
                     // closure observes the same object; otherwise store directly.
                     var slot = ReadU16();
-                    var argObj = JsValue.Object(_runtime.Realm.CreateArgumentsObject(args));
+                    var argObj = JsValue.Object(_runtime.Realm.CreateArgumentsObject(args, frameStrict));
                     if (locals[slot].IsObject && locals[slot].AsObject is Cell cell)
                         cell.Value = argObj;
                     else
