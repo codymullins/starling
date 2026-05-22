@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using Starling.Common.Diagnostics;
 using Starling.Css.FontFace;
@@ -22,7 +23,9 @@ internal sealed class FontFaceFetcher : IDisposable
 {
     private readonly IDiagnostics _diag;
     private readonly Func<StarlingHttpClient> _httpFactory;
-    private readonly Dictionary<string, byte[]> _byUrl = new(StringComparer.Ordinal);
+    // Concurrent because FetchAllAsync warms the url() fetches in parallel;
+    // their cache writes (on the network continuation) can race.
+    private readonly ConcurrentDictionary<string, byte[]> _byUrl = new(StringComparer.Ordinal);
     private StarlingHttpClient? _sharedHttp;
     private readonly bool _ownsHttp;
 
@@ -61,13 +64,46 @@ internal sealed class FontFaceFetcher : IDisposable
         ArgumentNullException.ThrowIfNull(sheets);
         ArgumentNullException.ThrowIfNull(registry);
 
+        // Flatten every @font-face rule with the base URL of the sheet that
+        // declared it, enumerating the (possibly lazily-parsed) sheet sequence
+        // exactly once.
+        var rules = new List<(FontFaceRule Rule, StarlingUrl? BaseUrl)>();
         foreach (var (sheet, baseUrl) in sheets)
-        {
             foreach (var rule in FontFaceParser.ParseAll(sheet))
+                rules.Add((rule, baseUrl));
+        if (rules.Count == 0) return;
+
+        // Pass 1: kick off the network fetch for each rule's first usable url()
+        // source in parallel, so a page with N web fonts pays one wave of
+        // round-trips instead of N sequential ones. A @font-face `src` is a
+        // fallback chain (first entry that loads wins), and authors put the
+        // preferred format first, so warming the first readable url() covers the
+        // common single-round-trip case; the byte cache (keyed by absolute URL)
+        // then lets pass 2 resolve from memory. A rare validation miss in pass 2
+        // falls back to fetching the next entry on demand.
+        var warm = new List<Task>();
+        foreach (var (rule, baseUrl) in rules)
+        {
+            ct.ThrowIfCancellationRequested();
+            foreach (var source in rule.Sources)
             {
-                ct.ThrowIfCancellationRequested();
-                await RegisterAsync(rule, baseUrl, registry, ct).ConfigureAwait(false);
+                if (source is not UrlFontSource url) continue;
+                if (!IsLikelyReadableFormat(url.Format)) continue;
+                warm.Add(FetchBytesAsync(url.Url, baseUrl, ct));
+                break; // the remaining url() entries are fallbacks
             }
+        }
+        if (warm.Count > 0)
+            await Task.WhenAll(warm).ConfigureAwait(false);
+
+        // Pass 2: resolve + register each rule in document order. Registration
+        // mutates the (non-thread-safe) FontFaceRegistry, so it stays
+        // single-threaded; the warm-up above has populated the byte cache, so
+        // this reads bytes and registers without re-hitting the network.
+        foreach (var (rule, baseUrl) in rules)
+        {
+            ct.ThrowIfCancellationRequested();
+            await RegisterAsync(rule, baseUrl, registry, ct).ConfigureAwait(false);
         }
     }
 

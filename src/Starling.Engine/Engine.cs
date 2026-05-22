@@ -160,21 +160,29 @@ public sealed class StarlingEngine
         // awaited just before scripts execute.
         var scriptsFetch = scripts.FetchAllAsync(doc, baseUrl: u, ct);
 
+        using var webFonts = new FontFaceRegistry();
+        using var fontFaceFetcher = new FontFaceFetcher(_diag, http);
+
+        // Fonts are declared by @font-face in the author stylesheets, so the font
+        // fetch depends on the stylesheets being downloaded + parsed — but not on
+        // the images. Chain the font fetch onto the stylesheet fetch and run that
+        // chain alongside the image fetch, so web fonts start downloading the
+        // moment the sheets land instead of waiting out the whole image wave.
+        async Task FetchSheetsThenFontsAsync()
+        {
+            await stylesheets.FetchAllAsync(doc, baseUrl: u, ct).ConfigureAwait(false);
+            using (_diag.Span("engine", "fetch_fonts"))
+                await fontFaceFetcher
+                    .FetchAllAsync(EnumerateAuthorSheets(doc, u, stylesheets), webFonts, ct)
+                    .ConfigureAwait(false);
+        }
+
         using (_diag.Span("engine", "fetch_resources"))
         {
             await Task.WhenAll(
                 images.FetchAllAsync(doc, baseUrl: u, options.Viewport.Width, options.FontSize, ct),
-                stylesheets.FetchAllAsync(doc, baseUrl: u, ct)
+                FetchSheetsThenFontsAsync()
             ).ConfigureAwait(false);
-        }
-
-        using var webFonts = new FontFaceRegistry();
-        using (var fontFaceFetcher = new FontFaceFetcher(_diag, http))
-        using (_diag.Span("engine", "fetch_fonts"))
-        {
-            await fontFaceFetcher
-                .FetchAllAsync(EnumerateAuthorSheets(doc, u, stylesheets), webFonts, ct)
-                .ConfigureAwait(false);
         }
 
         // Run page JavaScript. Mutations to the DOM (text content, new
@@ -361,8 +369,16 @@ public sealed class StarlingEngine
     /// parsed stylesheets. Interactive shells use this to walk the structure
     /// and emit native views rather than displaying a flat bitmap.
     /// </summary>
+    // sharedHttp: optional session-scoped HTTP client. When supplied (the
+    // interactive browsing path), the document and all resource fetches reuse it,
+    // so warm HTTP/2 connections, pooled keep-alive transports, and the DNS cache
+    // survive *across navigations* — revisiting an origin skips the DNS+TCP+TLS
+    // round-trips. The caller owns its lifetime; this method neither disposes it
+    // nor hands it to the returned page. When null, a throwaway client is created
+    // for this page load and bound to the returned LaidOutPage (disposed with it).
     public async Task<Result<LaidOutPage, RenderError>> LayoutPageAsync(
-        string url, RenderOptions options, CancellationToken ct = default)
+        string url, RenderOptions options, CancellationToken ct = default,
+        StarlingHttpClient? sharedHttp = null)
     {
         ArgumentNullException.ThrowIfNull(url);
         ArgumentNullException.ThrowIfNull(options);
@@ -383,11 +399,13 @@ public sealed class StarlingEngine
         // whole page load: the document fetch and every resource fetch
         // (css/js/fonts/images) share it, so same-origin requests reuse a live
         // HTTP/2 connection (or keep-alive H1 transport) instead of re-doing
-        // DNS+TCP+TLS per resource. Ownership transfers to the returned
-        // LaidOutPage (which disposes it, and hands it to a relayout successor);
+        // DNS+TCP+TLS per resource. A caller-supplied sharedHttp (interactive
+        // session) is reused across navigations and is NOT owned here; otherwise
+        // we mint a throwaway client, hand it to the returned LaidOutPage, and
         // the finally below disposes it on every path that doesn't hand it over.
-        var http = _httpFactory();
-        var httpTransferred = false;
+        var http = sharedHttp ?? _httpFactory();
+        var ownsHttp = sharedHttp is null;
+        var httpHandedToPage = false;
         try
         {
             string html;
@@ -449,17 +467,23 @@ public sealed class StarlingEngine
                     // just before scripts execute. (Mirrors RenderAsync.)
                     var scriptsFetch = scripts.FetchAllAsync(doc, baseUrl: u, ct);
 
-                    await Task.WhenAll(
-                        images.FetchAllAsync(doc, baseUrl: u, options.Viewport.Width, options.FontSize, ct),
-                        stylesheets.FetchAllAsync(doc, baseUrl: u, ct)
-                    ).ConfigureAwait(false);
-
-                    using (var fontFaceFetcher = new FontFaceFetcher(_diag, http))
+                    // Fonts depend on the @font-face rules in the stylesheets, not
+                    // on the images — chain the font fetch onto the stylesheet
+                    // fetch and run it alongside the image fetch so web fonts
+                    // start as soon as the sheets land. (Mirrors RenderAsync.)
+                    using var fontFaceFetcher = new FontFaceFetcher(_diag, http);
+                    async Task FetchSheetsThenFontsAsync()
                     {
+                        await stylesheets.FetchAllAsync(doc, baseUrl: u, ct).ConfigureAwait(false);
                         await fontFaceFetcher
                             .FetchAllAsync(EnumerateAuthorSheets(doc, u, stylesheets), webFonts, ct)
                             .ConfigureAwait(false);
                     }
+
+                    await Task.WhenAll(
+                        images.FetchAllAsync(doc, baseUrl: u, options.Viewport.Width, options.FontSize, ct),
+                        FetchSheetsThenFontsAsync()
+                    ).ConfigureAwait(false);
 
                     // The script downloads were kicked off above and have been
                     // running concurrently with the stylesheet/font fetch; await
@@ -495,10 +519,12 @@ public sealed class StarlingEngine
                     colorScheme: options.PreferredColorScheme);
 
                 var title = ExtractTitle(doc);
+                // Only hand the client to the page when we own it; a shared
+                // session client outlives the page and is disposed by the caller.
                 var page = new LaidOutPage(
                     root, doc, style, viewport, url, title, images, stylesheets, webFonts,
-                    options.FontSize, security, http);
-                httpTransferred = true;
+                    options.FontSize, security, ownsHttp ? http : null);
+                httpHandedToPage = ownsHttp;
                 return Result<LaidOutPage, RenderError>.Ok(page);
             }
             catch
@@ -511,8 +537,9 @@ public sealed class StarlingEngine
         }
         finally
         {
-            // Disposed unless ownership was handed to the returned LaidOutPage.
-            if (!httpTransferred)
+            // Dispose only a client we minted here and didn't hand to the page.
+            // A caller-supplied shared client is never disposed here.
+            if (ownsHttp && !httpHandedToPage)
                 http.Dispose();
         }
     }

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using Starling.Codecs;
 using Starling.Common.Diagnostics;
@@ -32,7 +33,10 @@ namespace Starling.Engine;
 internal sealed class ImageFetcher : IImageResolver, IDisposable
 {
     private readonly Dictionary<Element, ResolvedImage> _byElement = [];
-    private readonly Dictionary<string, DecodedImage> _byUrl = new(StringComparer.Ordinal);
+    // Concurrent because FetchAllAsync / FetchBackgroundsAsync start multiple
+    // decodes in parallel; their cache writes (on the network/decode
+    // continuation) can race.
+    private readonly ConcurrentDictionary<string, DecodedImage> _byUrl = new(StringComparer.Ordinal);
     // Inline-<svg> rasters are decoded on demand (during layout) and aren't
     // keyed by URL, so track them separately for disposal.
     private readonly List<DecodedImage> _inlineSvg = [];
@@ -140,6 +144,13 @@ internal sealed class ImageFetcher : IImageResolver, IDisposable
     {
         ArgumentNullException.ThrowIfNull(document);
 
+        // Two-pass fetch so the images download in parallel instead of one
+        // round-trip after another. Pass 1 walks the document and kicks off each
+        // fetch+decode without awaiting (the synchronous prefix — srcset
+        // selection, URL resolve, cache probe — still runs sequentially here;
+        // only the network I/O + decode overlap). Pass 2 awaits them all, then
+        // records the resolved intrinsic sizes against each element.
+        var pending = new List<(Element Img, double CorrectedW, double CorrectedH, Task<DecodedImage?> Task)>();
         foreach (var img in document.GetElementsByTagName("img"))
         {
             ct.ThrowIfCancellationRequested();
@@ -160,7 +171,18 @@ internal sealed class ImageFetcher : IImageResolver, IDisposable
                 continue;
             }
 
-            var decoded = await FetchAndDecodeAsync(absolute, ct).ConfigureAwait(false);
+            pending.Add((img, correctedW, correctedH, FetchAndDecodeAsync(absolute, ct)));
+        }
+
+        if (pending.Count == 0) return;
+
+        // Task.WhenAll observes every task so a cancellation can't leave an
+        // unobserved faulted task behind, matching the old sequential loop.
+        await Task.WhenAll(pending.Select(static p => p.Task)).ConfigureAwait(false);
+
+        foreach (var (img, correctedW, correctedH, task) in pending)
+        {
+            var decoded = task.Result; // completed; null = fetch/decode failed
             if (decoded is null) continue;
 
             // density-corrected intrinsic: if sizes gave us a CSS-px width,
@@ -206,6 +228,11 @@ internal sealed class ImageFetcher : IImageResolver, IDisposable
                 rawByBase.TryAdd(raw, sheetBase ?? documentBaseUrl);
         }
 
+        // Two-pass like FetchAllAsync: kick off every background fetch+decode in
+        // parallel (pass 1), then index the results under the raw CSS url()
+        // string (pass 2) so the paint-time lookup — which only sees the CSS
+        // value — finds the prefetched bitmap.
+        var pending = new List<(string Raw, Task<DecodedImage?> Task)>();
         foreach (var (raw, baseUrl) in rawByBase)
         {
             ct.ThrowIfCancellationRequested();
@@ -213,10 +240,17 @@ internal sealed class ImageFetcher : IImageResolver, IDisposable
 
             var absolute = ResolveAbsolute(raw, baseUrl);
             if (absolute is null) continue;
-            var decoded = await FetchAndDecodeAsync(absolute, ct).ConfigureAwait(false);
+            pending.Add((raw, FetchAndDecodeAsync(absolute, ct)));
+        }
+
+        if (pending.Count == 0) return;
+
+        await Task.WhenAll(pending.Select(static p => p.Task)).ConfigureAwait(false);
+
+        foreach (var (raw, task) in pending)
+        {
+            var decoded = task.Result;
             if (decoded is null) continue;
-            // Index under the *raw* CSS url() string so the paint-time lookup,
-            // which only sees the CSS value, finds the prefetched bitmap.
             _byUrl[raw] = decoded;
         }
     }
@@ -331,7 +365,16 @@ internal sealed class ImageFetcher : IImageResolver, IDisposable
                 : NativeImageDecoder.Decode(bytes);
             Activity.Current?.SetTag("image.w", decoded.Width);
             Activity.Current?.SetTag("image.h", decoded.Height);
-            _byUrl[key] = decoded;
+            // Two identical URLs discovered in the same parallel pass both miss
+            // the cache probe above and each decode; keep the first to land and
+            // dispose the loser so the cache (and disposal) own exactly one
+            // bitmap per URL.
+            var winner = _byUrl.GetOrAdd(key, decoded);
+            if (!ReferenceEquals(winner, decoded))
+            {
+                decoded.Dispose();
+                return winner;
+            }
             _diag.Counter("engine.fetch.image", 1);
             return decoded;
         }

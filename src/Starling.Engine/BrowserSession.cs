@@ -15,17 +15,26 @@ public sealed class BrowserSession : IDisposable
     private readonly StarlingEngine _engine;
     private readonly IDiagnostics _diag;
 
+    // Persistent, session-scoped HTTP client shared across interactive
+    // navigations so warm HTTP/2 connections, pooled keep-alive transports, and
+    // the DNS cache survive page-to-page — revisiting an origin (or following a
+    // same-origin link) skips the DNS+TCP+TLS round-trips. Disposed in Dispose().
+    // The PNG render path (RenderAsync) still mints a per-load client via the
+    // engine's factory; it's a one-shot path where cross-navigation reuse adds
+    // nothing.
+    private readonly StarlingHttpClient _http;
+
     public BrowserSession(IDiagnostics? diagnostics = null, CookieJar? cookieJar = null)
     {
         _diag = diagnostics ?? NoopDiagnostics.Instance;
         Cookies = cookieJar ?? new CookieJar();
-        _engine = new StarlingEngine(
-            diagnostics,
-            httpFactory: () => new StarlingHttpClient(new StarlingHttpClientOptions
-            {
-                CookieJar = Cookies,
-                Diagnostics = diagnostics,
-            }));
+        StarlingHttpClient NewClient() => new(new StarlingHttpClientOptions
+        {
+            CookieJar = Cookies,
+            Diagnostics = diagnostics,
+        });
+        _http = NewClient();
+        _engine = new StarlingEngine(diagnostics, httpFactory: NewClient);
     }
 
     public NavigationHistory History { get; } = new();
@@ -57,7 +66,7 @@ public sealed class BrowserSession : IDisposable
     {
         return await TrackAsync("navigate", url, async () =>
         {
-            var result = await _engine.LayoutPageAsync(url, options, ct).ConfigureAwait(false);
+            var result = await _engine.LayoutPageAsync(url, options, ct, sharedHttp: _http).ConfigureAwait(false);
             if (result.IsOk)
                 History.Navigate(url);
             return result;
@@ -69,7 +78,7 @@ public sealed class BrowserSession : IDisposable
         CancellationToken ct = default)
     {
         var url = History.Back();
-        return TrackAsync("back", url, () => _engine.LayoutPageAsync(url, options, ct));
+        return TrackAsync("back", url, () => _engine.LayoutPageAsync(url, options, ct, sharedHttp: _http));
     }
 
     public Task<Result<LaidOutPage, RenderError>> ForwardInteractiveAsync(
@@ -77,7 +86,7 @@ public sealed class BrowserSession : IDisposable
         CancellationToken ct = default)
     {
         var url = History.Forward();
-        return TrackAsync("forward", url, () => _engine.LayoutPageAsync(url, options, ct));
+        return TrackAsync("forward", url, () => _engine.LayoutPageAsync(url, options, ct, sharedHttp: _http));
     }
 
     public Task<Result<LaidOutPage, RenderError>> ReloadInteractiveAsync(
@@ -85,7 +94,7 @@ public sealed class BrowserSession : IDisposable
         CancellationToken ct = default)
     {
         var url = History.Reload();
-        return TrackAsync("reload", url, () => _engine.LayoutPageAsync(url, options, ct));
+        return TrackAsync("reload", url, () => _engine.LayoutPageAsync(url, options, ct, sharedHttp: _http));
     }
 
     /// <summary>
@@ -126,8 +135,10 @@ public sealed class BrowserSession : IDisposable
 
     public void Dispose()
     {
-        // The underlying engine creates per-request clients; no persistent
-        // sockets need disposal yet.
+        // Tear down the session-scoped client and its live connections. Pages
+        // returned by interactive navigations do not own this client (they were
+        // handed null), so disposing here is the single owning release.
+        _http.Dispose();
     }
 
     /// <summary>
