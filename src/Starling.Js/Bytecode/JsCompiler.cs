@@ -2372,15 +2372,27 @@ public sealed partial class JsCompiler
             // Super-property assignment: super.x = v writes to `this`.
             if (me.Object is SuperPropertyExpression)
                 throw new NotSupportedException("super.x = v is not supported in B1b-2a");
-            // Private name assignment: this.#x = v
+            // Private name assignment: this.#x = v (and compound this.#x op= v).
             if (!me.Computed && me.Property is PrivateNameExpression pne)
             {
                 var mangled = ResolvePrivateName(pne.Name, pne.Start);
+                var pneIdx = _b.AddConstant(mangled);
+                if (a.Op != "=")
+                {
+                    // §13.15.2 — evaluate the base ONCE: dup it for the read,
+                    // PrivateGet the old value, apply the op, then PrivateSet
+                    // through the same receiver (PrivateSet re-pushes the value).
+                    EmitExpression(me.Object);                  // [obj]
+                    _b.Emit(Opcode.Dup);                        // [obj, obj]
+                    _b.EmitU16(Opcode.PrivateGet, pneIdx);      // [obj, oldVal]
+                    EmitExpression(a.Value);                    // [obj, oldVal, rhs]
+                    _b.Emit(CompoundOpToBinaryOpcode(a.Op));    // [obj, newVal]
+                    _b.EmitU16(Opcode.PrivateSet, pneIdx);      // [newVal]
+                    return;
+                }
                 EmitExpression(me.Object);
                 EmitExpression(a.Value);
-                if (a.Op != "=")
-                    throw new NotSupportedException("compound assignment to private field not supported");
-                _b.EmitU16(Opcode.PrivateSet, _b.AddConstant(mangled));
+                _b.EmitU16(Opcode.PrivateSet, pneIdx);
                 return;
             }
             // gap:compound-assign-property — for compound forms (`obj.x += v`,
@@ -2509,10 +2521,34 @@ public sealed partial class JsCompiler
             // netclaw doesn't need the logical form, so defer it explicitly.
             if (me.Object is SuperPropertyExpression)
                 throw new NotSupportedException("logical assignment to a super property is not supported");
-            // Private-name logical assignment (this.#x ??= …) needs PrivateGet
-            // + PrivateSet on a dup'd receiver; not exercised by netclaw, defer.
-            if (!me.Computed && me.Property is PrivateNameExpression)
-                throw new NotSupportedException("logical assignment to a private field is not supported");
+            // Private-name logical assignment (this.#x &&= / ||= / ??= …).
+            // Same shape as the plain non-computed member path below, but the
+            // read/write route through PrivateGet/PrivateSet on a dup'd receiver.
+            if (!me.Computed && me.Property is PrivateNameExpression ppne)
+            {
+                var pmangled = ResolvePrivateName(ppne.Name, ppne.Start);
+                var pmIdx = _b.AddConstant(pmangled);
+                EmitExpression(me.Object);          // [obj]
+                _b.Emit(Opcode.Dup);                // [obj, obj]
+                _b.EmitU16(Opcode.PrivateGet, pmIdx); // [obj, cur]
+                _b.Emit(Opcode.Dup);                // [obj, cur, cur]
+                var jp = _b.EmitJump(jmp);          // pops one cur
+                // Assign path: [obj, cur]. Drop cur, eval RHS, PrivateSet
+                // (PrivateSet pops obj,rhs and RE-PUSHES rhs).
+                _b.Emit(Opcode.Pop);                // [obj]
+                EmitExpression(a.Value);            // [obj, rhs]
+                _b.EmitU16(Opcode.PrivateSet, pmIdx); // [rhs]
+                var jpEnd = _b.EmitJump(Opcode.Jump);
+                // Short-circuit path: [obj, cur]; drop the dup'd base from
+                // underneath, leaving cur. Reorder via a temp local.
+                _b.PatchJump(jp);                   // [obj, cur]
+                var ptmp = _b.ReserveLocal();
+                EmitStoreLocalSlot(ptmp);           // [obj]
+                _b.Emit(Opcode.Pop);                // []
+                EmitLoadLocalSlot(ptmp);            // [cur]
+                _b.PatchJump(jpEnd);                // merge: [rhs] or [cur]
+                return;
+            }
 
             if (me.Computed)
             {

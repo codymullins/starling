@@ -586,7 +586,12 @@ public sealed class JsVm
                         break;
                     }
                     var ad = JsValue.ToNumber(a); var bd = JsValue.ToNumber(b);
-                    Push(JsValue.Number(bd == 0 ? double.NaN : ad - Math.Floor(ad / bd) * bd));
+                    // §Number::remainder — truncated remainder (result carries the
+                    // sign of the dividend), matching C `fmod`. The C# `%` operator
+                    // on doubles implements exactly these IEEE semantics, including
+                    // the NaN/Infinity/zero edge cases (`x % 0` → NaN, `x % ∞` → x,
+                    // `∞ % y` → NaN), unlike the floored `a - floor(a/b)*b` form.
+                    Push(JsValue.Number(ad % bd));
                     break;
                 }
                 case Opcode.Pow:
