@@ -181,6 +181,16 @@ public sealed class JsRealm
     /// throws ReferenceError per ES2024 §10.2.1.1.</summary>
     public JsObject UninitializedThisSentinel { get; } = new();
 
+    /// <summary>Temporal Dead Zone (TDZ) — singleton sentinel stored in a
+    /// <c>let</c>/<c>const</c>/<c>class</c> lexical slot (or its backing
+    /// <see cref="Cell"/>) between scope entry and the declaration's
+    /// initializer running. Any read or write of the binding that observes
+    /// this value throws a ReferenceError per ECMA-262 §§9.1.1.1.4 /
+    /// 13.3.1.1: a lexical binding is instantiated uninitialized and must
+    /// not be accessed before its initializer assigns it (or, for a bare
+    /// <c>let x;</c>, before the declaration sets it to undefined).</summary>
+    public JsObject TdzSentinel { get; } = new();
+
     /// <summary>§10.2.4.1 %ThrowTypeError% — the shared, frozen poison-pill
     /// function whose [[Call]] always throws a TypeError. Used as the
     /// <c>callee</c> getter/setter on a strict-mode <c>arguments</c> object.

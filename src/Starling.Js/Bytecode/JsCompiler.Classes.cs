@@ -31,6 +31,13 @@ public sealed partial class JsCompiler
         // block-scoped classes are needed.
         // bindNameToGlobal: bind the name before static elements run so a
         // `static { … C … }` block or `static p = C.q` field sees the class.
+        //
+        // TDZ note: block-scoped class-binding TDZ is deferred together with
+        // the script-top global-lexical TDZ work (see report). The class name
+        // is intentionally NOT lexically hoisted (HoistLexicalDeclarations
+        // skips class bindings when they would resolve here), so the global
+        // write path below remains the single source of truth and the many
+        // passing class tests don't regress.
         EmitClassValue(cd.Name, cd.BaseClass, cd.Body, bindNameToGlobal: true);
         _b.Emit(Opcode.Dup); // assignment is an expression — leave value on stack briefly
         // Declare the global binding first so the store is not rejected as an
@@ -223,6 +230,7 @@ public sealed partial class JsCompiler
             // wp:M3-20 — class constructors are non-arrow functions; give them
             // an `arguments` object when the body reads it.
             sub.MaybeBindArguments(parameters, bodyBlock.Body);
+            sub.HoistLexicalDeclarations(bodyBlock.Body); // TDZ
             foreach (var s in bodyBlock.Body) sub.EmitStatement(s);
         }
 
@@ -258,6 +266,7 @@ public sealed partial class JsCompiler
         // wp:M3-20 — methods/accessors are non-arrow functions; synthesize an
         // `arguments` object when the body reads it.
         sub.MaybeBindArguments(md.Params, md.Body.Body);
+        sub.HoistLexicalDeclarations(md.Body.Body); // TDZ
         foreach (var s in md.Body.Body) sub.EmitStatement(s);
         sub._b.Emit(Opcode.ReturnUndefined);
         sub._privateScopes.Pop();
@@ -391,6 +400,7 @@ public sealed partial class JsCompiler
         sub.RunCaptureAnalysisForFunction(Array.Empty<Expression>(), block.Body);
         sub.PreallocateCapturedVarBindings(block.Body);
         sub.HoistFunctionDeclarations(block.Body);
+        sub.HoistLexicalDeclarations(block.Body); // TDZ
         foreach (var s in block.Body) sub.EmitStatement(s);
         sub._b.Emit(Opcode.ReturnUndefined);
         sub._privateScopes.Pop();
@@ -439,9 +449,10 @@ public sealed partial class JsCompiler
     }
 
     /// <summary>Resolve a private name (<c>#name</c>) to its mangled own
-    /// property key. Throws when the name is not declared in any enclosing
-    /// class scope.</summary>
-    internal string ResolvePrivateName(string privateName)
+    /// property key. A reference to a private name not declared in any
+    /// enclosing class scope is an early SyntaxError (§15.7.1
+    /// AllPrivateIdentifiersValid), so this throws <see cref="Parse.JsParseException"/>.</summary>
+    internal string ResolvePrivateName(string privateName, JsPosition at)
     {
         foreach (var scope in _privateScopes)
         {
@@ -454,7 +465,7 @@ public sealed partial class JsCompiler
                 if (scope.TryGetValue(privateName, out var mangled)) return mangled;
             }
         }
-        throw new InvalidOperationException(
-            $"private name '{privateName}' is not declared in any enclosing class scope");
+        throw new Parse.JsParseException(
+            $"private name '{privateName}' is not declared in any enclosing class scope", at);
     }
 }

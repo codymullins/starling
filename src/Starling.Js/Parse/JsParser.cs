@@ -31,12 +31,24 @@ public sealed partial class JsParser
     private bool _strict;
 
     public JsParser(string source)
-        : this(new JsLexer(source)) { }
+        : this(new JsLexer(source, ThrowingLexErrorSink.Instance)) { }
 
     public JsParser(JsLexer lex)
     {
         _lex = lex ?? throw new ArgumentNullException(nameof(lex));
         _current = _lex.Next();
+    }
+
+    /// <summary>A lexer error is an early <c>SyntaxError</c> per §12 — surface
+    /// it as a <see cref="JsParseException"/> the moment the lexer reports it
+    /// (malformed numeric/string/escape, unterminated literal, etc.). Without
+    /// this the default sink silently drops them and the parser accepts the
+    /// invalid token.</summary>
+    private sealed class ThrowingLexErrorSink : IJsLexErrorSink
+    {
+        public static readonly ThrowingLexErrorSink Instance = new();
+        public void Report(JsLexError code, JsPosition position, string message)
+            => throw new JsParseException($"lexical error: {message}", position);
     }
 
     // -----------------------------------------------------------------------
@@ -597,10 +609,21 @@ public sealed partial class JsParser
         return ParseCallAndMemberTail(node);
     }
 
-    private NewExpression ParseNew()
+    private Expression ParseNew()
     {
         var start = _current.Start;
         Advance(); // 'new'
+        // §13.3.12 NewTarget — `new.target` meta-property.
+        if (Check(JsTokenKind.Dot))
+        {
+            Advance(); // '.'
+            var meta = ExpectIdentifierName("expected 'target' after 'new.'");
+            if (meta.Lexeme != "target")
+                throw new JsParseException(
+                    $"the only valid meta-property for new is 'new.target' (got 'new.{meta.Lexeme}')",
+                    meta.Start);
+            return new NewTargetExpression(start, meta.End);
+        }
         // Callee can recurse for `new new X()` etc.
         Expression callee = Check(JsTokenKind.New)
             ? ParseNew()
@@ -631,7 +654,7 @@ public sealed partial class JsParser
             }
             else if (Match(JsTokenKind.LBracket))
             {
-                var idx = ParseAssignment();
+                var idx = ParseBracketedExpressionAllowingIn();
                 var end = _current.Start;
                 Expect(JsTokenKind.RBracket, "expected ']' after computed property");
                 node = new MemberExpression(node, idx,
@@ -664,7 +687,7 @@ public sealed partial class JsParser
             }
             else if (Match(JsTokenKind.LBracket))
             {
-                var idx = ParseAssignment();
+                var idx = ParseBracketedExpressionAllowingIn();
                 var end = _current.Start;
                 Expect(JsTokenKind.RBracket, "expected ']' after computed property");
                 node = new MemberExpression(node, idx,
@@ -683,7 +706,7 @@ public sealed partial class JsParser
                 }
                 else if (Match(JsTokenKind.LBracket))
                 {
-                    var idx = ParseAssignment();
+                    var idx = ParseBracketedExpressionAllowingIn();
                     var end = _current.Start;
                     Expect(JsTokenKind.RBracket, "expected ']' after optional computed access");
                     node = new MemberExpression(node, idx,
@@ -709,6 +732,18 @@ public sealed partial class JsParser
         return node;
     }
 
+    /// <summary>Parse an AssignmentExpression that appears between square
+    /// brackets (a computed member key / index). Such an expression is always
+    /// <c>[+In]</c> per the grammar, so any active <c>for</c>-header [NoIn]
+    /// restriction is suspended for its duration.</summary>
+    private Expression ParseBracketedExpressionAllowingIn()
+    {
+        var savedNoIn = _disallowInDepth;
+        _disallowInDepth = 0;
+        try { return ParseAssignment(); }
+        finally { _disallowInDepth = savedNoIn; }
+    }
+
     private List<Expression> ParseArgumentList()
     {
         var args = new List<Expression>();
@@ -727,6 +762,9 @@ public sealed partial class JsParser
                 args.Add(ParseAssignment());
             }
             if (!Match(JsTokenKind.Comma)) break;
+            // §13.3.6 Arguments allows a single trailing comma:
+            //   `f(a,)` / `f(a, b,)`. Stop the loop when the comma was trailing.
+            if (Check(JsTokenKind.RParen)) break;
         }
         return args;
     }
@@ -864,6 +902,12 @@ public sealed partial class JsParser
     {
         var start = _current.Start;
         Expect(JsTokenKind.LBracket, "[ expected");
+        // Array element list is `AssignmentExpression[+In]` — suspend any active
+        // `for`-header [NoIn] restriction inside the brackets.
+        var savedNoIn = _disallowInDepth;
+        _disallowInDepth = 0;
+        try
+        {
         var elements = new List<Expression?>();
         while (!Check(JsTokenKind.RBracket))
         {
@@ -889,6 +933,8 @@ public sealed partial class JsParser
         var end = _current.End;
         Expect(JsTokenKind.RBracket, "expected ']' to close array literal");
         return new ArrayExpression(elements, start, end);
+        }
+        finally { _disallowInDepth = savedNoIn; }
     }
 
     private ObjectExpression ParseObjectLiteral()
@@ -1025,7 +1071,13 @@ public sealed partial class JsParser
     {
         if (Match(JsTokenKind.LBracket))
         {
-            var k = ParseAssignment();
+            // A computed key is `[ AssignmentExpression[+In] ]` — `in` is always
+            // allowed inside the brackets even within a `for` header [NoIn].
+            var savedNoIn = _disallowInDepth;
+            _disallowInDepth = 0;
+            Expression k;
+            try { k = ParseAssignment(); }
+            finally { _disallowInDepth = savedNoIn; }
             Expect(JsTokenKind.RBracket, "expected ']' after computed key");
             return (k, true);
         }

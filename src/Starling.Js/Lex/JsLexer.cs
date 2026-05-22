@@ -196,14 +196,18 @@ public sealed class JsLexer
         var c = _src[_i];
 
         // Identifier / keyword — an identifier may begin with a raw
-        // IdentifierStart char or a \u escape that decodes to one (§12.6).
-        if (IsIdStart(c) || (c == '\\' && StartsIdentifierEscape(_i)))
+        // IdentifierStart char, an astral IdentifierStart written as a
+        // surrogate pair, or a \u escape that decodes to one (§12.6).
+        if (IsIdStart(c) || (c == '\\' && StartsIdentifierEscape(_i))
+            || TryAstralIdChar(_i, first: true, out _))
             return ScanIdentifier(start, precededByLT);
 
         // Private identifier — #name, only valid in class bodies (parser
-        // enforces). The name part likewise allows a leading \u escape.
+        // enforces). The name part likewise allows a leading \u escape or an
+        // astral IdentifierStart surrogate pair.
         if (c == '#' && _i + 1 < _src.Length
-            && (IsIdStart(_src[_i + 1]) || (_src[_i + 1] == '\\' && StartsIdentifierEscape(_i + 1))))
+            && (IsIdStart(_src[_i + 1]) || (_src[_i + 1] == '\\' && StartsIdentifierEscape(_i + 1))
+                || TryAstralIdChar(_i + 1, first: true, out _)))
             return ScanPrivateIdentifier(start, precededByLT);
 
         // Numeric literal
@@ -469,6 +473,15 @@ public sealed class JsLexer
             else if (first ? IsIdStart(c) : IsIdPart(c))
             {
                 sb.Append(c);
+                Advance();
+            }
+            else if (TryAstralIdChar(_i, first, out _))
+            {
+                // Astral IdentifierStart/Part written as a surrogate pair —
+                // copy both UTF-16 units.
+                sb.Append(c);
+                sb.Append(_src[_i + 1]);
+                Advance();
                 Advance();
             }
             else break;
@@ -967,6 +980,9 @@ public sealed class JsLexer
         if (c == '_' || c == '$') return true;
         if (c < 0x80) return false;
         if (IsOtherIdStart(c)) return true; // \u00A712.6 Other_ID_Start
+        // U+2E2F VERTICAL TILDE is a ModifierLetter but is in Unicode
+        // Pattern_Syntax, so it is excluded from ID_Start/ID_Continue (\u00A712.6).
+        if (c == '\u2E2F') return false;
         var cat = CharUnicodeInfo.GetUnicodeCategory(c);
         return cat is UnicodeCategory.UppercaseLetter
             or UnicodeCategory.LowercaseLetter
@@ -1016,7 +1032,9 @@ public sealed class JsLexer
             or '\u136F'
             or '\u1370'
             or '\u1371'    // ETHIOPIC DIGIT NINE
-            or '\u19DA';   // NEW TAI LUE THAM DIGIT ONE
+            or '\u19DA'    // NEW TAI LUE THAM DIGIT ONE
+            or '\u30FB'    // KATAKANA MIDDLE DOT (U+30FB)
+            or '\uFF65';   // HALFWIDTH KATAKANA MIDDLE DOT (U+FF65)
 
     // ----- §12.6 IdentifierName UnicodeEscapeSequence support -----------------
 
@@ -1045,6 +1063,23 @@ public sealed class JsLexer
         return IsIdStartCp(cp) || cat is UnicodeCategory.NonSpacingMark
             or UnicodeCategory.SpacingCombiningMark or UnicodeCategory.DecimalDigitNumber
             or UnicodeCategory.ConnectorPunctuation;
+    }
+
+    /// <summary>When the two source units at <paramref name="pos"/> form a
+    /// well-formed UTF-16 surrogate pair, decode it and report whether the
+    /// astral code point is a valid IdentifierStart/Part (per <paramref name="first"/>).
+    /// Returns true and sets <paramref name="cp"/> on a match; otherwise false.
+    /// Astral identifier characters are written literally as surrogate pairs in
+    /// the source, so the single-<c>char</c> tests above never see them.</summary>
+    private bool TryAstralIdChar(int pos, bool first, out int cp)
+    {
+        cp = -1;
+        if (pos + 1 >= _src.Length) return false;
+        var hi = _src[pos];
+        var lo = _src[pos + 1];
+        if (!char.IsHighSurrogate(hi) || !char.IsLowSurrogate(lo)) return false;
+        cp = char.ConvertToUtf32(hi, lo);
+        return first ? IsIdStartCp(cp) : IsIdPartCp(cp);
     }
 
     /// <summary>Peek a <c>\uXXXX</c> or <c>\u{...}</c> escape starting at

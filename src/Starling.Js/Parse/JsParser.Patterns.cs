@@ -9,6 +9,15 @@ public sealed partial class JsParser
     {
         if (Check(JsTokenKind.LBracket)) return ParseArrayBindingPattern();
         if (Check(JsTokenKind.LBrace)) return ParseObjectBindingPattern();
+        // In sloppy (non-strict) code outside a generator, `yield` is a plain
+        // IdentifierReference and a legal BindingIdentifier (§12.7.1). The lexer
+        // always classifies it as the `Yield` keyword token, so accept it here.
+        // Strict-mode misuse is still caught by CheckBindingIdentifier callers.
+        if (!_strict && Check(JsTokenKind.Yield))
+        {
+            var y = Advance();
+            return new Identifier(y.Lexeme, y.Start, y.End);
+        }
         var id = Expect(JsTokenKind.Identifier, "expected binding name or pattern");
         return new Identifier(id.Lexeme, id.Start, id.End);
     }
@@ -118,7 +127,13 @@ public sealed partial class JsParser
     {
         if (Match(JsTokenKind.LBracket))
         {
-            var expr = ParseAssignment();
+            // A computed key is `[ AssignmentExpression[+In] ]` — `in` is always
+            // allowed inside the brackets even within a `for` header [NoIn].
+            var savedNoIn = _disallowInDepth;
+            _disallowInDepth = 0;
+            Expression expr;
+            try { expr = ParseAssignment(); }
+            finally { _disallowInDepth = savedNoIn; }
             Expect(JsTokenKind.RBracket, "expected ']' after computed key");
             return (expr, true);
         }

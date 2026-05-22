@@ -62,9 +62,14 @@ public static class Disassembler
                 case Opcode.LoadLocal:
                 case Opcode.StoreLocal:
                 case Opcode.DeclareLocal:
+                case Opcode.DeclareLocalTdz:
                 case Opcode.InitCellLocal:
+                case Opcode.InitCellLocalTdz:
                 case Opcode.LoadCellLocal:
                 case Opcode.StoreCellLocal:
+                case Opcode.LoadLocalChecked:
+                case Opcode.LoadCellLocalChecked:
+                case Opcode.StoreCellLocalChecked:
                 case Opcode.PromoteParamCell:
                 case Opcode.RefreshLetBinding:
                 case Opcode.MakeArguments:
@@ -72,7 +77,9 @@ public static class Disassembler
                 // u16 upvalue-index operand opcodes (upvalue indices are
                 // addressed with a u16 — see ChunkBuilder.EmitUpvalue).
                 case Opcode.LoadUpvalue:
+                case Opcode.LoadUpvalueChecked:
                 case Opcode.StoreUpvalue:
+                case Opcode.StoreUpvalueChecked:
                 case Opcode.LoadUpvalueCell:
                 {
                     var slot = BinaryPrimitives.ReadUInt16LittleEndian(code.AsSpan(i, 2));

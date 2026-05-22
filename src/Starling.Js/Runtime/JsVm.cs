@@ -331,6 +331,79 @@ public sealed class JsVm
                 case Opcode.LoadLocal: Push(locals[ReadU16()]); break;
                 case Opcode.StoreLocal: locals[ReadU16()] = Pop(); break;
 
+                // ----- Lexical bindings / Temporal Dead Zone -----
+                // A let/const/class slot is seeded with the TDZ sentinel at
+                // scope entry; any read/write before the declaration's
+                // initializer runs throws ReferenceError (§§9.1.1.1.4 /
+                // 13.3.1.1). The plain DeclareLocal/StoreLocal opcodes are
+                // unchanged so var/param fast paths take no extra branch.
+                case Opcode.DeclareLocalTdz:
+                {
+                    var slot = ReadU16();
+                    locals[slot] = JsValue.Object(_runtime.Realm.TdzSentinel);
+                    break;
+                }
+                case Opcode.InitCellLocalTdz:
+                {
+                    var slot = ReadU16();
+                    locals[slot] = JsValue.Object(
+                        new Cell(JsValue.Object(_runtime.Realm.TdzSentinel)));
+                    break;
+                }
+                case Opcode.LoadLocalChecked:
+                {
+                    var v = locals[ReadU16()];
+                    if (v.IsObject && ReferenceEquals(v.AsObject, _runtime.Realm.TdzSentinel))
+                        throw new JsThrow(_runtime.Realm.NewReferenceError(
+                            "Cannot access a lexical binding before initialization"));
+                    Push(v);
+                    break;
+                }
+                case Opcode.LoadCellLocalChecked:
+                {
+                    var cell = (Cell)locals[ReadU16()].AsObject;
+                    var v = cell.Value;
+                    if (v.IsObject && ReferenceEquals(v.AsObject, _runtime.Realm.TdzSentinel))
+                        throw new JsThrow(_runtime.Realm.NewReferenceError(
+                            "Cannot access a lexical binding before initialization"));
+                    Push(v);
+                    break;
+                }
+                case Opcode.StoreCellLocalChecked:
+                {
+                    var cell = (Cell)locals[ReadU16()].AsObject;
+                    if (cell.Value.IsObject
+                        && ReferenceEquals(cell.Value.AsObject, _runtime.Realm.TdzSentinel))
+                        throw new JsThrow(_runtime.Realm.NewReferenceError(
+                            "Cannot access a lexical binding before initialization"));
+                    cell.Value = Pop();
+                    break;
+                }
+                case Opcode.LoadUpvalueChecked:
+                {
+                    var idx = ReadU16();
+                    var upV = upvalues[idx];
+                    JsValue v;
+                    if (upV.IsObject && upV.AsObject is Cell c) v = c.Value;
+                    else v = upV;
+                    if (v.IsObject && ReferenceEquals(v.AsObject, _runtime.Realm.TdzSentinel))
+                        throw new JsThrow(_runtime.Realm.NewReferenceError(
+                            "Cannot access a lexical binding before initialization"));
+                    Push(v);
+                    break;
+                }
+                case Opcode.StoreUpvalueChecked:
+                {
+                    var idx = ReadU16();
+                    var cell = (Cell)upvalues[idx].AsObject;
+                    if (cell.Value.IsObject
+                        && ReferenceEquals(cell.Value.AsObject, _runtime.Realm.TdzSentinel))
+                        throw new JsThrow(_runtime.Realm.NewReferenceError(
+                            "Cannot access a lexical binding before initialization"));
+                    cell.Value = Pop();
+                    break;
+                }
+
                 // ----- Captured locals (gap:closure-write-back) -----
                 case Opcode.InitCellLocal:
                 {

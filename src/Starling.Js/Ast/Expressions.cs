@@ -48,6 +48,12 @@ public sealed record Identifier(string Name, JsPosition Start, JsPosition End)
 public sealed record ThisExpression(JsPosition Start, JsPosition End)
     : Expression(Start, End);
 
+/// <summary>§13.3.12 NewTarget: the <c>new.target</c> meta-property. Evaluates
+/// to the current execution context's [[NewTarget]] (the constructor invoked
+/// via <c>new</c>, or <c>undefined</c> for an ordinary call).</summary>
+public sealed record NewTargetExpression(JsPosition Start, JsPosition End)
+    : Expression(Start, End);
+
 // -----------------------------------------------------------------------
 // Aggregate literals
 // -----------------------------------------------------------------------
