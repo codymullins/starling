@@ -23,6 +23,11 @@ public sealed class Chunk
     public IReadOnlyList<object?> Constants { get; }
     public int LocalCount { get; }
     public string? Name { get; }
+    /// <summary>ES strict mode — true when the code in this chunk runs as strict
+    /// mode code (§11.2.2). Read by the VM to select strict semantics for
+    /// this-binding (§10.2.1.2), assignment to undeclared globals (§9.1.1.4.16),
+    /// and strict property/delete failures (§10.1.9 / §13.5.1.2).</summary>
+    public bool IsStrict { get; init; }
     /// <summary>gap:closure-write-back — the set of local-slot indices in
     /// this chunk that the compiler promoted to <c>Cell</c> storage because
     /// at least one nested function references the binding. Empty for
@@ -118,6 +123,11 @@ public sealed class ChunkBuilder
     private HashSet<int>? _capturedSlots;
     private List<(int Offset, int Line, int Col)>? _positions;
     public int LocalCount { get; private set; }
+
+    /// <summary>ES strict mode — set by the compiler from the AST node's
+    /// effective strictness before <see cref="Build"/>. Stamped onto the
+    /// produced <see cref="Chunk.IsStrict"/>.</summary>
+    public bool IsStrict { get; set; }
 
     /// <summary>wp:M3-23 — record that the opcode about to be emitted at the
     /// current <see cref="Position"/> originates from the given 1-based source
@@ -277,5 +287,6 @@ public sealed class ChunkBuilder
 
     public Chunk Build(string? name = null)
         => new(_code.ToArray(), _constants.ToArray(), LocalCount, name, _capturedSlots,
-            _positions is null ? null : _positions.ToArray());
+            _positions is null ? null : _positions.ToArray())
+        { IsStrict = IsStrict };
 }

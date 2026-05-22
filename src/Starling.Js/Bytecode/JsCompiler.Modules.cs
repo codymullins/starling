@@ -56,6 +56,7 @@ public sealed partial class JsCompiler
         // become non-global) and the upvalue machinery is available.
         var root = new JsCompiler();
         var c = new JsCompiler(parent: root) { _moduleBindingUpvalues = new(StringComparer.Ordinal) };
+        c._b.IsStrict = true; // §11.2.2 — module code is always strict
         return c.EmitModule(program, name);
     }
 
@@ -448,6 +449,7 @@ public sealed partial class JsCompiler
     private void EmitModuleFunctionValue(FunctionDeclaration fd)
     {
         var sub = new JsCompiler(parent: this);
+        sub._b.IsStrict = fd.Strict;
         sub.RunCaptureAnalysisForFunction(fd.Params, fd.Body.Body);
         sub.EmitFunctionBody(fd);
         var chunk = sub._b.Build(fd.Name.Name);

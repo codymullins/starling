@@ -138,6 +138,7 @@ public sealed partial class JsCompiler
     public static Chunk Compile(Program program, string? name = "<script>")
     {
         var c = new JsCompiler();
+        c._b.IsStrict = program.Strict;
         c.RunCaptureAnalysisForScript(program.Body);
         c.EmitProgram(program, keepLastExpression: false);
         return c._b.Build(name);
@@ -151,6 +152,7 @@ public sealed partial class JsCompiler
     public static Chunk CompileForEval(Program program, string? name = "<eval>")
     {
         var c = new JsCompiler();
+        c._b.IsStrict = program.Strict;
         c.RunCaptureAnalysisForScript(program.Body);
         c.EmitProgram(program, keepLastExpression: true);
         return c._b.Build(name);
@@ -256,6 +258,7 @@ public sealed partial class JsCompiler
             // Compile the body in a fresh sub-compiler parented to this one so
             // the body can resolve free identifiers as upvalues captured here.
             var sub = new JsCompiler(parent: this);
+            sub._b.IsStrict = fd.Strict;
             sub.RunCaptureAnalysisForFunction(fd.Params, fd.Body.Body);
             sub.EmitFunctionBody(fd);
             var chunk = sub._b.Build(fd.Name.Name);
@@ -268,7 +271,13 @@ public sealed partial class JsCompiler
                 ResolveFunctionKind(fd.Async, fd.Generator));
             if (isScriptTop)
             {
+                // §16.1.7 GlobalDeclarationInstantiation — a hoisted function
+                // declaration creates a global binding before any code runs.
+                // Declare it first so the StoreGlobal is a write to an existing
+                // binding (otherwise strict mode would reject it as an
+                // assignment to an undeclared global).
                 var nameIdx = _b.AddConstant(fd.Name.Name);
+                _b.EmitU16(Opcode.DeclareGlobalVar, nameIdx);
                 _b.EmitU16(Opcode.StoreGlobal, nameIdx);
             }
             else
@@ -1657,15 +1666,15 @@ public sealed partial class JsCompiler
             _ => throw new InvalidOperationException("arrow body must be block or expression"),
         };
         var fe = BuildFunctionExpressionShim(null, arrow.Params, body, arrow.Start, arrow.End,
-            isAsync: arrow.Async, isGenerator: arrow.Generator);
+            isAsync: arrow.Async, isGenerator: arrow.Generator, strict: arrow.Strict);
         EmitFunctionExpression(fe, isArrow: true);
     }
 
     private static FunctionExpression BuildFunctionExpressionShim(
         Identifier? name, IReadOnlyList<Expression> @params, BlockStatement body,
         Starling.Js.Lex.JsPosition start, Starling.Js.Lex.JsPosition end,
-        bool isAsync = false, bool isGenerator = false)
-        => new(name, @params, body, Generator: isGenerator, start, end, Async: isAsync);
+        bool isAsync = false, bool isGenerator = false, bool strict = false)
+        => new(name, @params, body, Generator: isGenerator, start, end, Async: isAsync, Strict: strict);
 
     private void EmitIdLoad(string name)
     {
@@ -2378,6 +2387,7 @@ public sealed partial class JsCompiler
         // free identifiers can be lazily resolved as upvalues captured
         // from this scope.
         var sub = new JsCompiler(parent: this);
+        sub._b.IsStrict = fe.Strict;
         sub.RunCaptureAnalysisForFunction(fe.Params, fe.Body.Body);
         sub.BindFunctionParameters(fe.Params);
         // gap:closure-write-back — pre-allocate captured vars as cell slots

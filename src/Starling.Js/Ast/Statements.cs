@@ -132,7 +132,10 @@ public sealed record FunctionDeclaration(
     BlockStatement Body,
     bool Generator,
     JsPosition Start, JsPosition End,
-    bool Async = false)
+    bool Async = false,
+    // ES strict mode: true when this function's body parses as strict (own
+    // "use strict" directive prologue, or lexically nested in strict code).
+    bool Strict = false)
     : Statement(Start, End);
 
 /// <summary>
@@ -153,5 +156,8 @@ public sealed record ClassDeclaration(
 
 public sealed record Program(
     IReadOnlyList<Statement> Body,
-    JsPosition Start, JsPosition End)
+    JsPosition Start, JsPosition End,
+    // ES strict mode: true when the program's directive prologue contains a
+    // "use strict" directive, making the entire script strict (§11.2.2).
+    bool Strict = false)
     : AstNode(Start, End);
