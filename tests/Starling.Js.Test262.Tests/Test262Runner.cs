@@ -75,6 +75,34 @@ public sealed class Test262Runner
         "Intl.DurationFormat", "Intl-enumeration", "Intl.Locale-info",
     };
 
+    /// <summary>Filesystem module host: resolves a (relative) specifier against
+    /// the referrer's directory and reads the file. Lets dynamic <c>import()</c>
+    /// in a Test262 script load that test's fixture modules from disk.</summary>
+    private sealed class FsModuleHost : Starling.Js.Modules.IModuleHost
+    {
+        public string? Resolve(string specifier, string? referrer)
+        {
+            try
+            {
+                var baseDir = referrer is not null
+                    ? Path.GetDirectoryName(referrer)
+                    : Directory.GetCurrentDirectory();
+                if (baseDir is null) return null;
+                // Only relative/absolute path specifiers are resolvable here;
+                // bare specifiers (no leading . or /) have no mapping.
+                if (!specifier.StartsWith('.') && !specifier.StartsWith('/')) return null;
+                return Path.GetFullPath(Path.Combine(baseDir, specifier));
+            }
+            catch { return null; }
+        }
+
+        public string? FetchSource(string resolvedUrl)
+        {
+            try { return File.Exists(resolvedUrl) ? File.ReadAllText(resolvedUrl) : null; }
+            catch { return null; }
+        }
+    }
+
     public IReadOnlyList<ScenarioResult> RunFile(string path)
     {
         string source;
@@ -100,7 +128,7 @@ public sealed class Test262Runner
 
         var results = new List<ScenarioResult>();
         foreach (var mode in Modes(meta))
-            results.Add(RunScenario(rel, source, meta, mode));
+            results.Add(RunScenario(rel, source, meta, mode, path));
         return results;
     }
 
@@ -111,14 +139,14 @@ public sealed class Test262Runner
         if (!meta.NoStrict) yield return ScenarioMode.Strict;
     }
 
-    private ScenarioResult RunScenario(string rel, string source, Test262Metadata meta, ScenarioMode mode)
+    private ScenarioResult RunScenario(string rel, string source, Test262Metadata meta, ScenarioMode mode, string absPath)
     {
         Outcome outcome = Outcome.Fail;
         string? detail = null;
 
         var worker = new Thread(() =>
         {
-            try { (outcome, detail) = Execute(source, meta, mode); }
+            try { (outcome, detail) = Execute(source, meta, mode, absPath); }
             catch (Exception ex) { outcome = Outcome.Fail; detail = "host:" + ex.GetType().Name + ":" + Truncate(ex.Message); }
         }, maxStackSize: 64 * 1024 * 1024)  // headroom for the depth-1000 guard (~16 KB/frame)
         { IsBackground = true };
@@ -129,7 +157,7 @@ public sealed class Test262Runner
         return new ScenarioResult(rel, mode, outcome, detail);
     }
 
-    private (Outcome, string?) Execute(string source, Test262Metadata meta, ScenarioMode mode)
+    private (Outcome, string?) Execute(string source, Test262Metadata meta, ScenarioMode mode, string absPath)
     {
         // ---- Negative parse: the test body itself must fail to parse. ----
         if (meta.IsNegative && meta.NegativePhase == "parse")
@@ -156,6 +184,11 @@ public sealed class Test262Runner
         });
         var vm = new JsVm(runtime);
 
+        // Wire a filesystem module loader so dynamic import() in a script
+        // resolves the test's fixture modules relative to the test file. The
+        // referrer is the test body's chunk name (its absolute path), set below.
+        _ = new Starling.Js.Modules.ModuleLoader(runtime, new FsModuleHost());
+
         try
         {
             // Minimal $262 host object (INTERPRETING.md §"Host-Defined Functions").
@@ -175,9 +208,11 @@ public sealed class Test262Runner
         }
 
         // ---- Run the test body. ----
+        // Name the chunk with the test's absolute path so dynamic import()
+        // resolves its specifier relative to the test file.
         try
         {
-            RunSource(vm, WithStrict(source, mode), "<test262>");
+            RunSource(vm, WithStrict(source, mode), absPath);
         }
         catch (JsThrow jt)
         {
