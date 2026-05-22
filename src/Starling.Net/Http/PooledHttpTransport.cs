@@ -24,6 +24,7 @@ internal sealed class PooledHttpTransport : IHttpTransport
 
     public OriginKey Origin { get; }
     public Stream Stream { get; }
+    public string? Alpn { get; }
 
     public bool IsOpen => !_disposed && _tcp.IsOpen;
 
@@ -32,13 +33,15 @@ internal sealed class PooledHttpTransport : IHttpTransport
         ITcpConnection tcp,
         BcTlsTransport? tls,
         TcpConnectionStream? plainStream,
-        Stream stream)
+        Stream stream,
+        string? alpn)
     {
         Origin = origin;
         _tcp = tcp;
         _tls = tls;
         _plainStream = plainStream;
         Stream = stream;
+        Alpn = alpn;
     }
 
     public static PooledHttpTransport ForPlainHttp(
@@ -46,7 +49,7 @@ internal sealed class PooledHttpTransport : IHttpTransport
     {
         ArgumentNullException.ThrowIfNull(tcp);
         var stream = new TcpConnectionStream(tcp);
-        return new PooledHttpTransport(origin, tcp, tls: null, plainStream: stream, stream);
+        return new PooledHttpTransport(origin, tcp, tls: null, plainStream: stream, stream, alpn: null);
     }
 
     public static PooledHttpTransport ForTls(
@@ -54,7 +57,8 @@ internal sealed class PooledHttpTransport : IHttpTransport
     {
         ArgumentNullException.ThrowIfNull(tcp);
         ArgumentNullException.ThrowIfNull(tls);
-        return new PooledHttpTransport(origin, tcp, tls, plainStream: null, tls.Stream);
+        return new PooledHttpTransport(
+            origin, tcp, tls, plainStream: null, tls.Stream, tls.NegotiatedApplicationProtocol);
     }
 
     public async ValueTask DisposeAsync()

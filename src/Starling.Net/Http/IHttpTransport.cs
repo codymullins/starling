@@ -24,6 +24,13 @@ public interface IHttpTransport : IAsyncDisposable
     /// <summary>Byte stream the HTTP request writer / response parser operate on.</summary>
     Stream Stream { get; }
 
+    /// <summary>
+    /// The ALPN protocol negotiated during the TLS handshake (e.g. <c>"h2"</c>
+    /// or <c>"http/1.1"</c>), or null for plain HTTP / when no ALPN was agreed.
+    /// Selects whether the HTTP/2 or HTTP/1.1 path drives this transport.
+    /// </summary>
+    string? Alpn { get; }
+
     /// <summary>True until either side closes the connection.</summary>
     bool IsOpen { get; }
 }

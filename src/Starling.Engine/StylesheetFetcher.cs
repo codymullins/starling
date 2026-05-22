@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 using Starling.Common.Diagnostics;
@@ -20,7 +21,12 @@ namespace Starling.Engine;
 /// <remarks>
 /// Fail-soft like <see cref="ImageFetcher"/>: a network/parse failure leaves
 /// the <c>&lt;link&gt;</c> with no associated sheet — the cascade proceeds
-/// without it. URLs are de-duplicated; the same href is fetched at most once.
+/// without it. A by-URL cache de-duplicates fetches: a repeated href resolves
+/// to the already-parsed sheet rather than re-downloading. (Two <em>identical</em>
+/// hrefs discovered in the same pass both miss the cache probe and each fetch,
+/// since the parallel kick-off starts before either completes — matching
+/// <see cref="ScriptFetcher"/>; the cache still prevents a re-fetch on the
+/// engine's later post-script pass.)
 ///
 /// Cross-origin / CSP are not enforced yet (M5+ work). The HTTP charset, BOM,
 /// and <c>@charset</c> rules are all best-effort: we honour the
@@ -30,7 +36,9 @@ namespace Starling.Engine;
 internal sealed class StylesheetFetcher : IDisposable
 {
     private readonly Dictionary<Element, StyleSheet> _byElement = [];
-    private readonly Dictionary<string, (StyleSheet Sheet, StarlingUrl Url)> _byUrl = new(StringComparer.Ordinal);
+    // Concurrent because FetchAllAsync starts multiple external fetches in
+    // parallel; their cache writes (on the network continuation) can race.
+    private readonly ConcurrentDictionary<string, (StyleSheet Sheet, StarlingUrl Url)> _byUrl = new(StringComparer.Ordinal);
     private readonly IDiagnostics _diag;
     private readonly Func<StarlingHttpClient> _httpFactory;
     private StarlingHttpClient? _sharedHttp;
@@ -84,6 +92,16 @@ internal sealed class StylesheetFetcher : IDisposable
     {
         ArgumentNullException.ThrowIfNull(document);
 
+        // Two-pass fetch so external stylesheets download in parallel while
+        // still being applied in document order. The cascade orders sheets by
+        // the position of their <link> element (CSS Cascade "Order of
+        // Appearance"), not by which response arrives first — so fetch order is
+        // free to overlap. Pass 1 walks in document order and kicks off each
+        // fetch without awaiting (the synchronous prefix — attribute reads, URL
+        // resolve, cache probe — still runs sequentially here; only the network
+        // I/O overlaps). Pass 2 awaits them all, then records each sheet against
+        // its element in document order.
+        var pending = new List<(Element Link, Task<StyleSheet?> Task)>();
         foreach (var link in document.GetElementsByTagName("link"))
         {
             ct.ThrowIfCancellationRequested();
@@ -100,9 +118,20 @@ internal sealed class StylesheetFetcher : IDisposable
                 continue;
             }
 
-            var sheet = await FetchAndParseAsync(absolute, ct).ConfigureAwait(false);
-            if (sheet is null) continue;
+            pending.Add((link, FetchAndParseAsync(absolute, ct)));
+        }
 
+        if (pending.Count == 0) return;
+
+        // Await all fetches before recording. Task.WhenAll observes every task,
+        // so a cancellation can't leave an unobserved faulted task behind; it
+        // also surfaces cancellation the same way the old sequential loop did.
+        await Task.WhenAll(pending.Select(static p => p.Task)).ConfigureAwait(false);
+
+        foreach (var (link, task) in pending)
+        {
+            var sheet = task.Result; // completed; null = fetch/parse failed
+            if (sheet is null) continue;
             _byElement[link] = sheet;
         }
     }

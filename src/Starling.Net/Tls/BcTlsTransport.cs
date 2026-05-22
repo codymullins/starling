@@ -8,21 +8,25 @@ namespace Starling.Net.Tls;
 
 /// <summary>
 /// Pure-managed TLS transport built on BouncyCastle's TLS 1.3 implementation.
+/// Drives the protocol in non-blocking mode behind <see cref="BcDuplexTlsStream"/>
+/// so reads and writes can proceed concurrently — a hard requirement for HTTP/2,
+/// which multiplexes a single connection between a reader loop and request
+/// writers.
 /// </summary>
 public sealed class BcTlsTransport : ITlsTransport
 {
     private readonly TlsClientProtocol _protocol;
-    private readonly TcpConnectionStream _tcpStream;
+    private readonly BcDuplexTlsStream _stream;
     private bool _disposed;
 
-    private BcTlsTransport(TlsClientProtocol protocol, TcpConnectionStream tcpStream, string? negotiatedApplicationProtocol)
+    private BcTlsTransport(TlsClientProtocol protocol, BcDuplexTlsStream stream, string? negotiatedApplicationProtocol)
     {
         _protocol = protocol;
-        _tcpStream = tcpStream;
+        _stream = stream;
         NegotiatedApplicationProtocol = negotiatedApplicationProtocol;
     }
 
-    public Stream Stream => _protocol.Stream;
+    public Stream Stream => _stream;
     public string? NegotiatedApplicationProtocol { get; }
 
     public static async Task<Result<BcTlsTransport, TlsError>> ConnectAsync(
@@ -40,13 +44,14 @@ public sealed class BcTlsTransport : ITlsTransport
             new BcTlsCrypto(new SecureRandom()),
             options,
             RootCertificates.Default);
-        var protocol = new TlsClientProtocol(tcpStream);
+        var protocol = new TlsClientProtocol(); // non-blocking mode
 
         try
         {
-            await Task.Run(() => protocol.Connect(client), ct).ConfigureAwait(false);
+            var stream = await BcDuplexTlsStream.HandshakeAsync(protocol, client, tcpStream, ct)
+                .ConfigureAwait(false);
             return Result<BcTlsTransport, TlsError>.Ok(
-                new BcTlsTransport(protocol, tcpStream, client.NegotiatedApplicationProtocol));
+                new BcTlsTransport(protocol, stream, client.NegotiatedApplicationProtocol));
         }
         catch (TlsFatalAlert alert) when (alert.AlertDescription is AlertDescription.bad_certificate
             or AlertDescription.certificate_expired
@@ -68,7 +73,8 @@ public sealed class BcTlsTransport : ITlsTransport
     {
         if (_disposed) return;
         _disposed = true;
-        _protocol.Close();
-        _tcpStream.Dispose();
+        // Disposing the duplex stream sends close_notify (best-effort) and tears
+        // down the wrapped TCP connection.
+        _stream.Dispose();
     }
 }

@@ -9,6 +9,7 @@ using Avalonia.Threading;
 using Starling.Gui.Chrome;
 using Starling.Gui.Imaging;
 using Starling.Gui.Theme;
+using System.Diagnostics;
 using Starling.Common.Diagnostics;
 using Starling.Common.Image;
 using Starling.Css.Cascade;
@@ -594,6 +595,13 @@ internal sealed class WebviewPanel : UserControl, IDisposable
             : box => ResolveOverride(box, overrides);
 
         RenderedBitmap rendered;
+        // A finished navigation can leave its stopped Activity as the UI thread's
+        // ambient Activity.Current (async span leak — see RunNavigation). A
+        // standalone render (hover / resize / scroll) must not pile into that prior
+        // navigation's trace, so detach from a leaked, already-stopped span. Renders
+        // that run inside a live navigation keep their (non-stopped) parent and nest.
+        if (Activity.Current is { IsStopped: true })
+            Activity.Current = null;
         using (_diag.Span("gui", "render"))
             rendered = _renderer.Render(_currentPage.Root, (float)_currentScale, styleOverride, _currentPage.ImageResolver, viewport, _currentPage.DisplayListVersion);
         WriteableBitmap bmp;

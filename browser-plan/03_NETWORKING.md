@@ -19,26 +19,39 @@
 ## TLS approach
 
 `Starling.Net` stays P/Invoke-free under the interop seam policy (native interop
-is confined to `Starling.Skia` and `Starling.Codecs`). TLS uses **`SslStream`** —
-the OS TLS stack (Schannel/OpenSSL/Network.framework) wrapped by pure-managed
-BCL. `SslStream` is BCL, so it does not count as native interop and `Starling.Net`
-keeps its clean bill on the CI grep.
+is confined to `Starling.Codecs`). TLS uses **`BouncyCastle.Cryptography`** — a
+pure-managed TLS engine, so it adds no native dependency and `Starling.Net` keeps
+its clean bill on the CI grep.
 
-- TLS via `SslStream` behind the `ITlsTransport` seam (`SslStreamTlsTransport`).
-- **TLS 1.3 only** — `EnabledSslProtocols = SslProtocols.Tls13`.
-- ALPN (`h2`, then `http/1.1`) + SNI via `SslClientAuthenticationOptions`.
-- **Trust:** the bundled CCADB root store remains the trust anchor for
-  cross-platform determinism — `X509ChainPolicy.CustomTrustStore` with
-  `TrustMode = CustomRootTrust`. The OS trust store is *not* used.
+- TLS via BouncyCastle behind the `ITlsTransport` seam (`BcTlsTransport`,
+  `StarlingTlsClient`, `StarlingTlsAuthentication`).
+- **TLS 1.3 with TLS 1.2 fallback** — `GetSupportedVersions()` returns
+  `[TLSv13, TLSv12]`.
+- ALPN advertises **`h2`, then `http/1.1`** (`StarlingHttpClientOptions.AlpnProtocols`),
+  plus SNI. The negotiated protocol selects the path post-handshake: `h2` drives
+  the multiplexed `H2Connection`, anything else (or absent ALPN) speaks HTTP/1.1.
+- **Trust:** the bundled CCADB root store is the trust anchor for cross-platform
+  determinism — `CertificateVerifier` chains the presented certs to a bundled
+  root (`RootCertificates`, embedded `ccadb.pem`). The OS trust store is *not*
+  used. `TlsClientOptions.ValidationTime` lets tests pin the validation clock.
 
-**Still no `HttpClient`.** We do not use `System.Net.Http.HttpClient` — the HTTP/1.1
-and HTTP/2 stacks are hand-rolled (that's the whole point of this doc). The ban on
-`HttpClient` is unchanged; only the TLS implementation changed.
+> **History:** `wp:M3-06e` migrated TLS to `SslStream` (OS TLS) on 2026-05-14,
+> but it was rolled back the same day in `939f3a5 fix ssl crash` after a macOS
+> TLS 1.3 issue surfaced in integration. Re-attempting `SslStream` — or formally
+> re-blessing BouncyCastle as the long-term path — is a tracked open item in
+> `wp:M3-06-native-interop-pivot`'s handoff log. See `AGENTS.md` §"Interop
+> policy" for the current authoritative statement.
+
+**No `HttpClient`.** We do not use `System.Net.Http.HttpClient` — the HTTP/1.1
+stack (and the planned HTTP/2 stack) is hand-rolled. That is the whole point of
+this doc: the engine owns connection pooling, cookies, caching, redirects, and
+cert trust, none of which `HttpClient` lets us control to browser spec. The ban
+on `HttpClient` is unchanged.
 
 What we *do* use:
 - `System.Net.Sockets.Socket` (raw TCP / UDP, fully managed).
-- `System.Net.Security.SslStream` (OS TLS 1.3, behind `ITlsTransport`).
-- `System.Security.Cryptography.X509Certificates` (chain building against the bundled root store).
+- `BouncyCastle.Cryptography` (pure-managed TLS 1.3/1.2, behind `ITlsTransport`).
+- `System.Security.Cryptography.X509Certificates` (cert parsing for the bundled root store).
 - `System.Buffers.ArrayPool<byte>` (zero-alloc receive paths).
 - `System.IO.Pipelines` (back-pressured streaming).
 - `System.IO.Compression` (DEFLATE, gzip — managed).
@@ -62,7 +75,9 @@ src/Starling.Net/
 │   └── ConnectionPool.cs
 ├── Tls/
 │   ├── ITlsTransport.cs
-│   ├── SslStreamTlsTransport.cs      # wraps SslStream (OS TLS 1.3)
+│   ├── BcTlsTransport.cs             # BouncyCastle TLS 1.3/1.2 (pure-managed)
+│   ├── StarlingTlsClient.cs          # ALPN / SNI / version negotiation
+│   ├── StarlingTlsAuthentication.cs  # server-cert callback → CertificateVerifier
 │   ├── CertificateVerifier.cs        # chain build + SAN match
 │   └── RootCertificates.cs          # bundled CCADB trust store
 ├── Http/

@@ -5,6 +5,7 @@ using Starling.Net.Dns;
 using Starling.Net.Http;
 using Starling.Net.Http.Cookies;
 using Starling.Net.Http.H1;
+using Starling.Net.Http.H2;
 using Starling.Net.Tcp;
 using Starling.Net.Tls;
 using StarlingUrl = global::Starling.Url.Url;
@@ -13,10 +14,12 @@ namespace Starling.Net;
 
 /// <summary>
 /// Top-level HTTP client. Resolves a URL to a TCP endpoint, opens a transport
-/// (TLS for https, plain for http), writes one HTTP/1.1 request, parses the
-/// response, and returns it. Sequential requests to the same origin reuse a
-/// pooled TCP+TLS transport when both sides advertise keep-alive
-/// (wp:M2-07c — HTTP/1.1 connection pool).
+/// (TLS for https, plain for http), and speaks HTTP/2 or HTTP/1.1 depending on
+/// the ALPN protocol negotiated during the TLS handshake. Over HTTP/1.1,
+/// sequential requests to the same origin reuse a pooled TCP+TLS transport when
+/// both sides advertise keep-alive (wp:M2-07c). Over HTTP/2, requests to the
+/// same origin are multiplexed onto a single shared connection held by the
+/// <see cref="H2ConnectionManager"/>.
 /// </summary>
 /// <remarks>
 /// For a single GET against <c>https://example.com</c> the data flow is:
@@ -27,10 +30,11 @@ namespace Starling.Net;
 ///   <item><see cref="H1RequestWriter"/> → wire bytes onto the stream</item>
 ///   <item><see cref="H1ResponseParser"/> → fully buffered <see cref="HttpResponse"/></item>
 /// </list>
-/// A <see cref="ConnectionPool"/> sits in front of the dialer: every send
-/// asks the pool first, and clean responses with a definite body length and
-/// keep-alive headers return the transport to the pool. HTTP/2 multiplexing
-/// is M6 work; pooling here only covers HTTP/1.1.
+/// For HTTP/1.1 a <see cref="ConnectionPool"/> sits in front of the dialer:
+/// every send asks the pool first, and clean responses with a definite body
+/// length and keep-alive headers return the transport to the pool. For HTTP/2,
+/// the post-handshake transport is handed to an <see cref="H2Connection"/> and
+/// subsequent requests to the same origin are multiplexed onto it.
 /// </remarks>
 public sealed class StarlingHttpClient : IDisposable
 {
@@ -38,6 +42,7 @@ public sealed class StarlingHttpClient : IDisposable
     private readonly DnsResolver _dns;
     private readonly TcpDialer _dialer;
     private readonly ConnectionPool _pool;
+    private readonly H2ConnectionManager _h2 = new();
     private readonly IDiagnostics _diag;
     private bool _disposed;
 
@@ -99,6 +104,21 @@ public sealed class StarlingHttpClient : IDisposable
 
         try
         {
+            // 0. Reuse a live, multiplexed HTTP/2 connection if one is open for
+            //    this origin. A GOAWAY/closed connection between requests yields
+            //    a retryable failure; we then fall through to a fresh dial.
+            if (_h2.TryGet(origin) is { } h2Existing)
+            {
+                var h2Result = await SendOverH2Async(
+                    h2Existing, request, url, reused: true, requestCts.Token).ConfigureAwait(false);
+                if (h2Result is { } got)
+                {
+                    RecordResponseTags(got);
+                    return got;
+                }
+                // Connection went away before our request was processed — re-dial.
+            }
+
             // 1. Try the pool first. A pooled transport may turn out to have
             //    been closed by the peer between the prior response and this
             //    request; if our send raises an IO error — or reads back zero
@@ -138,6 +158,25 @@ public sealed class StarlingHttpClient : IDisposable
             _diag.Counter("net.http.connection_opened", 1);
 
             var fresh = dialed.Value;
+
+            // ALPN decides the protocol. For "h2" the transport becomes a
+            // multiplexed connection owned by the H2 manager; for everything
+            // else we speak HTTP/1.1 over the transport's byte stream.
+            if (string.Equals(fresh.Alpn, "h2", StringComparison.Ordinal))
+            {
+                var conn = await H2Connection.StartAsync(
+                    fresh, origin, _diag, c => _h2.Remove(origin, c), requestCts.Token).ConfigureAwait(false);
+                var winner = _h2.Adopt(origin, conn);
+                if (!ReferenceEquals(winner, conn))
+                    await conn.DisposeAsync().ConfigureAwait(false); // lost the race; use the incumbent
+
+                var h2Fresh = await SendOverH2Async(
+                    winner, request, url, reused: false, requestCts.Token).ConfigureAwait(false);
+                var h2Final = h2Fresh ?? Result<HttpResponse, NetworkError>.Err(NetworkError.TransportFailure);
+                RecordResponseTags(h2Final);
+                return h2Final;
+            }
+
             var freshOutcome = await TrySendOnTransportAsync(
                 fresh, request, url, fromPool: false, requestCts.Token).ConfigureAwait(false);
             if (!freshOutcome.UsedTransport)
@@ -262,21 +301,11 @@ public sealed class StarlingHttpClient : IDisposable
             }
             // StarlingTlsClient pins TLS 1.3; tag it post-handshake.
             Activity.Current?.SetTag("tls.protocol", "TLSv1.3");
-            if (tlsResult.Value.NegotiatedApplicationProtocol is { } alpn)
-            {
+            // ALPN selects HTTP/2 vs HTTP/1.1 downstream (see SendAsync). We
+            // advertise "h2, http/1.1", so either is expected; an empty/absent
+            // ALPN falls back to HTTP/1.1.
+            if (tlsResult.Value.NegotiatedApplicationProtocol is { Length: > 0 } alpn)
                 Activity.Current?.SetTag("tls.alpn", alpn);
-                // We only speak HTTP/1.1 today; if a peer negotiates h2 despite
-                // our ALPN list, fail fast rather than feed h2 frames into the
-                // H1 parser. See browser-plan/03_NETWORKING.md (HTTP/2 = M6).
-                if (alpn != "http/1.1" && alpn.Length > 0)
-                {
-                    _diag.Log(DiagLevel.Error, "net",
-                        $"unsupported ALPN '{alpn}' negotiated for {origin.Host} (client speaks http/1.1 only)");
-                    _diag.Counter("net.tls.failures", 1);
-                    await tcp.DisposeAsync().ConfigureAwait(false);
-                    return Result<IHttpTransport, NetworkError>.Err(NetworkError.TlsHandshakeFailed);
-                }
-            }
 
             return Result<IHttpTransport, NetworkError>.Ok(
                 PooledHttpTransport.ForTls(origin, tcp, tlsResult.Value));
@@ -303,14 +332,7 @@ public sealed class StarlingHttpClient : IDisposable
     {
         try
         {
-            // Inject the cookie jar's view of the world into the request, but
-            // only when the caller hasn't already supplied a Cookie header.
-            if (_options.CookieJar is { } jar && !request.Headers.Contains("Cookie"))
-            {
-                var cookieHeader = jar.BuildCookieHeader(url);
-                if (cookieHeader.Length > 0)
-                    request.Headers.Set("Cookie", cookieHeader);
-            }
+            ApplyRequestCookies(request, url);
 
             using (var writeSpan = _diag.Span("net", "h1_request"))
             {
@@ -349,13 +371,7 @@ public sealed class StarlingHttpClient : IDisposable
 
             var response = parseResult.Value;
 
-            // Persist any Set-Cookie headers from the response.
-            if (_options.CookieJar is { } jar2)
-            {
-                var setCookies = response.Headers.GetAll("Set-Cookie");
-                if (setCookies.Count > 0)
-                    jar2.StoreFromHeaders(url, setCookies);
-            }
+            StoreResponseCookies(response, url);
 
             // Decide pool fate. We can only safely reuse the transport if:
             //   - both sides agreed to keep-alive (RFC 9112 §9.3), AND
@@ -397,6 +413,61 @@ public sealed class StarlingHttpClient : IDisposable
         }
     }
 
+    /// <summary>
+    /// Send a request over a multiplexed HTTP/2 connection. Returns null when a
+    /// <paramref name="reused"/> connection turned out to be unusable (GOAWAY /
+    /// closed) before the request was processed, signalling the caller to retry
+    /// on a fresh dial. For a freshly-dialled connection the result — success or
+    /// failure — is always returned.
+    /// </summary>
+    private async Task<Result<HttpResponse, NetworkError>?> SendOverH2Async(
+        H2Connection conn, HttpRequest request, StarlingUrl url, bool reused, CancellationToken ct)
+    {
+        ApplyRequestCookies(request, url);
+        Activity.Current?.SetTag("connection.reused", reused);
+        Activity.Current?.SetTag("network.protocol.version", "2");
+        if (reused) _diag.Counter("net.http.connection_reused", 1);
+
+        Result<HttpResponse, NetworkError> result;
+        using (var span = _diag.Span("net", "h2_request"))
+        {
+            _diag.Counter("net.h2.requests_sent", 1);
+            result = await conn.SendAsync(request, url, ct).ConfigureAwait(false);
+        }
+
+        if (reused && result.IsErr && result.Error == NetworkError.TransportFailure)
+            return null;
+
+        if (result.IsOk)
+            StoreResponseCookies(result.Value, url);
+        return result;
+    }
+
+    /// <summary>
+    /// Inject the cookie jar's view of the world into the request, but only when
+    /// the caller hasn't already supplied a Cookie header.
+    /// </summary>
+    private void ApplyRequestCookies(HttpRequest request, StarlingUrl url)
+    {
+        if (_options.CookieJar is { } jar && !request.Headers.Contains("Cookie"))
+        {
+            var cookieHeader = jar.BuildCookieHeader(url);
+            if (cookieHeader.Length > 0)
+                request.Headers.Set("Cookie", cookieHeader);
+        }
+    }
+
+    /// <summary>Persist any Set-Cookie headers from the response into the jar.</summary>
+    private void StoreResponseCookies(HttpResponse response, StarlingUrl url)
+    {
+        if (_options.CookieJar is { } jar)
+        {
+            var setCookies = response.Headers.GetAll("Set-Cookie");
+            if (setCookies.Count > 0)
+                jar.StoreFromHeaders(url, setCookies);
+        }
+    }
+
     private static async ValueTask SafeDisposeAsync(IHttpTransport transport)
     {
         try { await transport.DisposeAsync().ConfigureAwait(false); }
@@ -407,9 +478,10 @@ public sealed class StarlingHttpClient : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        // Synchronously dispose the pool. The pool's DisposeAsync only awaits
-        // socket teardowns which are non-blocking; .GetAwaiter().GetResult()
-        // is fine on the disposal path.
+        // Synchronously dispose the pool and any HTTP/2 connections. Both only
+        // await socket teardowns, which are non-blocking; .GetAwaiter()
+        // .GetResult() is fine on the disposal path.
+        _h2.DisposeAsync().AsTask().GetAwaiter().GetResult();
         _pool.DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 
@@ -438,7 +510,7 @@ public sealed class StarlingHttpClientOptions
 {
     public TimeSpan ConnectTimeout { get; init; } = TimeSpan.FromSeconds(10);
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(30);
-    public IReadOnlyList<string> AlpnProtocols { get; init; } = ["http/1.1"];
+    public IReadOnlyList<string> AlpnProtocols { get; init; } = ["h2", "http/1.1"];
     public DnsResolver? DnsResolver { get; init; }
     public CookieJar? CookieJar { get; init; }
     public H1RequestWriter RequestWriter { get; init; } = new();

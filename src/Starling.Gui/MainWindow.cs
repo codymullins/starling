@@ -384,6 +384,15 @@ public sealed class MainWindow : Window, IBrowserController
 
         BeginBusy(opLabel);
         var sw = Stopwatch.StartNew();
+
+        // Each navigation must be its own trace. RunNavigation is async and
+        // _diag.Span starts an Activity before the first await; that AsyncLocal
+        // assignment leaks onto the UI thread's ambient context, but the matching
+        // dispose runs in the awaited continuation and never restores the UI
+        // thread's Current. Without this reset, every later navigation would
+        // parent under the previous (finished) navigate span and the dashboard
+        // would show one ever-growing trace instead of one trace per navigation.
+        Activity.Current = null;
         using var navSpan = _diag.Span("gui", "navigate");
         try
         {

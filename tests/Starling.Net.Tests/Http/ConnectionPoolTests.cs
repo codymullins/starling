@@ -206,6 +206,7 @@ public class ConnectionPoolTests
     {
         public OriginKey Origin { get; }
         public Stream Stream { get; } = new MemoryStream();
+        public string? Alpn => null;
         public bool Disposed { get; private set; }
         public bool Open { get; private set; } = true;
         public string Tag { get; init; } = "";
