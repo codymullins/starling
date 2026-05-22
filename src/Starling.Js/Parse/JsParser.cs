@@ -887,6 +887,32 @@ public sealed partial class JsParser
     {
         var start = _current.Start;
 
+        // Generator / async / async-generator method shorthand (ES2024 §13.2.5):
+        //   { *gen(){} }, { async m(){} }, { async *gen(){} }
+        // `async` is contextual: it introduces an async method ONLY when
+        // followed (on the same line) by a property-name start. Otherwise it is
+        // an ordinary key — `{ async }`, `{ async: 1 }`, `{ async() {} }`.
+        bool mGenerator = false, mAsync = false;
+        if (_current.Kind == JsTokenKind.Identifier && _current.Lexeme == "async")
+        {
+            var peek = _lex.Peek();
+            if (!peek.PrecededByLineTerminator && IsMethodNameStartAfterModifier(peek.Kind))
+            {
+                Advance(); // 'async'
+                mAsync = true;
+            }
+        }
+        if (Check(JsTokenKind.Star)) { Advance(); mGenerator = true; }
+        if (mAsync || mGenerator)
+        {
+            var (mkey, mcomputed) = ParsePropertyKey();
+            var (mparams, mbody, mend) = ParseMethodTail();
+            var mname = mkey is Identifier mki ? mki : null;
+            var mfn = MakeFnExpression(mname, mparams, mbody, start, mend, mGenerator, mAsync);
+            return new ObjectProperty(mkey, mfn,
+                Shorthand: false, Computed: mcomputed, start, mend);
+        }
+
         // wp:M3-26 — accessor (getter/setter) shorthand: `{ get x(){…} }`,
         // `{ set x(v){…} }` (ECMA-262 §13.2.5). `get`/`set` are contextual:
         // they introduce an accessor ONLY when followed by a property name
@@ -998,8 +1024,22 @@ public sealed partial class JsParser
 
     private static FunctionExpression MakeFnExpression(
         Identifier? name, IReadOnlyList<Expression> @params, BlockStatement body,
-        JsPosition start, JsPosition end)
-        => new(name, @params, body, Generator: false, start, end);
+        JsPosition start, JsPosition end,
+        bool generator = false, bool async = false)
+        => new(name, @params, body, generator, start, end, Async: async);
+
+    /// <summary>True when <paramref name="kind"/> can begin a method/property
+    /// name immediately after an <c>async</c> or <c>*</c> method modifier
+    /// (ES2024 §13.2.5 / §15.4) — identifier, reserved word, string, number,
+    /// computed <c>[</c>, generator <c>*</c>, or a <c>#private</c> name.</summary>
+    private bool IsMethodNameStartAfterModifier(JsTokenKind kind)
+        => kind == JsTokenKind.Identifier
+        || kind == JsTokenKind.StringLiteral
+        || kind == JsTokenKind.NumericLiteral
+        || kind == JsTokenKind.LBracket
+        || kind == JsTokenKind.Star
+        || kind == JsTokenKind.PrivateIdentifier
+        || IsReservedNameAllowedAsPropertyName(kind);
 
     /// <summary>Parse the <c>(params) { body }</c> portion of an object-literal
     /// method shorthand, having already consumed the property key.

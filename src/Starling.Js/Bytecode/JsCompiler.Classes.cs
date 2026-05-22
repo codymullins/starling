@@ -268,7 +268,13 @@ public sealed partial class JsCompiler
         };
         var arity = CountSimpleParams(md.Params);
         var chunk = sub._b.Build(keyName);
-        var template = new JsFunction(keyName, chunk, arity);
+        var template = new JsFunction(keyName, chunk, arity)
+        {
+            // Generator / async / async-generator methods run through the same
+            // Suspend-based machinery as standalone functions; the runtime
+            // wrapper is selected by JsFunction.Kind (copied in CreateInstance).
+            Kind = ResolveFunctionKind(md.Async, md.Generator),
+        };
         var kind = md.Kind switch
         {
             MethodKind.Get => ClassMethodKind.Get,

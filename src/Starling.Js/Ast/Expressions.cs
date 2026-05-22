@@ -235,7 +235,9 @@ public sealed record MethodDefinition(
     bool Computed,
     IReadOnlyList<Expression> Params,
     BlockStatement Body,
-    JsPosition Start, JsPosition End)
+    JsPosition Start, JsPosition End,
+    bool Generator = false,
+    bool Async = false)
     : AstNode(Start, End);
 
 public enum MethodKind
