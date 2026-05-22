@@ -124,7 +124,15 @@ internal sealed class InlineLayout
         var localFontSize = ResolveFontSize(effectiveStyle);
         var localSpec = ResolveFontSpec(effectiveStyle);
         var localLineHeight = ResolveLineHeight(effectiveStyle, localFontSize, localSpec);
-        var localBaseline = _measurer.Baseline(localFontSize, localSpec);
+        // CSS 2.2 §10.8.1 — the difference between the used line-height and the
+        // font's content area ("leading") is split half above and half below the
+        // glyphs. Push the baseline down by that half-leading so text is centred
+        // in its line box rather than pinned to the top (which made every box
+        // with line-height > normal — pills, buttons, search fields — sit too
+        // high). The term is zero when line-height resolves to `normal`, so the
+        // common case is unchanged.
+        var localBaseline = _measurer.Baseline(localFontSize, localSpec)
+            + (localLineHeight - _measurer.NormalLineHeight(localFontSize, localSpec)) / 2;
 
         // CSS Text 3 §3 / §4 — resolve the white-space behaviour and the
         // spacing/tab/transform controls for this run from its effective style.

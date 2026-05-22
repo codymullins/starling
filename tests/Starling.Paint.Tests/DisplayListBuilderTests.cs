@@ -4,6 +4,7 @@ using Starling.Html;
 using Starling.Layout;
 using Starling.Layout.Text;
 using Starling.Paint.DisplayList;
+using Starling.Spec;
 namespace Starling.Paint.Tests;
 
 [TestClass]
@@ -36,6 +37,26 @@ public sealed class DisplayListBuilderTests
 
         dl.Items.OfType<FillRect>()
             .Should().Contain(r => r.Color.R == 255 && r.Color.G == 0 && r.Color.B == 0);
+    }
+
+    [TestMethod]
+    [Spec("css2", "https://www.w3.org/TR/CSS21/visuren.html#anonymous-block-level", section: "9.2.1.1")]
+    public void Anonymous_block_does_not_repaint_the_containers_background()
+    {
+        // A flex (or inline-flex) container whose only child is bare text wraps
+        // that text in an anonymous block. Per CSS 2.2 §9.2.1.1 an anonymous
+        // box's non-inherited properties (background, border, …) take their
+        // initial values — so the anonymous wrapper must NOT re-paint the
+        // container's background. With a semi-transparent fill the double-paint
+        // was visible as a brighter rectangle behind the text (the netclaw.dev
+        // "Open source · Apache 2.0" pill and the "Search docs" field).
+        var dl = BuildList(
+            "<body><div style=\"display:flex; background-color: rgba(255,0,0,0.5); padding:6px 18px\">hi there</div></body>",
+            new Size(400, 300));
+
+        dl.Items.OfType<FillRect>()
+            .Count(r => r.Color.R == 255 && r.Color.G == 0 && r.Color.B == 0)
+            .Should().Be(1);
     }
 
     [TestMethod]

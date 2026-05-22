@@ -193,12 +193,21 @@ public sealed class DisplayListBuilder
 
     private static void PaintBoxAndChildren(Box box, DisplayList list, double frameX, double frameY, Matrix2D current, Rect? cull, Func<Box, ComputedStyle?>? styleOverride, IImageResolver? images, LayerSlice? slice)
     {
-        // Backgrounds and borders for box-bearing boxes. BlockContainer and
-        // AnonymousBlock always qualify; InlineBox qualifies only when it is
-        // an atomic inline (display:inline-block) — flattened spans have a
-        // zero frame and would otherwise emit a phantom rect at the origin.
+        // Backgrounds and borders for box-bearing boxes. Only BlockContainer
+        // qualifies unconditionally; InlineBox qualifies only when it is an
+        // atomic inline (display:inline-block) — flattened spans have a zero
+        // frame and would otherwise emit a phantom rect at the origin.
+        //
+        // AnonymousBlock must NOT paint decorations: per CSS 2.2 §9.2.2.1 an
+        // anonymous box inherits only inheritable properties from its enclosing
+        // box; non-inherited ones (background, border, box-shadow, …) take their
+        // initial values. Our AnonymousBlockBox carries the *parent's* full
+        // ComputedStyle (for text/font inheritance), so painting its background
+        // here re-painted the parent's — visible as a brighter rectangle behind
+        // the text whenever that background was semi-transparent (e.g. a pill or
+        // search field with rgba()/#rrggbbaa fill).
         var hasFrame = box.Frame.Width > 0 && box.Frame.Height > 0;
-        var paintsBox = box.Kind is BoxKind.BlockContainer or BoxKind.AnonymousBlock
+        var paintsBox = box.Kind is BoxKind.BlockContainer
             || (box.Kind == BoxKind.Inline && hasFrame);
         if (paintsBox && EffectiveStyle(box, styleOverride) is { } style)
         {
