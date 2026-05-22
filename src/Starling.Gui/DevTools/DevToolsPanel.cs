@@ -20,18 +20,24 @@ public sealed class DevToolsPanel : Grid, IDisposable
     private readonly TelemetryStream _stream;
     private readonly ContentControl _body;
     private DevToolsTab _active;
+    private DevToolsDock _dock;
     private IDisposable? _activePanel;
 
     public event EventHandler? CloseRequested;
 
+    /// <summary>Raised when a dock affordance is clicked; the host re-hosts the panel.</summary>
+    public event EventHandler<DevToolsDock>? DockRequested;
+
     /// <summary>The currently selected tab — used to restore selection across theme rebuilds.</summary>
     public DevToolsTab ActiveTab => _active;
 
-    public DevToolsPanel(ThemeManager tm, TelemetryStream stream, DevToolsTab active = DevToolsTab.Performance)
+    public DevToolsPanel(ThemeManager tm, TelemetryStream stream,
+        DevToolsTab active = DevToolsTab.Performance, DevToolsDock dock = DevToolsDock.Bottom)
     {
         _tm = tm;
         _stream = stream;
         _active = active;
+        _dock = dock;
         var t = tm.Tokens;
 
         Background = new SolidColorBrush(t.Panel);
@@ -60,8 +66,37 @@ public sealed class DevToolsPanel : Grid, IDisposable
         tabs.Children.Add(TabButton(DevToolsTab.Inspect, Icons.Inspect, "Inspect", dim: true));
         tabs.Children.Add(TabButton(DevToolsTab.Network, Icons.Layers, "Net", dim: true));
 
+        // Dock affordances: left / bottom / right re-host the panel within the
+        // main window; detach pops it into a floating top-level window. The
+        // active position is highlighted via IconButton's "on" state.
+        var docks = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 2,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        docks.Children.Add(DockButton(DevToolsDock.Left, Icons.PanelL, "Dock to left"));
+        docks.Children.Add(DockButton(DevToolsDock.Bottom, Icons.PanelB, "Dock to bottom"));
+        docks.Children.Add(DockButton(DevToolsDock.Right, Icons.PanelR, "Dock to right"));
+        docks.Children.Add(DockButton(DevToolsDock.Floating, Icons.Detach, "Undock into separate window"));
+
         var close = new IconButton(_tm, Icons.Close, "Close DevTools", size: 26);
         close.Clicked += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
+
+        var right = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        right.Children.Add(docks);
+        right.Children.Add(new Border
+        {
+            Width = 1,
+            Margin = new Thickness(2, 8),
+            Background = new SolidColorBrush(t.Border),
+        });
+        right.Children.Add(close);
 
         var grid = new Grid
         {
@@ -70,7 +105,7 @@ public sealed class DevToolsPanel : Grid, IDisposable
             ColumnDefinitions = new ColumnDefinitions("*,Auto"),
         };
         grid.Children.Add(tabs); SetColumn(tabs, 0);
-        grid.Children.Add(close); SetColumn(close, 1);
+        grid.Children.Add(right); SetColumn(right, 1);
 
         return new Border
         {
@@ -79,6 +114,13 @@ public sealed class DevToolsPanel : Grid, IDisposable
             BorderThickness = new Thickness(0, 0, 0, 1),
             Child = grid,
         };
+    }
+
+    private IconButton DockButton(DevToolsDock dock, string iconData, string label)
+    {
+        var btn = new IconButton(_tm, iconData, label, isOn: _dock == dock, size: 26);
+        btn.Clicked += (_, _) => DockRequested?.Invoke(this, dock);
+        return btn;
     }
 
     private Control TabButton(DevToolsTab tab, string iconData, string label, bool dim = false)
@@ -118,15 +160,34 @@ public sealed class DevToolsPanel : Grid, IDisposable
     {
         if (_active == tab) return;
         _active = tab;
-        // Tear down the previous panel's subscription, then rebuild strip + body.
+        // Tear down the previous panel's subscription, swap the body, then
+        // refresh the strip so the new tab reads as selected.
         _activePanel?.Dispose();
         _activePanel = null;
-
-        Children.Clear();
-        var strip = BuildTabStrip();
-        Children.Add(strip); SetRow(strip, 0);
         _body.Content = BuildBody(_active);
-        Children.Add(_body); SetRow(_body, 1);
+        RebuildStrip();
+    }
+
+    /// <summary>
+    /// Updates the highlighted dock affordance. The host calls this when it
+    /// re-hosts the panel so the strip mirrors the live position; the body and
+    /// its telemetry subscription are left untouched.
+    /// </summary>
+    public void SetDock(DevToolsDock dock)
+    {
+        if (_dock == dock) return;
+        _dock = dock;
+        RebuildStrip();
+    }
+
+    // The strip is always the first child / row 0. Replace it in place so the
+    // body control (and the panel it hosts) survive a strip refresh.
+    private void RebuildStrip()
+    {
+        Children.RemoveAt(0);
+        var strip = BuildTabStrip();
+        Children.Insert(0, strip);
+        SetRow(strip, 0);
     }
 
     private Control BuildBody(DevToolsTab tab)

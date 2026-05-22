@@ -18,7 +18,6 @@ namespace Starling.Gui.DevTools;
 public sealed class PerformancePanel : Grid, IDisposable
 {
     private const int MaxRows = 32;
-    private const double TimelineMs = 5000;
 
     private readonly ThemeManager _tm;
     private readonly TelemetryStream _stream;
@@ -99,7 +98,10 @@ public sealed class PerformancePanel : Grid, IDisposable
         }
 
         var earliest = _recent.Min(r => r.StartUtc);
-        var totalMs = Math.Max(TimelineMs, _recent.Max(r => (r.StartUtc + r.Duration - earliest).TotalMilliseconds));
+        // Scale the timeline to the captured span extent (with a 1 ms floor to
+        // avoid divide-by-zero) so bars fill the row width instead of clustering
+        // at the left under a fixed, over-long timeline.
+        var totalMs = Math.Max(1.0, _recent.Max(r => (r.StartUtc + r.Duration - earliest).TotalMilliseconds));
         _summary.Text = $"{_recent.Count} spans across {totalMs:0} ms · earliest {earliest:HH:mm:ss}";
 
         // One row per activity source so each backend/operation kind reads as
