@@ -6,6 +6,8 @@ else — including paint — is pure-managed.
 
 ![Starling rendering netclaw.dev — an Astro + Redux-Toolkit site — in the Avalonia GUI shell](docs/screenshot.png)
 
+<sub>netclaw.dev is shown only as a rendering target; Starling Browser has no direct affiliation with Netclaw.</sub>
+
 ## Status — high-level buckets
 
 Legend: ✅ shipped · 🟡 partial / actively iterating · ⚫ not started
