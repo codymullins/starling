@@ -140,9 +140,27 @@ public sealed partial class JsParser
             }
         }
 
-        // Detect get/set accessor — contextual.
+        // Detect async / generator method modifiers (ES2024 §15.4):
+        //   *gen(){}, async m(){}, async *gen(){}, static async *gen(){}
+        // `async` is contextual: a method modifier only when followed (same
+        // line) by a method-name start; otherwise it is a member named "async".
+        bool isGenerator = false, isAsync = false;
+        if (_current.Kind == JsTokenKind.Identifier && _current.Lexeme == "async")
+        {
+            var peek = _lex.Peek();
+            if (!peek.PrecededByLineTerminator && IsMethodNameStartAfterModifier(peek.Kind))
+            {
+                Advance(); // 'async'
+                isAsync = true;
+            }
+        }
+        if (Check(JsTokenKind.Star)) { Advance(); isGenerator = true; }
+
+        // Detect get/set accessor — contextual. Accessors never combine with
+        // async/* (those are distinct MethodDefinition productions).
         MethodKind methodKind = MethodKind.Method;
-        if (_current.Kind == JsTokenKind.Identifier
+        if (!isAsync && !isGenerator
+            && _current.Kind == JsTokenKind.Identifier
             && (_current.Lexeme == "get" || _current.Lexeme == "set"))
         {
             var peek = _lex.Peek();
@@ -162,7 +180,9 @@ public sealed partial class JsParser
         var (key, computed, isPrivate) = ParseClassElementKey(privateScope);
 
         // Field declaration: `name [= init];` or `name;` (no parens follow).
-        if (methodKind == MethodKind.Method && !Check(JsTokenKind.LParen))
+        // A field is never async/generator (those require a method body).
+        if (methodKind == MethodKind.Method && !isAsync && !isGenerator
+            && !Check(JsTokenKind.LParen))
         {
             Expression? init = null;
             if (Match(JsTokenKind.Eq))
@@ -178,10 +198,17 @@ public sealed partial class JsParser
         // Method form. Constructor disambiguation by name.
         bool isCtor = !isStatic
             && methodKind == MethodKind.Method
+            && !isAsync && !isGenerator
             && !computed
             && !isPrivate
             && key is Identifier { Name: "constructor" };
         if (isCtor) methodKind = MethodKind.Constructor;
+        // A generator/async method named "constructor" (non-static) is a
+        // SyntaxError (§15.7.1 Early Errors).
+        if (!isStatic && (isAsync || isGenerator) && !computed && !isPrivate
+            && key is Identifier { Name: "constructor" })
+            throw new JsParseException(
+                "class constructor may not be a generator or async method", memberStart);
 
         // Track derived-constructor scope so `super(...)` is allowed only
         // when this is a derived class's constructor.
@@ -209,7 +236,8 @@ public sealed partial class JsParser
         }
 
         var method = new MethodDefinition(key, methodKind, isStatic, computed,
-            parameters, body, memberStart, endPos);
+            parameters, body, memberStart, endPos,
+            Generator: isGenerator, Async: isAsync);
         if (isCtor)
         {
             if (existingCtor is not null)
