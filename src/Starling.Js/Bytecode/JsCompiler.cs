@@ -509,9 +509,25 @@ public sealed partial class JsCompiler
         // TDZ — instantiate top-level let/const of the function body in the
         // uninitialized state so reads before their declaration throw.
         HoistLexicalDeclarations(fd.Body.Body);
+        // §10.2.1.3 — for generator/async/async-generator bodies the parameter-
+        // binding prologue above must run synchronously at call time; mark the
+        // boundary so the runtime can hand off here before the body runs lazily.
+        EmitPrologueEndIfSuspendable(fd.Async, fd.Generator);
         foreach (var inner in fd.Body.Body) EmitStatement(inner);
         // Implicit `return undefined` if the body didn't return.
         _b.Emit(Opcode.ReturnUndefined);
+    }
+
+    /// <summary>§10.2.1.3 / §15.5.2 / §27 — emit a <see cref="Opcode.PrologueEnd"/>
+    /// marker for generator / async / async-generator bodies. The runtime runs
+    /// everything before this marker (parameter destructuring + defaults +
+    /// RequireObjectCoercible + iterator protocol + <c>arguments</c> + var/lexical
+    /// hoisting) synchronously when the function is called, so a throw surfaces
+    /// to the caller before the generator object / promise is produced. Ordinary
+    /// functions get no marker (their bodies already run synchronously).</summary>
+    private void EmitPrologueEndIfSuspendable(bool isAsync, bool isGenerator)
+    {
+        if (isAsync || isGenerator) _b.Emit(Opcode.PrologueEnd);
     }
 
     /// <summary>gap:closure-write-back — walk this function's body and
@@ -2771,6 +2787,9 @@ public sealed partial class JsCompiler
         // TDZ — instantiate top-level let/const of the body in the
         // uninitialized state so reads before their declaration throw.
         sub.HoistLexicalDeclarations(fe.Body.Body);
+        // §10.2.1.3 — synchronous parameter-binding prologue boundary for
+        // generator / async (incl. async-arrow) bodies; see EmitFunctionBody.
+        sub.EmitPrologueEndIfSuspendable(fe.Async, fe.Generator);
         foreach (var s in fe.Body.Body) sub.EmitStatement(s);
         sub._b.Emit(Opcode.ReturnUndefined);
         // Per ES2024 §15.2 NamedEvaluation, anonymous FunctionExpression

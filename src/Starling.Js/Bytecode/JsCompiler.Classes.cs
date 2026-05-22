@@ -267,6 +267,9 @@ public sealed partial class JsCompiler
         // `arguments` object when the body reads it.
         sub.MaybeBindArguments(md.Params, md.Body.Body);
         sub.HoistLexicalDeclarations(md.Body.Body); // TDZ
+        // §10.2.1.3 — synchronous parameter-binding prologue boundary for
+        // generator / async / async-generator methods; see EmitFunctionBody.
+        sub.EmitPrologueEndIfSuspendable(md.Async, md.Generator);
         foreach (var s in md.Body.Body) sub.EmitStatement(s);
         sub._b.Emit(Opcode.ReturnUndefined);
         sub._privateScopes.Pop();

@@ -349,6 +349,17 @@ public enum Opcode : byte
     /// rejected, a <c>JsThrow</c> is raised at this point).</summary>
     Suspend,
 
+    /// <summary>§10.2.1.3 / §15.5.2 / §27 — marks the end of the
+    /// parameter-binding prologue (FunctionDeclarationInstantiation) of a
+    /// generator / async / async-generator body. The worker thread executes the
+    /// prologue synchronously at call time and then hands off here, so a throw
+    /// from parameter destructuring / defaults / RequireObjectCoercible /
+    /// iterator-protocol surfaces to the caller BEFORE the generator object /
+    /// promise is produced. Resuming past this point continues the body lazily.
+    /// No operands; no stack effect. Only emitted for non-Normal function kinds
+    /// and only meaningful when a suspension target is active.</summary>
+    PrologueEnd,
+
     /// <summary>§27.5.3.2 YieldDelegate (<c>yield* expr</c>). Pops an
     /// iterable, builds an iterator-record, and runs the full delegate
     /// protocol entirely inside the opcode handler: forwarding the outer

@@ -1854,6 +1854,19 @@ public sealed class JsVm
                     Push(resumed);
                     break;
                 }
+                case Opcode.PrologueEnd:
+                {
+                    // §10.2.1.3 — the parameter-binding prologue has run
+                    // synchronously on the worker thread. Hand off to the
+                    // caller (Start{Generator,Async,AsyncGenerator}Body) so it
+                    // can observe a prologue throw before producing the
+                    // generator/promise. No value travels across this boundary;
+                    // the body resumes here on the first real next()/drive.
+                    // If suspension is null (defensive), it's a no-op.
+                    if (suspension is not null)
+                        suspension.WorkerYield(JsValue.Undefined);
+                    break;
+                }
                 case Opcode.YieldDelegate:
                 {
                     var iterable = Pop();
@@ -2679,7 +2692,28 @@ public sealed class JsVm
                 frame.SetThrew(ex.Value);
             }
         });
+        // §15.5.2 EvaluateGeneratorBody — FunctionDeclarationInstantiation (the
+        // parameter-binding prologue) runs synchronously here, BEFORE the
+        // generator object is returned. RunPrologue drives the worker to the
+        // PrologueEnd marker; a throw from param destructuring / defaults /
+        // RequireObjectCoercible / iterator protocol propagates to the caller
+        // now (no generator object is produced).
+        if (fn.Body.HasPrologue) RunPrologue(frame);
         return JsValue.Object(gen);
+    }
+
+    /// <summary>§10.2.1.3 — drive the worker through the synchronous
+    /// parameter-binding prologue. Resumes once (which runs everything up to the
+    /// body's <see cref="Opcode.PrologueEnd"/> marker). If the prologue threw,
+    /// re-raises it on the calling thread; if it ran to completion (an
+    /// empty/return-only body with no marker — defensive) the throw still
+    /// surfaces. On success the worker is parked at PrologueEnd, ready for the
+    /// first real resume.</summary>
+    private static void RunPrologue(SuspendedFrame frame)
+    {
+        frame.Resume(JsValue.Undefined);
+        if (frame.Completed && frame.ThrewUncaught)
+            throw new JsThrow(frame.ReturnValue);
     }
 
     /// <summary>Invoke an async function — set up an outer Promise + worker
@@ -2710,12 +2744,39 @@ public sealed class JsVm
             }
         });
 
+        // §27.7.5.2 AsyncFunctionStart — FunctionDeclarationInstantiation (the
+        // parameter-binding prologue) runs synchronously at call time. Per
+        // §27.7.5.1, an abrupt completion from the prologue REJECTS the returned
+        // promise (it is NOT thrown synchronously — the function still returns a
+        // promise). RunPrologueAsync runs the worker to the PrologueEnd marker;
+        // if it threw, reject `outer` and skip driving the body. Synthetic async
+        // bodies without a marker (top-level-await module wrappers) skip this.
+        if (fn.Body.HasPrologue && RunPrologueAsync(state))
+            return JsValue.Object(outer);
+
         // Drive the worker synchronously from the calling thread, riding
         // each await suspension via the microtask queue. The first Resume
         // kicks off the body; subsequent Resumes are wired by the await
         // handler below.
         DriveAsync(state);
         return JsValue.Object(outer);
+    }
+
+    /// <summary>§27.7.5.1 — run the async body's parameter-binding prologue
+    /// synchronously. Returns true if the prologue threw (in which case the
+    /// outer promise has been rejected and the body must not be driven); false
+    /// when the worker parked cleanly at <see cref="Opcode.PrologueEnd"/>.</summary>
+    private bool RunPrologueAsync(JsAsyncFunctionState state)
+    {
+        var frame = state.Frame;
+        frame.Resume(JsValue.Undefined);
+        if (frame.Completed && frame.ThrewUncaught)
+        {
+            state.Settled = true;
+            PromiseCtor.Reject(_runtime.Realm, state.OuterPromise, frame.ReturnValue);
+            return true;
+        }
+        return false;
     }
 
     /// <summary>Run the async body forward until the next await or
@@ -2817,6 +2878,10 @@ public sealed class JsVm
                 frame.SetThrew(ex.Value);
             }
         });
+        // §27.4 EvaluateAsyncGeneratorBody — like sync generators, the parameter-
+        // binding prologue runs synchronously at call time and a throw propagates
+        // to the caller before the async-generator object is produced.
+        if (fn.Body.HasPrologue) RunPrologue(frame);
         return JsValue.Object(gen);
     }
 

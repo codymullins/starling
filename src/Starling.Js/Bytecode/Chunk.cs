@@ -28,6 +28,15 @@ public sealed class Chunk
     /// this-binding (§10.2.1.2), assignment to undeclared globals (§9.1.1.4.16),
     /// and strict property/delete failures (§10.1.9 / §13.5.1.2).</summary>
     public bool IsStrict { get; init; }
+    /// <summary>§10.2.1.3 — true when this chunk is a generator / async /
+    /// async-generator body whose parameter-binding prologue ends at a
+    /// <see cref="Opcode.PrologueEnd"/> marker. The runtime dispatcher
+    /// (<c>Start{Generator,Async,AsyncGenerator}Body</c>) runs that prologue
+    /// synchronously at call time, so a destructuring/default throw surfaces
+    /// before the generator object / promise is produced. Synthetic async bodies
+    /// without a marker (e.g. top-level-await module wrappers) leave this false
+    /// so the dispatcher does not consume an extra resume looking for one.</summary>
+    public bool HasPrologue { get; init; }
     /// <summary>gap:closure-write-back — the set of local-slot indices in
     /// this chunk that the compiler promoted to <c>Cell</c> storage because
     /// at least one nested function references the binding. Empty for
@@ -129,6 +138,10 @@ public sealed class ChunkBuilder
     /// produced <see cref="Chunk.IsStrict"/>.</summary>
     public bool IsStrict { get; set; }
 
+    /// <summary>§10.2.1.3 — set when a <see cref="Opcode.PrologueEnd"/> marker is
+    /// emitted; stamped onto <see cref="Chunk.HasPrologue"/>.</summary>
+    public bool HasPrologue { get; private set; }
+
     /// <summary>wp:M3-23 — record that the opcode about to be emitted at the
     /// current <see cref="Position"/> originates from the given 1-based source
     /// line/column. Call immediately BEFORE emitting a throw-prone opcode so
@@ -176,7 +189,11 @@ public sealed class ChunkBuilder
         return slot;
     }
 
-    public void Emit(Opcode op) => _code.Add((byte)op);
+    public void Emit(Opcode op)
+    {
+        if (op == Opcode.PrologueEnd) HasPrologue = true;
+        _code.Add((byte)op);
+    }
 
     public void Emit(Opcode op, byte arg)
     {
@@ -288,5 +305,5 @@ public sealed class ChunkBuilder
     public Chunk Build(string? name = null)
         => new(_code.ToArray(), _constants.ToArray(), LocalCount, name, _capturedSlots,
             _positions is null ? null : _positions.ToArray())
-        { IsStrict = IsStrict };
+        { IsStrict = IsStrict, HasPrologue = HasPrologue };
 }
