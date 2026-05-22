@@ -70,6 +70,12 @@ internal static class CaptureAnalysis
         return false;
     }
 
+    /// <summary>§15.7.1 ContainsArguments — true when <paramref name="e"/>
+    /// references the identifier <c>arguments</c> free in its own scope
+    /// (recursing through arrow functions but not ordinary function / class
+    /// boundaries). Used to enforce the class-field-initializer early error.</summary>
+    public static bool ContainsArguments(Expression? e) => ArgRefExpr(e);
+
     private static bool ArgRefStmt(Statement? s)
     {
         if (s is null) return false;

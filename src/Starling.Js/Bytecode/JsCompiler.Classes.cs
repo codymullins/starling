@@ -348,6 +348,17 @@ public sealed partial class JsCompiler
             return (new FieldEntry(staticKey, mangled, field.IsStatic, null, 0, field.Computed), Array.Empty<UpvalueRef>());
         }
 
+        // §15.7.1 Static Semantics: Early Errors — "It is a Syntax Error if
+        // ContainsArguments of Initializer is true." A class field initializer
+        // may not reference `arguments` (the binding does not extend into a
+        // field's initializer); ContainsArguments recurses through arrow
+        // functions but stops at ordinary function boundaries — exactly what
+        // ArgRefExpr computes. (The PropertyName is excluded, so a computed key
+        // referencing `arguments` is unaffected.)
+        if (CaptureAnalysis.ContainsArguments(field.Initializer))
+            throw new Parse.JsParseException(
+                "'arguments' is not allowed in a class field initializer", field.Initializer.Start);
+
         // Compile the initializer thunk.
         //   Static / non-computed keys: `this.<key> = <init>` (or
         //   DefinePrivateField for private fields) — the key is baked in.

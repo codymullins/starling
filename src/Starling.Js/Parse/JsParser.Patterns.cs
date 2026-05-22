@@ -111,6 +111,10 @@ public sealed partial class JsParser
     private ObjectPatternProperty ParseObjectBindingProperty()
     {
         var start = _current.Start;
+        // Snapshot the key token so the shorthand form can reject a reserved word
+        // (or escaped reserved word) used as a BindingIdentifier / shorthand
+        // IdentifierReference (§14.3.3 / §13.15.1).
+        var keyToken = _current;
         var (key, computed) = ParsePatternPropertyKey();
 
         if (Match(JsTokenKind.Colon))
@@ -124,6 +128,11 @@ public sealed partial class JsParser
 
         if (!computed && key is Identifier id)
         {
+            // §14.3.3 / §13.15.1 — the shorthand `{ x }` (and `{ x = init }`)
+            // binds / references `x`, so `x` must be a valid BindingIdentifier /
+            // IdentifierReference: a reserved word (even one written with a
+            // Unicode escape, which keeps its keyword kind) is a SyntaxError.
+            CheckShorthandIdentifier(keyToken);
             Expression? fallback = null;
             if (Match(JsTokenKind.Eq)) fallback = ParseAssignment();
             return new ObjectPatternProperty(key, id, Shorthand: true, Computed: false,
