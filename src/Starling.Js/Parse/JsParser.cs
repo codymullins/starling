@@ -36,6 +36,22 @@ public sealed partial class JsParser
     /// strictness into the bytecode chunk.</summary>
     private bool _strict;
 
+    /// <summary>True while parsing the body (and parameter list, for the
+    /// relevant checks) of an async function/method/arrow. In this context
+    /// <c>await</c> is always the AwaitExpression keyword and may NOT be used
+    /// as a BindingIdentifier / IdentifierReference / LabelIdentifier
+    /// (§13.3.10.1 / §15.8). Inherited by nested arrow functions (they have no
+    /// async-ness of their own) but reset by nested non-arrow functions.
+    /// Save/restore stack discipline around every function/method scope.</summary>
+    private bool _inAsync;
+
+    /// <summary>True while parsing the body of a generator function/method.
+    /// In this context <c>yield</c> is always the YieldExpression keyword and
+    /// may NOT be used as a BindingIdentifier (§14.4 / §15.5). Generator-ness
+    /// is NOT inherited by nested arrows for parameter purposes; like
+    /// <see cref="_inAsync"/> it is saved/restored at every function scope.</summary>
+    private bool _inGenerator;
+
     public JsParser(string source)
         : this(new JsLexer(source, ThrowingLexErrorSink.Instance)) { }
 
@@ -114,10 +130,13 @@ public sealed partial class JsParser
     // AssignmentExpression
     private Expression ParseAssignment()
     {
-        // B1b-2c — `yield` / `yield expr` / `yield* expr`. Spec restricts to
-        // generator bodies; we accept it liberally and let the compiler/VM
-        // error if used outside one.
-        if (_current.Kind == JsTokenKind.Yield)
+        // B1b-2c — `yield` / `yield expr` / `yield* expr`. §14.4 restricts the
+        // YieldExpression to generator bodies; OUTSIDE a generator `yield` is
+        // an ordinary IdentifierReference (sloppy) or a reserved word (strict —
+        // caught downstream by the strict reserved-word checks). The lexer
+        // always emits the `Yield` token, so only treat it as a yield expression
+        // when we are actually inside a generator.
+        if (_current.Kind == JsTokenKind.Yield && _inGenerator)
         {
             var yieldTok = Advance();
             var delegateYield = Match(JsTokenKind.Star);
@@ -275,8 +294,14 @@ public sealed partial class JsParser
     private ArrowFunctionExpression ParseArrowBody(IReadOnlyList<Expression> @params, JsPosition start, bool async = false)
     {
         var savedStrict = _strict;
+        var (savedAsync, savedGen) = (_inAsync, _inGenerator);
         try
         {
+            // An async arrow body is an async context; a plain arrow inherits the
+            // enclosing async-ness (so `await` works in an arrow nested in an
+            // async fn). Arrows are never generators, but the body inherits the
+            // enclosing generator context per §15.3 (yield refers outward).
+            _inAsync = async || _inAsync;
             if (Check(JsTokenKind.LBrace))
             {
                 var (block, strict) = ParseFunctionBody();
@@ -301,7 +326,7 @@ public sealed partial class JsParser
             return new ArrowFunctionExpression(@params, expr, IsExpression: true,
                 Async: async, start, expr.End, Strict: _strict);
         }
-        finally { _strict = savedStrict; }
+        finally { _strict = savedStrict; (_inAsync, _inGenerator) = (savedAsync, savedGen); }
     }
 
     /// <summary>Continue ParseAssignment after consuming an unexpected lead
@@ -584,12 +609,16 @@ public sealed partial class JsParser
                 // Guard against "await" used as a plain identifier (e.g. as
                 // a property name or assignment target) — those flow through
                 // ParsePrimary which advances the token first.
+                // §13.3.10.1 / §15.8 — but INSIDE an async context `await` is
+                // always the keyword and may never be used as an identifier
+                // reference / assignment target, so the fall-through is only
+                // permitted in non-async code.
                 var next = _lex.Peek().Kind;
-                if (next == JsTokenKind.Eq || next == JsTokenKind.Comma
+                if (!_inAsync && (next == JsTokenKind.Eq || next == JsTokenKind.Comma
                     || next == JsTokenKind.Semicolon || next == JsTokenKind.RParen
                     || next == JsTokenKind.RBrace || next == JsTokenKind.RBracket
                     || next == JsTokenKind.Dot || next == JsTokenKind.Arrow
-                    || next == JsTokenKind.LParen)
+                    || next == JsTokenKind.LParen))
                 {
                     // `await` used as identifier (legacy). Fall through.
                     return ParseUpdate();
@@ -656,6 +685,12 @@ public sealed partial class JsParser
         Expression callee = Check(JsTokenKind.New)
             ? ParseNew()
             : ParseCallAndMemberTailNoCall(ParsePrimary());
+        // §13.3 — ImportCall is a CallExpression, not a MemberExpression, so it
+        // may never be the callee of a NewExpression (`new import(x)` is an early
+        // SyntaxError). A leading `import.meta`/member tail off it is fine.
+        if (callee is ImportCallExpression)
+            throw new JsParseException(
+                "'import(...)' (ImportCall) may not be preceded by 'new'", start);
         IReadOnlyList<Expression> args = [];
         var end = callee.End;
         if (Match(JsTokenKind.LParen))
@@ -845,6 +880,12 @@ public sealed partial class JsParser
             {
                 Advance();
                 var (pattern, flags) = ((string, string))t.Value!;
+                // §12.9.5 / §22.2.1 — a RegularExpressionLiteral whose pattern or
+                // flags fail to parse is an early SyntaxError (negative phase
+                // "parse"). Validate eagerly here by compiling through the same
+                // RegExp engine the runtime uses, converting any regex-level
+                // syntax failure into a parse error at the literal's position.
+                ValidateRegExpLiteral(pattern, flags, t.Start);
                 return new RegExpLiteral(pattern, flags, t.Start, t.End);
             }
             case JsTokenKind.BooleanLiteral:
@@ -857,6 +898,21 @@ public sealed partial class JsParser
                 Advance();
                 return new ThisExpression(t.Start, t.End);
             case JsTokenKind.Identifier:
+                Advance();
+                return new Identifier(t.Lexeme, t.Start, t.End);
+            case JsTokenKind.Yield:
+                // §12.7.1 — `yield` is a reserved word inside a generator body
+                // (it can only appear as the YieldExpression handled by
+                // ParseAssignment, never as an IdentifierReference reachable here
+                // e.g. `void yield`) and in strict code generally. In sloppy
+                // non-generator code it is a legal IdentifierReference.
+                if (_inGenerator)
+                    throw new JsParseException(
+                        "'yield' may not be used as an identifier reference in a generator", t.Start);
+                if (_strict)
+                    throw new JsParseException(
+                        "'yield' is a reserved word and may not be used as an identifier in strict mode",
+                        t.Start);
                 Advance();
                 return new Identifier(t.Lexeme, t.Start, t.End);
             case JsTokenKind.LParen:
@@ -895,6 +951,25 @@ public sealed partial class JsParser
         }
         throw new JsParseException(
             $"unexpected token {t.Kind} '{t.Lexeme}'", t.Start);
+    }
+
+    /// <summary>§12.9.5 — eagerly validate a RegularExpressionLiteral's flags
+    /// and pattern so that a malformed literal is reported as a parse-phase
+    /// SyntaxError (matching test262 <c>negative: phase: parse</c>). Compiles
+    /// through the runtime RegExp engine and translates any regex syntax failure
+    /// into a <see cref="JsParseException"/> at the literal's position.</summary>
+    private static void ValidateRegExpLiteral(string pattern, string flags, JsPosition start)
+    {
+        if (!RegExp.RegexFlagParser.TryParse(flags, out var f, out var flagErr))
+            throw new JsParseException(flagErr ?? "invalid regular expression flags", start);
+        try
+        {
+            RegExp.CompiledRegex.Compile(pattern, f);
+        }
+        catch (RegExp.RegexSyntaxException ex)
+        {
+            throw new JsParseException("invalid regular expression: " + ex.Message, start);
+        }
     }
 
     private TemplateLiteral ParseTemplateLiteral()
@@ -1048,7 +1123,7 @@ public sealed partial class JsParser
         if (mAsync || mGenerator)
         {
             var (mkey, mcomputed) = ParsePropertyKey();
-            var (mparams, mbody, mend, mstrict) = ParseMethodTail();
+            var (mparams, mbody, mend, mstrict) = ParseMethodTail(isAsync: mAsync, isGenerator: mGenerator);
             var mname = mkey is Identifier mki ? mki : null;
             var mfn = MakeFnExpression(mname, mparams, mbody, start, mend, mGenerator, mAsync, mstrict);
             return new ObjectProperty(mkey, mfn,
@@ -1216,11 +1291,17 @@ public sealed partial class JsParser
     /// method shorthand, having already consumed the property key.
     /// Delegates to <see cref="ParseParameterList"/> so that a trailing
     /// <c>...rest</c> element is accepted (wp:M3-27).</summary>
-    private (List<Expression> Params, BlockStatement Body, JsPosition End, bool Strict) ParseMethodTail()
+    private (List<Expression> Params, BlockStatement Body, JsPosition End, bool Strict) ParseMethodTail(
+        bool isAsync = false, bool isGenerator = false)
     {
         var savedStrict = _strict;
+        var (savedAsync, savedGen) = (_inAsync, _inGenerator);
         try
         {
+            // §15 — the method's own async/generator modifiers establish the
+            // await/yield context for its parameter list and body.
+            _inAsync = isAsync;
+            _inGenerator = isGenerator;
             Expect(JsTokenKind.LParen, "expected '(' for method parameters");
             var parameters = ParseParameterList();
             Expect(JsTokenKind.RParen, "expected ')' after method parameters");
@@ -1231,7 +1312,7 @@ public sealed partial class JsParser
             CheckParamsVsLexicalBody(parameters, body);
             return (parameters, body, body.End, strict);
         }
-        finally { _strict = savedStrict; }
+        finally { _strict = savedStrict; (_inAsync, _inGenerator) = (savedAsync, savedGen); }
     }
 
     /// <summary>

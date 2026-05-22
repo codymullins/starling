@@ -9,6 +9,11 @@ public sealed partial class JsParser
     {
         if (Check(JsTokenKind.LBracket)) return ParseArrayBindingPattern();
         if (Check(JsTokenKind.LBrace)) return ParseObjectBindingPattern();
+        // §14.4.1 / §15.5 — inside a generator, `yield` is the YieldExpression
+        // keyword and may NOT be a BindingIdentifier (even in sloppy code).
+        if (_inGenerator && Check(JsTokenKind.Yield))
+            throw new JsParseException(
+                "'yield' may not be used as a binding identifier in a generator", _current.Start);
         // In sloppy (non-strict) code outside a generator, `yield` is a plain
         // IdentifierReference and a legal BindingIdentifier (§12.7.1). The lexer
         // always classifies it as the `Yield` keyword token, so accept it here.
@@ -18,6 +23,11 @@ public sealed partial class JsParser
             var y = Advance();
             return new Identifier(y.Lexeme, y.Start, y.End);
         }
+        // §13.3.10.1 / §15.8 — inside an async context, `await` is the
+        // AwaitExpression keyword and may NOT be a BindingIdentifier.
+        if (_inAsync && Check(JsTokenKind.Identifier) && _current.Lexeme == "await")
+            throw new JsParseException(
+                "'await' may not be used as a binding identifier in an async context", _current.Start);
         var id = Expect(JsTokenKind.Identifier, "expected binding name or pattern");
         return new Identifier(id.Lexeme, id.Start, id.End);
     }

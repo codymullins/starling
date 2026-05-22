@@ -37,6 +37,12 @@ public sealed class Chunk
     /// without a marker (e.g. top-level-await module wrappers) leave this false
     /// so the dispatcher does not consume an extra resume looking for one.</summary>
     public bool HasPrologue { get; init; }
+    /// <summary>§14.11 / §10.2.1 — true when this chunk's body was compiled
+    /// lexically inside one or more <c>with</c> statements, so a function
+    /// instance built from it must snapshot the creating frame's with-stack
+    /// (stored on <see cref="Starling.Js.Runtime.JsFunction.CapturedWith"/>)
+    /// and the VM must seed the callee frame's with-stack from it.</summary>
+    public bool CapturesWith { get; init; }
     /// <summary>gap:closure-write-back — the set of local-slot indices in
     /// this chunk that the compiler promoted to <c>Cell</c> storage because
     /// at least one nested function references the binding. Empty for
@@ -302,8 +308,10 @@ public sealed class ChunkBuilder
         _code.Add((byte)value);
     }
 
+    public bool CapturesWith { get; set; }
+
     public Chunk Build(string? name = null)
         => new(_code.ToArray(), _constants.ToArray(), LocalCount, name, _capturedSlots,
             _positions is null ? null : _positions.ToArray())
-        { IsStrict = IsStrict, HasPrologue = HasPrologue };
+        { IsStrict = IsStrict, HasPrologue = HasPrologue, CapturesWith = CapturesWith };
 }

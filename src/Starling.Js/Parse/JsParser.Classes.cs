@@ -339,8 +339,13 @@ public sealed partial class JsParser
         IReadOnlyList<Expression> parameters;
         BlockStatement body;
         JsPosition endPos;
+        var (savedAsync, savedGen) = (_inAsync, _inGenerator);
         try
         {
+            // §15 — a method establishes its own await/yield context based on its
+            // async/generator modifiers, regardless of any enclosing context.
+            _inAsync = isAsync;
+            _inGenerator = isGenerator;
             Expect(JsTokenKind.LParen, "expected '(' in method definition");
             parameters = ParseParameterList();
             Expect(JsTokenKind.RParen, "expected ')' after method parameters");
@@ -356,6 +361,7 @@ public sealed partial class JsParser
         finally
         {
             if (enteredDerivedCtor) _derivedConstructorDepth--;
+            (_inAsync, _inGenerator) = (savedAsync, savedGen);
         }
 
         var method = new MethodDefinition(key, methodKind, isStatic, computed,

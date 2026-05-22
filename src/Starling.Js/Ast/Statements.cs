@@ -110,6 +110,16 @@ public sealed record LabeledStatement(
     string Label, Statement Body, JsPosition Start, JsPosition End)
     : Statement(Start, End);
 
+/// <summary>§14.11 — the sloppy-mode <c>with</c> statement. At runtime an
+/// object Environment Record built from <see cref="Object"/> is pushed for the
+/// duration of <see cref="Body"/>, so unqualified name lookups consult that
+/// object's properties (respecting <c>@@unscopables</c>) before the lexically
+/// enclosing scope (§9.1.1.2). A strict-mode <c>with</c> is an early
+/// SyntaxError and is rejected in the parser.</summary>
+public sealed record WithStatement(
+    Expression Object, Statement Body, JsPosition Start, JsPosition End)
+    : Statement(Start, End);
+
 // -----------------------------------------------------------------------
 // Declarations
 // -----------------------------------------------------------------------

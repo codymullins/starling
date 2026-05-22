@@ -165,12 +165,13 @@ public class JsParserRegExpLiteralTests
     // ----- Errors ---------------------------------------------------------
 
     [TestMethod]
-    public void Invalid_regex_throws_syntax_error_at_runtime()
+    public void Invalid_regex_is_an_early_parse_error()
     {
-        // Unbalanced `(` surfaces from the runtime compile step the
-        // LoadRegExp opcode performs.
-        var act = () => Eval("/(/.test(\"\");");
-        act.Should().Throw<JsThrow>();
+        // §12.9.5 — a RegularExpressionLiteral whose pattern fails to parse
+        // (here the unbalanced `(`) is an early SyntaxError surfaced at PARSE
+        // time, not deferred to the runtime LoadRegExp compile step.
+        var act = () => Parse("/(/.test(\"\");");
+        act.Should().Throw<JsParseException>();
     }
 
     // ----- Helpers --------------------------------------------------------

@@ -440,5 +440,38 @@ public enum Opcode : byte
     /// parameter target (identifier or destructuring pattern).</summary>
     RestParam,      // [u16 start] push Array of received args[start..argc)
 
+    // ----- with statement (§14.11 / §9.1.1.2 object Environment Records) -----
+    /// <summary>§14.11.2 — pop a value, ToObject it, and push the resulting
+    /// object as a new object Environment Record onto the running frame's
+    /// with-stack. Unqualified name lookups in the body consult this object
+    /// (respecting <c>@@unscopables</c>) before the lexical scope.</summary>
+    PushWith,
+    /// <summary>Pop the innermost object Environment Record off the frame's
+    /// with-stack (normal completion of a <c>with</c> body). Abrupt completions
+    /// are unwound by the try-frame mechanism the compiler wraps the body in.</summary>
+    PopWith,
+    /// <summary>[u16 nameIdx][i16 missOffset] — with-aware identifier load.
+    /// Walk the frame's with-stack innermost-first; if an object Environment
+    /// Record HasBinding(name) (HasProperty AND not blocked by
+    /// <c>@@unscopables</c>), push its value and jump by missOffset. Otherwise
+    /// fall through to the statically-compiled fallback load.</summary>
+    WithLoadOrMiss,
+    /// <summary>[u16 nameIdx][i16 missOffset] — with-aware method load for a
+    /// call. Like <see cref="WithLoadOrMiss"/> but on a hit pushes
+    /// [withObject, value] (so the call binds <c>this</c> to the binding
+    /// object, §9.1.1.2 WithBaseObject) and jumps. On a miss falls through;
+    /// the fallback pushes [undefined, value] for a normal call.</summary>
+    WithLoadMethodOrMiss,
+    /// <summary>[u16 nameIdx][i16 missOffset] — with-aware identifier store.
+    /// Stack on entry: [value]. If an object Environment Record has the
+    /// binding, pop value, Set it on that object, and jump by missOffset.
+    /// Otherwise leave value on the stack and fall through to the static store.</summary>
+    WithStoreOrMiss,
+    /// <summary>[u16 nameIdx][i16 missOffset] — with-aware <c>delete name</c>.
+    /// If an object Environment Record has the binding, delete the property,
+    /// push the boolean result, and jump. Otherwise fall through to the static
+    /// fallback (push true).</summary>
+    WithDeleteOrMiss,
+
     Halt,           // end-of-program sentinel
 }

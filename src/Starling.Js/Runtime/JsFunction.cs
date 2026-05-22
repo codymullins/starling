@@ -65,6 +65,15 @@ public sealed class JsFunction : JsObject
     /// return an Async-Iterator yielding Promises.</summary>
     public JsFunctionKind Kind { get; set; } = JsFunctionKind.Normal;
 
+    /// <summary>§14.11 / §10.2.1 — snapshot of the object Environment Records
+    /// (with-objects) active when this function instance was created. Non-null
+    /// only when the function's body was compiled lexically inside one or more
+    /// <c>with</c> statements (<see cref="Chunk.CapturesWith"/>). The VM seeds
+    /// the callee frame's with-stack from this so free-identifier references in
+    /// the body still consult the enclosing with-objects, per the closure's
+    /// captured environment.</summary>
+    public IReadOnlyList<JsObject>? CapturedWith { get; set; }
+
     public JsFunction(string name, Chunk body, int arityDeclared)
         : this(name, body, arityDeclared, Array.Empty<JsValue>())
     {
