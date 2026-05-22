@@ -100,9 +100,13 @@ public class Test262Tests
         var resultsDir = Path.Combine(root, "results");
         Directory.CreateDirectory(resultsDir);
         var reportPath = Path.Combine(resultsDir, "summary.txt");
-        File.WriteAllText(reportPath, report.ToString());
+        // Failure details can contain lone surrogates copied out of a test's
+        // source text; a strict encoder throws on those. Use a UTF-8 encoder
+        // that replaces unencodable chars so the dump never crashes.
+        var enc = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: false);
+        File.WriteAllText(reportPath, report.ToString(), enc);
         // Full failure dump (every failing scenario) for offline triage.
-        File.WriteAllLines(Path.Combine(resultsDir, "failures.txt"), allFails);
+        File.WriteAllLines(Path.Combine(resultsDir, "failures.txt"), allFails, enc);
 
         TestContext.WriteLine(report.ToString());
         TestContext.WriteLine("report: " + reportPath);

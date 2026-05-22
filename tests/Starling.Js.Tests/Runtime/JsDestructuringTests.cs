@@ -136,13 +136,14 @@ public class JsDestructuringTests
     [TestMethod]
     public void Compound_operator_with_destructuring_target_is_rejected()
     {
-        // §13.15.1: a destructuring pattern only pairs with the plain `=` operator.
+        // §13.15.1: a destructuring pattern only pairs with the plain `=` operator;
+        // any compound form is an early SyntaxError (surfaced as JsParseException).
         var compile = () =>
         {
             var program = new JsParser("var a = 0; [a] += [1];").ParseProgram();
             JsCompiler.CompileForEval(program);
         };
-        compile.Should().Throw<NotSupportedException>();
+        compile.Should().Throw<JsParseException>();
     }
 
     [TestMethod]
