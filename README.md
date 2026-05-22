@@ -8,6 +8,26 @@ else — including paint — is pure-managed.
 
 <sub>netclaw.dev is shown only as a rendering target; Starling Browser has no direct affiliation with Netclaw.</sub>
 
+## Why?
+
+The conventional wisdom is that a browser engine has to be C++ or Rust, built by
+a large team over many years. [Ladybird](https://ladybird.org) has already proven
+the hardest part — that a genuinely independent engine, built from primitives
+with no Chromium/Gecko/WebKit reuse, is viable. Starling shares that
+from-scratch spirit but asks the next question: do you still need a systems
+language to do it? Arc and Dia build their browsers in Swift — even on Windows —
+so the assumption that it all has to be C++ or Rust is already weaker than people
+think. Starling pushes further — a managed-first .NET engine, with native code
+confined to a single vetted seam, built in the open, independent of any browser
+vendor.
+
+The longer-term motivation is a specific frustration: how slowly the standards
+process has delivered things like first-class WASM/WASI access to the DOM. The
+plan is to earn parity on real-world websites first, then use the managed
+architecture to make WASM a first-class citizen — hitting the DOM directly, not
+as a guest behind a JS bridge. And part of it, honestly, is just wanting to find
+out whether it can be done.
+
 ## Status — high-level buckets
 
 Legend: ✅ shipped · 🟡 partial / actively iterating · ⚫ not started
