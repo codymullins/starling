@@ -188,11 +188,12 @@ public class JsForLoopTests
     public void Break_outside_any_loop_is_compile_error()
     {
         // The parser permits `break;` anywhere; the compiler raises the
-        // §13.2 "Illegal break" syntactic check.
+        // §13.2 "Illegal break" syntactic check. This is an early SyntaxError,
+        // so it surfaces as a JsParseException (the engine's SyntaxError type).
         var src = "break;";
         var program = new JsParser(src).ParseProgram();
         var act = () => JsCompiler.CompileForEval(program);
-        act.Should().Throw<System.InvalidOperationException>()
+        act.Should().Throw<JsParseException>()
             .WithMessage("*Illegal break*");
     }
 

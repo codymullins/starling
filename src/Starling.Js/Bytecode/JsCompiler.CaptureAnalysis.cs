@@ -108,6 +108,7 @@ internal static class CaptureAnalysis
                 if (tr.Handler is not null && tr.Handler.Body.Body.Any(ArgRefStmt)) return true;
                 return tr.Finalizer is not null && ArgRefStmt(tr.Finalizer);
             case LabeledStatement ls: return ArgRefStmt(ls.Body);
+            case WithStatement ws: return ArgRefExpr(ws.Object) || ArgRefStmt(ws.Body);
             case VariableDeclaration vd:
                 return vd.Declarations.Any(d => ArgRefExpr(d.Init));
             // A nested ordinary function / class declaration establishes its
@@ -258,6 +259,10 @@ internal static class CaptureAnalysis
                 if (tr.Finalizer is not null) WalkStatementInOuter(tr.Finalizer, captured);
                 return;
             case LabeledStatement ls: WalkStatementInOuter(ls.Body, captured); return;
+            case WithStatement ws:
+                WalkExpressionInOuter(ws.Object, captured);
+                WalkStatementInOuter(ws.Body, captured);
+                return;
             case VariableDeclaration vd:
                 foreach (var d in vd.Declarations)
                 {
@@ -489,6 +494,9 @@ internal static class CaptureAnalysis
                 if (tr.Finalizer is not null) CollectVarHoistedBindings(tr.Finalizer, scope);
                 return;
             case LabeledStatement ls: CollectVarHoistedBindings(ls.Body, scope); return;
+            // §14.11 — `var` declarations inside a `with` body still hoist to
+            // the enclosing function/script variable scope.
+            case WithStatement ws: CollectVarHoistedBindings(ws.Body, scope); return;
         }
     }
 
@@ -620,6 +628,10 @@ internal static class CaptureAnalysis
                 if (tr.Finalizer is not null) InnerStatement(tr.Finalizer, scopes, outerCaptured);
                 return;
             case LabeledStatement ls: InnerStatement(ls.Body, scopes, outerCaptured); return;
+            case WithStatement ws:
+                InnerExpression(ws.Object, scopes, outerCaptured);
+                InnerStatement(ws.Body, scopes, outerCaptured);
+                return;
             case VariableDeclaration vd:
                 // For let/const, declare into the topmost scope frame (block);
                 // for var, into the function-top (already collected by

@@ -170,16 +170,22 @@ public sealed partial class JsParser
         return new EmptyStatement(t.Start, t.End);
     }
 
-    /// <summary>§14.11 / §14.11.1 — the <c>with</c> statement is a strict-mode
-    /// SyntaxError (the canonical strict early error). The engine does not
-    /// otherwise implement <c>with</c>, so the sloppy form is unsupported and
-    /// also surfaces as a parse error.</summary>
-    private Statement ParseWith()
+    /// <summary>§14.11 / §14.11.1 — the <c>with</c> statement. A strict-mode
+    /// <c>with</c> is the canonical strict early error (SyntaxError). The sloppy
+    /// form parses to a <see cref="WithStatement"/>: the compiler lowers it to an
+    /// object Environment Record pushed for the body so unqualified name lookups
+    /// consult the object first (§9.1.1.2).</summary>
+    private WithStatement ParseWith()
     {
         var start = _current.Start;
         if (_strict)
             throw new JsParseException("'with' statements are not allowed in strict mode", start);
-        throw new JsParseException("'with' statements are not supported", start);
+        Advance(); // 'with'
+        Expect(JsTokenKind.LParen, "( expected after 'with'");
+        var obj = ParseExpressionNoEof();
+        Expect(JsTokenKind.RParen, "expected ')' to close with-head");
+        var body = ParseSubStatement();
+        return new WithStatement(obj, body, start, body.End);
     }
 
     private ExpressionStatement ParseExpressionStatement()
@@ -449,6 +455,13 @@ public sealed partial class JsParser
     {
         var start = _current.Start;
         var label = _current.Lexeme;
+        // §13.3.10.1 / §14.4 — `await` may not be a LabelIdentifier in an async
+        // context, and `yield` may not be one in a generator (it arrives here as
+        // an Identifier only outside a generator; the in-generator `yield:` form
+        // is rejected earlier as a yield expression).
+        if (_inAsync && label == "await")
+            throw new JsParseException(
+                "'await' may not be used as a label in an async context", start);
         Advance(); // identifier
         Advance(); // ':'
         // §14.13.1 — a LabelledStatement body is a LabelledItem, which forbids
@@ -591,6 +604,7 @@ public sealed partial class JsParser
         Advance(); // 'function'
         var generator = Match(JsTokenKind.Star);
         var savedStrict = _strict;
+        var (savedAsync, savedGen) = (_inAsync, _inGenerator);
         try
         {
             Identifier? fnName = null;
@@ -599,6 +613,11 @@ public sealed partial class JsParser
                 var tok = Advance();
                 fnName = new Identifier(tok.Lexeme, tok.Start, tok.End);
             }
+            // §15 — a function establishes a fresh await/yield context for its
+            // own parameters and body (an async/generator turns the keyword on;
+            // an ordinary function turns it off, shadowing any enclosing one).
+            _inAsync = isAsync;
+            _inGenerator = generator;
             Expect(JsTokenKind.LParen, "( expected after function expression");
             var parameters = ParseParameterList();
             Expect(JsTokenKind.RParen, "expected ')'");
@@ -612,7 +631,7 @@ public sealed partial class JsParser
             return new FunctionExpression(fnName, parameters, body, generator, start, body.End,
                 Async: isAsync, Strict: strict);
         }
-        finally { _strict = savedStrict; }
+        finally { _strict = savedStrict; (_inAsync, _inGenerator) = (savedAsync, savedGen); }
     }
 
     private FunctionDeclaration ParseFunctionDeclaration()
@@ -628,8 +647,12 @@ public sealed partial class JsParser
         var nameTok = Expect(JsTokenKind.Identifier, "function name expected");
         var name = new Identifier(nameTok.Lexeme, nameTok.Start, nameTok.End);
         var savedStrict = _strict;
+        var (savedAsync, savedGen) = (_inAsync, _inGenerator);
         try
         {
+            // §15 — fresh await/yield context for this function's params + body.
+            _inAsync = isAsync;
+            _inGenerator = generator;
             Expect(JsTokenKind.LParen, "( expected after function name");
             var parameters = ParseParameterList();
             Expect(JsTokenKind.RParen, "expected ')'");
@@ -643,7 +666,7 @@ public sealed partial class JsParser
             return new FunctionDeclaration(name, parameters, body, generator, start, body.End,
                 Async: isAsync, Strict: strict);
         }
-        finally { _strict = savedStrict; }
+        finally { _strict = savedStrict; (_inAsync, _inGenerator) = (savedAsync, savedGen); }
     }
 
     // -----------------------------------------------------------------------

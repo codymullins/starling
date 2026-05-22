@@ -162,6 +162,21 @@ public static class Disassembler
                       .Append(" → ").Append((i + offset).ToString("D4"));
                     break;
                 }
+                // u16 nameIdx + i16 missOffset — with-aware identifier opcodes
+                case Opcode.WithLoadOrMiss:
+                case Opcode.WithLoadMethodOrMiss:
+                case Opcode.WithStoreOrMiss:
+                case Opcode.WithDeleteOrMiss:
+                {
+                    var nameIdx = BinaryPrimitives.ReadUInt16LittleEndian(code.AsSpan(i, 2));
+                    i += 2;
+                    var miss = BinaryPrimitives.ReadInt16LittleEndian(code.AsSpan(i, 2));
+                    i += 2;
+                    sb.Append(op).Append(' ').Append(nameIdx).Append(' ').Append(miss);
+                    sb.Append("  ; ").Append(FormatConstant(chunk.Constants[nameIdx]))
+                      .Append(" miss→").Append((i + miss).ToString("D4"));
+                    break;
+                }
                 case Opcode.YieldDelegate:
                     sb.Append(op);
                     break;

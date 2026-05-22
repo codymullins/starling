@@ -174,6 +174,10 @@ public sealed partial class JsCompiler
                     || (tr.Finalizer is not null && StatementHasTopLevelAwait(tr.Finalizer));
             case LabeledStatement ls2:
                 return StatementHasTopLevelAwait(ls2.Body);
+            case WithStatement ws2:
+                // `with` is sloppy-only (modules are strict) — included for
+                // completeness so the traversal is total.
+                return ExprHasTopLevelAwait(ws2.Object) || StatementHasTopLevelAwait(ws2.Body);
             case VariableDeclaration vd:
                 foreach (var d in vd.Declarations)
                     if (d.Init is not null && ExprHasTopLevelAwait(d.Init)) return true;

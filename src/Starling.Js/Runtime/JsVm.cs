@@ -286,6 +286,43 @@ public sealed class JsVm
         // outer C# catch(JsThrow) and the Return opcode handler consult.
         var tryStack = new Stack<TryFrame>();
 
+        // §14.11 / §9.1.1.2 — stack of object Environment Records installed by
+        // the running `with` statements (innermost last). The with-aware
+        // opcodes consult it for unqualified name resolution. Lazily created so
+        // the common (no-`with`) path allocates nothing. Each `with` body wraps
+        // its PopWith in a finally, so abrupt completions unwind it correctly.
+        // §10.2.1 — a function whose body was compiled inside a `with` seeds its
+        // frame's with-stack from the object Environment Records captured at
+        // closure-creation time, so its free identifiers resolve against them.
+        List<JsObject>? withStack = currentFunction?.CapturedWith is { Count: > 0 } cap
+            ? new List<JsObject>(cap)
+            : null;
+
+        // §9.1.1.2.1 HasBinding — does object Environment Record `obj` have a
+        // usable binding for `name`? True when HasProperty(obj, name) and the
+        // name is not blocked by the object's @@unscopables list.
+        bool WithHasBinding(JsObject obj, string name)
+        {
+            if (!AbstractOperations.HasProperty(obj, name)) return false;
+            var unscopables = AbstractOperations.Get(this, obj, JsPropertyKey.Symbol(Intrinsics.SymbolCtor.Unscopables));
+            if (unscopables.IsObject)
+            {
+                var blocked = AbstractOperations.Get(this, unscopables.AsObject, name);
+                if (JsValue.ToBoolean(blocked)) return false;
+            }
+            return true;
+        }
+
+        // Find the innermost with-object that provides a binding for `name`,
+        // or null if none does (so the static fallback applies).
+        JsObject? FindWithBinding(string name)
+        {
+            if (withStack is null) return null;
+            for (var i = withStack.Count - 1; i >= 0; i--)
+                if (WithHasBinding(withStack[i], name)) return withStack[i];
+            return null;
+        }
+
         while (true)
         {
             JsThrow? rethrow = null;
@@ -880,6 +917,10 @@ public sealed class JsVm
                     // `prototype`/`name`/`length` own properties. The template
                     // in the constant pool stays untouched.
                     var fn = JsFunction.CreateInstance(_runtime.Realm, template, Array.Empty<JsValue>());
+                    // §14.11 / §10.2.1 — capture the active with-objects so the
+                    // function body resolves free identifiers against them.
+                    if (template.Body.CapturesWith && withStack is { Count: > 0 })
+                        fn.CapturedWith = withStack.ToArray();
                     Push(JsValue.Object(fn));
                     break;
                 }
@@ -899,6 +940,11 @@ public sealed class JsVm
                     // it inherits Function.prototype and gets a per-call
                     // `prototype` own-property.
                     var closure = JsFunction.CreateInstance(_runtime.Realm, template, captured);
+                    // §14.11 / §10.2.1 — capture the active with-objects (see
+                    // LoadFunction) so the closure body resolves free identifiers
+                    // against the enclosing object Environment Records.
+                    if (template.Body.CapturesWith && withStack is { Count: > 0 })
+                        closure.CapturedWith = withStack.ToArray();
                     Push(JsValue.Object(closure));
                     break;
                 }
@@ -1577,6 +1623,85 @@ public sealed class JsVm
                 {
                     thisV = Pop();
                     _currentDerivedThis = thisV;
+                    break;
+                }
+
+                // ----- with statement (§14.11 / §9.1.1.2) -----
+                case Opcode.PushWith:
+                {
+                    // §14.11.2 — ToObject the head value and install it as an
+                    // object Environment Record for the body.
+                    var v = Pop();
+                    var envObj = AbstractOperations.ToObject(_runtime.Realm, v);
+                    (withStack ??= new List<JsObject>()).Add(envObj);
+                    break;
+                }
+                case Opcode.PopWith:
+                {
+                    if (withStack is { Count: > 0 }) withStack.RemoveAt(withStack.Count - 1);
+                    break;
+                }
+                case Opcode.WithLoadOrMiss:
+                {
+                    var name = (string)constants[ReadU16()]!;
+                    var miss = ReadI16();
+                    var obj = FindWithBinding(name);
+                    if (obj is not null)
+                    {
+                        _lastLoadName = name;
+                        Push(AbstractOperations.Get(this, obj, name, JsValue.Object(obj)));
+                        ip += miss;
+                    }
+                    // miss: fall through to the static fallback the compiler emitted.
+                    break;
+                }
+                case Opcode.WithLoadMethodOrMiss:
+                {
+                    var name = (string)constants[ReadU16()]!;
+                    var miss = ReadI16();
+                    var obj = FindWithBinding(name);
+                    if (obj is not null)
+                    {
+                        // §9.1.1.2 WithBaseObject: the call's `this` is the
+                        // binding object — push [withObj, fn] for CallMethod.
+                        _lastLoadName = name;
+                        Push(JsValue.Object(obj));
+                        Push(AbstractOperations.Get(this, obj, name, JsValue.Object(obj)));
+                        ip += miss;
+                    }
+                    break;
+                }
+                case Opcode.WithStoreOrMiss:
+                {
+                    var name = (string)constants[ReadU16()]!;
+                    var miss = ReadI16();
+                    var obj = FindWithBinding(name);
+                    if (obj is not null)
+                    {
+                        var value = Pop();
+                        var ok = AbstractOperations.Set(this, obj, name, value, JsValue.Object(obj));
+                        if (!ok && frameStrict)
+                            throw new JsThrow(_runtime.Realm.NewTypeError(
+                                "Cannot assign to read-only property '" + name + "'"));
+                        ip += miss;
+                    }
+                    // miss: leave the value on the stack for the static store.
+                    break;
+                }
+                case Opcode.WithDeleteOrMiss:
+                {
+                    var name = (string)constants[ReadU16()]!;
+                    var miss = ReadI16();
+                    var obj = FindWithBinding(name);
+                    if (obj is not null)
+                    {
+                        var ok = obj.Delete(name);
+                        if (!ok && frameStrict)
+                            throw new JsThrow(_runtime.Realm.NewTypeError(
+                                "Cannot delete property '" + name + "'"));
+                        Push(JsValue.Boolean(ok));
+                        ip += miss;
+                    }
                     break;
                 }
                 case Opcode.CallSuperCtor:

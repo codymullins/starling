@@ -133,11 +133,60 @@ public sealed partial class JsCompiler
     /// case.</summary>
     private int _tryDepth;
 
+    /// <summary>§14.11 — number of <c>with</c> object Environment Records that
+    /// lexically enclose the code currently being compiled in THIS function.
+    /// While &gt; 0, every unqualified identifier reference (load / store /
+    /// update / typeof / delete / call) routes through the with-aware opcodes
+    /// (<see cref="Opcode.WithLoadOrMiss"/> etc.) so the with-object is consulted
+    /// before the statically-resolved binding. A nested function body resets
+    /// this to 0 (a <c>with</c> object never extends into a nested function's
+    /// own free-identifier resolution unless it too is textually inside the
+    /// <c>with</c>; that nesting is handled by the parent's upvalue capture).</summary>
+    private int _withDepth;
+
     public JsCompiler() : this(parent: null) { }
 
     private JsCompiler(JsCompiler? parent)
     {
         _parent = parent;
+    }
+
+    /// <summary>§14.11 / §10.2.1 — configure this (child) compiler to inherit the
+    /// enclosing <c>with</c> environment. When the parent was inside a
+    /// <c>with</c> (<paramref name="enclosingWithDepth"/> &gt; 0) and this body
+    /// is NOT strict (a strict body cannot reference a `with`, since `with` is
+    /// sloppy-only — but a nested strict function still severs the dynamic
+    /// scope), free identifiers route through the with-aware opcodes and the
+    /// chunk is flagged so the VM seeds the callee frame's with-stack from the
+    /// captured snapshot.</summary>
+    private void ConfigureWithCapture(int enclosingWithDepth, bool bodyIsStrict)
+    {
+        if (enclosingWithDepth <= 0 || bodyIsStrict) return;
+        _withDepth = enclosingWithDepth;
+        _capturedWithBase = enclosingWithDepth;
+        _b.CapturesWith = true;
+    }
+
+    /// <summary>§9.1.1.2 — the number of inherited (captured) <c>with</c>
+    /// environments that sit OUTSIDE this function's own variable environment.
+    /// A reference to one of this function's own bindings (param / var /
+    /// function / lexical local) must NOT consult those captured with-objects,
+    /// since they are lexically outer to the binding. Only a <c>with</c>
+    /// statement of THIS function (which pushes its env INNER to the locals at
+    /// runtime) may shadow a local — i.e. when <see cref="_withDepth"/> exceeds
+    /// this base.</summary>
+    private int _capturedWithBase;
+
+    /// <summary>Should a reference to <paramref name="name"/> route through the
+    /// with-aware opcodes? Free identifiers (no current-function local) consult
+    /// every active with-object. A name that resolves to a current-function
+    /// local is only shadowable by a <c>with</c> pushed inside this function
+    /// (depth above the captured base), never by an inherited/captured one.</summary>
+    private bool ShouldRouteWith(string name)
+    {
+        if (_withDepth <= 0) return false;
+        if (TryResolveLocal(name, out _)) return _withDepth > _capturedWithBase;
+        return true;
     }
 
     /// <summary>gap:closure-write-back — is this name marked for shared-cell
@@ -351,6 +400,9 @@ public sealed partial class JsCompiler
             // the body can resolve free identifiers as upvalues captured here.
             var sub = new JsCompiler(parent: this);
             sub._b.IsStrict = fd.Strict;
+            // §14.11 / §10.2.1 — a function declared lexically inside a `with`
+            // inherits the enclosing object Environment Records.
+            sub.ConfigureWithCapture(_withDepth, fd.Strict);
             sub.RunCaptureAnalysisForFunction(fd.Params, fd.Body.Body);
             sub.EmitFunctionBody(fd);
             var chunk = sub._b.Build(fd.Name.Name);
@@ -607,6 +659,7 @@ public sealed partial class JsCompiler
                 if (tr.Finalizer is not null) PreallocateCapturedInStatement(tr.Finalizer);
                 return;
             case LabeledStatement ls: PreallocateCapturedInStatement(ls.Body); return;
+            case WithStatement ws: PreallocateCapturedInStatement(ws.Body); return;
         }
     }
 
@@ -850,6 +903,9 @@ public sealed partial class JsCompiler
             case LabeledStatement ls:
                 EmitLabeledStatement(ls);
                 return;
+            case WithStatement ws:
+                EmitWith(ws);
+                return;
         }
         throw new NotSupportedException(
             $"compiler: statement kind '{s.GetType().Name}' not yet supported (see wp:M3-03 notes).");
@@ -956,6 +1012,49 @@ public sealed partial class JsCompiler
         }
 
         if (jumpPastHandler >= 0) _b.PatchJump(jumpPastHandler);
+    }
+
+    /// <summary>§14.11 — lower a <c>with</c> statement. Evaluate the object,
+    /// install an object Environment Record (<see cref="Opcode.PushWith"/>),
+    /// then run the body with the with-aware identifier path active. The body
+    /// is wrapped in an implicit <c>finally { PopWith }</c> so the environment
+    /// record is removed on every completion (normal, throw, break, continue,
+    /// return) — reusing the existing try-frame finalizer machinery.</summary>
+    private void EmitWith(WithStatement ws)
+    {
+        // §14.11.2 step 1–4: evaluate the head OUTSIDE the protected region so a
+        // throw during evaluation / ToObject doesn't run the PopWith finalizer
+        // (nothing has been pushed yet).
+        EmitExpression(ws.Object);
+        _b.Emit(Opcode.PushWith);
+
+        // Synthetic try { body } finally { PopWith }.
+        _b.Emit(Opcode.EnterTry);
+        var catchOperandPos = _b.Position;
+        _b.EmitU16Raw(0xFFFF);              // no catch handler
+        var finallyOperandPos = _b.Position;
+        _b.EmitU16Raw(0xFFFF);
+
+        _tryDepth++;
+        _withDepth++;
+        try
+        {
+            EmitStatement(ws.Body);
+        }
+        finally
+        {
+            _withDepth--;
+            _tryDepth--;
+        }
+        _b.Emit(Opcode.LeaveTry);
+
+        var finallyTargetDelta = _b.Position - (finallyOperandPos + 2);
+        if (finallyTargetDelta is < short.MinValue or > short.MaxValue)
+            throw new InvalidOperationException("with finally offset overflows i16");
+        _b.PatchI16(finallyOperandPos, (short)finallyTargetDelta);
+
+        _b.Emit(Opcode.PopWith);
+        _b.Emit(Opcode.EndFinally);
     }
 
     /// <summary>wp:M3-03e — emit a labeled statement. Strips the label and
@@ -1144,10 +1243,26 @@ public sealed partial class JsCompiler
                 if (d.Id is Identifier id)
                 {
                     EmitNamedEvaluation(d.Init, id.Name);
+                    // §14.11 — `var x = e` inside a `with` evaluates the
+                    // initializer assignment in the running context, so the write
+                    // consults the object Environment Record first (it may have an
+                    // own `x` property), falling back to the hoisted var binding.
+                    // A var hoisted to THIS function's scope is only shadowable by
+                    // a `with` pushed in this function (ShouldRouteWith handles
+                    // the captured-vs-local distinction).
+                    if (ShouldRouteWith(id.Name))
+                    {
+                        EmitWithGuarded(Opcode.WithStoreOrMiss, id.Name, () =>
+                        {
+                            if (IsScriptTop) _b.EmitU16(Opcode.StoreGlobal, _b.AddConstant(id.Name));
+                            else if (TryResolveLocal(id.Name, out var s)) EmitStoreLocalSlot(s);
+                            else _b.EmitU16(Opcode.StoreGlobal, _b.AddConstant(id.Name));
+                        });
+                    }
                     // gap:script-top-var-not-global — at script top, the
                     // binding is a global property (not a local slot), so
                     // the initializer write routes through StoreGlobal.
-                    if (IsScriptTop)
+                    else if (IsScriptTop)
                     {
                         _b.EmitU16(Opcode.StoreGlobal, _b.AddConstant(id.Name));
                     }
@@ -1655,9 +1770,12 @@ public sealed partial class JsCompiler
     /// </remarks>
     private void EmitBreakOrContinue(Starling.Js.Lex.JsPosition where, bool isBreak, string? label)
     {
+        // §14.9 / §14.11 — an unmatched break/continue (no enclosing iteration
+        // or switch, or an unresolved label) is an early SyntaxError, not a host
+        // failure; surface it as a parse error.
         if (_loops.Count == 0)
-            throw new InvalidOperationException(
-                $"SyntaxError: Illegal {(isBreak ? "break" : "continue")} statement at {where.Line}:{where.Column} (must be inside a loop or switch).");
+            throw new Parse.JsParseException(
+                $"Illegal {(isBreak ? "break" : "continue")} statement (must be inside a loop or switch)", where);
 
         LoopFrame? targetFrame = null;
 
@@ -1670,14 +1788,14 @@ public sealed partial class JsCompiler
             {
                 if (f.Label != label) continue;
                 if (!isBreak && f.IsSwitch)
-                    throw new InvalidOperationException(
-                        $"SyntaxError: Illegal 'continue {label}' — label '{label}' is a switch, not an iteration statement (compiler at {where.Line}:{where.Column}).");
+                    throw new Parse.JsParseException(
+                        $"Illegal 'continue {label}' — label '{label}' is a switch, not an iteration statement", where);
                 targetFrame = f;
                 break;
             }
             if (targetFrame is null)
-                throw new InvalidOperationException(
-                    $"SyntaxError: Label '{label}' not found for '{(isBreak ? "break" : "continue")}' statement at {where.Line}:{where.Column}.");
+                throw new Parse.JsParseException(
+                    $"Label '{label}' not found for '{(isBreak ? "break" : "continue")}' statement", where);
         }
         else if (!isBreak)
         {
@@ -1687,8 +1805,8 @@ public sealed partial class JsCompiler
                 if (!f.IsSwitch) { targetFrame = f; break; }
             }
             if (targetFrame is null)
-                throw new InvalidOperationException(
-                    $"SyntaxError: Illegal 'continue' — not inside an iteration statement at {where.Line}:{where.Column}.");
+                throw new Parse.JsParseException(
+                    "Illegal 'continue' — not inside an iteration statement", where);
         }
         else
         {
@@ -1993,7 +2111,71 @@ public sealed partial class JsCompiler
         bool isAsync = false, bool isGenerator = false, bool strict = false)
         => new(name, @params, body, Generator: isGenerator, start, end, Async: isAsync, Strict: strict);
 
+    /// <summary>§14.11 — emit a with-aware opcode that on a runtime hit (an
+    /// enclosing object Environment Record has the binding) jumps PAST the
+    /// statically-compiled fallback that <paramref name="emitFallback"/> emits.
+    /// On a miss the opcode falls through to that fallback. The opcode operand
+    /// layout is <c>[u16 nameIdx][i16 missJump]</c>; we patch the jump to land
+    /// after the fallback.</summary>
+    private void EmitWithGuarded(Opcode op, string name, Action emitFallback)
+    {
+        _b.EmitU16(op, _b.AddConstant(name));
+        var jumpPos = _b.Position;
+        _b.EmitU16Raw(0); // i16 miss-jump placeholder
+        emitFallback();
+        var delta = _b.Position - (jumpPos + 2);
+        if (delta is < short.MinValue or > short.MaxValue)
+            throw new InvalidOperationException("with-guard jump overflows i16");
+        _b.PatchI16(jumpPos, (short)delta);
+    }
+
     private void EmitIdLoad(string name)
+    {
+        if (ShouldRouteWith(name))
+        {
+            EmitWithGuarded(Opcode.WithLoadOrMiss, name, () => EmitIdLoadStatic(name));
+            return;
+        }
+        EmitIdLoadStatic(name);
+    }
+
+    /// <summary>Emit a store of the value on top of the stack into the binding
+    /// <paramref name="name"/>. With-aware: inside a <c>with</c> body the store
+    /// first attempts the object Environment Records, falling back to the static
+    /// local/upvalue/global store. <paramref name="needsTdzCheck"/> selects the
+    /// TDZ-checked store form for plain (non-compound) lexical writes.</summary>
+    private void EmitIdStore(string name, bool needsTdzCheck)
+    {
+        if (ShouldRouteWith(name))
+        {
+            EmitWithGuarded(Opcode.WithStoreOrMiss, name,
+                () => EmitIdStoreStatic(name, needsTdzCheck));
+            return;
+        }
+        EmitIdStoreStatic(name, needsTdzCheck);
+    }
+
+    private void EmitIdStoreStatic(string name, bool needsTdzCheck)
+    {
+        if (TryResolveLocal(name, out var slot))
+        {
+            if (needsTdzCheck && IsLexicalLocal(name))
+            {
+                if (IsSlotCaptured(slot)) _b.EmitSlot(Opcode.StoreCellLocalChecked, slot);
+                else EmitTdzLocalStore(name, slot);
+            }
+            else EmitStoreLocalSlot(slot);
+        }
+        else if (TryResolveUpvalue(name, out var upIdx))
+        {
+            _b.EmitUpvalue(needsTdzCheck && IsLexicalUpvalue(name)
+                ? Opcode.StoreUpvalueChecked : Opcode.StoreUpvalue, upIdx);
+        }
+        else
+            _b.EmitU16(Opcode.StoreGlobal, _b.AddConstant(name));
+    }
+
+    private void EmitIdLoadStatic(string name)
     {
         if (TryResolveLocal(name, out var slot))
         {
@@ -2093,6 +2275,22 @@ public sealed partial class JsCompiler
     {
         if (up.Argument is Identifier id)
         {
+            // §14.11 — inside a `with`, route the read and the write through the
+            // with-aware load/store so an enclosing object Environment Record
+            // is consulted first. Mirror the Dup ordering of the static arms:
+            // postfix returns the (numeric-coerced) old value, prefix the new.
+            if (ShouldRouteWith(id.Name))
+            {
+                EmitIdLoad(id.Name);                            // [old]
+                _b.EmitU16(Opcode.LoadConst, _b.AddConstant(0.0));
+                _b.Emit(Opcode.Add);                            // [ToNumber(old)]
+                if (!up.Prefix) _b.Emit(Opcode.Dup);            // postfix: keep old
+                _b.EmitU16(Opcode.LoadConst, _b.AddConstant(1.0));
+                _b.Emit(up.Op == "++" ? Opcode.Add : Opcode.Sub);
+                if (up.Prefix) _b.Emit(Opcode.Dup);             // prefix: keep new
+                EmitIdStore(id.Name, needsTdzCheck: false);
+                return;
+            }
             // gap:closure-write-back — try local first, then upvalue, then global.
             if (TryResolveLocal(id.Name, out var slot))
             {
@@ -2220,7 +2418,12 @@ public sealed partial class JsCompiler
                 return;
             }
         }
-        throw new NotSupportedException("update target must be identifier or member expression");
+        // §13.4.1 — the operand of a prefix/postfix ++/-- must be a valid simple
+        // assignment target (an Identifier or MemberExpression). Anything else
+        // (a call, literal, ImportCall, etc.) is an early SyntaxError, not a
+        // host failure.
+        throw new Parse.JsParseException(
+            "invalid increment/decrement operand: not a valid assignment target", up.Start);
     }
 
     /// <summary>gap:delete — lower <c>delete expr</c> per §13.5.1. For
@@ -2249,8 +2452,17 @@ public sealed partial class JsCompiler
         // Non-Reference: evaluate the operand for side effects, drop, push true.
         // (Identifier deletes are also routed here — they are reference-of-an-
         // environment-record per spec; sloppy mode returns true.)
-        if (u.Argument is Identifier)
+        if (u.Argument is Identifier delId)
         {
+            // §14.11 — inside a `with`, `delete name` deletes the property from
+            // the enclosing object Environment Record when present; otherwise
+            // the sloppy-mode identifier delete is a no-op that returns true.
+            if (ShouldRouteWith(delId.Name))
+            {
+                EmitWithGuarded(Opcode.WithDeleteOrMiss, delId.Name,
+                    () => _b.Emit(Opcode.LoadTrue));
+                return;
+            }
             _b.Emit(Opcode.LoadTrue);
             return;
         }
@@ -2307,22 +2519,7 @@ public sealed partial class JsCompiler
             // For a compound assignment the preceding EmitIdLoad already checked
             // the sentinel, so only the plain `=` form needs the checked store.
             var needsTdzCheck = a.Op == "=";
-            if (TryResolveLocal(id.Name, out var slot))
-            {
-                if (needsTdzCheck && IsLexicalLocal(id.Name))
-                {
-                    if (IsSlotCaptured(slot)) _b.EmitSlot(Opcode.StoreCellLocalChecked, slot);
-                    else EmitTdzLocalStore(id.Name, slot);
-                }
-                else EmitStoreLocalSlot(slot);
-            }
-            else if (TryResolveUpvalue(id.Name, out var upIdx))
-            {
-                _b.EmitUpvalue(needsTdzCheck && IsLexicalUpvalue(id.Name)
-                    ? Opcode.StoreUpvalueChecked : Opcode.StoreUpvalue, upIdx);
-            }
-            else
-                _b.EmitU16(Opcode.StoreGlobal, _b.AddConstant(id.Name));
+            EmitIdStore(id.Name, needsTdzCheck);
             return;
         }
         if (a.Target is SuperPropertyExpression sptarget)
@@ -2738,6 +2935,33 @@ public sealed partial class JsCompiler
             return;
         }
 
+        // §14.11 / §9.1.1.2 — a bare-identifier call inside a `with` may resolve
+        // through an object Environment Record. When it does, the call's `this`
+        // binding is that binding object (WithBaseObject), not undefined. Emit a
+        // method-style receiver: WithLoadMethodOrMiss pushes [withObj, fn] on a
+        // hit (and jumps past the fallback); on a miss the fallback pushes
+        // [undefined, fn], so CallMethod with an undefined receiver behaves like
+        // a plain Call.
+        if (!call.Optional && call.Callee is Identifier calleeId && ShouldRouteWith(calleeId.Name))
+        {
+            EmitWithGuarded(Opcode.WithLoadMethodOrMiss, calleeId.Name, () =>
+            {
+                _b.Emit(Opcode.LoadUndefined);   // [undefined]
+                EmitIdLoadStatic(calleeId.Name); // [undefined, fn]
+            });
+            if (hasSpread)
+            {
+                EmitArgsAsArray(call.Arguments);
+                RecordPos(call);
+                _b.Emit(Opcode.CallApplyMethod);
+                return;
+            }
+            foreach (var arg in call.Arguments) EmitExpression(arg);
+            RecordPos(call);
+            _b.Emit(Opcode.CallMethod, (byte)call.Arguments.Count);
+            return;
+        }
+
         EmitExpression(call.Callee);
         if (hasSpread)
         {
@@ -2796,6 +3020,12 @@ public sealed partial class JsCompiler
         // from this scope.
         var sub = new JsCompiler(parent: this);
         sub._b.IsStrict = fe.Strict;
+        // §14.11 / §10.2.1 — a function created lexically inside a `with` carries
+        // the enclosing object Environment Records on its scope chain, so its
+        // body resolves free identifiers with the with-objects consulted first.
+        // (A strict body, e.g. one with its own "use strict", severs this since
+        // `with` is sloppy-only; ConfigureWithCapture handles that.)
+        sub.ConfigureWithCapture(_withDepth, fe.Strict);
         sub.RunCaptureAnalysisForFunction(fe.Params, fe.Body.Body);
         sub.BindFunctionParameters(fe.Params);
         // gap:closure-write-back — pre-allocate captured vars as cell slots
