@@ -20,6 +20,12 @@ public sealed partial class JsParser
     private readonly JsLexer _lex;
     private JsToken _current;
     private int _disallowInDepth;
+    /// <summary>Nesting depth of ordinary (non-arrow) function bodies. Arrow
+    /// functions do NOT have their own <c>new.target</c>; they inherit the
+    /// enclosing function's, so they don't bump this. <c>new.target</c> is an
+    /// early SyntaxError when this is 0 (top-level script / eval / module
+    /// global code) — §13.3.12.</summary>
+    private int _functionDepth;
 
     /// <summary>ES strict mode. True while the parser is inside a strict scope
     /// (a script/function whose directive prologue had <c>"use strict"</c>, code
@@ -277,6 +283,7 @@ public sealed partial class JsParser
                 // §15.3.1 — arrow parameter early errors use the arrow's own
                 // strictness; arrow param lists are always checked for dups.
                 ValidateParameters(@params, strict);
+                CheckParamsVsLexicalBody(@params, block);
                 return new ArrowFunctionExpression(@params, block, IsExpression: false,
                     Async: async, start, block.End, Strict: strict);
             }
@@ -459,7 +466,11 @@ public sealed partial class JsParser
 
     private Expression ParseRelational()
     {
-        var left = ParseShift();
+        return ParseRelationalTail(ParseShift());
+    }
+
+    private Expression ParseRelationalTail(Expression left)
+    {
         while (_current.Kind is JsTokenKind.Lt or JsTokenKind.Gt
                                 or JsTokenKind.LtEq or JsTokenKind.GtEq
                                 or JsTokenKind.Instanceof
@@ -622,6 +633,10 @@ public sealed partial class JsParser
                 throw new JsParseException(
                     $"the only valid meta-property for new is 'new.target' (got 'new.{meta.Lexeme}')",
                     meta.Start);
+            // §13.3.12 — `new.target` is an early SyntaxError outside a function.
+            if (_functionDepth == 0)
+                throw new JsParseException(
+                    "'new.target' is only valid inside a function", start);
             return new NewTargetExpression(start, meta.End);
         }
         // Callee can recurse for `new new X()` etc.
@@ -726,6 +741,13 @@ public sealed partial class JsParser
                 var end = _current.Start;
                 Expect(JsTokenKind.RParen, "expected ')' after call args");
                 node = new CallExpression(node, args, Optional: false, node.Start, end);
+            }
+            else if (Check(JsTokenKind.TemplateNoSubstitution) || Check(JsTokenKind.TemplateHead))
+            {
+                // §13.3.11 TaggedTemplate — `tag`...`` binds tighter than any
+                // surrounding operator and may itself be re-tagged.
+                var quasi = ParseTemplateLiteral();
+                node = new TaggedTemplateExpression(node, quasi, node.Start, quasi.End);
             }
             else break;
         }
@@ -942,6 +964,7 @@ public sealed partial class JsParser
         var start = _current.Start;
         Expect(JsTokenKind.LBrace, "{ expected");
         var props = new List<ObjectProperty>();
+        bool sawProtoData = false;
         while (!Check(JsTokenKind.RBrace))
         {
             // Object spread: { ...other }
@@ -957,7 +980,16 @@ public sealed partial class JsParser
             }
             else
             {
-                props.Add(ParseObjectProperty());
+                var prop = ParseObjectProperty();
+                if (_lastPropertyWasProtoData)
+                {
+                    if (sawProtoData)
+                        throw new JsParseException(
+                            "duplicate __proto__ fields are not allowed in object literals",
+                            prop.Start);
+                    sawProtoData = true;
+                }
+                props.Add(prop);
             }
             if (!Match(JsTokenKind.Comma)) break;
         }
@@ -966,9 +998,15 @@ public sealed partial class JsParser
         return new ObjectExpression(props, start, end);
     }
 
+    /// <summary>Set by <see cref="ParseObjectProperty"/> when the just-parsed
+    /// property was a <c>__proto__ : value</c> data property (B.3.1). Read and
+    /// reset by <see cref="ParseObjectLiteral"/> to enforce the at-most-one rule.</summary>
+    private bool _lastPropertyWasProtoData;
+
     private ObjectProperty ParseObjectProperty()
     {
         var start = _current.Start;
+        _lastPropertyWasProtoData = false;
 
         // Generator / async / async-generator method shorthand (ES2024 §13.2.5):
         //   { *gen(){} }, { async m(){} }, { async *gen(){} }
@@ -1039,6 +1077,10 @@ public sealed partial class JsParser
         if (Match(JsTokenKind.Colon))
         {
             var value = ParseAssignment();
+            // B.3.1 — a `__proto__ : value` data property (literal, non-computed
+            // key) sets the prototype; more than one in an object literal is an
+            // early SyntaxError. Flag this colon-form so the literal can dedup.
+            _lastPropertyWasProtoData = !computed && IsProtoKey(key);
             return new ObjectProperty(key, value,
                 Shorthand: false, Computed: computed, start, value.End);
         }
@@ -1067,6 +1109,16 @@ public sealed partial class JsParser
     /// computed <c>[expr]</c>, string, numeric, identifier, or reserved word.
     /// Returns the key node and whether it was computed. Shared by the data /
     /// method / accessor property forms.</summary>
+    /// <summary>True when a non-computed property key denotes the literal name
+    /// <c>__proto__</c> — an IdentifierName or a StringLiteral. Numeric keys and
+    /// computed keys never qualify (B.3.1).</summary>
+    private static bool IsProtoKey(Expression key) => key switch
+    {
+        Identifier { Name: "__proto__" } => true,
+        StringLiteral { Value: "__proto__" } => true,
+        _ => false,
+    };
+
     private (Expression Key, bool Computed) ParsePropertyKey()
     {
         if (Match(JsTokenKind.LBracket))
@@ -1144,6 +1196,7 @@ public sealed partial class JsParser
             Expect(JsTokenKind.RParen, "expected ')' after method parameters");
             var (body, strict) = ParseFunctionBody();
             ValidateParameters(parameters, strict);
+            CheckParamsVsLexicalBody(parameters, body);
             return (parameters, body, body.End, strict);
         }
         finally { _strict = savedStrict; }

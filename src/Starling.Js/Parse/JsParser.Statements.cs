@@ -27,6 +27,8 @@ public sealed partial class JsParser
             body.Add(ParseProgramStatement());
         }
         var end = _current.End;
+        // §16.1.1 — Script top-level lexical/var early errors.
+        CheckScopeEarlyErrors(body, ScopeKind.TopLevel);
         return new Program(body, start, end, Strict: _strict);
     }
 
@@ -150,6 +152,9 @@ public sealed partial class JsParser
                 body.Add(ParseStatement());
             var end = _current.End;
             Expect(JsTokenKind.RBrace, "expected '}' to close block");
+            // §14.2.1 — Block early errors: no duplicate LexicallyDeclaredNames
+            // and no lexical/var collision.
+            CheckScopeEarlyErrors(body, ScopeKind.Block);
             return new BlockStatement(body, start, end);
         }
         finally
@@ -203,10 +208,12 @@ public sealed partial class JsParser
         Expect(JsTokenKind.LParen, "( expected after 'if'");
         var test = ParseExpressionNoEof();
         Expect(JsTokenKind.RParen, "expected ')'");
-        var cons = ParseStatement();
+        // Annex B.3.4 — a sloppy-mode FunctionDeclaration is permitted as the
+        // body of an if (and its else).
+        var cons = ParseSubStatement(allowSloppyFunction: true);
         Statement? alt = null;
         if (Match(JsTokenKind.Else))
-            alt = ParseStatement();
+            alt = ParseSubStatement(allowSloppyFunction: true);
         return new IfStatement(test, cons, alt, start, (alt ?? cons).End);
     }
 
@@ -217,7 +224,7 @@ public sealed partial class JsParser
         Expect(JsTokenKind.LParen, "( expected after 'while'");
         var test = ParseExpressionNoEof();
         Expect(JsTokenKind.RParen, "expected ')'");
-        var body = ParseStatement();
+        var body = ParseSubStatement();
         return new WhileStatement(test, body, start, body.End);
     }
 
@@ -225,7 +232,7 @@ public sealed partial class JsParser
     {
         var start = _current.Start;
         Advance(); // 'do'
-        var body = ParseStatement();
+        var body = ParseSubStatement();
         Expect(JsTokenKind.While, "expected 'while' after do-block");
         Expect(JsTokenKind.LParen, "( expected after 'while'");
         var test = ParseExpressionNoEof();
@@ -304,7 +311,8 @@ public sealed partial class JsParser
         Expression? update = null;
         if (!Check(JsTokenKind.RParen)) update = ParseExpressionNoEof();
         Expect(JsTokenKind.RParen, "expected ')' to close for-loop header");
-        var body = ParseStatement();
+        var body = ParseSubStatement();
+        CheckForHeadLexicalVsBodyVar(init, body);
         return new ForStatement(init, test, update, body, start, body.End);
     }
 
@@ -317,7 +325,8 @@ public sealed partial class JsParser
         Advance(); // 'in'
         var right = ParseExpressionNoEof();
         Expect(JsTokenKind.RParen, "expected ')' after for-in head");
-        var body = ParseStatement();
+        var body = ParseSubStatement();
+        CheckForHeadLexicalVsBodyVar(left, body);
         return new ForInStatement(left, right, body, start, body.End);
     }
 
@@ -327,7 +336,8 @@ public sealed partial class JsParser
         Advance(); // contextual 'of'
         var right = ParseExpressionNoEof();
         Expect(JsTokenKind.RParen, "expected ')' after for-of head");
-        var body = ParseStatement();
+        var body = ParseSubStatement();
+        CheckForHeadLexicalVsBodyVar(left, body);
         return new ForOfStatement(left, right, body, start, body.End, isAwait);
     }
 
@@ -440,7 +450,10 @@ public sealed partial class JsParser
         var label = _current.Lexeme;
         Advance(); // identifier
         Advance(); // ':'
-        var body = ParseStatement();
+        // §14.13.1 — a LabelledStatement body is a LabelledItem, which forbids
+        // lexical/class declarations; Annex B.3.2 permits a sloppy plain
+        // function declaration.
+        var body = ParseSubStatement(allowSloppyFunction: true);
         return new LabeledStatement(label, body, start, body.End);
     }
 
@@ -482,6 +495,11 @@ public sealed partial class JsParser
         }
         var end = _current.End;
         Expect(JsTokenKind.RBrace, "expected '}' to close switch");
+        // §14.12.1 — the whole CaseBlock is one lexical scope: concatenate
+        // every clause's StatementList and apply the Block early errors.
+        var caseBody = new List<Statement>();
+        foreach (var c in cases) caseBody.AddRange(c.Consequent);
+        CheckScopeEarlyErrors(caseBody, ScopeKind.Block);
         return new SwitchStatement(disc, cases, start, end);
     }
 
@@ -494,6 +512,16 @@ public sealed partial class JsParser
         var start = _current.Start;
         Advance(); // var / let / const
         var decl = ParseVarBody(kind, start);
+        // §14.3.1 — a `const` declaration outside a for-in/for-of head must
+        // initialize every binding. (The for-head form is parsed via
+        // ParseVarHeadless and never reaches here.)
+        if (kind == "const")
+        {
+            foreach (var d in decl.Declarations)
+                if (d.Init is null)
+                    throw new JsParseException(
+                        "missing initializer in const declaration", d.Start);
+        }
         ConsumeSemicolonOrAsi();
         return decl;
     }
@@ -517,6 +545,10 @@ public sealed partial class JsParser
             // §13.3.1.1 — `eval`/`arguments`/strict-reserved binding names error
             // in strict code (covers var/let/const, simple or destructured).
             CheckPatternBindingNames(idNode);
+            // §14.3.1.1 — a LexicalDeclaration (let/const) may not bind the
+            // name `let` (in any mode). `var let` is legal in sloppy code.
+            if (kind is "let" or "const")
+                CheckLexicalBindingNotLet(idNode);
             Expression? init = null;
             if (Match(JsTokenKind.Eq))
                 init = ParseAssignment();
@@ -525,7 +557,20 @@ public sealed partial class JsParser
             if (!Match(JsTokenKind.Comma)) break;
         }
         var end = decls[^1].End;
-        return new VariableDeclaration(kind, decls, start, end);
+        var result = new VariableDeclaration(kind, decls, start, end);
+        // §14.3.1.1 — a single LexicalDeclaration's BoundNames must have no
+        // duplicate entries (`let [x, x] = …`, `const a, a;`). `var` permits
+        // repeats. (Var/let/const collisions across statements are handled by
+        // the scope-level early-error pass.)
+        if (kind is "let" or "const")
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var n in BoundNamesOf(result))
+                if (!seen.Add(n.Name))
+                    throw new JsParseException(
+                        $"'{n.Name}' has already been declared", n.Pos);
+        }
+        return result;
     }
 
     /// <summary>
@@ -561,6 +606,7 @@ public sealed partial class JsParser
             // function's OWN strictness (the body may have flipped to strict).
             if (strict && fnName is not null) CheckBindingIdentifier(fnName.Name, fnName.Start);
             ValidateParameters(parameters, strict);
+            CheckParamsVsLexicalBody(parameters, body);
             return new FunctionExpression(fnName, parameters, body, generator, start, body.End,
                 Async: isAsync, Strict: strict);
         }
@@ -590,6 +636,7 @@ public sealed partial class JsParser
             // strictness (a "use strict" body directive applies to both).
             if (strict) CheckBindingIdentifier(name.Name, name.Start);
             ValidateParameters(parameters, strict);
+            CheckParamsVsLexicalBody(parameters, body);
             return new FunctionDeclaration(name, parameters, body, generator, start, body.End,
                 Async: isAsync, Strict: strict);
         }

@@ -214,6 +214,8 @@ public sealed partial class JsParser
         Expect(JsTokenKind.LBrace, "{ expected");
         var savedNoIn = _disallowInDepth;
         _disallowInDepth = 0;
+        // An ordinary function body provides a `new.target` binding (§13.3.12).
+        _functionDepth++;
         try
         {
             var body = new List<Statement>();
@@ -223,11 +225,14 @@ public sealed partial class JsParser
                 body.Add(ParseStatement());
             var end = _current.End;
             Expect(JsTokenKind.RBrace, "expected '}' to close block");
+            // §15.2.1 — the FunctionBody's own lexical/var early errors.
+            CheckScopeEarlyErrors(body, ScopeKind.TopLevel);
             return (new BlockStatement(body, start, end), _strict);
         }
         finally
         {
             _disallowInDepth = savedNoIn;
+            _functionDepth--;
         }
     }
 }
