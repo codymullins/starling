@@ -43,7 +43,10 @@ public class FunctionTests
     [TestMethod]
     public void Anonymous_function_expression_has_empty_name()
     {
-        var r = Run("var g = function() {}; g.name;");
+        // §named-evaluation: `var g = function(){}` would infer name "g", so use
+        // a context that is NOT a NamedEvaluation target (an inline argument) to
+        // observe the truly-anonymous empty name.
+        var r = Run("var arr = [function() {}]; arr[0].name;");
         r.AsString.Should().Be("");
     }
 

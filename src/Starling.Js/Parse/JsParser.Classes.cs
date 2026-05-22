@@ -244,6 +244,7 @@ public sealed partial class JsParser
             // it). Validate params under strict semantics.
             (body, _) = ParseFunctionBody();
             ValidateParameters(parameters, strict: true);
+            CheckParamsVsLexicalBody(parameters, body);
             endPos = body.End;
         }
         finally

@@ -218,7 +218,7 @@ public static class AbstractOperations
     public static JsValue Call(JsVm? vm, JsValue callee, JsValue thisValue, JsValue[] args)
     {
         if (!callee.IsObject)
-            throw new JsThrow(JsValue.String($"not a function: {JsValue.ToStringValue(callee)}"));
+            throw NotAFunction(vm, JsValue.ToStringValue(callee));
         return callee.AsObject switch
         {
             JsNativeFunction nat => nat.Body(thisValue, args),
@@ -228,9 +228,17 @@ public static class AbstractOperations
             JsBoundFunction bf => Call(vm, JsValue.Object(bf.Target), bf.BoundThis,
                 ConcatBoundArgs(bf.BoundArgs, args)),
             JsProxy proxy => proxy.ProxyCall(thisValue, args),
-            _ => throw new JsThrow(JsValue.String($"not a function: {callee.AsObject}")),
+            _ => throw NotAFunction(vm, callee.AsObject.ToString() ?? "object"),
         };
     }
+
+    /// <summary>§7.3.14 Call step 2 — calling a non-callable is a TypeError.
+    /// Uses the realm's TypeError when a VM is available so embedders observe a
+    /// real <c>TypeError</c> (string fallback only for the realm-less path).</summary>
+    private static JsThrow NotAFunction(JsVm? vm, string detail) =>
+        vm is not null
+            ? new JsThrow(vm.Realm.NewTypeError($"not a function: {detail}"))
+            : new JsThrow(JsValue.String($"not a function: {detail}"));
 
     /// <summary>§7.3.15 Construct — analogous for <c>new</c>.</summary>
     public static JsValue Construct(JsVm? vm, JsValue ctor, JsValue[] args, JsObject? newTarget = null)
@@ -359,22 +367,44 @@ public static class AbstractOperations
     }
 
     /// <summary>§7.4.10 IteratorClose. Invokes the iterator's <c>return</c>
-    /// method if present. Used by <c>for…of</c> on abrupt completion.</summary>
+    /// method if present. Used by <c>for…of</c> and destructuring on abrupt
+    /// completion. When the wrapped completion is NOT itself throwing
+    /// (<paramref name="isThrowing"/> false), a <c>return()</c> that throws
+    /// propagates (step 8) and a <c>return()</c> whose result is not an Object
+    /// is a TypeError (step 9); when the completion IS throwing, the original
+    /// error wins and any close error is swallowed (step 7).</summary>
     public static void IteratorClose(JsVm? vm, IteratorRecord record, bool isThrowing = false)
     {
         if (!record.Iterator.IsObject) return;
-        var ret = GetMethod(vm, record.Iterator, "return");
-        if (ret.IsUndefined || ret.IsNull) return;
+        JsValue ret;
         try
         {
-            Call(vm, ret, record.Iterator, Array.Empty<JsValue>());
+            ret = GetMethod(vm, record.Iterator, "return");
         }
         catch
         {
-            // §7.4.10 step 7: if the inner completion is throwing already, the
-            // original error wins; we never propagate close errors.
-            if (!isThrowing) throw;
+            // Resolving `return` (a Get + IsCallable check) may itself throw.
+            if (isThrowing) return;
+            throw;
         }
+        if (ret.IsUndefined || ret.IsNull) return;
+        JsValue innerResult;
+        try
+        {
+            innerResult = Call(vm, ret, record.Iterator, Array.Empty<JsValue>());
+        }
+        catch
+        {
+            // §7.4.10 step 7/8 — swallow only when the inner completion is
+            // already a throw; otherwise the return() error propagates.
+            if (isThrowing) return;
+            throw;
+        }
+        // §7.4.10 step 9 — only validated on a normal inner completion.
+        if (!isThrowing && !innerResult.IsObject)
+            throw new JsThrow(vm is not null
+                ? vm.Realm.NewTypeError("iterator return() result is not an object")
+                : JsValue.String("iterator return() result is not an object"));
     }
 
     /// <summary>§7.3.11 GetMethod — returns <see cref="JsValue.Undefined"/>
@@ -394,7 +424,9 @@ public static class AbstractOperations
         var v = Get(vm, value.AsObject, key);
         if (v.IsUndefined || v.IsNull) return JsValue.Undefined;
         if (!IsCallable(v))
-            throw new JsThrow(JsValue.String("property is not callable"));
+            throw vm is not null
+                ? new JsThrow(vm.Realm.NewTypeError($"{key} is not a function"))
+                : new JsThrow(JsValue.String("property is not callable"));
         return v;
     }
 

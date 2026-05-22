@@ -461,6 +461,30 @@ public sealed partial class JsCompiler
         return n;
     }
 
+    /// <summary>§named-evaluation (8.4.5 NamedEvaluation, 13.15.5.3 etc.) — an
+    /// anonymous function definition (an unnamed function/generator/async
+    /// expression, an arrow, or an unnamed class expression) used directly as
+    /// the RHS of a binding/assignment initializer adopts the binding's name as
+    /// its <c>name</c> own property. Returns true when <paramref name="rhs"/> is
+    /// such an anonymous function definition.</summary>
+    private static bool IsAnonymousFunctionDefinition(Expression rhs) => rhs switch
+    {
+        FunctionExpression fe => fe.Name is null,
+        ArrowFunctionExpression => true,
+        ClassExpression ce => ce.Name is null,
+        _ => false,
+    };
+
+    /// <summary>§named-evaluation — emit <paramref name="rhs"/> and, if it is an
+    /// anonymous function definition, stamp <paramref name="name"/> onto the
+    /// resulting function/class. The leaves the value on the stack either way.</summary>
+    private void EmitNamedEvaluation(Expression rhs, string name)
+    {
+        EmitExpression(rhs);
+        if (IsAnonymousFunctionDefinition(rhs))
+            _b.EmitU16(Opcode.SetFunctionName, _b.AddConstant(name));
+    }
+
     /// <summary>Compile a function body. Parameters get the first N local
     /// slots; the body's own var declarations follow.</summary>
     private void EmitFunctionBody(FunctionDeclaration fd)
@@ -1103,7 +1127,7 @@ public sealed partial class JsCompiler
             {
                 if (d.Id is Identifier id)
                 {
-                    EmitExpression(d.Init);
+                    EmitNamedEvaluation(d.Init, id.Name);
                     // gap:script-top-var-not-global — at script top, the
                     // binding is a global property (not a local slot), so
                     // the initializer write routes through StoreGlobal.
@@ -1140,7 +1164,7 @@ public sealed partial class JsCompiler
     {
         if (d.Id is Identifier id)
         {
-            if (d.Init is not null) EmitExpression(d.Init);
+            if (d.Init is not null) EmitNamedEvaluation(d.Init, id.Name);
             else _b.Emit(Opcode.LoadUndefined);
             if (!TryResolveLocal(id.Name, out var slot))
                 throw new InvalidOperationException($"missing declared lexical '{id.Name}'");
@@ -2246,7 +2270,8 @@ public sealed partial class JsCompiler
             }
             else
             {
-                EmitExpression(a.Value);
+                // §named-evaluation — `x = function(){}` names the function "x".
+                EmitNamedEvaluation(a.Value, id.Name);
             }
             _b.Emit(Opcode.Dup); // assignment is an expression — leaves value on stack
             // gap:closure-write-back — assigning to a captured upvalue must
@@ -2838,16 +2863,17 @@ public sealed partial class JsCompiler
             }
             else
             {
-                var nameIdx = prop.Key switch
+                var propName = prop.Key switch
                 {
-                    Identifier id => _b.AddConstant(id.Name),
-                    StringLiteral sl => _b.AddConstant(sl.Value),
-                    NumericLiteral nl =>
-                        _b.AddConstant(JsValue.ToStringValue(JsValue.Number(nl.Value))),
+                    Identifier id => id.Name,
+                    StringLiteral sl => sl.Value,
+                    NumericLiteral nl => JsValue.ToStringValue(JsValue.Number(nl.Value)),
                     _ => throw new NotSupportedException(
                         $"object key kind '{prop.Key.GetType().Name}'"),
                 };
-                EmitExpression(prop.Value);                      // [obj, value]
+                var nameIdx = _b.AddConstant(propName);
+                // §named-evaluation — `{ x: function(){} }` names the function "x".
+                EmitNamedEvaluation(prop.Value, propName);       // [obj, value]
                 _b.EmitU16(Opcode.DefineDataProperty, nameIdx);  // [obj]
             }
         }
@@ -3134,7 +3160,14 @@ public sealed partial class JsCompiler
         _b.Emit(Opcode.LoadUndefined);
         _b.Emit(Opcode.StrictEq);
         var skipDefault = _b.EmitJump(Opcode.JumpIfFalse);
-        EmitExpression(fallback);
+        // §named-evaluation — `[x = function(){}]` / `{ x = () => {} }` /
+        // `({ x = class {} } = obj)`: when the default applies to a simple
+        // identifier target and is an anonymous function definition, the
+        // function adopts the binding's name.
+        if (target is Identifier tid)
+            EmitNamedEvaluation(fallback, tid.Name);
+        else
+            EmitExpression(fallback);
         _b.EmitSlot(Opcode.StoreLocal, valueSlot);
         _b.PatchJump(skipDefault);
         EmitPatternFromLocal(target, valueSlot, isDeclaration);
@@ -3200,56 +3233,200 @@ public sealed partial class JsCompiler
         _b.Emit(Opcode.Pop);
     }
 
+    /// <summary>One normalized array-pattern element: a hole (elision), a
+    /// binding/assignment element (with optional default), or a rest element.</summary>
+    private enum ArrayElemKind { Hole, Element, Rest }
+    private readonly record struct ArrayElem(ArrayElemKind Kind, Expression? Target, Expression? Default);
+
     private void EmitArrayPattern(ArrayExpression arr, bool isDeclaration)
     {
-        var srcSlot = _b.ReserveLocal();
-        _b.EmitSlot(Opcode.StoreLocal, srcSlot);
-        for (var i = 0; i < arr.Elements.Count; i++)
+        var elems = new List<ArrayElem>(arr.Elements.Count);
+        foreach (var element in arr.Elements)
         {
-            var element = arr.Elements[i];
-            if (element is null) continue;
-            if (element is SpreadElement spread)
+            switch (element)
             {
-                _b.EmitSlot(Opcode.LoadLocal, srcSlot);
-                _b.EmitU16(Opcode.RestArray, i);
-                EmitPatternFromStack(spread.Argument, isDeclaration);
-                break;
+                case null:
+                    elems.Add(new ArrayElem(ArrayElemKind.Hole, null, null));
+                    break;
+                case SpreadElement spread:
+                    elems.Add(new ArrayElem(ArrayElemKind.Rest, spread.Argument, null));
+                    break;
+                case AssignmentExpression { Op: "=" } a:
+                    elems.Add(new ArrayElem(ArrayElemKind.Element, a.Target, a.Value));
+                    break;
+                case AssignmentPattern ap:
+                    elems.Add(new ArrayElem(ArrayElemKind.Element, ap.Target, ap.Default));
+                    break;
+                default:
+                    elems.Add(new ArrayElem(ArrayElemKind.Element, element, null));
+                    break;
             }
-            _b.EmitSlot(Opcode.LoadLocal, srcSlot);
-            _b.EmitU16(Opcode.LoadConst, _b.AddConstant((double)i));
-            _b.Emit(Opcode.LoadComputed);
-            EmitPatternFromStack(element, isDeclaration);
         }
+        EmitArrayPatternIter(elems, isDeclaration);
     }
 
     private void EmitArrayPattern(ArrayPattern arr, bool isDeclaration)
     {
-        var srcSlot = _b.ReserveLocal();
-        _b.EmitSlot(Opcode.StoreLocal, srcSlot);
-        for (var i = 0; i < arr.Elements.Count; i++)
+        var elems = new List<ArrayElem>(arr.Elements.Count);
+        foreach (var element in arr.Elements)
         {
-            switch (arr.Elements[i])
+            switch (element)
             {
                 case ArrayPatternHole:
-                    continue;
+                    elems.Add(new ArrayElem(ArrayElemKind.Hole, null, null));
+                    break;
                 case ArrayPatternRestElement rest:
-                    _b.EmitSlot(Opcode.LoadLocal, srcSlot);
-                    _b.EmitU16(Opcode.RestArray, i);
-                    EmitPatternFromStack(rest.Target, isDeclaration);
-                    return;
+                    elems.Add(new ArrayElem(ArrayElemKind.Rest, rest.Target, null));
+                    break;
                 case ArrayPatternBindingElement binding:
-                    _b.EmitSlot(Opcode.LoadLocal, srcSlot);
-                    _b.EmitU16(Opcode.LoadConst, _b.AddConstant((double)i));
-                    _b.Emit(Opcode.LoadComputed);
-                    if (binding.Default is null) EmitPatternFromStack(binding.Target, isDeclaration);
-                    else EmitDefaultedPattern(binding.Target, binding.Default, isDeclaration);
+                    elems.Add(new ArrayElem(ArrayElemKind.Element, binding.Target, binding.Default));
                     break;
             }
         }
+        EmitArrayPatternIter(elems, isDeclaration);
+    }
+
+    /// <summary>§8.5.3 IteratorBindingInitialization / §13.15.5.3
+    /// IteratorDestructuringAssignmentEvaluation — lower an array pattern to the
+    /// iterator protocol: <c>GetIterator</c> (TypeError on a non-iterable RHS),
+    /// step per element, then <c>IteratorClose</c> on completion. Closing fires
+    /// the iterator's <c>return()</c> when the pattern consumed fewer elements
+    /// than the iterator yields, or on an abrupt completion while binding (the
+    /// element-binding work is wrapped in a try region that closes the iterator
+    /// then rethrows). When the iterator is exhausted exactly (or a rest element
+    /// drains it) the record is already Done, so the close is a no-op.</summary>
+    private void EmitArrayPatternIter(List<ArrayElem> elems, bool isDeclaration)
+    {
+        // The RHS value is on the stack. GetIterator → handle in a local.
+        _b.Emit(Opcode.GetIterator);
+        var handleSlot = _b.ReserveLocal();
+        _b.EmitSlot(Opcode.StoreLocal, handleSlot);
+
+        // Wrap the element-binding work in a try region so an abrupt completion
+        // (a default that throws, a nested pattern that throws, a non-object
+        // iterator-result, etc.) still runs IteratorClose before propagating.
+        _b.Emit(Opcode.EnterTry);
+        var catchOperandPos = _b.Position;
+        _b.EmitU16Raw(0xFFFF);          // catch offset (patched below)
+        _b.EmitU16Raw(0xFFFF);          // finally offset (none → 0xFFFF == -1)
+
+        _tryDepth++;
+        try
+        {
+            foreach (var elem in elems)
+            {
+                switch (elem.Kind)
+                {
+                    case ArrayElemKind.Hole:
+                        // Elision still advances the iterator.
+                        _b.EmitSlot(Opcode.LoadLocal, handleSlot);
+                        _b.Emit(Opcode.IteratorBindNext);
+                        _b.Emit(Opcode.Pop);
+                        break;
+                    case ArrayElemKind.Rest:
+                        _b.EmitSlot(Opcode.LoadLocal, handleSlot);
+                        _b.Emit(Opcode.IteratorRest);
+                        EmitPatternFromStack(elem.Target!, isDeclaration);
+                        break;
+                    case ArrayElemKind.Element:
+                        // §13.15.5.5 AssignmentElement — for an assignment
+                        // pattern (not a declaration) whose target is a member
+                        // reference, the reference (`obj` and a computed key)
+                        // must be evaluated BEFORE the iterator is stepped, so a
+                        // throwing reference does not call next().
+                        if (!isDeclaration && elem.Target is MemberExpression meTarget)
+                        {
+                            EmitOrderedMemberElement(meTarget, elem.Default, handleSlot);
+                        }
+                        else
+                        {
+                            _b.EmitSlot(Opcode.LoadLocal, handleSlot);
+                            _b.Emit(Opcode.IteratorBindNext);   // [value]
+                            if (elem.Default is null)
+                                EmitPatternFromStack(elem.Target!, isDeclaration);
+                            else
+                                EmitDefaultedPattern(elem.Target!, elem.Default, isDeclaration);
+                        }
+                        break;
+                }
+            }
+        }
+        finally
+        {
+            _tryDepth--;
+        }
+
+        _b.Emit(Opcode.LeaveTry);
+        // Normal completion: close the iterator if it is not already Done
+        // (i.e. the pattern consumed fewer elements than the iterator yields).
+        _b.EmitSlot(Opcode.LoadLocal, handleSlot);
+        _b.Emit(Opcode.IteratorClose);
+        var jPastCatch = _b.EmitJump(Opcode.Jump);
+
+        // Catch: the thrown value is on the stack (sp reset to the try base).
+        // Close the iterator (swallowing return()-errors so the original throw
+        // wins) and rethrow.
+        var catchDelta = _b.Position - (catchOperandPos + 4);
+        if (catchDelta is < short.MinValue or > short.MaxValue)
+            throw new InvalidOperationException("array-pattern catch offset overflows i16");
+        _b.PatchI16(catchOperandPos, (short)catchDelta);
+        _b.EmitSlot(Opcode.LoadLocal, handleSlot);  // [thrown, handle]
+        _b.Emit(Opcode.IteratorCloseForThrow);      // [thrown]
+        _b.Emit(Opcode.Throw);                       // rethrow
+
+        _b.PatchJump(jPastCatch);
+    }
+
+    /// <summary>§13.15.5.5 AssignmentElement with a member-expression target:
+    /// evaluate the target reference (object, and the computed key) FIRST, then
+    /// step the iterator, apply any default, and store — so a throwing reference
+    /// expression aborts before <c>next()</c> is ever called.</summary>
+    private void EmitOrderedMemberElement(MemberExpression me, Expression? fallback, int handleSlot)
+    {
+        // Pre-evaluate the reference into temp slots.
+        var objSlot = _b.ReserveLocal();
+        EmitExpression(me.Object);
+        _b.EmitSlot(Opcode.StoreLocal, objSlot);
+        var keySlot = -1;
+        if (me.Computed)
+        {
+            keySlot = _b.ReserveLocal();
+            EmitExpression(me.Property);
+            _b.EmitSlot(Opcode.StoreLocal, keySlot);
+        }
+
+        // Step the iterator into a value temp.
+        var valueSlot = _b.ReserveLocal();
+        _b.EmitSlot(Opcode.LoadLocal, handleSlot);
+        _b.Emit(Opcode.IteratorBindNext);   // [value]
+        _b.EmitSlot(Opcode.StoreLocal, valueSlot);
+
+        // Apply default when the stepped value is undefined.
+        if (fallback is not null)
+        {
+            _b.EmitSlot(Opcode.LoadLocal, valueSlot);
+            _b.Emit(Opcode.LoadUndefined);
+            _b.Emit(Opcode.StrictEq);
+            var skip = _b.EmitJump(Opcode.JumpIfFalse);
+            EmitExpression(fallback);   // member targets get no name inference
+            _b.EmitSlot(Opcode.StoreLocal, valueSlot);
+            _b.PatchJump(skip);
+        }
+
+        // Store value into the pre-evaluated reference.
+        _b.EmitSlot(Opcode.LoadLocal, objSlot);
+        if (me.Computed) _b.EmitSlot(Opcode.LoadLocal, keySlot);
+        _b.EmitSlot(Opcode.LoadLocal, valueSlot);
+        if (me.Computed) _b.Emit(Opcode.StoreComputed);
+        else _b.EmitU16(Opcode.StoreProperty, _b.AddConstant(((Identifier)me.Property).Name));
+        _b.Emit(Opcode.Pop);
     }
 
     private void EmitObjectPattern(ObjectExpression obj, bool isDeclaration)
     {
+        // §13.15.5.2 / §8.5.2 step 1 — RequireObjectCoercible(value): object
+        // destructuring of null/undefined is a TypeError.
+        _b.Emit(Opcode.RequireObjectCoercible);
         var srcSlot = _b.ReserveLocal();
         _b.EmitSlot(Opcode.StoreLocal, srcSlot);
         var exclusions = new List<RestExclusion>();
@@ -3268,6 +3445,8 @@ public sealed partial class JsCompiler
 
     private void EmitObjectPattern(ObjectPattern obj, bool isDeclaration)
     {
+        // §8.5.2 step 1 — RequireObjectCoercible(value).
+        _b.Emit(Opcode.RequireObjectCoercible);
         var srcSlot = _b.ReserveLocal();
         _b.EmitSlot(Opcode.StoreLocal, srcSlot);
         var exclusions = new List<RestExclusion>();

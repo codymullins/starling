@@ -1122,6 +1122,42 @@ public sealed class JsVm
                     break;
                 }
 
+                case Opcode.RequireObjectCoercible:
+                {
+                    // §7.2.1 RequireObjectCoercible — object destructuring of a
+                    // null/undefined value is a TypeError (the value stays on the
+                    // stack for the following property loads).
+                    var v = Peek();
+                    if (v.IsNullish)
+                        throw new JsThrow(_runtime.Realm.NewTypeError("Cannot destructure null or undefined"));
+                    break;
+                }
+
+                case Opcode.SetFunctionName:
+                {
+                    // §named-evaluation — stamp an inferred name onto an anonymous
+                    // function/class produced as the value of a binding/assignment
+                    // initializer. The compiler only emits this when the RHS is a
+                    // syntactically anonymous function definition, so we just guard
+                    // on the current `name` still being "" (so a named expression
+                    // or a non-function value is never clobbered).
+                    var nameIdx = ReadU16();
+                    var target = Peek();
+                    if (target.IsObject && target.AsObject is JsFunction nfn)
+                    {
+                        var cur = nfn.GetOwnPropertyDescriptor("name");
+                        var isAnon = cur is null
+                            || (cur.Value.IsData && cur.Value.Value.IsString && cur.Value.Value.AsString.Length == 0);
+                        if (isAnon)
+                        {
+                            var nm = (string)constants[nameIdx]!;
+                            nfn.DefineOwnProperty("name",
+                                PropertyDescriptor.Data(JsValue.String(nm), writable: false, enumerable: false, configurable: true));
+                        }
+                    }
+                    break;
+                }
+
                 case Opcode.SpreadInto:
                 {
                     var src = Pop();
@@ -1193,6 +1229,62 @@ public sealed class JsVm
                     {
                         if (!h.Record.Done)
                             AbstractOperations.IteratorClose(this, h.Record, isThrowing: false);
+                    }
+                    break;
+                }
+
+                case Opcode.IteratorBindNext:
+                {
+                    // §8.5.3 IteratorBindingInitialization for a single array-
+                    // pattern element. Peek the record (kept across elements).
+                    // Once the record is Done, further elements bind undefined
+                    // WITHOUT calling next() again.
+                    var top = Peek();
+                    if (!top.IsObject || top.AsObject is not Starling.Js.Intrinsics.JsIteratorRecordHandle handle)
+                        throw new InvalidOperationException("IteratorBindNext expects an iterator-record handle on the stack");
+                    if (handle.Record.Done)
+                    {
+                        Push(JsValue.Undefined);
+                    }
+                    else
+                    {
+                        var step = AbstractOperations.IteratorStep(_runtime.Realm, this, ref handle.Record);
+                        Push(step is null ? JsValue.Undefined : AbstractOperations.IteratorValue(this, step.Value));
+                    }
+                    break;
+                }
+
+                case Opcode.IteratorRest:
+                {
+                    // §8.5.3 BindingRestElement — collect every remaining value
+                    // into a fresh dense array, driving the iterator to Done.
+                    var top = Peek();
+                    if (!top.IsObject || top.AsObject is not Starling.Js.Intrinsics.JsIteratorRecordHandle handle)
+                        throw new InvalidOperationException("IteratorRest expects an iterator-record handle on the stack");
+                    var rest = new JsArray(_runtime.Realm);
+                    var n = 0;
+                    while (!handle.Record.Done)
+                    {
+                        var step = AbstractOperations.IteratorStep(_runtime.Realm, this, ref handle.Record);
+                        if (step is null) break;
+                        rest.Set(n.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                            AbstractOperations.IteratorValue(this, step.Value));
+                        n++;
+                    }
+                    Push(JsValue.Object(rest));
+                    break;
+                }
+
+                case Opcode.IteratorCloseForThrow:
+                {
+                    // §7.4.10 IteratorClose in a throwing completion: invoke
+                    // return() but swallow any error it raises so the original
+                    // (in-flight) throw is the one that propagates.
+                    var handleV = Pop();
+                    if (handleV.IsObject && handleV.AsObject is Starling.Js.Intrinsics.JsIteratorRecordHandle h
+                        && !h.Record.Done)
+                    {
+                        AbstractOperations.IteratorClose(this, h.Record, isThrowing: true);
                     }
                     break;
                 }

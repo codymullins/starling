@@ -179,6 +179,8 @@ public enum Opcode : byte
     // ----- Misc -----
     TypeOf,
     Throw,
+    RequireObjectCoercible, // peek top-of-stack; throw a TypeError if it is null/undefined (§7.2.1). Used before object-destructuring property access.
+    SetFunctionName, // [u16 nameConst] peek top-of-stack; if it is an anonymous function/class (name===""), set its `name` own property to the constant string. §named-evaluation.
     SpreadInto,     // pop src and dst objects, copy own enumerable props from src onto dst (object-literal spread)
     RestArray,      // [u16 start] pop src, push Array-like object with src[start..length)
     RestObject,     // [u16 excludedCount] pop N keys + src, push own-enumerable copy excluding keys
@@ -187,6 +189,9 @@ public enum Opcode : byte
     GetIterator,    // pop value, push an opaque iterator-record handle (a JsObject internal)
     IteratorStep,   // peek iterator-record; push iterator-result object, or push undefined on done. Sets the "done" slot when finished.
     IteratorClose,  // pop iterator-record; invoke .return() if present
+    IteratorBindNext, // peek iterator-record; if already Done push undefined, else IteratorStep and push result.value (undefined on done, sets Done). §8.5.3 array-pattern element step.
+    IteratorRest,   // peek iterator-record; collect remaining values into a fresh JsArray until Done, push the array. §8.5.3 BindingRestElement.
+    IteratorCloseForThrow, // pop iterator-record; invoke .return() if present (swallowing any return()-error so the in-flight throw wins, §7.4.10).
     SpreadIterable, // pop iterable + peek target JsArray; append all iterable's values to target via @@iterator
 
     // ----- Apply-style calls (B3-2: call with materialized args array) -----

@@ -575,7 +575,14 @@ public sealed class JsLexer
         if (isInteger && _i < _src.Length && _src[_i] == 'n')
         {
             var digitsBi = _src[begin.._i];
+            // §12.9.3 — `LegacyOctalIntegerLiteral` / `NonOctalDecimalIntegerLiteral`
+            // (a leading `0` immediately followed by a decimal digit) cannot carry
+            // a BigInt suffix: `00n`, `01n`, `08n` are SyntaxErrors.
+            if (digitsBi.Length >= 2 && digitsBi[0] == '0' && IsAsciiDigit(digitsBi[1]))
+                _errors.Report(JsLexError.InvalidNumericLiteral, start,
+                    "legacy octal / non-octal-decimal literal cannot have a BigInt suffix");
             Advance(); // consume n
+            CheckNoIdentifierAfterNumber(start);
             return MakeToken(JsTokenKind.BigIntLiteral, _src[begin.._i],
                 start, CurrentPos(), precededByLT, digitsBi);
         }
@@ -601,7 +608,21 @@ public sealed class JsLexer
             value = 0;
             for (var k = 0; k < lex.Length; k++) value = value * 8 + (lex[k] - '0');
         }
+        CheckNoIdentifierAfterNumber(start);
         return MakeToken(JsTokenKind.NumericLiteral, lex, start, CurrentPos(), precededByLT, value, legacyOctal);
+    }
+
+    /// <summary>§12.9.3 — the SourceCharacter immediately following a
+    /// NumericLiteral must not be an IdentifierStart or a DecimalDigit, so
+    /// `3in`, `0x1g`, `1n2` etc. are SyntaxErrors. (A trailing `.` belongs to a
+    /// fraction and is consumed before this runs.)</summary>
+    private void CheckNoIdentifierAfterNumber(JsPosition start)
+    {
+        if (_i >= _src.Length) return;
+        var c = _src[_i];
+        if (IsAsciiDigit(c) || IsIdStart(c) || TryAstralIdChar(_i, first: true, out _))
+            _errors.Report(JsLexError.InvalidNumericLiteral, start,
+                "identifier or digit immediately after numeric literal");
     }
 
     private static bool AllOctalDigits(string s)
@@ -623,6 +644,7 @@ public sealed class JsLexer
         {
             var digitsBi = _src[digitStart.._i];
             Advance();
+            CheckNoIdentifierAfterNumber(start);
             return MakeToken(JsTokenKind.BigIntLiteral, _src[begin.._i],
                 start, CurrentPos(), precededByLT, digitsBi);
         }
@@ -638,6 +660,7 @@ public sealed class JsLexer
             value = double.NaN;
         }
         _ = isInteger; // silence unused
+        CheckNoIdentifierAfterNumber(start);
         return MakeToken(JsTokenKind.NumericLiteral, _src[begin.._i],
             start, CurrentPos(), precededByLT, value);
     }
