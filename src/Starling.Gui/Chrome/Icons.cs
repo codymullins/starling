@@ -31,6 +31,7 @@ public static class Icons
     public const string Star = "M8 2l1.8 3.7 4 .6-2.9 2.9.7 4L8 11.3l-3.6 1.9.7-4L2.2 6.3l4-.6L8 2Z";
     public const string PanelB = "M2 3h12v10H2zM2 9h12";
     public const string PanelR = "M2 3h12v10H2zM10 3v10";
+    public const string PanelL = "M2 3h12v10H2zM6 3v10";
     public const string Detach = "M3 3h6v6H3zM7 7h6v6H7z";
     public const string More = "M4 8a.7.7 0 1 1-1.4 0 .7.7 0 0 1 1.4 0ZM8.7 8a.7.7 0 1 1-1.4 0 .7.7 0 0 1 1.4 0ZM13.4 8a.7.7 0 1 1-1.4 0 .7.7 0 0 1 1.4 0Z";
     public const string TriRight = "M6 4l4 4-4 4";

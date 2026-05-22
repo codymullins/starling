@@ -40,6 +40,11 @@ public static class OtelBootstrap
         // entries even when no OTLP endpoint is configured.
         var logSink = new InMemoryLogSink();
         builder.Logging.AddProvider(logSink);
+        // DevTools' ConsolePanel shows page console.* output (routed via the
+        // engine under "Starling.engine.js"). Open that category down to Debug
+        // for the in-memory sink only so console.debug survives the default
+        // Information floor; other providers/categories keep their defaults.
+        builder.Logging.AddFilter<InMemoryLogSink>("Starling.engine.js", LogLevel.Debug);
         builder.Logging.AddOpenTelemetry(logging =>
         {
             logging.IncludeFormattedMessage = true;

@@ -45,4 +45,10 @@ public sealed class IconButton : Border
         _enabled = enabled;
         Opacity = enabled ? 1.0 : 0.35;
     }
+
+    /// <summary>Test hook: raises <see cref="Clicked"/> as a tap would (honors the disabled state).</summary>
+    internal void RaiseClickForTest()
+    {
+        if (_enabled) Clicked?.Invoke(this, EventArgs.Empty);
+    }
 }

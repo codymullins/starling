@@ -809,10 +809,16 @@ public sealed class StarlingEngine
         runtime.Realm.ConsoleSink = (level, message) =>
         {
             previousSink(level, message);
+            // Preserve the page's console level so DevTools' ConsolePanel can
+            // colour errors red and its level-filter pills actually match. The
+            // in-memory sink is opened down to Debug for this category in
+            // AddStarlingTelemetry so console.debug isn't dropped by the default
+            // Information floor; console.trace folds into Debug (no trace pill).
             var diagLevel = level switch
             {
-                ConsoleLevel.Error => DiagLevel.Warn,
+                ConsoleLevel.Error => DiagLevel.Error,
                 ConsoleLevel.Warn => DiagLevel.Warn,
+                ConsoleLevel.Debug or ConsoleLevel.Trace => DiagLevel.Debug,
                 _ => DiagLevel.Info,
             };
             _diag.Log(diagLevel, "engine.js", $"[{level}] {message}");

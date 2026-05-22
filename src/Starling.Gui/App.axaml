@@ -5,6 +5,13 @@
   <Application.Resources>
     <FontFamily x:Key="GeistSans">avares://Starling.Gui/Assets/Fonts/Geist-Variable.ttf#Geist</FontFamily>
     <FontFamily x:Key="GeistMono">avares://Starling.Gui/Assets/Fonts/GeistMono-Variable.ttf#Geist Mono</FontFamily>
+    <!-- The Fluent theme shrinks the scrollbar thumb to scaleX(0.125) (~2px) until the
+         pointer is hovered exactly over it, which makes every scrollbar hard to grab.
+         Override the small-thumb transforms to identity so the thumb stays full-width
+         and is an easy drag target. Application.Resources wins over the FluentTheme's
+         own resources, so this applies to every ScrollViewer in the app. -->
+    <TransformOperations x:Key="VerticalSmallScrollThumbScaleTransform">scaleX(1)</TransformOperations>
+    <TransformOperations x:Key="HorizontalSmallScrollThumbScaleTransform">scaleY(1)</TransformOperations>
   </Application.Resources>
   <Application.Styles>
     <FluentTheme />

@@ -49,6 +49,14 @@ public sealed class MainWindow : Window, IBrowserController
     private readonly WebviewPanel _webview;
     private DevToolsPanel? _devtools;
     private GridSplitter? _devSplitter;
+    private Window? _devWindow;
+    private DevToolsDock _dock = DevToolsDock.Bottom;
+
+    // Splitter hairline + default extent of the docked panel along its docking
+    // axis (width for left/right, height for bottom).
+    private const double SplitterThickness = 4;
+    private const double DockExtent = 420;
+    private const double DockExtentBottom = 320;
 
     // Chrome controls are rebuilt on every theme change (ChromeKit's static
     // builders bake colors at construction time, so a "theme flip plus a tree
@@ -181,9 +189,9 @@ public sealed class MainWindow : Window, IBrowserController
         _statusBar.SetHint(statusText);
 
         // Content stack: toolbar / [webview | optional devtools] / status bar.
-        // The middle row is a Grid("*,Auto,Auto") so the DevTools panel can be
-        // injected on the right when toggled; columns 1 and 2 carry the
-        // splitter + panel and stay collapsed until then.
+        // The middle row hosts a Grid that starts as a single "*" cell holding
+        // the webview; PlaceDevTools reconfigures it into a split column/row
+        // layout (or pops the panel into a floating window) on demand.
         _contentStack = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
         _contentStack.Children.Add(_toolbar); Grid.SetRow(_toolbar, 0);
         var middle = new Grid { ColumnDefinitions = new ColumnDefinitions("*") };
@@ -262,6 +270,10 @@ public sealed class MainWindow : Window, IBrowserController
 
         if (_devtools is not null)
         {
+            // The dock position lives on _dock (a field), so it carries across
+            // the rebuild; OpenDevTools re-hosts at the same spot. The floating
+            // window must be torn down here so we don't leak a second one.
+            DestroyDevWindow();
             _devtools.Dispose();
             _devtools = null;
             _devSplitter = null;
@@ -272,18 +284,146 @@ public sealed class MainWindow : Window, IBrowserController
 
     private void OpenDevTools(DevToolsTab tab)
     {
+        _devtools = new DevToolsPanel(_tm, _telemetry, tab, _dock);
+        _devtools.CloseRequested += (_, _) => CloseDevTools();
+        _devtools.DockRequested += (_, dock) => SetDock(dock);
+        PlaceDevTools();
+    }
+
+    // Switch the docking position of an already-open panel.
+    private void SetDock(DevToolsDock dock)
+    {
+        if (_devtools is null || _dock == dock) return;
+        _dock = dock;
+        PlaceDevTools();
+    }
+
+    // (Re)host _devtools at _dock. Detaches it from whatever currently holds it
+    // (the middle grid and/or a floating window), then lays it out afresh. The
+    // webview is always re-seated as the primary cell of the middle grid.
+    private void PlaceDevTools()
+    {
+        if (_devtools is null) return;
         var middle = (Grid)_contentStack.Children[1];
-        _devtools = new DevToolsPanel(_tm, _telemetry, tab);
-        _devtools.CloseRequested += (_, _) => ToggleDevTools();
+
+        // Clear the grid (removes webview + any splitter + a docked panel) and
+        // close the floating window (detaching the panel from it) so _devtools
+        // and _webview are parentless and free to re-host below.
+        middle.Children.Clear();
+        DestroyDevWindow();
+        _devSplitter = null;
+        _devtools.SetDock(_dock);
+
+        if (_dock == DevToolsDock.Floating)
+        {
+            middle.ColumnDefinitions = new ColumnDefinitions("*");
+            middle.RowDefinitions = new RowDefinitions("*");
+            Place(middle, _webview);
+            ShowDevWindow();
+            return;
+        }
+
         _devSplitter = new GridSplitter
         {
-            Width = 4,
-            ResizeDirection = GridResizeDirection.Columns,
+            ResizeDirection = _dock == DevToolsDock.Bottom
+                ? GridResizeDirection.Rows
+                : GridResizeDirection.Columns,
             Background = new SolidColorBrush(_tm.Tokens.Border),
         };
-        middle.ColumnDefinitions = new ColumnDefinitions("*,Auto,420");
-        middle.Children.Add(_devSplitter); Grid.SetColumn(_devSplitter, 1);
-        middle.Children.Add(_devtools); Grid.SetColumn(_devtools, 2);
+
+        switch (_dock)
+        {
+            case DevToolsDock.Right:
+                _devSplitter.Width = SplitterThickness;
+                middle.RowDefinitions = new RowDefinitions("*");
+                middle.ColumnDefinitions = new ColumnDefinitions($"*,Auto,{DockExtent}");
+                Place(middle, _webview, col: 0);
+                Place(middle, _devSplitter, col: 1);
+                Place(middle, _devtools, col: 2);
+                break;
+            case DevToolsDock.Left:
+                _devSplitter.Width = SplitterThickness;
+                middle.RowDefinitions = new RowDefinitions("*");
+                middle.ColumnDefinitions = new ColumnDefinitions($"{DockExtent},Auto,*");
+                Place(middle, _devtools, col: 0);
+                Place(middle, _devSplitter, col: 1);
+                Place(middle, _webview, col: 2);
+                break;
+            case DevToolsDock.Bottom:
+                _devSplitter.Height = SplitterThickness;
+                middle.ColumnDefinitions = new ColumnDefinitions("*");
+                middle.RowDefinitions = new RowDefinitions($"*,Auto,{DockExtentBottom}");
+                Place(middle, _webview, row: 0);
+                Place(middle, _devSplitter, row: 1);
+                Place(middle, _devtools, row: 2);
+                break;
+        }
+    }
+
+    // Add a child to the middle grid at an explicit cell. Both attached
+    // properties are set every time because they persist on the control across
+    // re-parents and a stale value would land it in the wrong cell after a
+    // column<->row dock switch.
+    private static void Place(Grid grid, Control child, int col = 0, int row = 0)
+    {
+        Grid.SetColumn(child, col);
+        Grid.SetRow(child, row);
+        grid.Children.Add(child);
+    }
+
+    private void ShowDevWindow()
+    {
+        if (_devtools is null) return;
+        var t = _tm.Tokens;
+        _devWindow = new Window
+        {
+            Title = "DevTools",
+            Width = 720,
+            Height = 480,
+            MinWidth = 360,
+            MinHeight = 240,
+            Background = new SolidColorBrush(t.Panel),
+            Content = _devtools,
+        };
+        // A user-initiated close of the floating window tears DevTools down
+        // entirely. DestroyDevWindow nulls _devWindow before calling Close, so
+        // programmatic teardown is a no-op here (avoids re-entrancy).
+        _devWindow.Closed += (s, _) =>
+        {
+            if (!ReferenceEquals(_devWindow, s)) return;
+            _devWindow = null;
+            CloseDevTools();
+        };
+        _devWindow.Show(this);
+    }
+
+    // Detach the panel from the floating window and close it, without disposing
+    // the panel (the caller decides whether to re-host or dispose).
+    private void DestroyDevWindow()
+    {
+        if (_devWindow is null) return;
+        var w = _devWindow;
+        _devWindow = null;
+        w.Content = null;
+        w.Close();
+    }
+
+    private void CloseDevTools()
+    {
+        if (_devtools is null) return;
+        var middle = (Grid)_contentStack.Children[1];
+        middle.Children.Remove(_devtools);
+        if (_devSplitter is not null) middle.Children.Remove(_devSplitter);
+        DestroyDevWindow();
+
+        _devtools.Dispose();
+        _devtools = null;
+        _devSplitter = null;
+
+        // Restore the webview as the sole occupant of the middle area.
+        middle.ColumnDefinitions = new ColumnDefinitions("*");
+        middle.RowDefinitions = new RowDefinitions("*");
+        if (!middle.Children.Contains(_webview)) Place(middle, _webview);
     }
 
     private async void ToggleTheme()
@@ -298,24 +438,8 @@ public sealed class MainWindow : Window, IBrowserController
 
     private void ToggleDevTools()
     {
-        // The middle row of _contentStack hosts a Grid with one column (the
-        // webview). Toggle DevTools by replacing that Grid with a 3-column
-        // layout adding a splitter + DevToolsPanel on the right; tearing down
-        // reverts to single-column.
-        var middle = (Grid)_contentStack.Children[1];
-        if (_devtools is null)
-        {
-            OpenDevTools(DevToolsTab.Performance);
-        }
-        else
-        {
-            middle.Children.Remove(_devtools);
-            if (_devSplitter is not null) middle.Children.Remove(_devSplitter);
-            _devtools.Dispose();
-            _devtools = null;
-            _devSplitter = null;
-            middle.ColumnDefinitions = new ColumnDefinitions("*");
-        }
+        if (_devtools is null) OpenDevTools(DevToolsTab.Performance);
+        else CloseDevTools();
     }
 
     private async void BackClicked(object? s, EventArgs e)
@@ -611,6 +735,7 @@ public sealed class MainWindow : Window, IBrowserController
     protected override void OnClosed(EventArgs e)
     {
         _navCts?.Cancel();
+        DestroyDevWindow();
         _webview.Dispose();
         _session.Dispose();
         base.OnClosed(e);
