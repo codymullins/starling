@@ -33,6 +33,7 @@ internal sealed class JintScriptSession : IScriptSession
     private readonly JintBackendContext _ctx;
     private readonly WebEventLoop _loop;
     private readonly JintDynamicScriptRunner _dynamicRunner;
+    private readonly StarlingJintModuleLoader _moduleLoader;
     private bool _disposed;
 
     // Thread-safe "post to the JS thread" queue. Background work (fetch/XHR HTTP
@@ -48,12 +49,24 @@ internal sealed class JintScriptSession : IScriptSession
         ArgumentNullException.ThrowIfNull(options);
         _loop = new WebEventLoop();
 
+        // ES module support (J4) must be enabled at engine construction: Jint
+        // requires the IModuleLoader + the import.meta host to be supplied via
+        // options.EnableModules(...) / options.UseHostFactory(...) before the
+        // realm is built. The loader resolves specifiers against the document
+        // base / importing module URL and loads source through the session's
+        // shared fetch path. The host populates import.meta.url from the module
+        // location. Built first so it can be passed into the engine factory.
+        _moduleLoader = new StarlingJintModuleLoader(
+            options.BaseUrl, (url, token) => options.Fetcher(url, token));
+
         // Keep the engine lean and deterministic: bounded recursion, no ambient
         // CLR member access. Web surfaces come from the explicit bindings.
         _engine = new global::Jint.Engine(opts =>
         {
             opts.Strict = false;
             opts.AllowClr(); // no assemblies registered → no ambient CLR types
+            opts.EnableModules(_moduleLoader);
+            opts.UseHostFactory(_ => new StarlingJintModuleMetaHost());
         });
 
         _ctx = new JintBackendContext(
@@ -121,11 +134,36 @@ internal sealed class JintScriptSession : IScriptSession
         ArgumentNullException.ThrowIfNull(url);
         ArgumentNullException.ThrowIfNull(source);
         ct.ThrowIfCancellationRequested();
-        // J4 wires the real module loader through ctx.Engine.Modules + ctx.Fetch.
-        // Until then a module script is a no-op-with-signal so the engine's
-        // fail-soft module path logs it rather than crashing the render.
-        throw new ScriptThrow(
-            "ES modules are not yet implemented in the Jint backend (J4).", jsStack: null);
+
+        // Inline <script type="module"> bodies have no URL of their own (Engine.cs
+        // passes the document base for them); register them under a synthetic
+        // about:inline-N specifier whose imports resolve against the document
+        // base. External modules carry their own src URL; prime the entry body so
+        // the loader does not re-fetch it, then import by that URL.
+        var isInline = string.Equals(url.ToString(), _ctx.BaseUrl.ToString(), StringComparison.Ordinal);
+        var specifier = isInline
+            ? _moduleLoader.RegisterInline(source)
+            : _moduleLoader.RegisterEntry(url, source);
+
+        try
+        {
+            // Import links + evaluates the module graph and drives top-level await
+            // to settlement (Jint runs the module's promise jobs as part of the
+            // import). Drain any remaining microtasks so reactions queued by TLA /
+            // dynamic import() settle before we return.
+            _engine.Modules.Import(specifier);
+            _engine.Advanced.ProcessTasks();
+        }
+        catch (JavaScriptException ex)
+        {
+            throw JintInterop.Normalize(ex);
+        }
+        catch (global::Jint.Runtime.Modules.ModuleResolutionException ex)
+        {
+            throw new ScriptThrow(ex.Message, jsStack: null, ex);
+        }
+
+        return Task.CompletedTask;
     }
 
     public void FireDomContentLoaded() => DispatchDocumentEvent("DOMContentLoaded", onWindow: false);

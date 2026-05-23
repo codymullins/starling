@@ -38,7 +38,7 @@ starts only after the previous wave builds green.
 | J3b | 🟢 | Starling.Bindings.Jint | fetch | `FetchBinding.cs` | `FetchBinding.cs` |
 | J3c | 🟢 | Starling.Bindings.Jint | XMLHttpRequest | `XhrBinding.cs` | `XhrBinding.cs` |
 | J3d | 🟢 | Starling.Bindings.Jint | Observers, crypto, cookies | `Observers/`, `CryptoBinding.cs`, `CookieBinding.cs` | `ObserversBinding.cs`/`CryptoBinding.cs`/`CookieBinding.cs` |
-| J4 | 🔵 | Starling.Bindings.Jint | ES modules (loader, TLA, dynamic `import()`) | module path in `Engine.cs` | `ModuleLoader.cs` (+ `JintScriptSession.RunModuleScriptAsync`) |
+| J4 | 🟢 | Starling.Bindings.Jint | ES modules (loader, TLA, dynamic `import()`) | module path in `Engine.cs` | `ModuleLoader.cs` (+ `JintScriptSession.RunModuleScriptAsync`) |
 
 ### Wave 3 — integration, CI, conformance, docs
 
@@ -133,3 +133,52 @@ starts only after the previous wave builds green.
     (`OnScriptElementConnected`) and the "already started" flag
     (`MarkScriptStarted`). A small follow-up should add a src-set notification in
     `NodeBindings` that calls into the session's runner.
+- 2026-05-22 — **J4 complete** (agent-claude-cody, main tree). ES modules: loader,
+  top-level await, dynamic `import()`. Implemented:
+  - `StarlingJintModuleLoader : Jint.Runtime.Modules.IModuleLoader` (in
+    `ModuleLoader.cs`) — `Resolve` resolves specifiers via `Starling.Url`
+    (`UrlParser.Parse(specifier, base)`) against the importing module's URL (or the
+    document `BaseUrl` for the entry / inline modules); `LoadModule` returns primed
+    entry/inline bodies, else blocks on `ctx.Fetch` (synchronous IModuleLoader
+    contract, mirrors the Starling backend's `StarlingModuleHost.FetchSource`).
+    Handles `data:`/`http(s)`/relative specifiers; a fetch miss throws
+    `ModuleResolutionException`. **The resolved `Key` is the module's full URL and
+    the `ResolvedSpecifier.Uri` is left null** — that makes Jint report the Key
+    (not `Uri.LocalPath`) as `Module.Location`, which drives `import.meta.url`.
+  - `StarlingJintModuleMetaHost : Jint.Runtime.Host` — overrides
+    `GetImportMetaProperties` to set `import.meta.url` from `Module.Location`
+    (Jint 4.9.2's default `import.meta` is an empty object).
+  - **Engine construction restructured:** module support must be enabled at
+    construction. `JintScriptSession` now builds the loader first, then constructs
+    the engine with `opts.EnableModules(loader)` + `opts.UseHostFactory(_ => meta)`.
+    `ModuleLoader.Install` stays a no-op (the `JintBindings.InstallAll` order is
+    untouched) since modules can't be wired onto a live engine.
+  - `JintScriptSession.RunModuleScriptAsync` — registers the entry source
+    (inline `<script type=module>` → synthetic `about:inline-N` whose imports
+    resolve against the doc base; external → primed under its src URL), evaluates
+    via `engine.Modules.Import(specifier)` (which links + drives TLA to
+    settlement), then drains `ProcessTasks`. `JavaScriptException` /
+    `ModuleResolutionException` → `ScriptThrow`.
+  - **Exact Jint module API used:** `options.EnableModules(IModuleLoader)` +
+    `options.UseHostFactory(Func<Engine,Host>)`; `IModuleLoader.{Resolve,LoadModule}`;
+    `ResolvedSpecifier(ModuleRequest, Key, Uri, SpecifierType)`;
+    `ModuleFactory.BuildSourceTextModule(engine, resolved, code, ModuleParsingOptions.Default)`;
+    `engine.Modules.Add/Import`; `Module.Location`; `ModuleResolutionException`.
+    Dynamic `import()` wires automatically through the same loader once
+    `EnableModules` is set (verified).
+  - Tests: new `ModuleBindingsTests.cs` (8 tests): named+default import from a
+    fetched dependency, top-level await, `import.meta.url`, dynamic `import()`
+    namespace, inline-module relative import vs doc base, missing-dep → ScriptThrow,
+    throwing module → ScriptThrow, re-export chain. **All Jint backend tests green:
+    75 (67 prior + 8 new).** Default path unchanged: Starling.Engine 151 green.
+    Smoke-checked `EngineModuleScriptTests` (4) under `STARLING_JS_ENGINE=jint` —
+    real engine module orchestration (external `<script type=module>` via the
+    shared ScriptFetcher cache) passes end-to-end. Backend build clean
+    (0 warnings, warnings-as-errors).
+  - **Wave-3 gaps:** no import-map support (bare specifiers resolve as plain
+    relative URLs against the base, not via a map); JSON/CSS module attributes
+    (`import ... with { type: 'json' }`) are not specially handled — only source-text
+    modules are built; the loader's HTTP fetch blocks synchronously (acceptable —
+    matches the Starling backend, and parser-discovered modules hit the warm
+    ScriptFetcher cache), but a deeply chained cold-fetch graph blocks the JS thread
+    per dependency.

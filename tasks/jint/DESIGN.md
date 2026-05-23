@@ -152,6 +152,35 @@ J2a creates these; Wave-2 agents call them and must not change their shape:
   runs inline injected scripts; external/async injected scripts are ignored until
   the J3a dynamic-script runner lands. `MarkScriptStarted` is a no-op until J3a.
 
+### J4 — ES modules (implemented & frozen)
+
+ES module support must be enabled at **engine construction** — Jint requires the
+`IModuleLoader` and the `import.meta` host to be supplied to the `Engine`
+constructor (`options.EnableModules(loader)` / `options.UseHostFactory(...)`), not
+installed onto a live engine. So `JintScriptSession`'s constructor was restructured:
+it builds `StarlingJintModuleLoader` first (from `options.BaseUrl` + the fetch
+delegate), then constructs the engine with `EnableModules(_moduleLoader)` and
+`UseHostFactory(_ => new StarlingJintModuleMetaHost())`. **`ModuleLoader.Install`
+stays a no-op** so `JintBindings.InstallAll`'s frozen dispatcher order is untouched
+(modules can't be wired onto an already-built realm).
+
+- `StarlingJintModuleLoader : Jint.Runtime.Modules.IModuleLoader` resolves
+  specifiers via `Starling.Url` against the importing module's URL (or the doc
+  `BaseUrl` for entry/inline modules) and loads source through `ctx.Fetch`
+  (synchronous-facing; HTTP blocks like the Starling backend's `StarlingModuleHost`).
+  It primes the entry body (external → keyed by src URL; inline → synthetic
+  `about:inline-N` with the doc base) so the loader never re-fetches the entry.
+  **Contract detail:** the `ResolvedSpecifier.Key` is the full resolved URL and the
+  `Uri` is left `null` — that makes Jint use the Key (not `Uri.LocalPath`) as
+  `Module.Location`, which is what `import.meta.url` reads.
+- `StarlingJintModuleMetaHost : Jint.Runtime.Host` overrides
+  `GetImportMetaProperties` to set `import.meta.url` from `Module.Location`
+  (Jint 4.9.2's default `import.meta` is empty).
+- `RunModuleScriptAsync` registers the entry source, evaluates via
+  `engine.Modules.Import(specifier)` (links + drives TLA to settlement), drains
+  `ProcessTasks`, and normalizes `JavaScriptException` / `ModuleResolutionException`
+  to `ScriptThrow`. Dynamic `import()` routes through the same loader automatically.
+
 Stub files to create (one per Wave-2 package):
 `NodeBindings.cs` (J2b), `EventTargetBinding.cs` (J2c), `WindowBinding.cs` +
 `StorageBinding.cs`/`HistoryBinding.cs`/`PerformanceBinding.cs` (J2d),
