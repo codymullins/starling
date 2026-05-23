@@ -64,6 +64,31 @@ public sealed partial class JsCompiler
 
         var classId = ClassTemplate.NextClassId();
 
+        // §15.7.14 ClassDefinitionEvaluation — a class expression with a name
+        // creates an inner immutable binding of that name, scoped to the class
+        // body and initialized to the constructor once built, so methods/the
+        // constructor can refer to the class itself (e.g.
+        // `class C extends Array { constructor(){ super(); Object.setProtoOf(this, C.prototype); } }`).
+        // The declaration path instead binds the name to a global (handled by
+        // the caller), so only do this for expressions whose name a nested
+        // member actually captures. Without it `C` inside the body resolves to
+        // an undefined free global. We back the binding with a captured Cell so
+        // the method/ctor closures observe it as an upvalue.
+        // At script top-level the captured-name set is empty (top-level names
+        // are globals), so also bind when there is no parent compiler — the
+        // class methods are nested functions that capture this script frame.
+        var selfNameSlot = -1;
+        if (!bindNameToGlobal && name is not null
+            && (IsNameCaptured(name.Name) || _parent is null))
+        {
+            selfNameSlot = _b.ReserveLocal();
+            _b.MarkCaptured(selfNameSlot);
+            _b.EmitSlot(Opcode.InitCellLocal, selfNameSlot);
+            PushScope();
+            _scopes[^1][name.Name] = selfNameSlot;
+            _lexicalScopes[^1].Add(name.Name);
+        }
+
         // Push a private-name scope so method bodies inside this class can
         // resolve `#x` to its mangled own-property name.
         var privScope = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -136,10 +161,20 @@ public sealed partial class JsCompiler
                 classId,
                 bindNameToGlobal);
             _b.EmitU16(Opcode.BuildClass, _b.AddConstant(template));
+
+            // Initialize the inner class-name binding to the freshly-built
+            // class. BuildClass leaves the class on the stack (the expression's
+            // value); Dup so the store consumes a copy and the value remains.
+            if (selfNameSlot >= 0)
+            {
+                _b.Emit(Opcode.Dup);
+                _b.EmitSlot(Opcode.StoreCellLocal, selfNameSlot);
+            }
         }
         finally
         {
             _privateScopes.Pop();
+            if (selfNameSlot >= 0) PopScope();
         }
     }
 
