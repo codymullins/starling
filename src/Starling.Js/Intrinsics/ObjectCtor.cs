@@ -602,12 +602,15 @@ public static class ObjectCtor
         return JsValue.String("[object " + tag + "]");
     }
 
-    /// <summary>Pick the default built-in tag per §20.1.3.6 steps 4–14. We
-    /// only model the categories that have a corresponding host class — the
-    /// Arguments exotic isn't modelled, so its branch is omitted.</summary>
+    /// <summary>Pick the default built-in tag per §20.1.3.6 steps 4–14. We model
+    /// the categories that have a corresponding host class, plus the Arguments
+    /// exotic (step 5) via <see cref="JsObject.IsArgumentsExotic"/>.</summary>
     private static string DefaultToStringTag(JsRealm realm, JsObject o)
     {
         if (o is JsArray) return "Array";
+        // §20.1.3.6 step 5 — [[ParameterMap]] ⇒ "Arguments". Must precede the
+        // [[Call]] check (an arguments object isn't callable, but spec order).
+        if (o.IsArgumentsExotic) return "Arguments";
         if (AbstractOperations.IsCallable(JsValue.Object(o))) return "Function";
         // Error: any object with ErrorPrototype somewhere in its chain.
         for (var p = o.Prototype; p is not null; p = p.Prototype)

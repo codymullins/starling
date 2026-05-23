@@ -295,7 +295,7 @@ public sealed class JsRealm
     /// non-configurable accessor whose get/set is %ThrowTypeError%).</summary>
     public JsObject CreateArgumentsObject(IReadOnlyList<JsValue> args, bool strict)
     {
-        var obj = new JsObject(ObjectPrototype);
+        var obj = new JsObject(ObjectPrototype) { IsArgumentsExotic = true };
         for (var i = 0; i < args.Count; i++)
             obj.DefineOwnProperty(
                 i.ToString(System.Globalization.CultureInfo.InvariantCulture),

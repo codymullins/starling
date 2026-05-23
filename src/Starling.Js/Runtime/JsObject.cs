@@ -29,6 +29,13 @@ public class JsObject
     /// <see cref="PreventExtensions"/> on ordinary objects.</summary>
     private bool _extensible = true;
 
+    /// <summary>Models the spec's <c>[[ParameterMap]]</c> internal slot: true for
+    /// an <c>arguments</c> exotic object. Read by §20.1.3.6 step 5 so
+    /// <c>Object.prototype.toString</c> reports <c>"[object Arguments]"</c>
+    /// (which legacy feature-detection — e.g. underscore.js <c>isArguments</c> —
+    /// relies on instead of poking the poisoned <c>callee</c> accessor).</summary>
+    public bool IsArgumentsExotic { get; internal set; }
+
     public JsObject() { }
 
     public JsObject(JsObject? prototype) { Prototype = prototype; }
