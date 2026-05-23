@@ -263,10 +263,10 @@ public sealed class JsVm
             ip += 2;
             return v;
         }
-        int ReadI16()
+        int ReadI32()
         {
-            var v = BinaryPrimitives.ReadInt16LittleEndian(code.AsSpan(ip, 2));
-            ip += 2;
+            var v = BinaryPrimitives.ReadInt32LittleEndian(code.AsSpan(ip, 4));
+            ip += 4;
             return v;
         }
 
@@ -1009,22 +1009,22 @@ public sealed class JsVm
                 }
 
                 // ----- Control flow -----
-                case Opcode.Jump: { var d = ReadI16(); ip += d; break; }
+                case Opcode.Jump: { var d = ReadI32(); ip += d; break; }
                 case Opcode.JumpIfTrue:
                 {
-                    var d = ReadI16();
+                    var d = ReadI32();
                     if (JsValue.ToBoolean(Pop())) ip += d;
                     break;
                 }
                 case Opcode.JumpIfFalse:
                 {
-                    var d = ReadI16();
+                    var d = ReadI32();
                     if (!JsValue.ToBoolean(Pop())) ip += d;
                     break;
                 }
                 case Opcode.JumpIfNotNullish:
                 {
-                    var d = ReadI16();
+                    var d = ReadI32();
                     if (!Pop().IsNullish) ip += d;
                     break;
                 }
@@ -1049,8 +1049,8 @@ public sealed class JsVm
                 // ----- Try-frame management (gap:try-catch) -----
                 case Opcode.EnterTry:
                 {
-                    var catchOff = ReadI16();
-                    var finOff = ReadI16();
+                    var catchOff = ReadI32();
+                    var finOff = ReadI32();
                     tryStack.Push(new TryFrame
                     {
                         CatchPc = catchOff == -1 ? -1 : ip + catchOff,
@@ -1118,7 +1118,7 @@ public sealed class JsVm
                 case Opcode.BranchThroughFinally:
                 {
                     int unwindCount = ReadU8();
-                    var delta = ReadI16();
+                    var delta = ReadI32();
                     var targetPc = ip + delta; // i16 measured from after the operand
                     DivertBranchThroughFinally(tryStack, targetPc, unwindCount, ref ip);
                     break;
@@ -1644,7 +1644,7 @@ public sealed class JsVm
                 case Opcode.WithLoadOrMiss:
                 {
                     var name = (string)constants[ReadU16()]!;
-                    var miss = ReadI16();
+                    var miss = ReadI32();
                     var obj = FindWithBinding(name);
                     if (obj is not null)
                     {
@@ -1658,7 +1658,7 @@ public sealed class JsVm
                 case Opcode.WithLoadMethodOrMiss:
                 {
                     var name = (string)constants[ReadU16()]!;
-                    var miss = ReadI16();
+                    var miss = ReadI32();
                     var obj = FindWithBinding(name);
                     if (obj is not null)
                     {
@@ -1674,7 +1674,7 @@ public sealed class JsVm
                 case Opcode.WithStoreOrMiss:
                 {
                     var name = (string)constants[ReadU16()]!;
-                    var miss = ReadI16();
+                    var miss = ReadI32();
                     var obj = FindWithBinding(name);
                     if (obj is not null)
                     {
@@ -1691,7 +1691,7 @@ public sealed class JsVm
                 case Opcode.WithDeleteOrMiss:
                 {
                     var name = (string)constants[ReadU16()]!;
-                    var miss = ReadI16();
+                    var miss = ReadI32();
                     var obj = FindWithBinding(name);
                     if (obj is not null)
                     {

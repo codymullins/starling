@@ -261,6 +261,10 @@ public sealed class ChunkBuilder
     {
         _code.Add((byte)op);
         var pos = _code.Count;
+        // i32 offset (4 bytes). A u16 cap (±32767) overflowed on large minified
+        // bundles whose single functions compile to >32 KB of bytecode.
+        _code.Add(0);
+        _code.Add(0);
         _code.Add(0);
         _code.Add(0);
         return pos;
@@ -269,21 +273,17 @@ public sealed class ChunkBuilder
     /// <summary>Patch a previously-emitted jump to land at the current position.</summary>
     public void PatchJump(int operandPos)
     {
-        var jumpFrom = operandPos + 2; // jump is measured from end-of-operand
+        var jumpFrom = operandPos + 4; // jump is measured from end-of-operand
         var target = _code.Count;
         var delta = target - jumpFrom;
-        if (delta is < short.MinValue or > short.MaxValue)
-            throw new InvalidOperationException("jump distance overflows i16");
-        BinaryPrimitives.WriteInt16LittleEndian(
-            System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_code).Slice(operandPos, 2),
-            (short)delta);
+        PatchI32(operandPos, delta);
     }
 
-    /// <summary>Write a signed 16-bit value at an arbitrary previously-reserved
-    /// position (used for backward jumps).</summary>
-    public void PatchI16(int pos, short value)
-        => BinaryPrimitives.WriteInt16LittleEndian(
-            System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_code).Slice(pos, 2),
+    /// <summary>Write a signed 32-bit value at an arbitrary previously-reserved
+    /// position (used for backward jumps and composite-operand offsets).</summary>
+    public void PatchI32(int pos, int value)
+        => BinaryPrimitives.WriteInt32LittleEndian(
+            System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_code).Slice(pos, 4),
             value);
 
     /// <summary>Emit two raw bytes for an unsigned 16-bit operand. Useful
@@ -295,6 +295,17 @@ public sealed class ChunkBuilder
             throw new ArgumentOutOfRangeException(nameof(value));
         _code.Add((byte)(value & 0xFF));
         _code.Add((byte)((value >> 8) & 0xFF));
+    }
+
+    /// <summary>Emit four raw bytes for a signed 32-bit operand. Used for
+    /// jump/branch offset placeholders that are patched later via
+    /// <see cref="PatchJump"/> / <see cref="PatchI32"/>.</summary>
+    public void EmitI32Raw(int value)
+    {
+        _code.Add((byte)(value & 0xFF));
+        _code.Add((byte)((value >> 8) & 0xFF));
+        _code.Add((byte)((value >> 16) & 0xFF));
+        _code.Add((byte)((value >> 24) & 0xFF));
     }
 
     /// <summary>Emit a raw unsigned-8-bit byte. Used for opcodes with

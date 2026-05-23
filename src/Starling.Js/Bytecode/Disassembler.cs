@@ -124,7 +124,7 @@ public static class Disassembler
                       .Append('/').Append(FormatConstant(chunk.Constants[flagsIdx]));
                     break;
                 }
-                // i16 jump-offset opcodes
+                // i32 jump-offset opcodes
                 case Opcode.Jump:
                 case Opcode.JumpIfTrue:
                 case Opcode.JumpIfFalse:
@@ -133,36 +133,36 @@ public static class Disassembler
                 case Opcode.LogOr:
                 case Opcode.Coalesce:
                 {
-                    var offset = BinaryPrimitives.ReadInt16LittleEndian(code.AsSpan(i, 2));
-                    i += 2;
+                    var offset = BinaryPrimitives.ReadInt32LittleEndian(code.AsSpan(i, 4));
+                    i += 4;
                     sb.Append(op).Append(' ').Append(offset);
                     sb.Append("  ; → ").Append((i + offset).ToString("D4"));
                     break;
                 }
                 case Opcode.EnterTry:
                 {
-                    var catchOffset = BinaryPrimitives.ReadInt16LittleEndian(code.AsSpan(i, 2));
-                    i += 2;
-                    var finallyOffset = BinaryPrimitives.ReadInt16LittleEndian(code.AsSpan(i, 2));
-                    i += 2;
+                    var catchOffset = BinaryPrimitives.ReadInt32LittleEndian(code.AsSpan(i, 4));
+                    i += 4;
+                    var finallyOffset = BinaryPrimitives.ReadInt32LittleEndian(code.AsSpan(i, 4));
+                    i += 4;
                     sb.Append(op).Append(' ').Append(catchOffset).Append(' ').Append(finallyOffset);
                     sb.Append("  ; catch→").Append(catchOffset == -1 ? "<none>" : (i + catchOffset).ToString("D4"))
                       .Append(" finally→").Append(finallyOffset == -1 ? "<none>" : (i + finallyOffset).ToString("D4"));
                     break;
                 }
-                // u8 + i16 — BranchThroughFinally [unwindCount][target]
+                // u8 + i32 — BranchThroughFinally [unwindCount][target]
                 case Opcode.BranchThroughFinally:
                 {
                     var unwindCount = code[i];
                     i++;
-                    var offset = BinaryPrimitives.ReadInt16LittleEndian(code.AsSpan(i, 2));
-                    i += 2;
+                    var offset = BinaryPrimitives.ReadInt32LittleEndian(code.AsSpan(i, 4));
+                    i += 4;
                     sb.Append(op).Append(' ').Append(unwindCount).Append(' ').Append(offset);
                     sb.Append("  ; unwind=").Append(unwindCount)
                       .Append(" → ").Append((i + offset).ToString("D4"));
                     break;
                 }
-                // u16 nameIdx + i16 missOffset — with-aware identifier opcodes
+                // u16 nameIdx + i32 missOffset — with-aware identifier opcodes
                 case Opcode.WithLoadOrMiss:
                 case Opcode.WithLoadMethodOrMiss:
                 case Opcode.WithStoreOrMiss:
@@ -170,8 +170,8 @@ public static class Disassembler
                 {
                     var nameIdx = BinaryPrimitives.ReadUInt16LittleEndian(code.AsSpan(i, 2));
                     i += 2;
-                    var miss = BinaryPrimitives.ReadInt16LittleEndian(code.AsSpan(i, 2));
-                    i += 2;
+                    var miss = BinaryPrimitives.ReadInt32LittleEndian(code.AsSpan(i, 4));
+                    i += 4;
                     sb.Append(op).Append(' ').Append(nameIdx).Append(' ').Append(miss);
                     sb.Append("  ; ").Append(FormatConstant(chunk.Constants[nameIdx]))
                       .Append(" miss→").Append((i + miss).ToString("D4"));

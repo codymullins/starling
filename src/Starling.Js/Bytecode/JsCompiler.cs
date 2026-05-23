@@ -931,9 +931,9 @@ public sealed partial class JsCompiler
 
         _b.Emit(Opcode.EnterTry);
         var catchOperandPos = _b.Position;
-        _b.EmitU16Raw(0xFFFF);
+        _b.EmitI32Raw(-1);
         var finallyOperandPos = _b.Position;
-        _b.EmitU16Raw(0xFFFF);
+        _b.EmitI32Raw(-1);
 
         _tryDepth++;
         try
@@ -960,10 +960,10 @@ public sealed partial class JsCompiler
 
         if (hasHandler)
         {
-            var catchTargetDelta = _b.Position - (catchOperandPos + 4);
-            if (catchTargetDelta is < short.MinValue or > short.MaxValue)
-                throw new InvalidOperationException("try/catch catch offset overflows i16");
-            _b.PatchI16(catchOperandPos, (short)catchTargetDelta);
+            // Base is the byte after BOTH i32 operands (catch+finally = 8 bytes),
+            // matching the VM, which reads both before computing ip + catchOff.
+            var catchTargetDelta = _b.Position - (catchOperandPos + 8);
+            _b.PatchI32(catchOperandPos, catchTargetDelta);
 
             PushScope();
             var handler = ts.Handler!;
@@ -1002,10 +1002,8 @@ public sealed partial class JsCompiler
 
         if (hasFinalizer)
         {
-            var finallyTargetDelta = _b.Position - (finallyOperandPos + 2);
-            if (finallyTargetDelta is < short.MinValue or > short.MaxValue)
-                throw new InvalidOperationException("try/catch finally offset overflows i16");
-            _b.PatchI16(finallyOperandPos, (short)finallyTargetDelta);
+            var finallyTargetDelta = _b.Position - (finallyOperandPos + 4);
+            _b.PatchI32(finallyOperandPos, finallyTargetDelta);
 
             EmitStatement(ts.Finalizer!);
             _b.Emit(Opcode.EndFinally);
@@ -1031,9 +1029,9 @@ public sealed partial class JsCompiler
         // Synthetic try { body } finally { PopWith }.
         _b.Emit(Opcode.EnterTry);
         var catchOperandPos = _b.Position;
-        _b.EmitU16Raw(0xFFFF);              // no catch handler
+        _b.EmitI32Raw(-1);                  // no catch handler
         var finallyOperandPos = _b.Position;
-        _b.EmitU16Raw(0xFFFF);
+        _b.EmitI32Raw(-1);
 
         _tryDepth++;
         _withDepth++;
@@ -1048,10 +1046,8 @@ public sealed partial class JsCompiler
         }
         _b.Emit(Opcode.LeaveTry);
 
-        var finallyTargetDelta = _b.Position - (finallyOperandPos + 2);
-        if (finallyTargetDelta is < short.MinValue or > short.MaxValue)
-            throw new InvalidOperationException("with finally offset overflows i16");
-        _b.PatchI16(finallyOperandPos, (short)finallyTargetDelta);
+        var finallyTargetDelta = _b.Position - (finallyOperandPos + 4);
+        _b.PatchI32(finallyOperandPos, finallyTargetDelta);
 
         _b.Emit(Opcode.PopWith);
         _b.Emit(Opcode.EndFinally);
@@ -1831,7 +1827,7 @@ public sealed partial class JsCompiler
             _b.Emit(Opcode.BranchThroughFinally);
             _b.EmitU8Raw(crossedTryFrames);
             var finPatch = _b.Position;
-            _b.EmitU16Raw(0); // i16 target placeholder, patched by the loop pass.
+            _b.EmitI32Raw(0); // i32 target placeholder, patched by the loop pass.
             (isBreak ? targetFrame.BreakPatches : targetFrame.ContinuePatches).Add(finPatch);
             return;
         }
@@ -1874,23 +1870,10 @@ public sealed partial class JsCompiler
 
     private void PatchBackwardJump(int operandPos, int target)
     {
-        var jumpFrom = operandPos + 2;
+        // Offset measured from the byte after the i32 operand (matches the VM).
+        var jumpFrom = operandPos + 4;
         var delta = target - jumpFrom;
-        if (delta is < short.MinValue or > short.MaxValue)
-            throw new InvalidOperationException("backward jump overflows i16");
-        // ChunkBuilder doesn't expose direct patch for arbitrary positions
-        // except via PatchJump (which patches to _current_ position). Reuse
-        // the same arithmetic but go through a small helper that writes
-        // bytes directly.
-        WriteI16(operandPos, (short)delta);
-    }
-
-    private void WriteI16(int pos, short value)
-    {
-        // ChunkBuilder hides its byte list; expose patching by going through
-        // PatchJump-style logic. For backward jumps we need raw access, so
-        // add a tiny accessor.
-        _b.PatchI16(pos, value);
+        _b.PatchI32(operandPos, delta);
     }
 
     // -----------------------------------------------------------------------
@@ -2121,12 +2104,10 @@ public sealed partial class JsCompiler
     {
         _b.EmitU16(op, _b.AddConstant(name));
         var jumpPos = _b.Position;
-        _b.EmitU16Raw(0); // i16 miss-jump placeholder
+        _b.EmitI32Raw(0); // i32 miss-jump placeholder
         emitFallback();
-        var delta = _b.Position - (jumpPos + 2);
-        if (delta is < short.MinValue or > short.MaxValue)
-            throw new InvalidOperationException("with-guard jump overflows i16");
-        _b.PatchI16(jumpPos, (short)delta);
+        var delta = _b.Position - (jumpPos + 4);
+        _b.PatchI32(jumpPos, delta);
     }
 
     private void EmitIdLoad(string name)
@@ -3618,8 +3599,8 @@ public sealed partial class JsCompiler
         // iterator-result, etc.) still runs IteratorClose before propagating.
         _b.Emit(Opcode.EnterTry);
         var catchOperandPos = _b.Position;
-        _b.EmitU16Raw(0xFFFF);          // catch offset (patched below)
-        _b.EmitU16Raw(0xFFFF);          // finally offset (none → 0xFFFF == -1)
+        _b.EmitI32Raw(-1);              // catch offset (patched below)
+        _b.EmitI32Raw(-1);              // finally offset (none → -1)
 
         _tryDepth++;
         try
@@ -3677,10 +3658,8 @@ public sealed partial class JsCompiler
         // Catch: the thrown value is on the stack (sp reset to the try base).
         // Close the iterator (swallowing return()-errors so the original throw
         // wins) and rethrow.
-        var catchDelta = _b.Position - (catchOperandPos + 4);
-        if (catchDelta is < short.MinValue or > short.MaxValue)
-            throw new InvalidOperationException("array-pattern catch offset overflows i16");
-        _b.PatchI16(catchOperandPos, (short)catchDelta);
+        var catchDelta = _b.Position - (catchOperandPos + 8);
+        _b.PatchI32(catchOperandPos, catchDelta);
         _b.EmitSlot(Opcode.LoadLocal, handleSlot);  // [thrown, handle]
         _b.Emit(Opcode.IteratorCloseForThrow);      // [thrown]
         _b.Emit(Opcode.Throw);                       // rethrow
