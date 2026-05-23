@@ -31,13 +31,13 @@ starts only after the previous wave builds green.
 
 | ID | Status | Subsystem | Summary | Mirrors | Edit only |
 |---|---|---|---|---|---|
-| J2b | 🔵 | Starling.Bindings.Jint | Node / Element / Document | `NodeBindings.cs`, `DomWrappers.cs`, `QuerySelectorEngine.cs` | `NodeBindings.cs` |
-| J2c | 🔵 | Starling.Bindings.Jint | EventTarget / Event dispatch | `EventTargetBinding.cs` | `EventTargetBinding.cs` |
-| J2d | 🔵 | Starling.Bindings.Jint | Window/global, Storage, History, Performance | `WindowBinding.cs`, `StorageBinding.cs`, `HistoryBinding.cs`, `PerformanceBinding.cs` | `WindowBinding.cs` + `StorageBinding.cs`/`HistoryBinding.cs`/`PerformanceBinding.cs` |
+| J2b | 🟢 | Starling.Bindings.Jint | Node / Element / Document | `NodeBindings.cs`, `DomWrappers.cs`, `QuerySelectorEngine.cs` | `NodeBindings.cs` |
+| J2c | 🟢 | Starling.Bindings.Jint | EventTarget / Event dispatch | `EventTargetBinding.cs` | `EventTargetBinding.cs` |
+| J2d | 🟢 | Starling.Bindings.Jint | Window/global, Storage, History, Performance | `WindowBinding.cs`, `StorageBinding.cs`, `HistoryBinding.cs`, `PerformanceBinding.cs` | `WindowBinding.cs` + `StorageBinding.cs`/`HistoryBinding.cs`/`PerformanceBinding.cs` |
 | J3a | 🔵 | Starling.Bindings.Jint | Timers, rAF, event-loop pump | `TimersBinding.cs`, `AnimationFrameBinding.cs` | `TimersBinding.cs`/`AnimationFrameBinding.cs` (+ a dynamic-script runner; see note) |
-| J3b | 🔵 | Starling.Bindings.Jint | fetch | `FetchBinding.cs` | `FetchBinding.cs` |
-| J3c | 🔵 | Starling.Bindings.Jint | XMLHttpRequest | `XhrBinding.cs` | `XhrBinding.cs` |
-| J3d | 🔵 | Starling.Bindings.Jint | Observers, crypto, cookies | `Observers/`, `CryptoBinding.cs`, `CookieBinding.cs` | `ObserversBinding.cs`/`CryptoBinding.cs`/`CookieBinding.cs` |
+| J3b | 🟢 | Starling.Bindings.Jint | fetch | `FetchBinding.cs` | `FetchBinding.cs` |
+| J3c | 🟢 | Starling.Bindings.Jint | XMLHttpRequest | `XhrBinding.cs` | `XhrBinding.cs` |
+| J3d | 🟢 | Starling.Bindings.Jint | Observers, crypto, cookies | `Observers/`, `CryptoBinding.cs`, `CookieBinding.cs` | `ObserversBinding.cs`/`CryptoBinding.cs`/`CookieBinding.cs` |
 | J4 | 🔵 | Starling.Bindings.Jint | ES modules (loader, TLA, dynamic `import()`) | module path in `Engine.cs` | `ModuleLoader.cs` (+ `JintScriptSession.RunModuleScriptAsync`) |
 
 ### Wave 3 — integration, CI, conformance, docs
@@ -61,6 +61,18 @@ starts only after the previous wave builds green.
   Starling.Js (1439 pass / 1 skip), Starling.Engine (151), Starling.Bindings
   (204), new Starling.Bindings.Jint (2 spike). With `STARLING_JS_ENGINE` unset,
   behavior is unchanged (default = Starling.Js backend).
+- 2026-05-22 — **Wave 2A complete (J2b, J2c, J2d, J3b, J3c, J3d)** (agent-claude-cody,
+  orchestrated). Worktree isolation misfired (agents branched from `main`, pre-Wave-1),
+  so the fan-out was messy: J2b/J2c/J3c committed straight to `jint-js-engine`;
+  J3b landed in a side worktree (cherry-picked as `78b7723`); J2d/J3d work was
+  recovered from the working tree and committed as `559de55` (with two necessary
+  infra additions: `JintDomWrapper.BindExisting` + window lifecycle-event routing
+  in `JintScriptSession`). **All 6 families build + pass together: 56 Jint backend
+  tests green; default Engine path unchanged (151 green).** Lesson: run remaining
+  waves sequentially in the main tree, not via worktree isolation.
+- Remaining: J3a (timers/rAF + a real pump hook — fetch/XHR flagged that
+  `PumpOnce` ignores cross-thread completions + `Loop.PendingMicrotaskCount`),
+  J4 (modules), then Wave 3 (CI/test262/docs + end-to-end render under Jint).
   - New projects: `src/Starling.Js.Hosting` (seam — refs Dom/Net/Common/Url only),
     `src/Starling.Bindings.Jint` (Jint backend), `tests/Starling.Bindings.Jint.Tests`.
   - Seam lives in `Starling.Js.Hosting`; selector `JsEngineSelector` lives in
@@ -85,3 +97,4 @@ starts only after the previous wave builds green.
     - J4 note: `JintScriptSession.RunModuleScriptAsync` currently throws
       `ScriptThrow("…not yet implemented (J4)")`; replace it via `ModuleLoader.cs`
       using `ctx.Engine.Modules` + `ctx.Fetch`.
+- 2026-05-22 — J2d + J3d picked up (agent-claude-coordinator) alongside in-flight J2b/J2c/J3b/J3c worktrees.
