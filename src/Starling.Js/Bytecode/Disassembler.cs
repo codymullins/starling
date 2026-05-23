@@ -50,6 +50,7 @@ public static class Disassembler
                 case Opcode.PrivateSet:
                 case Opcode.DefinePrivateField:
                 case Opcode.PrivateIn:
+                case Opcode.TemplateObject:
                 case Opcode.BuildClass:
                 {
                     var idx = BinaryPrimitives.ReadUInt16LittleEndian(code.AsSpan(i, 2));
@@ -196,6 +197,7 @@ public static class Disassembler
         double d => d.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
         bool b => b ? "true" : "false",
         JsBigIntPlaceholder bi => $"{bi.Digits}n",
+        TemplateObjectTemplate t => $"template[{t.Cooked.Count}]",
         _ => c.ToString() ?? "(?)",
     };
 }

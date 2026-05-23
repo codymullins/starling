@@ -557,6 +557,12 @@ public sealed class MainWindow : Window, IBrowserController
                 // outgoing page, which would be this same instance).
                 if (!ReferenceEquals(result.Value, _lastShownPage))
                     ApplyShownPage(result.Value, opLabel, sw.ElapsedMilliseconds);
+
+                // The page's live JS context is attached only once the load
+                // settles. In the no-mutation case above we skip the re-show, so
+                // bind the live event loop here too (idempotent when ShowPage
+                // already bound it for the reflowed-successor case).
+                _webview.BindLiveScripting();
             }
         }
         catch (OperationCanceledException) when (myCts.IsCancellationRequested)

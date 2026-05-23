@@ -38,6 +38,7 @@ public sealed class LaidOutPage : IDisposable
     // pulled in by a paint host) reuse the page's warm connections. Null for
     // pages whose resources were transferred to a relayout successor.
     private readonly StarlingHttpClient? _http;
+    private PageScripting? _scripting;
     private bool _disposed;
     private bool _resourcesTransferred;
 
@@ -53,7 +54,8 @@ public sealed class LaidOutPage : IDisposable
         FontFaceRegistry webFonts,
         float? defaultFontSize,
         ConnectionSecurity? security = null,
-        StarlingHttpClient? http = null)
+        StarlingHttpClient? http = null,
+        PageScripting? scripting = null)
     {
         Root = root;
         Document = document;
@@ -66,12 +68,28 @@ public sealed class LaidOutPage : IDisposable
         _stylesheets = stylesheets;
         _webFonts = webFonts;
         _http = http;
+        _scripting = scripting;
         DefaultFontSize = defaultFontSize;
         DisplayListVersion = System.Threading.Interlocked.Increment(ref _nextVersion);
     }
 
     public BlockBox Root { get; }
     public Document Document { get; }
+
+    /// <summary>
+    /// The live JS context for this page, or null for pages without scripts (or
+    /// non-interactive renders). The shell uses it to dispatch DOM events into
+    /// page listeners and to pump timers/rAF/fetch after first paint. Owned by
+    /// the page: disposed in <see cref="Dispose"/> and transferred to a relayout
+    /// successor so the realm survives reflows. Attached once, post-load, by the
+    /// engine's interactive path.
+    /// </summary>
+    public PageScripting? Scripting => _scripting;
+
+    /// <summary>Attach the live JS context after construction — used by the
+    /// interactive path when the first-paint page is returned unchanged (no
+    /// deferred-script DOM mutation), so the already-built page goes live.</summary>
+    internal void AttachScripting(PageScripting scripting) => _scripting = scripting;
 
     /// <summary>
     /// Monotonic version of this page's display list, assigned once at
@@ -138,7 +156,7 @@ public sealed class LaidOutPage : IDisposable
         _resourcesTransferred = true;
         return new LaidOutPage(
             root, Document, style, viewport, Url, Title,
-            _images, _stylesheets, _webFonts, DefaultFontSize, Security, _http);
+            _images, _stylesheets, _webFonts, DefaultFontSize, Security, _http, _scripting);
     }
 
     public void Dispose()
@@ -146,8 +164,10 @@ public sealed class LaidOutPage : IDisposable
         if (_disposed) return;
         _disposed = true;
         // A page whose resources were handed to a relayout successor must not
-        // release them — they are still in use by that successor.
+        // release them — they are still in use by that successor. (The live JS
+        // context rides along under the same transfer flag.)
         if (_resourcesTransferred) return;
+        _scripting?.Dispose();
         _images.Dispose();
         _stylesheets.Dispose();
         _webFonts.Dispose();

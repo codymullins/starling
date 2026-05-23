@@ -1,5 +1,6 @@
 using Starling.Common.Diagnostics;
 using Starling.Dom;
+using Starling.Dom.Events;
 using Starling.Js.Bytecode;
 using Starling.Js.Modules;
 using Starling.Js.Parse;
@@ -40,6 +41,12 @@ internal sealed class StarlingScriptSession : IScriptSession
     private readonly IDiagnostics _diag;
     private readonly StarlingDynamicScriptRunner _dynamicRunner;
     private bool _disposed;
+
+    // Live-phase (post-load) wall-clock baseline: the simulated-clock value at
+    // the first PumpFrame, so the shell's "ms since it began driving" maps onto
+    // the loop's monotonic clock without rewinding the load-time advance.
+    private long _liveBaselineMs;
+    private bool _liveStarted;
 
     private Action<ConsoleLevel, string> _consoleSink = static (_, _) => { };
 
@@ -219,6 +226,47 @@ internal sealed class StarlingScriptSession : IScriptSession
     {
         ArgumentNullException.ThrowIfNull(scriptEl);
         if (scriptEl is Element script) _dynamicRunner.MarkStarted(script);
+    }
+
+    public bool DispatchEvent(EventTarget target, Event evt)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(evt);
+        if (_disposed) return false;
+
+        var before = _document.MutationVersion;
+        _runtime.WithActiveVm(() => target.DispatchEvent(evt));
+        return _document.MutationVersion != before;
+    }
+
+    public bool PumpFrame(long elapsedMs)
+    {
+        if (_disposed) return false;
+        if (!_liveStarted)
+        {
+            _liveBaselineMs = _loop.NowMilliseconds;
+            _liveStarted = true;
+        }
+
+        var before = _document.MutationVersion;
+        var target = _liveBaselineMs + Math.Max(0, elapsedMs);
+        _runtime.WithActiveVm(() =>
+        {
+            // RunFrame requires a non-decreasing clock; only advance when real
+            // time has moved past the loop's current now. WithActiveVm drains the
+            // realm microtask queue (promise + fetch resolve jobs) on exit
+            // regardless, so a no-advance tick still services completions.
+            if (target > _loop.NowMilliseconds)
+                _loop.RunFrame(target);
+        });
+
+        // A script that set `src` on a <script> queues an off-thread fetch+run;
+        // kick the drain (fire-and-forget — its completion re-enters via jobs the
+        // next pump catches).
+        if (_dynamicRunner.HasPending)
+            _ = _dynamicRunner.DrainAsync(CancellationToken.None);
+
+        return _document.MutationVersion != before;
     }
 
     public void Dispose()

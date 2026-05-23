@@ -996,6 +996,19 @@ public sealed class JsVm
                     break;
                 }
 
+                case Opcode.TemplateObject:
+                {
+                    var tmpl = (TemplateObjectTemplate)constants[ReadU16()]!;
+                    var cache = _runtime.Realm.TemplateObjectCache;
+                    if (!cache.TryGetValue(tmpl, out var strings))
+                    {
+                        strings = BuildTemplateObject(tmpl);
+                        cache[tmpl] = strings;
+                    }
+                    Push(JsValue.Object(strings));
+                    break;
+                }
+
                 case Opcode.New:
                 {
                     var argc = ReadU8();
@@ -2657,6 +2670,44 @@ public sealed class JsVm
         }
 
         return JsValue.Object(ctorInstance);
+    }
+
+    /// <summary>§13.2.8.4 — materialise a tagged template's frozen strings
+    /// object: a cooked array carrying a frozen <c>.raw</c> sibling. Both arrays
+    /// are integrity-frozen (own props non-writable/non-configurable, then
+    /// non-extensible) so a tag function can't mutate the shared, cached object.</summary>
+    private JsArray BuildTemplateObject(TemplateObjectTemplate tmpl)
+    {
+        var realm = _runtime.Realm;
+
+        var rawItems = new JsValue[tmpl.Raw.Count];
+        for (var i = 0; i < rawItems.Length; i++) rawItems[i] = JsValue.String(tmpl.Raw[i]);
+        var rawArr = new JsArray(realm, rawItems);
+        FreezeOwnProperties(rawArr);
+
+        var cookedItems = new JsValue[tmpl.Cooked.Count];
+        for (var i = 0; i < cookedItems.Length; i++)
+            cookedItems[i] = tmpl.Cooked[i] is { } s ? JsValue.String(s) : JsValue.Undefined;
+        var cooked = new JsArray(realm, cookedItems);
+        cooked.DefineOwnProperty("raw",
+            PropertyDescriptor.Data(JsValue.Object(rawArr), writable: false, enumerable: false, configurable: false));
+        FreezeOwnProperties(cooked);
+
+        return cooked;
+    }
+
+    private static void FreezeOwnProperties(JsObject obj)
+    {
+        foreach (var key in new List<JsPropertyKey>(obj.OwnPropertyKeys))
+        {
+            var d = obj.GetOwnPropertyDescriptor(key);
+            if (d is null) continue;
+            var desc = d.Value;
+            obj.DefineOwnProperty(key, desc.IsAccessor
+                ? PropertyDescriptor.Accessor(desc.Getter, desc.Setter, desc.Enumerable, configurable: false)
+                : PropertyDescriptor.Data(desc.Value, writable: false, enumerable: desc.Enumerable, configurable: false));
+        }
+        obj.PreventExtensions();
     }
 
     /// <summary>Locate a private member's descriptor for a mangled name: a

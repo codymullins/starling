@@ -1,5 +1,6 @@
 using Starling.Bindings;
 using Starling.Dom;
+using Starling.Dom.Events;
 using Starling.Net;
 using StarlingUrl = global::Starling.Url.Url;
 
@@ -114,6 +115,26 @@ public interface IScriptSession : IDisposable
     /// <see cref="RunModuleScriptAsync"/>, since those entry points are
     /// element-agnostic.</summary>
     void MarkScriptStarted(Node scriptEl);
+
+    // ---- Live (post-load) interactive phase ----
+    // After first paint the engine stops driving the session and hands it to the
+    // page's PageScripting host, which keeps the realm alive and routes the
+    // shell's events + pump ticks through the two methods below. They run on the
+    // UI thread, with the backend's VM made active for the duration.
+
+    /// <summary>Dispatch <paramref name="evt"/> to <paramref name="target"/> with
+    /// the VM active so page listeners run, then drain the microtasks they queue.
+    /// Returns <c>true</c> when the dispatch mutated the DOM (the shell should
+    /// re-render). Listener throws are logged fail-soft, never propagated.</summary>
+    bool DispatchEvent(EventTarget target, Event evt);
+
+    /// <summary>Advance the simulated event loop to fire any timers + one rAF
+    /// frame due within <paramref name="elapsedMs"/> real milliseconds of the
+    /// moment the live phase began, draining microtasks and servicing any
+    /// <c>fetch</c>/XHR completions and <c>src</c>-triggered dynamic scripts that
+    /// landed since the last call. Returns <c>true</c> when the DOM changed and
+    /// the shell should re-render.</summary>
+    bool PumpFrame(long elapsedMs);
 }
 
 /// <summary>

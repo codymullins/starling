@@ -15,6 +15,7 @@ using Starling.Common.Image;
 using Starling.Css.Cascade;
 using Starling.Css.Properties;
 using Starling.Css.Selectors;
+using Starling.Dom.Events;
 using Starling.Engine;
 using Starling.Gui; // linked BoxHitTester.cs lives in this namespace
 using AvColor = Avalonia.Media.Color;
@@ -81,7 +82,17 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     private int _caretIndex;
     private Border? _caretOverlay;
     private bool _caretOn;
+    private string _valueAtFocus = string.Empty;
     private readonly DispatcherTimer _caretBlinkTimer;
+
+    // Live-page event loop: while the current page carries a live JS context
+    // (Starling.Engine.PageScripting), this timer pumps its microtasks / timers /
+    // rAF / fetch completions against wall-clock time and re-renders any DOM the
+    // page mutates. _boundScripting tracks which context the stopwatch's clock
+    // belongs to so a relayout (same context) doesn't reset it.
+    private readonly DispatcherTimer _liveTimer;
+    private readonly Stopwatch _liveStopwatch = new();
+    private PageScripting? _boundScripting;
 
     public WebviewPanel(
         ThemeManager tm,
@@ -146,7 +157,12 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         _pageCanvas.PointerReleased += OnPointerReleased;
         _pageCanvas.PointerCaptureLost += (_, _) => EndSelectionDrag(cancel: true);
         _pageCanvas.KeyDown += OnPageKeyDown;
+        _pageCanvas.KeyUp += OnPageKeyUp;
         _pageCanvas.TextInput += OnPageTextInput;
+
+        // ~60 Hz live-page pump (started only while a page has a JS context).
+        _liveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        _liveTimer.Tick += (_, _) => LiveTick();
 
         // Caret blink — toggles the overlay's visibility on a fixed cadence
         // while a field is focused; stopped (and the overlay removed) on blur.
@@ -251,6 +267,12 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         var keepFocus = _focusedInput is not null
             && ReferenceEquals(page.Document.FocusedElement, _focusedInput);
 
+        // Pause the live-page pump across the swap; rebound at the end against the
+        // incoming page's JS context. (All on the UI thread, so the timer can't
+        // tick mid-swap, but stopping keeps _boundScripting from briefly naming a
+        // page we're about to dispose.)
+        _liveTimer.Stop();
+
         _currentPage?.Dispose();
         _currentPage = page;
 
@@ -306,6 +328,8 @@ internal sealed class WebviewPanel : UserControl, IDisposable
             _caretIndex = 0;
             _caretBlinkTimer.Stop();
         }
+
+        BindLiveScripting();
     }
 
     /// <summary>
@@ -569,8 +593,13 @@ internal sealed class WebviewPanel : UserControl, IDisposable
 
         _focusedInput = input;
         _currentPage.Document.FocusedElement = input;
+        _valueAtFocus = CurrentValue();
         _caretIndex = CurrentValue().Length;
         _pageCanvas.Focus();
+
+        // Notify page JS (HTML focus event order: focus, then focusin/bubbles).
+        DispatchDom(input, new FocusEvent("focus"));
+        DispatchDom(input, new FocusEvent("focusin", new EventInit(Bubbles: true)));
 
         RefreshFocusedLayout();
         _caretIndex = CaretIndexFromClick(clickDoc);
@@ -583,14 +612,20 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     {
         if (_focusedInput is null) return;
         var was = _focusedInput;
+        var finalValue = was.InputValue ?? was.GetAttribute("value") ?? string.Empty;
+        var changed = !string.Equals(finalValue, _valueAtFocus, StringComparison.Ordinal);
         _focusedInput = null;
         _caretBlinkTimer.Stop();
         RemoveCaretOverlay();
         if (_currentPage is not null && ReferenceEquals(_currentPage.Document.FocusedElement, was))
-        {
             _currentPage.Document.FocusedElement = null;
-            RefreshFocusedLayout(); // placeholder returns on the now-blurred field
-        }
+
+        // HTML order: a value edited since focus fires `change`, then blur/focusout.
+        if (changed) DispatchDom(was, new Event("change", new EventInit(Bubbles: true)));
+        DispatchDom(was, new FocusEvent("blur"));
+        DispatchDom(was, new FocusEvent("focusout", new EventInit(Bubbles: true)));
+
+        RefreshFocusedLayout(); // placeholder returns on the now-blurred field
     }
 
     private void OnPageTextInput(object? sender, TextInputEventArgs e)
@@ -607,9 +642,16 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         CommitValue(val.Insert(idx, text), idx + text.Length);
     }
 
+    private void OnPageKeyUp(object? sender, KeyEventArgs e)
+    {
+        if (_focusedInput is null) return;
+        DispatchDom(_focusedInput, MakeKeyboardEvent("keyup", e));
+    }
+
     private void OnPageKeyDown(object? sender, KeyEventArgs e)
     {
         if (_focusedInput is null) return;
+        DispatchDom(_focusedInput, MakeKeyboardEvent("keydown", e));
         var val = CurrentValue();
         var idx = Math.Clamp(_caretIndex, 0, val.Length);
         switch (e.Key)
@@ -637,6 +679,10 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         if (_focusedInput is null) return;
         _focusedInput.InputValue = next;
         _caretIndex = Math.Clamp(newCaret, 0, next.Length);
+        // Fire the DOM `input` event so search-as-you-type / form handlers run;
+        // RefreshFocusedLayout then reflects both the new value text and any DOM
+        // the handler mutated synchronously.
+        DispatchDom(_focusedInput, new InputEvent("input", new EventInit(Bubbles: true)) { InputType = "insertText" });
         RefreshFocusedLayout();
     }
 
@@ -792,6 +838,100 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         var c = box.Style?.GetColor(PropertyId.Color);
         if (c is null) return AvColor.FromArgb(255, 0, 0, 0);
         return AvColor.FromArgb(c.A == 0 ? (byte)255 : c.A, c.R, c.G, c.B);
+    }
+
+    // ---- Live page event loop + DOM event dispatch --------------------
+    //
+    // While the current page carries a live JS context (PageScripting, attached
+    // by the engine's interactive load), a ~60Hz timer pumps its microtasks /
+    // setTimeout / rAF / fetch completions against wall-clock time and re-renders
+    // whatever the page mutates. DOM events from interaction (focus/input/key…)
+    // are dispatched into the same context so page handlers run.
+
+    /// <summary>
+    /// (Re)bind the live-page pump to the current page's JS context. Called at the
+    /// end of <see cref="ShowPage"/> and by the shell once a navigation settles
+    /// (the no-DOM-mutation case returns the already-shown page object, so
+    /// ShowPage isn't re-invoked but the context has since been attached). The
+    /// wall-clock baseline resets only when the context object changes, so a
+    /// relayout of the same page keeps timer due-times monotonic.
+    /// </summary>
+    public void BindLiveScripting()
+    {
+        var scripting = _currentPage?.Scripting;
+        if (scripting is null)
+        {
+            _liveTimer.Stop();
+            _boundScripting = null;
+            return;
+        }
+        if (!ReferenceEquals(scripting, _boundScripting))
+        {
+            _boundScripting = scripting;
+            _liveStopwatch.Restart();
+        }
+        if (!_liveTimer.IsEnabled) _liveTimer.Start();
+    }
+
+    private void LiveTick()
+    {
+        var scripting = _currentPage?.Scripting;
+        if (scripting is null) { _liveTimer.Stop(); _boundScripting = null; return; }
+
+        bool mutated;
+        try { mutated = scripting.PumpFrame(_liveStopwatch.ElapsedMilliseconds); }
+        catch (Exception ex)
+        {
+            _diag.Log(DiagLevel.Warn, "gui", $"live JS pump failed: {ex.Message}");
+            return;
+        }
+        if (mutated) RefreshLiveLayout();
+    }
+
+    /// <summary>Re-lay-out + repaint after the live loop mutated the DOM,
+    /// preserving scroll and the text caret. No-op without a relayout hook.</summary>
+    private void RefreshLiveLayout()
+    {
+        if (_currentPage is null || _relayout is null) return;
+        var relaid = _relayout(_currentPage, CurrentViewportSize());
+        if (relaid is not null) ShowPage(relaid, preserveScroll: true);
+    }
+
+    /// <summary>Dispatch a DOM event into the page's JS listeners (a no-op for
+    /// pages without a live JS context), then ensure the live pump is running so
+    /// any async work the listener scheduled (timers, fetch) gets serviced.</summary>
+    private void DispatchDom(DomElement target, Event evt)
+    {
+        var scripting = _currentPage?.Scripting;
+        if (scripting is null) return;
+        try { scripting.DispatchEvent(target, evt); }
+        catch (Exception ex) { _diag.Log(DiagLevel.Warn, "gui", $"DOM event dispatch failed: {ex.Message}"); }
+        if (!_liveTimer.IsEnabled) BindLiveScripting();
+    }
+
+    private static KeyboardEvent MakeKeyboardEvent(string type, KeyEventArgs e) =>
+        new(type, new EventInit(Bubbles: true, Cancelable: true))
+        {
+            Key = DomKeyName(e),
+            Code = e.PhysicalKey.ToString(),
+            CtrlKey = e.KeyModifiers.HasFlag(KeyModifiers.Control),
+            ShiftKey = e.KeyModifiers.HasFlag(KeyModifiers.Shift),
+            AltKey = e.KeyModifiers.HasFlag(KeyModifiers.Alt),
+            MetaKey = e.KeyModifiers.HasFlag(KeyModifiers.Meta),
+        };
+
+    private static string DomKeyName(KeyEventArgs e)
+    {
+        if (!string.IsNullOrEmpty(e.KeySymbol)) return e.KeySymbol!;
+        return e.Key switch
+        {
+            Key.Enter => "Enter", Key.Tab => "Tab", Key.Back => "Backspace",
+            Key.Delete => "Delete", Key.Escape => "Escape",
+            Key.Left => "ArrowLeft", Key.Right => "ArrowRight",
+            Key.Up => "ArrowUp", Key.Down => "ArrowDown",
+            Key.Home => "Home", Key.End => "End", Key.Space => " ",
+            _ => e.Key.ToString(),
+        };
     }
 
     // ---- Cursor --------------------------------------------------------
@@ -1131,6 +1271,7 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     {
         _relayoutTimer.Stop();
         _caretBlinkTimer.Stop();
+        _liveTimer.Stop();
         _renderer.Dispose();
         _currentPage?.Dispose();
         (_pageImage.Source as IDisposable)?.Dispose();

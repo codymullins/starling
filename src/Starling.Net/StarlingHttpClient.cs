@@ -57,6 +57,11 @@ public sealed class StarlingHttpClient : IDisposable
         _pool = options.ConnectionPool ?? new ConnectionPool();
     }
 
+    /// <summary>The User-Agent presented on the wire. Surfaced so the JS layer
+    /// can keep <c>navigator.userAgent</c> in lockstep with what we actually
+    /// send (sites compare the two).</summary>
+    public string UserAgent => _options.UserAgent;
+
     /// <summary>Idle connection pool. Exposed mainly for tests asserting on
     /// reuse / capacity behaviour.</summary>
     public ConnectionPool ConnectionPool => _pool;
@@ -91,6 +96,13 @@ public sealed class StarlingHttpClient : IDisposable
             return Result<HttpResponse, NetworkError>.Err(NetworkError.BadUrl);
 
         var origin = OriginKey.Create(url.IsHttps ? "https" : "http", url.Host, port);
+
+        // Present a recognised browser UA on every request (document, subresource,
+        // and JS fetch/XHR) unless the caller forced one. Both the H1 writer and
+        // the H2 header builder honour an existing User-Agent header, so this is
+        // the single wire-side source of truth. See StarlingHttpClientOptions.
+        if (!request.Headers.Contains("User-Agent"))
+            request.Headers.Set("User-Agent", _options.UserAgent);
 
         using var requestCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         requestCts.CancelAfter(_options.RequestTimeout);
@@ -514,8 +526,21 @@ public sealed class StarlingHttpClient : IDisposable
 
 public sealed class StarlingHttpClientOptions
 {
+    /// <summary>
+    /// Browser-identifying User-Agent presented on every request. Many sites
+    /// (notably google.com) sniff this and serve a degraded, JS-free page to any
+    /// UA they don't recognise as a modern browser, so we present as a current
+    /// Chrome on macOS. Injected by <see cref="StarlingHttpClient.SendAsync"/>
+    /// when the request doesn't already carry a User-Agent, which is why it
+    /// drives both the HTTP/1.1 and HTTP/2 paths from a single source of truth.
+    /// </summary>
+    public const string DefaultUserAgent =
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        + "(KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36";
+
     public TimeSpan ConnectTimeout { get; init; } = TimeSpan.FromSeconds(10);
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(30);
+    public string UserAgent { get; init; } = DefaultUserAgent;
     public IReadOnlyList<string> AlpnProtocols { get; init; } = ["h2", "http/1.1"];
     public DnsResolver? DnsResolver { get; init; }
     public CookieJar? CookieJar { get; init; }

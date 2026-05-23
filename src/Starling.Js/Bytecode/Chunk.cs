@@ -127,6 +127,22 @@ public sealed record JsBigIntPlaceholder(System.Numerics.BigInteger Value)
 }
 
 /// <summary>
+/// Constant-pool wrapper describing a tagged template's strings array
+/// (§13.2.8.4 GetTemplateObject). <see cref="Cooked"/> holds the cooked
+/// segments (a <c>null</c> entry means an illegal escape, surfaced as
+/// <c>undefined</c>); <see cref="Raw"/> holds the matching raw segments for
+/// <c>strings.raw</c>. One instance is emitted per tagged-template call site,
+/// and its reference identity keys the per-realm cache so the VM hands the same
+/// frozen object back on every evaluation of that site (the spec's call-site
+/// caching that user tag functions rely on as a Map/WeakMap key).
+/// </summary>
+public sealed class TemplateObjectTemplate(IReadOnlyList<string?> cooked, IReadOnlyList<string> raw)
+{
+    public IReadOnlyList<string?> Cooked { get; } = cooked;
+    public IReadOnlyList<string> Raw { get; } = raw;
+}
+
+/// <summary>
 /// Mutable builder used by <c>JsCompiler</c>. Tracks the constant pool,
 /// the byte stream, and the active local-slot count.
 /// </summary>

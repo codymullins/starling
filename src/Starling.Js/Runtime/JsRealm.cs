@@ -26,6 +26,12 @@ public sealed class JsRealm
     internal int ConsoleGroupDepth { get; set; }
     internal Dictionary<string, JsSymbol> SymbolRegistry { get; } = new(StringComparer.Ordinal);
 
+    // §13.2.8.4 — Tagged-template call-site cache. Keyed by the emitted
+    // TemplateObjectTemplate's reference identity so every evaluation of one
+    // tagged-template site hands back the same frozen strings object.
+    internal Dictionary<object, JsObject> TemplateObjectCache { get; } =
+        new(System.Collections.Generic.ReferenceEqualityComparer.Instance);
+
     // §9.3.1 — Intrinsic prototypes. Populated by each intrinsic's Install pass.
     public JsObject ObjectPrototype { get; }
     public JsObject FunctionPrototype { get; }

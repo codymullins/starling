@@ -176,8 +176,18 @@ public sealed class RegexParser
                 return ParseClass();
             case '\\':
                 return ParseEscape();
-            case '*': case '+': case '?': case '{': case '}': case ']': case '|':
+            case '*': case '+': case '?': case '|':
                 throw new RegexSyntaxException($"Unexpected '{c}' at index {_i}");
+            case '{': case '}': case ']':
+                // Annex B §B.1.2: with neither the `u` nor `v` flag, `{` `}` `]`
+                // that don't form a valid quantifier / close a class are
+                // ExtendedPatternCharacters — i.e. ordinary literals. (`a{`, a
+                // stray `}`, an unmatched `]`.) Real-world bundles, including
+                // google.com's, depend on this. Under Unicode/UnicodeSets the
+                // strict grammar applies and they remain a SyntaxError.
+                if ((_flags & (RegexFlags.Unicode | RegexFlags.UnicodeSets)) != 0)
+                    throw new RegexSyntaxException($"Unexpected '{c}' at index {_i}");
+                goto default;
             default:
                 {
                     _i++;

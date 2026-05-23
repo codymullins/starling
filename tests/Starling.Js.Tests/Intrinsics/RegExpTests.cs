@@ -228,6 +228,38 @@ public class RegExpTests
         Run("Array.isArray('a'.matchAll(new RegExp('a', 'g')));").AsBool.Should().BeFalse();
     }
 
+    // ----- Annex B §B.1.2: lone { } ] are literals in non-Unicode mode -----
+
+    [TestMethod]
+    public void Lone_brace_is_a_literal_without_u_flag()
+    {
+        // Real-world bundles (e.g. google.com's) embed a bare '{' that isn't a
+        // valid quantifier; it must match literally rather than throw.
+        Run("/{/.test('a{b');").AsBool.Should().BeTrue();
+        Run("new RegExp('{').test('{');").AsBool.Should().BeTrue();
+    }
+
+    [TestMethod]
+    public void Stray_close_brace_and_bracket_are_literals_without_u_flag()
+    {
+        Run("/a}b/.test('a}b');").AsBool.Should().BeTrue();
+        Run("/a]b/.test('a]b');").AsBool.Should().BeTrue();
+    }
+
+    [TestMethod]
+    public void Incomplete_quantifier_brace_is_literal()
+    {
+        // `a{2` — `{` doesn't open a valid quantifier, so it's a literal run.
+        Run("/a{2/.test('a{2');").AsBool.Should().BeTrue();
+    }
+
+    [TestMethod]
+    public void Lone_brace_is_a_syntax_error_under_u_flag()
+    {
+        var act = () => Run("new RegExp('{', 'u').test('{');");
+        act.Should().Throw<JsThrow>();
+    }
+
     private static JsValue Run(string src)
     {
         var program = new JsParser(src).ParseProgram();

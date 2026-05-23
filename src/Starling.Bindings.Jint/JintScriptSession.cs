@@ -36,6 +36,12 @@ internal sealed class JintScriptSession : IScriptSession
     private readonly StarlingJintModuleLoader _moduleLoader;
     private bool _disposed;
 
+    // Live-phase (post-load) wall-clock baseline: the simulated-clock value at
+    // the first PumpFrame, so the shell's "ms since it began driving" maps onto
+    // the loop's monotonic clock without rewinding the load-time advance.
+    private long _liveBaselineMs;
+    private bool _liveStarted;
+
     // Thread-safe "post to the JS thread" queue. Background work (fetch/XHR HTTP
     // completions, dynamic-script fetches) enqueues a callback here via
     // ctx.Post(...); PumpOnce drains and runs them on the JS thread. A queued job
@@ -276,6 +282,55 @@ internal sealed class JintScriptSession : IScriptSession
         // Flag a parser-batch script "already started" so a later JS `src` write
         // never re-runs it (HTML §4.12.1).
         if (scriptEl is Element script) _dynamicRunner.MarkStarted(script);
+    }
+
+    public bool DispatchEvent(Starling.Dom.Events.EventTarget target, Starling.Dom.Events.Event evt)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(evt);
+        if (_disposed) return false;
+
+        var before = _ctx.Document.MutationVersion;
+        try
+        {
+            target.DispatchEvent(evt);
+            _engine.Advanced.ProcessTasks();
+        }
+        catch (JavaScriptException ex)
+        {
+            ReportUncaught(ex);
+        }
+        catch (Exception ex)
+        {
+            _ctx.Diag.Log(DiagLevel.Warn, "engine.js", $"Event '{evt.Type}' handler threw: {ex.Message}");
+        }
+        return _ctx.Document.MutationVersion != before;
+    }
+
+    public bool PumpFrame(long elapsedMs)
+    {
+        if (_disposed) return false;
+        if (!_liveStarted)
+        {
+            _liveBaselineMs = _loop.NowMilliseconds;
+            _liveStarted = true;
+        }
+
+        var before = _ctx.Document.MutationVersion;
+        var target = _liveBaselineMs + Math.Max(0, elapsedMs);
+        // RunFrame requires a non-decreasing clock; only advance when real time
+        // has moved past the loop's current now.
+        if (target > _loop.NowMilliseconds)
+            _loop.RunFrame(target);
+
+        // Drain Jint promise jobs, then the cross-thread post queue (fetch/XHR
+        // completions + dynamic-script runs) on the JS thread, then re-drain so
+        // reactions they queued settle this tick.
+        DrainMicrotasks();
+        if (DrainPostQueue())
+            DrainMicrotasks();
+
+        return _ctx.Document.MutationVersion != before;
     }
 
     public void Dispose()

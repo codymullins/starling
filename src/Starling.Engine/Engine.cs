@@ -588,13 +588,29 @@ public sealed class StarlingEngine
                         using (_diag.Span("engine", "run_scripts.deferred"))
                             await RunDeferredScriptsAsync(session, deferAsync: true, ct).ConfigureAwait(false);
 
-                        EndSessionOnce();
-                        DisposeScripts();
+                        // Keep the realm LIVE past load: instead of tearing the
+                        // session down, hand it to the returned page as a
+                        // PageScripting so the shell can dispatch DOM events and
+                        // pump timers/rAF/fetch interactively. The page owns it
+                        // now (disposes the JS http client + fetcher + DOM hooks),
+                        // so we do NOT EndScripts/DisposeScripts on this path. All
+                        // fallible work runs first; the hand-off (which flips the
+                        // teardown guards) happens last so any throw before it
+                        // still tears the session down via the catch.
+                        LaidOutPage HandOff(LaidOutPage page)
+                        {
+                            var live = new PageScripting(
+                                session.Session, session.Http, session.Fetcher, doc);
+                            sessionEnded = true;  // page.Dispose() tears the session down now
+                            scriptsDisposed = true;
+                            page.AttachScripting(live);
+                            return page;
+                        }
 
                         // Common case (analytics/beacons): deferred work touched no
-                        // DOM, so page1 is still correct — return it unchanged.
+                        // DOM, so page1 is still correct — return it (now live).
                         if (doc.MutationVersion == versionAtPaint)
-                            return Result<LaidOutPage, RenderError>.Ok(page1);
+                            return Result<LaidOutPage, RenderError>.Ok(HandOff(page1));
 
                         // Deferred scripts mutated the DOM: re-fetch what they
                         // injected and reflow into a successor. Relayout transfers
@@ -604,7 +620,7 @@ public sealed class StarlingEngine
                         var (root2, style2) = _painter.LayoutDocumentWithStyle(
                             doc, viewport, options.FontSize, images, stylesheets.Resolve, webFonts,
                             colorScheme: options.PreferredColorScheme);
-                        return Result<LaidOutPage, RenderError>.Ok(page1.Relayout(root2, style2, viewport));
+                        return Result<LaidOutPage, RenderError>.Ok(HandOff(page1.Relayout(root2, style2, viewport)));
                     }
                     catch
                     {

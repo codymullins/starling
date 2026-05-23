@@ -998,16 +998,19 @@ public sealed partial class JsParser
     {
         var startTok = _current;
         var quasis = new List<string>();
+        var raws = new List<string>();
         var expressions = new List<Expression>();
         if (_current.Kind == JsTokenKind.TemplateNoSubstitution)
         {
             quasis.Add((string)_current.Value!);
+            raws.Add(TemplateRaw(_current));
             var end = _current.End;
             Advance();
-            return new TemplateLiteral(quasis, expressions, startTok.Start, end);
+            return new TemplateLiteral(quasis, expressions, raws, startTok.Start, end);
         }
         // Head ... (expr ... Middle)* expr ... Tail
         quasis.Add((string)_current.Value!);
+        raws.Add(TemplateRaw(_current));
         Advance();
         while (true)
         {
@@ -1023,19 +1026,38 @@ public sealed partial class JsParser
             if (_current.Kind == JsTokenKind.TemplateTail)
             {
                 quasis.Add((string)_current.Value!);
+                raws.Add(TemplateRaw(_current));
                 var endTok = _current;
                 Advance();
-                return new TemplateLiteral(quasis, expressions, startTok.Start, endTok.End);
+                return new TemplateLiteral(quasis, expressions, raws, startTok.Start, endTok.End);
             }
             if (_current.Kind == JsTokenKind.TemplateMiddle)
             {
                 quasis.Add((string)_current.Value!);
+                raws.Add(TemplateRaw(_current));
                 Advance();
                 continue;
             }
             throw new JsParseException(
                 $"expected template middle or tail, got {_current.Kind}", _current.Start);
         }
+    }
+
+    /// <summary>
+    /// §12.9.6.1 Template Raw Value — the un-cooked source text of one template
+    /// segment, used for a tagged template's <c>strings.raw</c>. The lexeme is
+    /// the raw source slice including its closing delimiter (<c>`</c> for
+    /// NoSubstitution/Tail, <c>${</c> for Head/Middle), so we strip that, then
+    /// normalise <c>&lt;CR&gt;&lt;LF&gt;</c> and lone <c>&lt;CR&gt;</c> to <c>&lt;LF&gt;</c>.
+    /// </summary>
+    private static string TemplateRaw(in JsToken t)
+    {
+        var lex = t.Lexeme;
+        var trim = t.Kind is JsTokenKind.TemplateHead or JsTokenKind.TemplateMiddle ? 2 : 1;
+        var raw = trim <= lex.Length ? lex[..^trim] : lex;
+        if (raw.IndexOf('\r') >= 0)
+            raw = raw.Replace("\r\n", "\n").Replace('\r', '\n');
+        return raw;
     }
 
     private ArrayExpression ParseArrayLiteral()

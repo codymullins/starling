@@ -203,6 +203,7 @@ public sealed record ArrowFunctionExpression(
 public sealed record TemplateLiteral(
     IReadOnlyList<string> Quasis,
     IReadOnlyList<Expression> Expressions,
+    IReadOnlyList<string> RawQuasis,
     JsPosition Start, JsPosition End)
     : Expression(Start, End);
 

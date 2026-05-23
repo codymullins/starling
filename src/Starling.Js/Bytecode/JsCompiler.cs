@@ -1985,6 +1985,9 @@ public sealed partial class JsCompiler
             case TemplateLiteral tpl:
                 EmitTemplateLiteral(tpl);
                 return;
+            case TaggedTemplateExpression tte:
+                EmitTaggedTemplate(tte);
+                return;
             case ArrowFunctionExpression arrow:
                 EmitArrowFunction(arrow);
                 return;
@@ -2064,6 +2067,66 @@ public sealed partial class JsCompiler
                 _b.Emit(Opcode.Add);
             }
         }
+    }
+
+    /// <summary>
+    /// §13.3.11 Tagged template — <c>tag`q0${e0}q1`</c> evaluates to
+    /// <c>tag(strings, e0, …)</c> where <c>strings</c> is the frozen, call-site
+    /// cached template object (cooked array + <c>.raw</c>). The tag's <c>this</c>
+    /// binding follows ordinary call rules: a member-expression tag binds
+    /// <c>this</c> to its base, anything else binds <c>this = undefined</c>.
+    /// </summary>
+    private void EmitTaggedTemplate(TaggedTemplateExpression tte)
+    {
+        var quasi = tte.Quasi;
+        var argCount = 1 + quasi.Expressions.Count; // strings object + substitutions
+        if (argCount > 255)
+            throw new NotSupportedException("more than 255 tagged-template args not supported");
+
+        // Emit the tag callee, mirroring EmitCall's this-binding: obj.tag`…` and
+        // obj[k]`…` leave [receiver, fn] for CallMethod; a bare tag leaves [fn]
+        // for Call (this = undefined).
+        var method = tte.Tag is MemberExpression;
+        if (tte.Tag is MemberExpression me)
+        {
+            EmitExpression(me.Object);              // [obj]
+            _b.Emit(Opcode.Dup);                    // [obj, obj]
+            if (me.Computed)
+            {
+                EmitExpression(me.Property);        // [obj, obj, key]
+                RecordPos(me);
+                _b.Emit(Opcode.LoadComputed);       // [obj, fn]
+            }
+            else if (me.Property is PrivateNameExpression pne)
+            {
+                var mangled = ResolvePrivateName(pne.Name, pne.Start);
+                RecordPos(me);
+                _b.EmitU16(Opcode.PrivateGet, _b.AddConstant(mangled)); // [obj, fn]
+            }
+            else
+            {
+                var nameIdx = _b.AddConstant(((Identifier)me.Property).Name);
+                RecordPos(me);
+                _b.EmitU16(Opcode.LoadProperty, nameIdx); // [obj, fn]
+            }
+        }
+        else
+        {
+            EmitExpression(tte.Tag);                // [fn]
+        }
+
+        // arg 0 — the (cached, frozen) template strings object.
+        var cooked = new string?[quasi.Quasis.Count];
+        for (var i = 0; i < cooked.Length; i++) cooked[i] = quasi.Quasis[i];
+        var raw = new string[quasi.RawQuasis.Count];
+        for (var i = 0; i < raw.Length; i++) raw[i] = quasi.RawQuasis[i];
+        _b.EmitU16(Opcode.TemplateObject, _b.AddConstant(new TemplateObjectTemplate(cooked, raw)));
+
+        // args 1.. — the substitution values, in source order.
+        foreach (var sub in quasi.Expressions) EmitExpression(sub);
+
+        RecordPos(tte);
+        _b.Emit(method ? Opcode.CallMethod : Opcode.Call, (byte)argCount);
     }
 
     /// <summary>

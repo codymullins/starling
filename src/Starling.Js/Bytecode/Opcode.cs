@@ -23,6 +23,7 @@ public enum Opcode : byte
     NewObject,      // → push a fresh empty JsObject
     NewArray,       // → push a fresh empty JsArray (B2-4)
     LoadRegExp,     // [u16 srcIdx][u16 flagsIdx] → push a fresh JsRegExp built from constant-pool source/flags strings
+    TemplateObject, // [u16 idx] → push the frozen, per-site-cached template strings array (cooked + .raw) for a tagged template
     LoadTrue,       // → push true
     LoadFalse,      // → push false
     LoadNull,       // → push null
