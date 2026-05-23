@@ -180,10 +180,11 @@ internal static class WindowBinding
     }
 
     /// <summary>The session's layout host, or null when none was supplied (bare
-    /// unit-test contexts). The seam types it as <c>object?</c>; the engine's
-    /// concrete instance implements <see cref="Starling.Bindings.ILayoutHost"/>.</summary>
+    /// unit-test contexts). Strongly typed end-to-end since J7 moved
+    /// <see cref="Starling.Bindings.ILayoutHost"/> into the engine-neutral hosting
+    /// seam, so this backend no longer references Starling.Bindings.</summary>
     private static Starling.Bindings.ILayoutHost? LayoutHost(JintBackendContext ctx)
-        => ctx.LayoutHost as Starling.Bindings.ILayoutHost;
+        => ctx.LayoutHost;
 
     private static JsObject BuildComputedStyleDeclaration(JintBackendContext ctx, Starling.Dom.Element element)
     {

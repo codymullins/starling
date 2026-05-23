@@ -547,7 +547,7 @@ internal static class NodeBindings
         });
 
         // Layout-readback APIs — route through the session's optional
-        // ILayoutHost (stashed on ctx.LayoutHost as object? by J2d; cast here),
+        // ILayoutHost (strongly typed on ctx.LayoutHost since J7),
         // exactly as the Starling backend's NodeBindings does. The host's
         // TryGetBoundingClientRect / TryGetOffsetMetrics trigger the engine's
         // lazy pre-script layout and increment its diagnostics counters. With no
@@ -1110,9 +1110,9 @@ internal static class NodeBindings
     //                          layout readback
     // =====================================================================
     /// <summary>The session's layout host, or null when none was supplied (bare
-    /// unit-test contexts). The seam types it as <c>object?</c>; the concrete
-    /// instance the engine passes implements <see cref="ILayoutHost"/>.</summary>
-    private static ILayoutHost? LayoutHost(JintBackendContext ctx) => ctx.LayoutHost as ILayoutHost;
+    /// unit-test contexts). Strongly typed end-to-end since J7 moved
+    /// <see cref="ILayoutHost"/> into the engine-neutral hosting seam.</summary>
+    private static ILayoutHost? LayoutHost(JintBackendContext ctx) => ctx.LayoutHost;
 
     /// <summary>If <paramref name="e"/> is a <c>&lt;script&gt;</c> and the mutated
     /// attribute is <c>src</c> with a non-empty value, notify the session (via the

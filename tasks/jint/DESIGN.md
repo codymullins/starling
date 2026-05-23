@@ -18,6 +18,11 @@ policy like `BouncyCastle`. Do not add any native dependency.
 
 New project `src/Starling.Js.Hosting` — references **only** `Starling.Dom`,
 `Starling.Net`, `Starling.Common`, `Starling.Url` (NOT `Starling.Js` or Jint).
+It also owns the `ILayoutHost` layout-readback contract (+ `LayoutRect` /
+`OffsetMetrics`) — moved here by J7 from `Starling.Bindings` so both backends can
+reach it through the seam without referencing the other's bindings. The types
+keep the `Starling.Bindings` namespace (no consumer churn) but ship in the
+`Starling.Js.Hosting` assembly.
 
 ```csharp
 public interface IScriptEngineFactory {
@@ -39,7 +44,7 @@ public interface IScriptSession : IDisposable {
 
 public sealed record ScriptSessionOptions(
     Document Document, StarlingUrl BaseUrl, ScriptFetcherDelegate Fetcher,
-    StarlingHttpClient Http, object? LayoutHost, IDiagnostics Diag);
+    StarlingHttpClient Http, ILayoutHost? LayoutHost, IDiagnostics Diag);  // J7: strongly typed; ILayoutHost moved into the seam
 
 public delegate Task<string?> ScriptFetcherDelegate(StarlingUrl url, CancellationToken ct);
 
@@ -59,11 +64,17 @@ These were settled while building J1/J0/J2a; later agents must follow them:
   members). Each backend maps its native level ↔ the hosting enum
   (`StarlingScriptSession.MapLevel`; the Jint console writes the hosting enum
   directly).
-- **`ScriptSessionOptions.LayoutHost` is `object?`, not `ILayoutHost?`.**
-  `ILayoutHost` lives in `Starling.Bindings` (depends on `Starling.Dom`), which
-  the seam cannot reference without inverting the dependency. Each backend casts:
-  the Starling backend `as ILayoutHost`; the Jint backend stashes it on
-  `JintBackendContext.LayoutHost` for J2d to cast.
+- **`ScriptSessionOptions.LayoutHost` is `ILayoutHost?` (strongly typed).**
+  *(Updated by J7.)* Wave 1 originally typed it `object?` because `ILayoutHost`
+  lived in `Starling.Bindings`, which the seam can't reference. J7 moved
+  `ILayoutHost` (+ `LayoutRect` / `OffsetMetrics`) physically into
+  `Starling.Js.Hosting` (keeping the `Starling.Bindings` namespace so consumers
+  don't churn) — it depends only on `Starling.Dom`, which the seam already
+  references. The option is now `ILayoutHost?`, both backends use it directly
+  (no `as` cast), and `JintBackendContext.LayoutHost` is `ILayoutHost?`. This
+  drops `Starling.Bindings.Jint`'s `Starling.Bindings` project reference, so the
+  Jint backend no longer pulls `Starling.Js` transitively — restoring the
+  "delete Jint in one step, no `Starling.Js` dependency" property.
 - **`Http` is `Starling.Net.StarlingHttpClient`** (not `System.Net.Http.HttpClient`) —
   that is the engine's real client type, owned/disposed by `Engine`, not the session.
 - **`MarkScriptStarted(Node)` was added to `IScriptSession`.** The old engine
@@ -102,7 +113,7 @@ J2a creates these; Wave-2 agents call them and must not change their shape:
 
 - `JintBackendContext` (public) — holds `Jint.Engine Engine`, `Document Document`,
   `StarlingUrl BaseUrl`, `StarlingHttpClient Http`, `IDiagnostics Diag`,
-  `WebEventLoop Loop`, `object? LayoutHost`,
+  `WebEventLoop Loop`, `ILayoutHost? LayoutHost` *(J7: was `object?`)*,
   `Func<StarlingUrl,CancellationToken,Task<string?>> Fetch`, and the wrapper
   registry `JintDomWrapper Wrappers`.
   - **`Action<Action> Post` (J3a additive contract).** A thread-safe "post to the

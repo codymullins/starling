@@ -46,6 +46,7 @@ starts only after the previous wave builds green.
 |---|---|---|---|
 | J6a | 🟢 | Starling.Bindings.Jint | Wire element geometry (`getBoundingClientRect`/`getClientRects`/`offset*`/`client*`/`scroll[WH]`) + `getComputedStyle` through `ctx.LayoutHost` (cast to `ILayoutHost`) — parity with the Starling backend; geometry reads now trigger the engine's lazy pre-script layout. |
 | J6b | 🟢 | Starling.Bindings.Jint | Run `<script>` whose `src` is set from JS (dynamic/deferred loader). Added `ctx.OnScriptSrcSet` hook (Jint analogue of `ScriptSrcHook`); `NodeBindings` `setAttribute('src',…)` + new `.src`/`.async` IDL props notify it; session routes into `JintDynamicScriptRunner.OnSrcSet` (fetch + run + fire load/error, honouring the already-started flag). |
+| J7 | 🟢 | Starling.Js.Hosting | Cleanup: moved `ILayoutHost`/`LayoutRect`/`OffsetMetrics` from `Starling.Bindings` into the engine-neutral `Starling.Js.Hosting` seam (kept `Starling.Bindings` namespace → no consumer churn); `ScriptSessionOptions.LayoutHost` + `JintBackendContext.LayoutHost` now strongly typed `ILayoutHost?` (casts gone). **Dropped the J6a `Starling.Bindings` project ref from `Starling.Bindings.Jint`**, so the Jint backend no longer pulls `Starling.Js` transitively — "deletable in one step, no `Starling.Js`" restored. |
 | J5a | ⚫ | CI | E2E + Jint binding tests under `STARLING_JS_ENGINE=jint`; netclaw.dev golden render under Jint. |
 | J5b | ⚫ | tests | Run test262 harness against Jint as a compat-delta baseline (informational). |
 | J5c | ⚫ | docs | README env-var note + `browser-plan/09_JS_ENGINE.md` section + removal checklist. |
@@ -264,3 +265,35 @@ starts only after the previous wave builds green.
     `Progressive_layout_first_paints_then_reflows_*`). **Jint engine suite: 151/151.**
     Default path unchanged: **Starling.Engine 151 green**. Jint backend unit tests:
     **75 green**. Backend build clean (0 warnings, warnings-as-errors).
+- 2026-05-22 — **J7 complete** (agent-claude-cody, main tree). Resolved the J6a
+  FLAG: the Jint backend no longer depends on `Starling.Bindings` (hence no longer
+  on `Starling.Js`). Implemented:
+  - Moved `ILayoutHost` + `LayoutRect` + `OffsetMetrics` from
+    `src/Starling.Bindings/LayoutHost.cs` (deleted) into a new
+    `src/Starling.Js.Hosting/ILayoutHost.cs`. The seam already references
+    `Starling.Dom` (the only dependency these types need) and is referenced by
+    BOTH backends + the engine. **Kept the `Starling.Bindings` namespace** (types
+    physically ship in `Starling.Js.Hosting.dll`) so no consumer using/qualifier
+    churned: Engine `BoxLayoutHost` (`using Starling.Bindings`), the Starling
+    backend `WindowBinding`/`NodeBindings` (same namespace), and the Jint backend
+    (enclosing-namespace lookup from `Starling.Bindings.Jint`) all keep compiling
+    unchanged.
+  - `ScriptSessionOptions.LayoutHost`: `object?` → `ILayoutHost?` (added
+    `using Starling.Bindings` to `IScriptSession.cs`). `JintBackendContext.LayoutHost`
+    + ctor param: `object?` → `ILayoutHost?`. Removed the now-redundant `as`
+    casts in the Starling backend (`StarlingScriptSession`) and both Jint
+    `LayoutHost(ctx)` helpers (`NodeBindings`/`WindowBinding`).
+  - **`Starling.Bindings.Jint.csproj`: removed the J6a `Starling.Bindings`
+    ProjectReference.** Final Jint backend refs: `Jint` (pkg) + `Starling.Common`,
+    `Starling.Css`, `Starling.Dom`, `Starling.Html`, `Starling.Js.Hosting`,
+    `Starling.Net`, `Starling.Url` — NOT `Starling.Bindings`, NOT `Starling.Js`.
+    Verified the build output dir contains `Starling.Js.Hosting.dll` but NO
+    `Starling.Js.dll` and NO `Starling.Bindings.dll`.
+  - DESIGN.md updated: seam section now notes it owns `ILayoutHost`; the Wave-1
+    `LayoutHost is object?` deviation note rewritten as the J7 strongly-typed form;
+    `JintBackendContext` bullet updated.
+  - Tests all green: **`dotnet build Starling.slnx -c Debug` clean** (0 errors;
+    warnings-as-errors holds). Jint backend unit **75**; Engine under
+    `STARLING_JS_ENGINE=jint` **151**; Engine default **151**; Starling backend
+    bindings **204**. Pure refactor → no new `DllImport`/`LibraryImport`, CI
+    interop-seam policy still satisfied.

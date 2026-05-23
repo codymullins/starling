@@ -1,15 +1,20 @@
 using Starling.Dom;
 
+// NOTE: this type lives physically in the engine-neutral seam project
+// (Starling.Js.Hosting) but keeps its original namespace (Starling.Bindings) so
+// both backends and the engine reach it without churn. It depends only on
+// Starling.Dom, which the seam already references, so neither JS backend has to
+// reference the other's bindings to consult the layout host. See DESIGN.md.
 namespace Starling.Bindings;
 
 /// <summary>
 /// Pluggable host for layout-readback APIs (<c>getBoundingClientRect</c>,
 /// <c>offsetWidth</c>/<c>offsetHeight</c>, <c>getComputedStyle</c>). The
 /// engine builds a pre-script layout and injects an implementation through
-/// <see cref="WindowInstallOptions.LayoutHost"/>; the bindings consult it
-/// when JS asks for layout dimensions or computed style. When no host is
-/// installed the bindings fall through to spec-permitted zeros and empty
-/// strings (matches a never-laid-out document).
+/// <see cref="Starling.Js.Hosting.ScriptSessionOptions.LayoutHost"/>; the
+/// bindings consult it when JS asks for layout dimensions or computed style.
+/// When no host is installed the bindings fall through to spec-permitted zeros
+/// and empty strings (matches a never-laid-out document).
 /// </summary>
 /// <remarks>
 /// <para><b>Staleness:</b> the host snapshots a single layout pass — DOM

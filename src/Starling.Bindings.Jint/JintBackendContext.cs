@@ -43,9 +43,11 @@ public sealed class JintBackendContext
     /// (J3a installs onto it; the session advances it in PumpOnce).</summary>
     public WebEventLoop Loop { get; }
 
-    /// <summary>Layout-readback host, when the engine supplied one (typed as
-    /// <c>object</c> at the seam; J2d casts it to its concrete interface).</summary>
-    public object? LayoutHost { get; }
+    /// <summary>Layout-readback host, when the engine supplied one. Strongly
+    /// typed as <see cref="ILayoutHost"/> — the shared contract now lives in the
+    /// engine-neutral hosting seam, so this backend reaches it without
+    /// referencing Starling.Bindings (J7).</summary>
+    public ILayoutHost? LayoutHost { get; }
 
     /// <summary>Fetch script/module source through the session's shared fetch
     /// path (file/data/http). Used by the dynamic-script runner (J3a) and the
@@ -110,7 +112,7 @@ public sealed class JintBackendContext
         Starling.Net.StarlingHttpClient http,
         IDiagnostics diag,
         WebEventLoop loop,
-        object? layoutHost,
+        ILayoutHost? layoutHost,
         Func<StarlingUrl, CancellationToken, Task<string?>> fetch)
     {
         Engine = engine;

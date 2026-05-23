@@ -1,3 +1,4 @@
+using Starling.Bindings;
 using Starling.Dom;
 using Starling.Net;
 using StarlingUrl = global::Starling.Url.Url;
@@ -32,19 +33,19 @@ public delegate Task<string?> ScriptFetcherDelegate(StarlingUrl url, Cancellatio
 
 /// <summary>
 /// Construction inputs for an <see cref="IScriptSession"/>. The
-/// <paramref name="LayoutHost"/> is intentionally typed as <see cref="object"/>:
-/// the canonical <c>ILayoutHost</c> abstraction lives in
-/// <c>Starling.Bindings</c> (it depends only on <c>Starling.Dom</c>), which the
-/// seam cannot reference without inverting the dependency direction. Each
-/// backend casts it to the concrete interface it understands; passing
-/// <c>null</c> selects spec-permitted "never laid out" readback.
+/// <paramref name="LayoutHost"/> is the strongly-typed <see cref="ILayoutHost"/>
+/// the engine builds from its pre-script layout pass. Both <c>ILayoutHost</c>
+/// and this seam live in the engine-neutral hosting project (depending only on
+/// <c>Starling.Dom</c>), so neither JS backend has to reference the other's
+/// bindings to consult it; passing <c>null</c> selects spec-permitted
+/// "never laid out" readback.
 /// </summary>
 public sealed record ScriptSessionOptions(
     Document Document,
     StarlingUrl BaseUrl,
     ScriptFetcherDelegate Fetcher,
     StarlingHttpClient Http,
-    object? LayoutHost,
+    ILayoutHost? LayoutHost,
     Starling.Common.Diagnostics.IDiagnostics Diag);
 
 /// <summary>
