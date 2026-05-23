@@ -505,15 +505,46 @@ internal static class NodeBindings
             return Cached(wrapper, "__style__", () => BuildStyle(ctx, e));
         });
 
-        // Layout-readback — no layout host wired on the Jint backend yet (J2d),
-        // so return spec-permitted zeros, matching a never-laid-out document.
-        // TODO(J2b): consult ctx.LayoutHost once J2d exposes the layout interface.
-        Method(ctx, proto, "getBoundingClientRect",
-            (_, _) => BuildDomRect(engine), 0);
-        Method(ctx, proto, "getClientRects",
-            (_, _) => EmptyArray(engine), 0);
-        foreach (var metric in new[] { "offsetWidth", "offsetHeight", "offsetTop", "offsetLeft", "clientWidth", "clientHeight", "scrollWidth", "scrollHeight" })
-            Accessor(ctx, proto, metric, (_, _) => JintInterop.Num(0));
+        // Layout-readback APIs — route through the session's optional
+        // ILayoutHost (stashed on ctx.LayoutHost as object? by J2d; cast here),
+        // exactly as the Starling backend's NodeBindings does. The host's
+        // TryGetBoundingClientRect / TryGetOffsetMetrics trigger the engine's
+        // lazy pre-script layout and increment its diagnostics counters. With no
+        // host (bare unit-test contexts) every read returns spec-permitted zeros,
+        // matching a never-laid-out document.
+        Method(ctx, proto, "getBoundingClientRect", (t, _) =>
+        {
+            if (w.UnwrapElement(t) is { } e && LayoutHost(ctx) is { } host &&
+                host.TryGetBoundingClientRect(e, out var r))
+            {
+                return BuildDomRect(engine, r);
+            }
+            return BuildDomRect(engine, default);
+        }, 0);
+        Method(ctx, proto, "getClientRects", (t, _) =>
+        {
+            // Single-rect simplification — block boxes only return one rect,
+            // which covers every layout-readback path the tests touch. Inline
+            // flows that emit multiple line boxes would need the box-tree walk.
+            if (w.UnwrapElement(t) is { } e && LayoutHost(ctx) is { } host &&
+                host.TryGetBoundingClientRect(e, out var r))
+            {
+                return Array(engine, new JsValue[] { BuildDomRect(engine, r) });
+            }
+            return EmptyArray(engine);
+        }, 0);
+        Accessor(ctx, proto, "offsetWidth", (t, _) => ReadOffsetMetric(ctx, t, m => m.OffsetWidth));
+        Accessor(ctx, proto, "offsetHeight", (t, _) => ReadOffsetMetric(ctx, t, m => m.OffsetHeight));
+        Accessor(ctx, proto, "offsetTop", (t, _) => ReadOffsetMetric(ctx, t, m => m.OffsetTop));
+        Accessor(ctx, proto, "offsetLeft", (t, _) => ReadOffsetMetric(ctx, t, m => m.OffsetLeft));
+        Accessor(ctx, proto, "clientWidth", (t, _) => ReadOffsetMetric(ctx, t, m => m.ClientWidth));
+        Accessor(ctx, proto, "clientHeight", (t, _) => ReadOffsetMetric(ctx, t, m => m.ClientHeight));
+        // scrollWidth/Height mirror the border-box metrics until content-overflow
+        // is wired (matches the Starling backend).
+        Accessor(ctx, proto, "scrollWidth", (t, _) => ReadOffsetMetric(ctx, t, m => m.OffsetWidth));
+        Accessor(ctx, proto, "scrollHeight", (t, _) => ReadOffsetMetric(ctx, t, m => m.OffsetHeight));
+        // scrollTop/Left stay 0 (no scrolling is wired through this surface yet);
+        // the setters are accepted no-ops so assignment doesn't throw.
         Accessor(ctx, proto, "scrollTop", (_, _) => JintInterop.Num(0), (_, _) => JsValue.Undefined);
         Accessor(ctx, proto, "scrollLeft", (_, _) => JintInterop.Num(0), (_, _) => JsValue.Undefined);
     }
@@ -1034,11 +1065,46 @@ internal static class NodeBindings
 
     private static JsArray EmptyArray(global::Jint.Engine engine) => new(engine, System.Array.Empty<JsValue>());
 
-    private static JsObject BuildDomRect(global::Jint.Engine engine)
+    // =====================================================================
+    //                          layout readback
+    // =====================================================================
+    /// <summary>The session's layout host, or null when none was supplied (bare
+    /// unit-test contexts). The seam types it as <c>object?</c>; the concrete
+    /// instance the engine passes implements <see cref="ILayoutHost"/>.</summary>
+    private static ILayoutHost? LayoutHost(JintBackendContext ctx) => ctx.LayoutHost as ILayoutHost;
+
+    private static JsValue ReadOffsetMetric(JintBackendContext ctx, JsValue thisV, Func<OffsetMetrics, double> select)
+    {
+        if (ctx.Wrappers.UnwrapElement(thisV) is { } e && LayoutHost(ctx) is { } host &&
+            host.TryGetOffsetMetrics(e, out var m))
+        {
+            return JintInterop.Num(select(m));
+        }
+        return JintInterop.Num(0);
+    }
+
+    /// <summary>Build a DOMRect-shaped JS object from a snapshot rect. A duck-
+    /// compatible bag (x/y/width/height/top/right/bottom/left + toJSON) covering
+    /// the read-only paths every layout-readback test touches.</summary>
+    private static JsObject BuildDomRect(global::Jint.Engine engine, LayoutRect rect)
     {
         var o = new JsObject(engine);
-        foreach (var k in new[] { "x", "y", "width", "height", "top", "right", "bottom", "left" })
-            JintInterop.DefineDataProp(o, k, JintInterop.Num(0));
+        JintInterop.DefineDataProp(o, "x", JintInterop.Num(rect.X));
+        JintInterop.DefineDataProp(o, "y", JintInterop.Num(rect.Y));
+        JintInterop.DefineDataProp(o, "width", JintInterop.Num(rect.Width));
+        JintInterop.DefineDataProp(o, "height", JintInterop.Num(rect.Height));
+        JintInterop.DefineDataProp(o, "top", JintInterop.Num(rect.Top));
+        JintInterop.DefineDataProp(o, "right", JintInterop.Num(rect.Right));
+        JintInterop.DefineDataProp(o, "bottom", JintInterop.Num(rect.Bottom));
+        JintInterop.DefineDataProp(o, "left", JintInterop.Num(rect.Left));
+        JintInterop.DefineMethod(engine, o, "toJSON", (self, _) =>
+        {
+            var json = new JsObject(engine);
+            if (self is ObjectInstance src)
+                foreach (var k in new[] { "x", "y", "width", "height", "top", "right", "bottom", "left" })
+                    JintInterop.DefineDataProp(json, k, src.Get(k));
+            return json;
+        }, 0);
         return o;
     }
 

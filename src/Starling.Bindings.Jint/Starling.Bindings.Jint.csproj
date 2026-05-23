@@ -10,6 +10,18 @@
     <PackageReference Include="Jint" />
   </ItemGroup>
   <ItemGroup>
+    <!-- J6a: the canonical ILayoutHost / LayoutRect / OffsetMetrics contract
+         lives in Starling.Bindings (it depends only on Starling.Dom). The seam
+         types ctx.LayoutHost as object?; this backend casts it to
+         Starling.Bindings.ILayoutHost to route geometry + getComputedStyle reads
+         through the engine's layout host (parity with the Starling backend).
+         NOTE/FLAG: Starling.Bindings also references Starling.Js, so this pulls
+         the Starling JS engine into this assembly transitively, slightly diluting
+         the "deletable in one step, no Starling.Js" goal noted above. There is no
+         standalone layout-host contract assembly to reference instead; extracting
+         ILayoutHost into one would be the clean fix if that goal must hold. No
+         dependency cycle (nothing in Starling.Bindings/Js/Dom references this). -->
+    <ProjectReference Include="..\Starling.Bindings\Starling.Bindings.csproj" />
     <ProjectReference Include="..\Starling.Common\Starling.Common.csproj" />
     <ProjectReference Include="..\Starling.Css\Starling.Css.csproj" />
     <ProjectReference Include="..\Starling.Dom\Starling.Dom.csproj" />

@@ -44,6 +44,7 @@ starts only after the previous wave builds green.
 
 | ID | Status | Subsystem | Summary |
 |---|---|---|---|
+| J6a | 🟢 | Starling.Bindings.Jint | Wire element geometry (`getBoundingClientRect`/`getClientRects`/`offset*`/`client*`/`scroll[WH]`) + `getComputedStyle` through `ctx.LayoutHost` (cast to `ILayoutHost`) — parity with the Starling backend; geometry reads now trigger the engine's lazy pre-script layout. |
 | J5a | ⚫ | CI | E2E + Jint binding tests under `STARLING_JS_ENGINE=jint`; netclaw.dev golden render under Jint. |
 | J5b | ⚫ | tests | Run test262 harness against Jint as a compat-delta baseline (informational). |
 | J5c | ⚫ | docs | README env-var note + `browser-plan/09_JS_ENGINE.md` section + removal checklist. |
@@ -182,3 +183,51 @@ starts only after the previous wave builds green.
     matches the Starling backend, and parser-discovered modules hit the warm
     ScriptFetcher cache), but a deeply chained cold-fetch graph blocks the JS thread
     per dependency.
+- 2026-05-22 — **J6a complete** (agent-claude-cody, main tree). Wired element
+  geometry + `getComputedStyle` to the layout host (parity with the Starling
+  backend); geometry reads now drive the engine's lazy pre-script layout.
+  Implemented:
+  - `NodeBindings.cs` — `getBoundingClientRect`/`getClientRects` route through
+    `LayoutHost(ctx).TryGetBoundingClientRect`; `offsetWidth/Height`,
+    `offsetTop/Left`, `clientWidth/Height`, `scrollWidth/Height` route through
+    `ReadOffsetMetric` → `TryGetOffsetMetrics` (scrollW/H mirror border-box per
+    the Starling backend). `getBoundingClientRect` now returns a real DOMRect-
+    shaped object (`x/y/width/height/top/right/bottom/left` + `toJSON`).
+    `scrollTop/Left` stay 0 no-ops (no scrolling wired through this surface yet).
+    Host obtained via `ctx.LayoutHost as ILayoutHost`; **null host (bare
+    unit-test contexts) keeps the zero/empty fallback** so the 75 binding unit
+    tests still pass.
+  - `WindowBinding.cs` — `getComputedStyle(el)` returns a CSSStyleDeclaration-
+    shaped object whose `getPropertyValue(name)` + camel/kebab accessors
+    (`CommonComputedStyleProps`, mirroring the Starling backend) resolve via
+    `host.GetComputedProperty(el, name)`; no-op `setProperty`/`removeProperty`.
+  - **csproj:** added `ProjectReference` to `Starling.Bindings` so the cast to
+    `Starling.Bindings.ILayoutHost` compiles (the seam types `LayoutHost` as
+    `object?`; the engine passes a `BoxLayoutHost : ILayoutHost`). No dependency
+    cycle (nothing in Bindings/Js/Dom references this assembly).
+  - **FLAG:** `Starling.Bindings` transitively references `Starling.Js`, so this
+    pulls the Starling JS engine into the Jint assembly — slightly diluting the
+    "deletable in one step, no Starling.Js" goal noted in the csproj. There is no
+    standalone layout-host contract assembly to reference instead; if that goal
+    must hold, extract `ILayoutHost`/`LayoutRect`/`OffsetMetrics` into a tiny
+    contract project (Dom-only) and have both `Starling.Bindings` and this
+    assembly reference it.
+  - Tests: **10/11 listed geometry/layout target tests now pass under
+    `STARLING_JS_ENGINE=jint`** (getBoundingClientRect ×2, getComputedStyle,
+    offsetTop sibling, offsetWidth/Height, Prelayout_runs, Script_reads_geometry
+    ×3, Reused_render_matches). The 11th —
+    `Progressive_layout_first_paints_then_reflows_after_deferred_dom_change` — is
+    gated on the **dynamic/injected async `<script src>` path (J6b's domain)**, not
+    geometry: its deferred external script never fetches under Jint, so the DOM is
+    never mutated and no successor page is produced. It fails alongside the other
+    6 J6b dynamic-script tests (`Setting_src_*`, `Injected_async_external_script_*`,
+    `Load_event_chains_*`, `Sequential_network_bundles_*`,
+    `Error_event_fires_when_dynamic_script_fetch_fails`). Jint engine suite:
+    **144/151 pass** (the 7 failures are exactly the J6b dynamic-script set).
+    Default path unchanged: **Starling.Engine 151 green**. Jint backend unit
+    tests: **75 green**. Backend build clean (0 warnings, warnings-as-errors).
+  - **Remaining geometry gap:** `getClientRects` returns a single rect (block-box
+    simplification, matches the Starling backend — multi-line-box inline flows
+    need the box-tree walk); `scrollTop/Left` and `scroll[WH]` overflow are not
+    yet wired (no scrolling surface); offset-parent is approximated as the
+    document origin (same as `BoxLayoutHost`).

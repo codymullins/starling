@@ -79,15 +79,20 @@ internal static class WindowBinding
                 return JsValue.Undefined;
             });
 
-        // getComputedStyle(element, pseudo?) — returns a declaration with
-        // empty string getters until the typed ILayoutHost is plumbed.
+        // getComputedStyle(element, pseudo?) — returns a CSSStyleDeclaration-
+        // shaped object whose getPropertyValue(name) + camel/kebab accessors
+        // resolve against the session's layout host (cast from ctx.LayoutHost,
+        // stashed as object? by J2d), exactly like the Starling backend. The
+        // host resolves values from the pre-script cascade snapshot, triggering
+        // the lazy pre-script layout. With no host installed every property
+        // reads as the empty string (matches an un-styled / never-laid-out doc).
         JintInterop.DefineMethod(engine, global, "getComputedStyle", (_, args) =>
         {
             var el = args.Length > 0 ? ctx.Wrappers.UnwrapElement(args[0]) : null;
             if (el is null)
                 throw new global::Jint.Runtime.JavaScriptException(engine.Intrinsics.TypeError,
                     "getComputedStyle requires an Element argument");
-            return BuildComputedStyleDeclaration(engine);
+            return BuildComputedStyleDeclaration(ctx, el);
         }, length: 1);
     }
 
@@ -174,15 +179,72 @@ internal static class WindowBinding
         try { return select(uri); } catch { return ""; }
     }
 
-    private static JsObject BuildComputedStyleDeclaration(global::Jint.Engine engine)
+    /// <summary>The session's layout host, or null when none was supplied (bare
+    /// unit-test contexts). The seam types it as <c>object?</c>; the engine's
+    /// concrete instance implements <see cref="Starling.Bindings.ILayoutHost"/>.</summary>
+    private static Starling.Bindings.ILayoutHost? LayoutHost(JintBackendContext ctx)
+        => ctx.LayoutHost as Starling.Bindings.ILayoutHost;
+
+    private static JsObject BuildComputedStyleDeclaration(JintBackendContext ctx, Starling.Dom.Element element)
     {
+        var engine = ctx.Engine;
+        var host = LayoutHost(ctx);
         var decl = new JsObject(engine);
-        JintInterop.DefineMethod(engine, decl, "getPropertyValue",
-            (_, _) => JintInterop.Str(""), length: 1);
+
+        JintInterop.DefineMethod(engine, decl, "getPropertyValue", (_, args) =>
+        {
+            var name = args.Length > 0 ? args[0].ToString() : "";
+            if (string.IsNullOrEmpty(name) || host is null) return JintInterop.Str("");
+            return JintInterop.Str(host.GetComputedProperty(element, name));
+        }, length: 1);
+        // setProperty / removeProperty are no-ops on a computed-style declaration
+        // per spec — they only mean something on the element's inline style.
         JintInterop.DefineMethod(engine, decl, "setProperty",
             (_, _) => JsValue.Undefined, length: 2);
         JintInterop.DefineMethod(engine, decl, "removeProperty",
             (_, _) => JintInterop.Str(""), length: 1);
+
+        // Common camel/kebab accessors so `cs.fontSize` / `cs['font-size']`
+        // round-trip without going through getPropertyValue (mirrors the
+        // Starling backend's CommonComputedStyleProps set).
+        foreach (var prop in CommonComputedStyleProps)
+        {
+            var capturedProp = prop;
+            var camel = ToCamelCase(prop);
+            JintInterop.DefineAccessor(engine, decl, camel,
+                (_, _) => host is null ? JintInterop.Str("") : JintInterop.Str(host.GetComputedProperty(element, capturedProp)));
+            if (camel != prop)
+                JintInterop.DefineAccessor(engine, decl, prop,
+                    (_, _) => host is null ? JintInterop.Str("") : JintInterop.Str(host.GetComputedProperty(element, capturedProp)));
+        }
         return decl;
+    }
+
+    private static readonly string[] CommonComputedStyleProps =
+    [
+        "color", "background-color", "font-size", "font-family", "font-weight", "font-style",
+        "line-height", "letter-spacing", "text-align", "text-decoration",
+        "display", "position", "visibility", "opacity",
+        "width", "height", "min-width", "min-height", "max-width", "max-height",
+        "margin-top", "margin-right", "margin-bottom", "margin-left",
+        "padding-top", "padding-right", "padding-bottom", "padding-left",
+        "border-top-width", "border-right-width", "border-bottom-width", "border-left-width",
+        "top", "right", "bottom", "left", "z-index",
+        "flex-direction", "justify-content", "align-items", "flex-wrap", "gap",
+        "overflow", "overflow-x", "overflow-y",
+    ];
+
+    private static string ToCamelCase(string kebab)
+    {
+        if (kebab.IndexOf('-') < 0) return kebab;
+        var sb = new System.Text.StringBuilder(kebab.Length);
+        var upper = false;
+        foreach (var c in kebab)
+        {
+            if (c == '-') { upper = true; continue; }
+            sb.Append(upper ? char.ToUpperInvariant(c) : c);
+            upper = false;
+        }
+        return sb.ToString();
     }
 }
