@@ -120,6 +120,21 @@ J2a creates these; Wave-2 agents call them and must not change their shape:
     later turn (matching async semantics) rather than running inline on the
     background thread. This replaces the old fetch/XHR "0ms self-re-arming timer
     trampoline"; both families now route completions through `ctx.Post`.
+  - **`Action<Element>? OnScriptSrcSet` (J6b additive contract).** A notification
+    that a not-yet-started `<script>` element just had its `src` (re)assigned from
+    JS — via `setAttribute('src', …)` or the `.src` IDL property. This is the Jint
+    analogue of the Starling backend's realm-keyed `ScriptSrcHook`: the bindings
+    observe the mutation (`NodeBindings.MaybeTriggerScriptSrc`, scoped strictly to
+    a `<script>` element's non-empty `src`), and the session owns the fetch+run
+    pipeline. `JintScriptSession` installs this at construction (after building the
+    dynamic runner) to route into `JintDynamicScriptRunner.OnSrcSet`, which runs
+    HTML §4.12.1 "prepare a script" — fetch via `ctx.Fetch` on a background task,
+    run on the JS thread through `ctx.Post`/`PumpOnce`, then fire `load`/`error`.
+    `OnSrcSet` honours the per-element "already started" flag (set by
+    `MarkScriptStarted` for every parser-batch script), so re-assigning `src` on a
+    script that already ran is a no-op — parser-batch scripts never double-run.
+    Null until a session installs it (a bare context in a unit test): the mutation
+    then just lands as a plain attribute write.
 - `JintDomWrapper` (public) — per-engine identity map
   (`ConditionalWeakTable<object, ObjectInstance>` + a wrapper→backing side table);
   `JsValue Wrap(EventTarget?)`, `ObjectInstance GetOrCreate(EventTarget)`,

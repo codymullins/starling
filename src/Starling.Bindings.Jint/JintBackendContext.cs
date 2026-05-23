@@ -73,6 +73,20 @@ public sealed class JintBackendContext
     /// </summary>
     public Action<Action> Post { get; set; }
 
+    /// <summary>
+    /// Additive J6b hook: notification that a not-yet-started <c>&lt;script&gt;</c>
+    /// element just had its <c>src</c> (re)assigned from JS — via
+    /// <c>setAttribute('src', …)</c> or the <c>.src</c> IDL property. The session
+    /// installs this to route into <c>JintDynamicScriptRunner.OnSrcSet</c>, which
+    /// runs HTML §4.12.1 "prepare a script" (fetch + execute + fire load/error)
+    /// while honouring the per-element "already started" flag. This is the Jint
+    /// analogue of the Starling backend's realm-keyed <c>ScriptSrcHook</c>: the
+    /// bindings observe the mutation, the session owns the fetch+run pipeline.
+    /// <para>Null until a session installs it (a bare context in a unit test):
+    /// the mutation then just lands as a plain attribute write.</para>
+    /// </summary>
+    public Action<Element>? OnScriptSrcSet { get; set; }
+
     /// <summary>Drain and run every action posted to the default queue, on the
     /// calling (JS) thread. No-op once a session has installed its own
     /// <see cref="Post"/> hook (those actions go to the session pump). Returns

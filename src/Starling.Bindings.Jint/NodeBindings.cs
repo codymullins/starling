@@ -309,9 +309,50 @@ internal static class NodeBindings
         Method(ctx, proto, "setAttribute", (t, args) =>
         {
             if (w.UnwrapElement(t) is { } e && args.Length >= 2)
-                e.SetAttribute(Str(args[0]), Str(args[1]));
+            {
+                var name = Str(args[0]);
+                e.SetAttribute(name, Str(args[1]));
+                // HTML §4.12.1: setting `src` on a not-yet-started <script> from
+                // JS runs "prepare a script" (the deferred-bundle loader pattern,
+                // e.g. a parser-created empty <script> that later gets a src as a
+                // newly-fetched external script).
+                MaybeTriggerScriptSrc(ctx, e, name);
+            }
             return JsValue.Undefined;
         }, 2);
+
+        // `script.src` IDL property — get/set the src attribute. The setter
+        // mirrors setAttribute('src', …) and runs "prepare a script" so
+        // `el.src = url` loads the same way `setAttribute` does. Defined on
+        // Element.prototype but only meaningful for <script>; for non-script
+        // elements it's a plain attribute round-trip.
+        Accessor(ctx, proto, "src",
+            (t, _) => w.UnwrapElement(t) is { } e ? JintInterop.Str(e.GetAttribute("src") ?? "") : JintInterop.Str(""),
+            (t, args) =>
+            {
+                if (w.UnwrapElement(t) is { } e)
+                {
+                    e.SetAttribute("src", args.Length > 0 ? Str(args[0]) : "");
+                    MaybeTriggerScriptSrc(ctx, e, "src");
+                }
+                return JsValue.Undefined;
+            });
+        // `script.async` IDL property. Reflects the boolean `async` content
+        // attribute so `el.async = true` is observable by the engine's script
+        // classification (HTML §4.12.1). A script-inserted external script
+        // defaults to async; analytics snippets (ga.js/gtag) set this flag, so
+        // reflecting it is what lets the engine defer them past first paint.
+        Accessor(ctx, proto, "async",
+            (t, _) => w.UnwrapElement(t) is { } e ? JintInterop.Bool(e.HasAttribute("async")) : JsBoolean.False,
+            (t, args) =>
+            {
+                if (w.UnwrapElement(t) is { } e)
+                {
+                    if (args.Length > 0 && Bool(args[0])) e.SetAttribute("async", "");
+                    else e.RemoveAttribute("async");
+                }
+                return JsValue.Undefined;
+            });
         Method(ctx, proto, "hasAttribute", (t, args) =>
             w.UnwrapElement(t) is { } e && args.Length > 0
                 ? JintInterop.Bool(e.HasAttribute(Str(args[0])))
@@ -1072,6 +1113,20 @@ internal static class NodeBindings
     /// unit-test contexts). The seam types it as <c>object?</c>; the concrete
     /// instance the engine passes implements <see cref="ILayoutHost"/>.</summary>
     private static ILayoutHost? LayoutHost(JintBackendContext ctx) => ctx.LayoutHost as ILayoutHost;
+
+    /// <summary>If <paramref name="e"/> is a <c>&lt;script&gt;</c> and the mutated
+    /// attribute is <c>src</c> with a non-empty value, notify the session (via the
+    /// J6b <see cref="JintBackendContext.OnScriptSrcSet"/> hook) so it can run
+    /// HTML §4.12.1 "prepare a script" (fetch + execute + fire load/error).
+    /// Scoped strictly to script-element <c>src</c>; every other attribute write
+    /// is untouched. No-op when no session installed the hook (bare context).</summary>
+    private static void MaybeTriggerScriptSrc(JintBackendContext ctx, Element e, string attrName)
+    {
+        if (!attrName.Equals("src", StringComparison.OrdinalIgnoreCase)) return;
+        if (!e.LocalName.Equals("script", StringComparison.OrdinalIgnoreCase)) return;
+        if (string.IsNullOrWhiteSpace(e.GetAttribute("src"))) return;
+        ctx.OnScriptSrcSet?.Invoke(e);
+    }
 
     private static JsValue ReadOffsetMetric(JintBackendContext ctx, JsValue thisV, Func<OffsetMetrics, double> select)
     {

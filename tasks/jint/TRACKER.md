@@ -45,6 +45,7 @@ starts only after the previous wave builds green.
 | ID | Status | Subsystem | Summary |
 |---|---|---|---|
 | J6a | 🟢 | Starling.Bindings.Jint | Wire element geometry (`getBoundingClientRect`/`getClientRects`/`offset*`/`client*`/`scroll[WH]`) + `getComputedStyle` through `ctx.LayoutHost` (cast to `ILayoutHost`) — parity with the Starling backend; geometry reads now trigger the engine's lazy pre-script layout. |
+| J6b | 🟢 | Starling.Bindings.Jint | Run `<script>` whose `src` is set from JS (dynamic/deferred loader). Added `ctx.OnScriptSrcSet` hook (Jint analogue of `ScriptSrcHook`); `NodeBindings` `setAttribute('src',…)` + new `.src`/`.async` IDL props notify it; session routes into `JintDynamicScriptRunner.OnSrcSet` (fetch + run + fire load/error, honouring the already-started flag). |
 | J5a | ⚫ | CI | E2E + Jint binding tests under `STARLING_JS_ENGINE=jint`; netclaw.dev golden render under Jint. |
 | J5b | ⚫ | tests | Run test262 harness against Jint as a compat-delta baseline (informational). |
 | J5c | ⚫ | docs | README env-var note + `browser-plan/09_JS_ENGINE.md` section + removal checklist. |
@@ -231,3 +232,35 @@ starts only after the previous wave builds green.
     need the box-tree walk); `scrollTop/Left` and `scroll[WH]` overflow are not
     yet wired (no scrolling surface); offset-parent is approximated as the
     document origin (same as `BoxLayoutHost`).
+- 2026-05-22 — **J6b complete** (agent-claude-cody, main tree). Made the Jint
+  backend run a `<script>` whose `src` is set from JS (dynamic/deferred loader),
+  achieving parity with the Starling backend. **Root cause (flagged by J3a):** the
+  J3a `JintDynamicScriptRunner` already had a working `OnSrcSet` entry, but the
+  Jint `NodeBindings` never notified it when JS (re)assigned `src` on an existing
+  not-yet-started `<script>`. Wired the missing notification path (additive only):
+  - `JintBackendContext.cs` — added `Action<Element>? OnScriptSrcSet` (the Jint
+    analogue of the Starling backend's realm-keyed `ScriptSrcHook`; bindings
+    observe the mutation, session owns the fetch+run pipeline). Documented in
+    `DESIGN.md` next to the J3a `Post` contract.
+  - `JintScriptSession.cs` — installs `_ctx.OnScriptSrcSet = _dynamicRunner.OnSrcSet`
+    at construction (right after building the dynamic runner, before
+    `JintBindings.InstallAll`).
+  - `NodeBindings.cs` — `setAttribute('src',…)` now calls a new
+    `MaybeTriggerScriptSrc(ctx, e, name)` helper (scoped strictly to a `<script>`
+    element's non-empty `src`); added the `.src` IDL property (get/set, setter
+    mirrors `setAttribute('src',…)` + fires the hook) and the `.async` IDL
+    property (reflects the `async` content attribute) — both were missing, and the
+    injected-async (`el.async = true; el.src = …`) path needs them so
+    `OnScriptElementConnected` classifies the appended script correctly.
+  - **Semantics preserved:** the hook routes to `OnSrcSet`, which honours the
+    per-element "already started" flag (`Already_run_external_script_does_not_rerun`
+    stays green); load/error fire after the fetch+run settles; chained loaders
+    (`Sequential_network_bundles_chain_to_quiescence`) reach quiescence because the
+    runner increments `_inFlight` and the pump re-pumps after each completion.
+  - Tests: **all 7 target tests now pass under `STARLING_JS_ENGINE=jint`**
+    (`Setting_src_on_deferred_script_*`, `Setting_src_via_idl_property_*`,
+    `Injected_async_external_script_*`, `Load_event_chains_*`,
+    `Sequential_network_bundles_*`, `Error_event_fires_when_dynamic_script_fetch_fails`,
+    `Progressive_layout_first_paints_then_reflows_*`). **Jint engine suite: 151/151.**
+    Default path unchanged: **Starling.Engine 151 green**. Jint backend unit tests:
+    **75 green**. Backend build clean (0 warnings, warnings-as-errors).

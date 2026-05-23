@@ -92,6 +92,13 @@ internal sealed class JintScriptSession : IScriptSession
             (url, token) => options.Fetcher(url, token),
             RunClassicScript, Post);
 
+        // Route the NodeBindings src-set notification (J6b) into the dynamic
+        // runner so `script.setAttribute('src', …)` / `script.src = …` from JS
+        // runs "prepare a script". Installed before the binding families so the
+        // src setter can fire it. OnSrcSet honours the "already started" flag, so
+        // re-assigning src on a parser-batch script that already ran is a no-op.
+        _ctx.OnScriptSrcSet = _dynamicRunner.OnSrcSet;
+
         // Minimal console so console.* works before J2d's full Window surface.
         // J2d may redefine these against the same sink without changing behavior.
         InstallConsole();
