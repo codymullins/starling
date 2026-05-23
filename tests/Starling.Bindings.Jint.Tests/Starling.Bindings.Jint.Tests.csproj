@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MSTest" />
+    <PackageReference Include="AwesomeAssertions" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Starling.Bindings.Jint\Starling.Bindings.Jint.csproj" />
+    <ProjectReference Include="..\..\src\Starling.Dom\Starling.Dom.csproj" />
+    <ProjectReference Include="..\..\src\Starling.Html\Starling.Html.csproj" />
+    <ProjectReference Include="..\..\src\Starling.Net\Starling.Net.csproj" />
+    <ProjectReference Include="..\..\src\Starling.Url\Starling.Url.csproj" />
+  </ItemGroup>
+</Project>

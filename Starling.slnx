@@ -21,6 +21,7 @@
   </Folder>
   <Project Path="bench/Starling.Bench/Starling.Bench.csproj" />
   <Project Path="src/Starling.Bindings/Starling.Bindings.csproj" />
+  <Project Path="src/Starling.Bindings.Jint/Starling.Bindings.Jint.csproj" />
   <Project Path="src/Starling.Common/Starling.Common.csproj" />
   <Project Path="src/Starling.Css/Starling.Css.csproj" />
   <Project Path="src/Starling.Dom/Starling.Dom.csproj" />
@@ -28,6 +29,7 @@
   <Project Path="src/Starling.Headless/Starling.Headless.csproj" />
   <Project Path="src/Starling.Html/Starling.Html.csproj" />
   <Project Path="src/Starling.Js/Starling.Js.csproj" />
+  <Project Path="src/Starling.Js.Hosting/Starling.Js.Hosting.csproj" />
   <Project Path="src/Starling.Layout/Starling.Layout.csproj" />
   <Project Path="src/Starling.Net/Starling.Net.csproj" />
   <Project Path="src/Starling.Paint/Starling.Paint.csproj" />
@@ -35,6 +37,7 @@
   <Project Path="Starling.AppHost/Starling.AppHost.csproj" />
   <Project Path="Starling.ServiceDefaults/Starling.ServiceDefaults.csproj" />
   <Project Path="tests/Starling.Bindings.Tests/Starling.Bindings.Tests.csproj" />
+  <Project Path="tests/Starling.Bindings.Jint.Tests/Starling.Bindings.Jint.Tests.csproj" />
   <Project Path="tests/Starling.Common.Tests/Starling.Common.Tests.csproj" />
   <Project Path="tests/Starling.Css.Tests/Starling.Css.Tests.csproj" />
   <Project Path="tests/Starling.Dom.Tests/Starling.Dom.Tests.csproj" />

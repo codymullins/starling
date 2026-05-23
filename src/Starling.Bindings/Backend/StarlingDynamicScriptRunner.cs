@@ -8,42 +8,34 @@ using Starling.Js.Runtime;
 using Starling.Url;
 using StarlingUrl = global::Starling.Url.Url;
 
-namespace Starling.Engine;
+namespace Starling.Bindings.Backend;
 
 /// <summary>
-/// Implements the dynamic half of HTML §4.12.1 "prepare a script": when JS sets
-/// <c>src</c> on a <c>&lt;script&gt;</c> element that has not yet started, fetch
-/// the external resource, execute it on the shared realm, then fire
-/// <c>load</c> (or <c>error</c>) on the element. Deferred-bundle loaders run on
-/// <c>DOMContentLoaded</c> and copy a custom <c>data-*</c> attribute onto
-/// <c>src</c> to start the real download; sequential loaders chain by setting
-/// <c>src</c> on the next script only from the previous script's <c>load</c>
-/// handler, so firing the event is load-bearing, not cosmetic.
+/// Starling-backend half of HTML §4.12.1 "prepare a script" for the dynamic
+/// (<c>src</c>-set-from-JS / runtime-injected) path. Moved here from
+/// <c>Starling.Engine.DynamicScriptRunner</c> so the engine no longer touches
+/// the JS realm — the dynamic-script + <see cref="ScriptSrcHook"/> coupling now
+/// lives entirely inside the backend, as the seam contract requires.
 /// </summary>
 /// <remarks>
-/// Scope: classic external scripts. <c>type="module"</c>, async/defer ordering
-/// nuance, CSP/nonce enforcement, and re-fetching after a second <c>src</c>
-/// write are out of scope (see the WP report). The "already started" flag (per
-/// HTML §4.12.1) is tracked per element so the parser-run batch and any script
-/// we run here are never run twice, while an empty parser-inserted script that
-/// is given a <c>src</c> for the first time becomes eligible exactly once.
+/// Behavior is unchanged from the engine's previous implementation: when JS
+/// sets <c>src</c> on a not-yet-started <c>&lt;script&gt;</c>, queue it; the
+/// session's pump fetches it, executes it on the shared realm, and fires
+/// <c>load</c>/<c>error</c>. The "already started" flag is tracked per element
+/// so the parser-batch and any dynamically-run script never run twice.
 /// </remarks>
-internal sealed class DynamicScriptRunner
+internal sealed class StarlingDynamicScriptRunner
 {
     private readonly IDiagnostics _diag;
     private readonly JsRuntime _runtime;
     private readonly StarlingUrl _baseUrl;
     private readonly Func<StarlingUrl, CancellationToken, Task<string?>> _fetch;
 
-    // HTML §4.12.1 "already started" flag, per element. A script in this set
-    // has run (or been claimed for running) and must never run again.
     private readonly ConditionalWeakTable<Element, object> _started = new();
-    // Elements whose src was set from JS and are awaiting fetch+execute. Ordered
-    // so sequential loaders settle in src-set order.
     private readonly Queue<Element> _pending = new();
     private static readonly object Marker = new();
 
-    public DynamicScriptRunner(
+    public StarlingDynamicScriptRunner(
         IDiagnostics diag, JsRuntime runtime, StarlingUrl baseUrl,
         Func<StarlingUrl, CancellationToken, Task<string?>> fetch)
     {
@@ -59,36 +51,26 @@ internal sealed class DynamicScriptRunner
     public void MarkStarted(Element script) => _started.AddOrUpdate(script, Marker);
 
     /// <summary>True when at least one src-triggered script is waiting to be
-    /// fetched+executed. The pump loop checks this for quiescence.</summary>
+    /// fetched+executed.</summary>
     public bool HasPending => _pending.Count > 0;
 
-    /// <summary>Hook target wired into the binding layer: queue a script whose
-    /// <c>src</c> was just set, unless it already started. Runs synchronously on
-    /// the JS thread (inside the setAttribute call), so it must not block —
-    /// it only enqueues; the async fetch happens later on the pump.</summary>
+    /// <summary>Hook target wired into <see cref="ScriptSrcHook"/>: queue a
+    /// script whose <c>src</c> was just set, unless it already started. Runs
+    /// synchronously on the JS thread, so it only enqueues.</summary>
     public void OnSrcSet(Element script)
     {
         if (_started.TryGetValue(script, out _)) return;
-        // Claim it now (set "already started") so a re-entrant or duplicate
-        // src write during the same drain doesn't double-queue it.
         _started.AddOrUpdate(script, Marker);
         _pending.Enqueue(script);
     }
 
     /// <summary>Queue a script-inserted external <c>&lt;script&gt;</c> for the
-    /// deferred phase instead of running it inline on insertion. Per HTML
-    /// §4.12.1 a non-parser-inserted external script defaults to async, so it
-    /// must not block first paint; the connection hook routes such scripts here
-    /// rather than fetching+executing them synchronously. Idempotent: a script
-    /// already claimed (e.g. its <c>src</c> write already went through
-    /// <see cref="OnSrcSet"/>) is left alone, so it never double-queues or
-    /// double-runs.</summary>
+    /// deferred phase. Idempotent.</summary>
     public void EnqueueInjectedExternal(Element script) => OnSrcSet(script);
 
     /// <summary>Drain every queued script: fetch, execute on the realm, then
-    /// fire load/error. Each execution can itself enqueue the next script (a
-    /// chained loader sets src #N+1 from #N's load handler), so we loop until
-    /// the queue empties. Returns the number of scripts processed this call.</summary>
+    /// fire load/error. Each execution can enqueue the next script, so we loop
+    /// until the queue empties. Returns the count processed.</summary>
     public async Task<int> DrainAsync(CancellationToken ct)
     {
         var processed = 0;
@@ -136,9 +118,6 @@ internal sealed class DynamicScriptRunner
 
         if (source is null)
         {
-            // §"if the fetch fails": fire `error`, then continue. Sequential
-            // loaders that only chain off `load` will stop here, matching a
-            // real browser where the next bundle never starts.
             FireEvent(script, "error");
             return;
         }
@@ -159,7 +138,7 @@ internal sealed class DynamicScriptRunner
             {
                 _diag.Counter("engine.script.dynamic.failed", 1);
                 _diag.Log(DiagLevel.Warn, "engine.js",
-                    $"Uncaught dynamic script error ({label}): {DescribeThrow(ex.Value)}");
+                    $"Uncaught dynamic script error ({label}): {StarlingScriptSession.DescribeThrow(ex.Value)}");
             }
             catch (Exception ex)
             {
@@ -169,42 +148,9 @@ internal sealed class DynamicScriptRunner
             }
         });
 
-        // §"executing the script block": even a script whose body threw at
-        // runtime still successfully *loaded*, so it fires `load` (real
-        // browsers fire `error` only for fetch/parse failures, not for
-        // exceptions thrown by an otherwise-loaded script). A compile failure
-        // is treated as a load failure → `error`.
         FireEvent(script, ranOk ? "load" : "error");
     }
 
-    /// <summary>Render a thrown JS value for diagnostics. Error objects
-    /// stringify to a bare "[object Object]" via the ordinary path, which hides
-    /// the actual failure; pull out <c>name</c>/<c>message</c> when present so a
-    /// thrown <c>TypeError: x is not a function</c> shows up legibly.</summary>
-    private static string DescribeThrow(JsValue v)
-    {
-        if (v.IsObject)
-        {
-            try
-            {
-                var o = v.AsObject;
-                var name = o.Get("name");
-                var message = o.Get("message");
-                if (!name.IsUndefined || !message.IsUndefined)
-                {
-                    var n = name.IsUndefined ? "Error" : JsValue.ToStringValue(name);
-                    var m = message.IsUndefined ? "" : JsValue.ToStringValue(message);
-                    return string.IsNullOrEmpty(m) ? n : $"{n}: {m}";
-                }
-            }
-            catch { /* fall through to the generic stringification */ }
-        }
-        return JsValue.ToStringValue(v);
-    }
-
-    /// <summary>Dispatch a simple, non-bubbling event on the element through the
-    /// shared VM so JS listeners (e.g. a chained loader's <c>load</c> handler)
-    /// run and any src they set lands back on <see cref="_pending"/>.</summary>
     private void FireEvent(Element script, string type)
     {
         _runtime.WithActiveVm(() =>

@@ -3,12 +3,12 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Engine-neutral JS-engine seam. References ONLY the engine-neutral
+         shared assets: the real DOM, the network stack, common primitives,
+         and URL parsing. It must NOT reference Starling.Js or any JS engine
+         (Jint), so removing a backend never touches this contract. -->
     <ProjectReference Include="..\Starling.Common\Starling.Common.csproj" />
-    <ProjectReference Include="..\Starling.Css\Starling.Css.csproj" />
     <ProjectReference Include="..\Starling.Dom\Starling.Dom.csproj" />
-    <ProjectReference Include="..\Starling.Html\Starling.Html.csproj" />
-    <ProjectReference Include="..\Starling.Js\Starling.Js.csproj" />
-    <ProjectReference Include="..\Starling.Js.Hosting\Starling.Js.Hosting.csproj" />
     <ProjectReference Include="..\Starling.Net\Starling.Net.csproj" />
     <ProjectReference Include="..\Starling.Url\Starling.Url.csproj" />
   </ItemGroup>

@@ -3,11 +3,16 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Alternative JS backend over the pure-managed Jint interpreter. Mirrors
+         the Starling.Js backend's behavior through the Starling.Js.Hosting seam;
+         deletable in one step (this project + the Jint package + one selector
+         arm) without touching the seam or the Starling.Js backend. -->
+    <PackageReference Include="Jint" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Starling.Common\Starling.Common.csproj" />
     <ProjectReference Include="..\Starling.Css\Starling.Css.csproj" />
     <ProjectReference Include="..\Starling.Dom\Starling.Dom.csproj" />
-    <ProjectReference Include="..\Starling.Html\Starling.Html.csproj" />
-    <ProjectReference Include="..\Starling.Js\Starling.Js.csproj" />
     <ProjectReference Include="..\Starling.Js.Hosting\Starling.Js.Hosting.csproj" />
     <ProjectReference Include="..\Starling.Net\Starling.Net.csproj" />
     <ProjectReference Include="..\Starling.Url\Starling.Url.csproj" />

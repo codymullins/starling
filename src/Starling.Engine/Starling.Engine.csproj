@@ -24,6 +24,8 @@
     <ProjectReference Include="..\Starling.Layout\Starling.Layout.csproj" />
     <ProjectReference Include="..\Starling.Paint\Starling.Paint.csproj" />
     <ProjectReference Include="..\Starling.Bindings\Starling.Bindings.csproj" />
+    <ProjectReference Include="..\Starling.Bindings.Jint\Starling.Bindings.Jint.csproj" />
     <ProjectReference Include="..\Starling.Js\Starling.Js.csproj" />
+    <ProjectReference Include="..\Starling.Js.Hosting\Starling.Js.Hosting.csproj" />
   </ItemGroup>
 </Project>

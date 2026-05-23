@@ -9,11 +9,7 @@ using Starling.Bindings;
 using Starling.Css;
 using Starling.Css.Parser;
 using Starling.Dom;
-using Starling.Js.Bytecode;
-using Starling.Js.Modules;
-using Starling.Js.Parse;
-using Starling.Js.Runtime;
-using Starling.Loop;
+using Starling.Js.Hosting;
 using Starling.Net;
 using Starling.Paint;
 using Starling.Url;
@@ -713,26 +709,20 @@ public sealed class StarlingEngine
     }
 
     /// <summary>
-    /// Install <c>window</c> / <c>document</c> / <c>fetch</c> / observers on a
-    /// fresh <see cref="JsRuntime"/>, run every collected script against the
-    /// shared <paramref name="document"/>, then drain microtasks and fire
-    /// <c>DOMContentLoaded</c> + <c>load</c>. Script errors are logged through
-    /// the realm's console sink rather than bubbled — one bad bundle should
-    /// not abort the render.
+    /// Stand up the active JS backend session, run every collected script
+    /// against the shared <paramref name="document"/>, then drain microtasks and
+    /// fire <c>DOMContentLoaded</c> + <c>load</c>. Script errors are logged
+    /// through the console sink rather than bubbled — one bad bundle should not
+    /// abort the render.
     /// </summary>
     /// <remarks>
-    /// First-cut wiring scope: classic scripts only (modules and other
-    /// <c>type</c> values are filtered out by <see cref="ScriptFetcher"/>).
-    /// <c>requestAnimationFrame</c> / <c>cancelAnimationFrame</c> are
-    /// installed and ride the same simulated <see cref="WebEventLoop"/>
-    /// clock as the timers, so a page that bootstraps via rAF settles
-    /// during <see cref="PumpPendingAsync"/> alongside <c>setTimeout</c>
-    /// chains. The interactive shell still drives presentation through
-    /// <c>RenderFrame</c>; in the headless renderer the loop is purely
-    /// simulated.
-    /// <see cref="PumpPendingAsync"/> drives both the JS microtask queue
-    /// and the <see cref="WebEventLoop"/> simulated clock so chained
-    /// <c>setTimeout</c> bootstrappers settle within a wall-clock budget.
+    /// The engine keeps script ordering/selection/dedup and the pump-loop shape;
+    /// all JS-touching work goes through <see cref="IScriptSession"/>, so the
+    /// active engine is swappable via <c>STARLING_JS_ENGINE</c>. Timers and
+    /// <c>requestAnimationFrame</c> ride a backend-owned simulated clock that
+    /// <see cref="PumpToQuiescenceAsync"/> advances one
+    /// <see cref="IScriptSession.PumpOnce"/> at a time, so chained
+    /// <c>setTimeout</c> / rAF bootstrappers settle within a wall-clock budget.
     /// </remarks>
     private async Task RunScriptsAsync(
         Document document, StarlingUrl baseUrl, ScriptFetcher scriptFetcher,
@@ -772,14 +762,15 @@ public sealed class StarlingEngine
     /// </summary>
     private sealed class ScriptSession
     {
-        public required JsRuntime Runtime { get; init; }
-        public required WebEventLoop Loop { get; init; }
+        // The JS-engine-neutral session (Starling.Js or Jint). Owns the realm,
+        // the simulated loop, the dynamic-script runner, and the src/inject
+        // hooks — all JS-touching work goes through it.
+        public required IScriptSession Session { get; init; }
         public required HashSet<Element> Executed { get; init; }
         public required StarlingHttpClient Http { get; init; }
         public required Document Document { get; init; }
         public required StarlingUrl BaseUrl { get; init; }
         public required ScriptFetcher Fetcher { get; init; }
-        public DynamicScriptRunner DynamicRunner { get; set; } = null!;
         public int ConsoleErrors;
     }
 
@@ -793,27 +784,41 @@ public sealed class StarlingEngine
         Document document, StarlingUrl baseUrl, ScriptFetcher scriptFetcher,
         ILayoutHost? layoutHost, CancellationToken ct)
     {
-        var runtime = new JsRuntime();
+        var http = _httpFactory();
+
+        // Stand up the active JS backend (Starling.Js by default, or Jint when
+        // STARLING_JS_ENGINE=jint). The session owns the realm, the simulated
+        // loop, the dynamic-script runner, and the src/inject hooks; the engine
+        // keeps only script ordering/selection/dedup and the pump-loop shape.
+        var inner = JsEngineSelector.Factory.CreateSession(new ScriptSessionOptions(
+            Document: document,
+            BaseUrl: baseUrl,
+            // The dynamic-script runner + ES module loader inside the backend
+            // fetch through the same ScriptFetcher cache + scheme handling the
+            // parser batch used, so a bundle requested both ways is fetched once.
+            Fetcher: (url, token) => scriptFetcher.FetchSourceAsync(url, token),
+            Http: http,
+            LayoutHost: layoutHost,
+            Diag: _diag));
+
         var session = new ScriptSession
         {
-            Runtime = runtime,
+            Session = inner,
             Document = document,
             BaseUrl = baseUrl,
             Fetcher = scriptFetcher,
             Executed = new HashSet<Element>(ReferenceEqualityComparer.Instance),
-            Http = _httpFactory(),
-            Loop = new WebEventLoop(),
+            Http = http,
         };
 
-        var previousSink = runtime.Realm.ConsoleSink;
-        runtime.Realm.ConsoleSink = (level, message) =>
+        // Route the backend console through diagnostics, preserving the page's
+        // console level so DevTools' ConsolePanel can colour errors red and its
+        // level-filter pills match. The in-memory sink is opened down to Debug
+        // for this category in AddStarlingTelemetry so console.debug isn't
+        // dropped by the default Information floor; console.trace folds into
+        // Debug (no trace pill).
+        inner.ConsoleSink = (level, message) =>
         {
-            previousSink(level, message);
-            // Preserve the page's console level so DevTools' ConsolePanel can
-            // colour errors red and its level-filter pills actually match. The
-            // in-memory sink is opened down to Debug for this category in
-            // AddStarlingTelemetry so console.debug isn't dropped by the default
-            // Information floor; console.trace folds into Debug (no trace pill).
             var diagLevel = level switch
             {
                 ConsoleLevel.Error => DiagLevel.Error,
@@ -825,42 +830,11 @@ public sealed class StarlingEngine
             if (level == ConsoleLevel.Error) session.ConsoleErrors++;
         };
 
-        WindowBinding.Install(runtime, document, new WindowInstallOptions(
-            DocumentUrl: baseUrl.ToString(),
-            HttpClient: session.Http,
-            LayoutHost: layoutHost));
-
-        // setTimeout / setInterval ride on a simulated WebEventLoop clock.
-        // PumpPendingAsync advances it in small steps after each microtask
-        // drain — that fires due timers, whose callbacks land back on the JS
-        // realm's microtask queue for the next pump tick. rAF callbacks
-        // ride the same clock; `AdvanceBy` routes through `RunFrame`, so a
-        // page that bootstraps via `requestAnimationFrame` instead of
-        // `setTimeout` settles on the same pump.
-        TimersBinding.Install(runtime, session.Loop);
-        AnimationFrameBinding.Install(runtime, session.Loop);
-
-        // Dynamic <script src=…> path (HTML §4.12.1 "prepare a script"): when a
-        // running script sets src on a not-yet-started <script>, queue it for
-        // fetch+execute and fire load/error. Deferred-bundle loaders depend on
-        // this. The runner shares the ScriptFetcher cache + scheme handling, and
-        // is created before the NodeConnected hook so the hook can route
-        // script-inserted async/external scripts to it.
-        session.DynamicRunner = new DynamicScriptRunner(
-            _diag, runtime, baseUrl,
-            (url, token) => scriptFetcher.FetchSourceAsync(url, token));
-        ScriptSrcHook.Register(runtime.Realm, session.DynamicRunner.OnSrcSet);
-
         // Wire the runtime-injection hook: when JS appends a freshly created
-        // <script> to the connected DOM, run (or, for script-inserted async /
-        // external scripts, defer to the dynamic-script pump) it through the same
-        // compile+run path. A <script> created via createElement and connected at
-        // runtime is "non-parser-inserted", so the spec defaults it to async;
-        // OnNodeConnected routes those to the runner above so they don't block
-        // the (progressive) first paint, while inline non-async injected scripts
-        // still run synchronously on insertion.
-        document.NodeConnected = node =>
-            OnNodeConnected(node, runtime, scriptFetcher, session.DynamicRunner, baseUrl, session.Executed, ct);
+        // <script> to the connected DOM, the backend runs it (or, for
+        // script-inserted async / external scripts, defers it to the
+        // dynamic-script pump) through the same compile+run path.
+        document.NodeConnected = node => inner.OnScriptElementConnected(node);
 
         return session;
     }
@@ -877,21 +851,23 @@ public sealed class StarlingEngine
     {
         // Ordered scripts (neither async nor defer, then defer) run in document
         // order (HTML §4.12.1).
-        RunOrderedScripts(s.Runtime, s.Fetcher.Scripts, s.Executed, ct);
+        RunOrderedScripts(s, ct);
         if (!deferAsync)
-            RunAsyncScripts(s.Runtime, s.Fetcher.Scripts, s.Executed, ct);
+            RunAsyncScripts(s, ct);
 
         // Module scripts run after the classic scripts, deferred and in document
         // order, before DOMContentLoaded.
-        RunModuleScripts(s.Runtime, s.BaseUrl, s.Fetcher, ct);
+        RunModuleScripts(s, ct);
 
         // Mark every parser-batch script "already started" so a deferred loader's
-        // later `src` write never re-runs a script that already executed.
-        foreach (var sc in s.Fetcher.Scripts) s.DynamicRunner.MarkStarted(sc.Element);
-        foreach (var sc in s.Fetcher.ModuleScripts) s.DynamicRunner.MarkStarted(sc.Element);
+        // later `src` write never re-runs a script that already executed. The
+        // backend owns the started flag (HTML §4.12.1); the engine notifies it
+        // per element since the run entry points are element-agnostic.
+        foreach (var sc in s.Fetcher.Scripts) s.Session.MarkScriptStarted(sc.Element);
+        foreach (var sc in s.Fetcher.ModuleScripts) s.Session.MarkScriptStarted(sc.Element);
 
         // DOMContentLoaded — synchronous handlers see the parsed DOM.
-        s.Runtime.WithActiveVm(() => WindowBinding.FireDomContentLoaded(s.Runtime));
+        s.Session.FireDomContentLoaded();
     }
 
     /// <summary>
@@ -905,17 +881,17 @@ public sealed class StarlingEngine
     private async Task RunDeferredScriptsAsync(ScriptSession s, bool deferAsync, CancellationToken ct)
     {
         if (deferAsync)
-            RunAsyncScripts(s.Runtime, s.Fetcher.Scripts, s.Executed, ct);
+            RunAsyncScripts(s, ct);
 
         // Pump in-flight async work AND src-triggered dynamic script fetches,
         // re-pumping after each settles. Sequential bundle loaders chain off
         // `load`, so this loop is what lets bundle #2..N run after #1.
-        await PumpWithDynamicScriptsAsync(s.Runtime, s.Loop, s.DynamicRunner, ct).ConfigureAwait(false);
+        await PumpToQuiescenceAsync(s, ct).ConfigureAwait(false);
 
         // load event after subresources have settled, then one more drain pass
         // for listeners that schedule further work.
-        s.Runtime.WithActiveVm(() => WindowBinding.FireLoad(s.Runtime));
-        await PumpWithDynamicScriptsAsync(s.Runtime, s.Loop, s.DynamicRunner, ct).ConfigureAwait(false);
+        s.Session.FireLoad();
+        await PumpToQuiescenceAsync(s, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -926,7 +902,9 @@ public sealed class StarlingEngine
     private void EndScripts(ScriptSession s)
     {
         s.Document.NodeConnected = null;
-        ScriptSrcHook.Register(s.Runtime.Realm, null);
+        // Disposing the session detaches the src-set hook so the document is
+        // inert again (and releases any backend-held realm state).
+        s.Session.Dispose();
         s.Http.Dispose();
 
         if (s.ConsoleErrors > 0)
@@ -940,18 +918,17 @@ public sealed class StarlingEngine
     /// scripts with neither attribute first, then the <c>defer</c> scripts, both
     /// in source order (HTML §4.12.1). Inline scripts are always
     /// <see cref="ScriptDisposition.None"/>.</summary>
-    private void RunOrderedScripts(
-        JsRuntime runtime, IReadOnlyList<LoadedScript> scripts, HashSet<Element> executed, CancellationToken ct)
+    private void RunOrderedScripts(ScriptSession s, CancellationToken ct)
     {
-        foreach (var script in scripts)
+        foreach (var script in s.Fetcher.Scripts)
         {
             if (script.Disposition == ScriptDisposition.None)
-                ExecuteScript(runtime, script, executed, ct);
+                ExecuteScript(s, script, ct);
         }
-        foreach (var script in scripts)
+        foreach (var script in s.Fetcher.Scripts)
         {
             if (script.Disposition == ScriptDisposition.Defer)
-                ExecuteScript(runtime, script, executed, ct);
+                ExecuteScript(s, script, ct);
         }
     }
 
@@ -959,38 +936,34 @@ public sealed class StarlingEngine
     /// (HTML §4.12.1 "as soon as it is available"); the headless engine has
     /// already fetched them, so it runs them in source order, which is one
     /// permitted ordering.</summary>
-    private void RunAsyncScripts(
-        JsRuntime runtime, IReadOnlyList<LoadedScript> scripts, HashSet<Element> executed, CancellationToken ct)
+    private void RunAsyncScripts(ScriptSession s, CancellationToken ct)
     {
-        foreach (var script in scripts)
+        foreach (var script in s.Fetcher.Scripts)
         {
             if (script.Disposition == ScriptDisposition.Async)
-                ExecuteScript(runtime, script, executed, ct);
+                ExecuteScript(s, script, ct);
         }
     }
 
-    /// <summary>Compile and run a single classic script against
-    /// <paramref name="runtime"/>, deduping on the source <see cref="Element"/>
-    /// so a script can never execute twice. Failures are fail-soft (logged via
-    /// diagnostics), matching the document-order batch behaviour.</summary>
-    private void ExecuteScript(
-        JsRuntime runtime, LoadedScript script, HashSet<Element> executed, CancellationToken ct)
+    /// <summary>Run a single classic script through the active backend session,
+    /// deduping on the source <see cref="Element"/> so a script can never execute
+    /// twice. Failures are fail-soft (logged via diagnostics), matching the
+    /// document-order batch behaviour.</summary>
+    private void ExecuteScript(ScriptSession s, LoadedScript script, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        if (!executed.Add(script.Element)) return;
+        if (!s.Executed.Add(script.Element)) return;
 
         var label = script.IsInline ? "<inline>" : (script.BaseUrl?.ToString() ?? "<unknown>");
         try
         {
-            var program = new JsParser(script.Source).ParseProgram();
-            var chunk = JsCompiler.Compile(program);
-            new JsVm(runtime).Run(chunk);
+            s.Session.RunClassicScript(script.Source, label);
             _diag.Counter("engine.script.ok", 1);
         }
-        catch (JsThrow ex)
+        catch (ScriptThrow ex)
         {
             _diag.Counter("engine.script.failed", 1);
-            _diag.Log(DiagLevel.Warn, "engine.js", $"Uncaught script error ({label}): {JsValue.ToStringValue(ex.Value)}");
+            _diag.Log(DiagLevel.Warn, "engine.js", $"Uncaught script error ({label}): {ex.Message}");
         }
         catch (Exception ex)
         {
@@ -1000,201 +973,90 @@ public sealed class StarlingEngine
     }
 
     /// <summary>
-    /// Tree-mutation hook: when JS connects a <c>&lt;script&gt;</c> to the
-    /// document, either defer it (script-inserted external / async scripts → the
-    /// dynamic-script pump, so they don't block first paint) or, for inline
-    /// non-async injected scripts, fetch and execute it synchronously on the
-    /// insertion (we are inside a VM frame), so its side effects are visible to
-    /// the code that appended it once control returns.
-    /// </summary>
-    private void OnNodeConnected(
-        Node node, JsRuntime runtime, ScriptFetcher fetcher, DynamicScriptRunner dynamicRunner,
-        StarlingUrl baseUrl, HashSet<Element> executed, CancellationToken ct)
-    {
-        if (node is not Element { LocalName: "script" } script) return;
-        if (executed.Contains(script)) return;
-
-        // Script-inserted external scripts (and any async-flagged script) are
-        // async by default — defer them to the dynamic-script pump rather than
-        // running them inline so they don't block the (progressive) first paint.
-        // EnqueueInjectedExternal is idempotent, so a script whose `src` write
-        // already queued it (the common createElement→src→append order) is not
-        // double-queued or double-run here.
-        var hasSrc = !string.IsNullOrWhiteSpace(script.GetAttribute("src"));
-        if (hasSrc || script.HasAttribute("async"))
-        {
-            if (hasSrc) dynamicRunner.EnqueueInjectedExternal(script);
-            return;
-        }
-
-        // Resolve relative src against the document's base URL. Block on the
-        // fetch: the headless engine has no streaming parser to overlap with,
-        // and the surrounding pump tolerates the synchronous wait.
-        LoadedScript? loaded;
-        try
-        {
-            loaded = fetcher.LoadAsync(script, baseUrl, ct).GetAwaiter().GetResult();
-        }
-        catch (Exception ex)
-        {
-            _diag.Counter("engine.script.failed", 1);
-            _diag.Log(DiagLevel.Warn, "engine.js", $"Injected script load failure: {ex.Message}");
-            return;
-        }
-
-        if (loaded is null) return;
-        ExecuteScript(runtime, loaded, executed, ct);
-    }
-
-    /// <summary>
     /// Evaluate each <c>&lt;script type="module"&gt;</c> as the entry of its own
-    /// ES module graph. One <see cref="ModuleLoader"/> is shared across all
-    /// module scripts on the page so a module imported by two different entry
-    /// scripts is fetched, linked and evaluated once. Errors are logged through
-    /// the console sink (one bad module must not abort the render).
+    /// ES module graph through the active backend session. The backend's module
+    /// loader shares one module map across the page so a module imported by two
+    /// entry scripts is fetched, linked and evaluated once. Errors are logged
+    /// through the console sink (one bad module must not abort the render).
     /// </summary>
-    private void RunModuleScripts(
-        JsRuntime runtime, StarlingUrl baseUrl, ScriptFetcher scriptFetcher, CancellationToken ct)
+    private void RunModuleScripts(ScriptSession s, CancellationToken ct)
     {
-        var moduleScripts = scriptFetcher.ModuleScripts;
+        var moduleScripts = s.Fetcher.ModuleScripts;
         if (moduleScripts.Count == 0) return;
 
-        var host = new EngineModuleHost(scriptFetcher, baseUrl, ct);
-        var loader = new ModuleLoader(runtime, host);
-
-        // Synthesize one inline-module entry per inline <script type=module>;
-        // external module scripts load from their src URL.
-        runtime.WithActiveVm(() =>
+        // Module scripts run deferred, after the classic scripts, in document
+        // order, before DOMContentLoaded. The backend owns the module loader;
+        // the engine drives evaluation order and the dedup set. Each module is
+        // evaluated synchronously here (block on the session's async entry) to
+        // preserve the historical pre-DOMContentLoaded ordering.
+        foreach (var script in moduleScripts)
         {
-            foreach (var script in moduleScripts)
+            ct.ThrowIfCancellationRequested();
+            if (!s.Executed.Add(script.Element)) continue;
+
+            var label = script.IsInline ? "<inline module>" : (script.BaseUrl?.ToString() ?? "<unknown>");
+            // Inline modules have no URL of their own; pass the document base so
+            // the backend registers a synthetic inline entry (its imports resolve
+            // against the document URL). External modules carry their src URL.
+            var moduleUrl = script.IsInline ? s.BaseUrl : script.BaseUrl!;
+            try
             {
-                ct.ThrowIfCancellationRequested();
-                var label = script.IsInline ? "<inline module>" : (script.BaseUrl?.ToString() ?? "<unknown>");
-                try
-                {
-                    if (script.IsInline)
-                    {
-                        // Inline modules have no URL of their own; register a
-                        // synthetic key whose source is the inline body and
-                        // whose import base is the document URL.
-                        var key = host.RegisterInlineModule(script.Source);
-                        loader.LoadAndEvaluate(key);
-                    }
-                    else
-                    {
-                        loader.LoadAndEvaluate(script.BaseUrl!.ToString());
-                    }
-                    _diag.Counter("engine.module.ok", 1);
-                }
-                catch (JsThrow ex)
-                {
-                    _diag.Counter("engine.module.failed", 1);
-                    _diag.Log(DiagLevel.Warn, "engine.js",
-                        $"Uncaught module error ({label}): {JsValue.ToStringValue(ex.Value)}");
-                }
-                catch (Exception ex)
-                {
-                    _diag.Counter("engine.module.failed", 1);
-                    _diag.Log(DiagLevel.Warn, "engine.js",
-                        $"Module compile/run failure ({label}): {ex.Message}");
-                }
+                s.Session.RunModuleScriptAsync(moduleUrl, script.Source, ct).GetAwaiter().GetResult();
+                _diag.Counter("engine.module.ok", 1);
             }
-        });
+            catch (ScriptThrow ex)
+            {
+                _diag.Counter("engine.module.failed", 1);
+                _diag.Log(DiagLevel.Warn, "engine.js", $"Uncaught module error ({label}): {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                _diag.Counter("engine.module.failed", 1);
+                _diag.Log(DiagLevel.Warn, "engine.js", $"Module compile/run failure ({label}): {ex.Message}");
+            }
+        }
     }
 
     /// <summary>
-    /// Drive the realm + simulated loop to quiescence the way
-    /// <see cref="PumpPendingAsync"/> does, but also service src-triggered
-    /// dynamic scripts: whenever the microtask/timer/rAF queues go quiet, drain
-    /// any queued dynamic-script fetches (each can enqueue more work or, via its
-    /// <c>load</c> handler, queue the next bundle), then resume pumping. Exits
-    /// only when nothing is pending on any of the three fronts — microtasks,
-    /// the simulated loop, and the dynamic-script queue — within budget. A
-    /// generous wall-clock cap (a few seconds) accommodates sequential network
-    /// bundle chains without hanging a stuck page.
+    /// Drive the active <see cref="IScriptSession"/> to quiescence on every
+    /// front the backend manages — microtask/promise jobs, simulated
+    /// timers/rAF, and src-triggered dynamic scripts — by repeatedly calling
+    /// <see cref="IScriptSession.PumpOnce"/>. Each call advances one front and
+    /// reports whether any work remains; when it reports idle we still wait out
+    /// a short wall-clock window, because off-thread fetch / XHR completions
+    /// enqueue their resolve jobs asynchronously and need a slot to land before
+    /// we declare the page settled. A generous wall-clock cap accommodates
+    /// sequential network bundle chains without hanging a stuck page.
     /// </summary>
-    private async Task PumpWithDynamicScriptsAsync(
-        JsRuntime runtime, WebEventLoop loop, DynamicScriptRunner dynamicRunner, CancellationToken ct)
+    private async Task PumpToQuiescenceAsync(ScriptSession s, CancellationToken ct)
     {
-        const int MaxMs = 8000;          // hard wall-clock cap for the whole settle
+        const int MaxMs = 8000;   // hard wall-clock cap for the whole settle
+        const int IdleMs = 60;    // consecutive idle window before declaring done
         var wall = System.Diagnostics.Stopwatch.StartNew();
+        var idle = System.Diagnostics.Stopwatch.StartNew();
 
         while (wall.ElapsedMilliseconds < MaxMs)
         {
             ct.ThrowIfCancellationRequested();
 
-            // Settle JS-side async work first (microtasks/timers/rAF/fetch).
-            // Per-iteration budget is bounded so we cycle back to the dynamic
-            // queue promptly; the outer wall clock is the real ceiling.
-            await PumpPendingAsync(runtime, loop, ct, idleMs: 60, maxMs: 1500).ConfigureAwait(false);
+            if (s.Session.PumpOnce())
+            {
+                // Some front had pending work this iteration; reset the idle
+                // window and keep pumping synchronously.
+                idle.Restart();
+                continue;
+            }
 
-            if (!dynamicRunner.HasPending)
-                return; // fully quiescent — nothing left on any front
-
-            // Fetch + execute the queued dynamic scripts. Each fires load/error;
-            // a chained loader's load handler may queue the next script (lands
-            // back on HasPending) and/or kick more microtasks (next loop pump).
-            await dynamicRunner.DrainAsync(ct).ConfigureAwait(false);
+            // Nothing pending in-process. Give off-thread fetch/XHR completions
+            // a slot to enqueue resolve jobs; exit once the idle window elapses
+            // with no new work observed.
+            if (idle.ElapsedMilliseconds >= IdleMs)
+                return;
+            await Task.Delay(20, ct).ConfigureAwait(false);
         }
 
         _diag.Log(DiagLevel.Warn, "engine",
             "Script pump hit the wall-clock cap before quiescence; rendering current DOM.");
-    }
-
-    /// <summary>
-    /// Drive the JS realm and the host <see cref="WebEventLoop"/> to a quiet
-    /// point. Each iteration drains realm microtasks if any are pending,
-    /// otherwise advances the simulated clock by <c>SimulatedStepMs</c> so
-    /// the next batch of due timers fires (their callbacks may enqueue more
-    /// microtasks via <c>WithActiveVm</c>, picked up on the next iteration).
-    /// When there's nothing pending and nothing scheduled, we sleep briefly
-    /// on wall-clock — that's the slot off-thread fetch / XHR completions
-    /// use to enqueue their resolve jobs. Exits when no work has been
-    /// observed for <paramref name="idleMs"/> consecutive milliseconds, the
-    /// simulated clock hits <paramref name="maxSimulatedMs"/> without
-    /// progress, or the wall-clock <paramref name="maxMs"/> budget runs out.
-    /// </summary>
-    private static async Task PumpPendingAsync(
-        JsRuntime runtime,
-        WebEventLoop loop,
-        CancellationToken ct,
-        int idleMs = 100,
-        int maxMs = 5000,
-        int maxSimulatedMs = 5000)
-    {
-        const int SimulatedStepMs = 50;
-        var wall = System.Diagnostics.Stopwatch.StartNew();
-        var idle = System.Diagnostics.Stopwatch.StartNew();
-        var simulated = 0;
-        while (wall.ElapsedMilliseconds < maxMs)
-        {
-            ct.ThrowIfCancellationRequested();
-
-            if (runtime.Realm.Microtasks.PendingCount > 0)
-            {
-                runtime.WithActiveVm(() => { });
-                idle.Restart();
-                continue;
-            }
-
-            if ((loop.PendingTimerCount > 0 || loop.PendingAnimationFrameCount > 0) && simulated < maxSimulatedMs)
-            {
-                var step = Math.Min(SimulatedStepMs, maxSimulatedMs - simulated);
-                // AdvanceBy fires every timer due ≤ new now, then runs one
-                // rAF frame at that timestamp. Each callback runs
-                // synchronously and drains realm microtasks via
-                // WithActiveVm — chained setTimeout(fn, 0)s and
-                // requestAnimationFrame(f) loops settle inline.
-                loop.AdvanceBy(step);
-                simulated += step;
-                idle.Restart();
-                continue;
-            }
-
-            if (idle.ElapsedMilliseconds >= idleMs)
-                return;
-            await Task.Delay(20, ct).ConfigureAwait(false);
-        }
     }
 
     /// <summary>
