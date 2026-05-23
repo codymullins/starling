@@ -47,9 +47,9 @@ starts only after the previous wave builds green.
 | J6a | 🟢 | Starling.Bindings.Jint | Wire element geometry (`getBoundingClientRect`/`getClientRects`/`offset*`/`client*`/`scroll[WH]`) + `getComputedStyle` through `ctx.LayoutHost` (cast to `ILayoutHost`) — parity with the Starling backend; geometry reads now trigger the engine's lazy pre-script layout. |
 | J6b | 🟢 | Starling.Bindings.Jint | Run `<script>` whose `src` is set from JS (dynamic/deferred loader). Added `ctx.OnScriptSrcSet` hook (Jint analogue of `ScriptSrcHook`); `NodeBindings` `setAttribute('src',…)` + new `.src`/`.async` IDL props notify it; session routes into `JintDynamicScriptRunner.OnSrcSet` (fetch + run + fire load/error, honouring the already-started flag). |
 | J7 | 🟢 | Starling.Js.Hosting | Cleanup: moved `ILayoutHost`/`LayoutRect`/`OffsetMetrics` from `Starling.Bindings` into the engine-neutral `Starling.Js.Hosting` seam (kept `Starling.Bindings` namespace → no consumer churn); `ScriptSessionOptions.LayoutHost` + `JintBackendContext.LayoutHost` now strongly typed `ILayoutHost?` (casts gone). **Dropped the J6a `Starling.Bindings` project ref from `Starling.Bindings.Jint`**, so the Jint backend no longer pulls `Starling.Js` transitively — "deletable in one step, no `Starling.Js`" restored. |
-| J5a | ⚫ | CI | E2E + Jint binding tests under `STARLING_JS_ENGINE=jint`; netclaw.dev golden render under Jint. |
+| J5a | 🟢 | CI | Added a `Test (Jint alt-engine)` step to `ci.yml` running `Starling.Engine.Tests` under `STARLING_JS_ENGINE=jint` on every matrix OS (Jint backend unit tests already run in the default step). Added `Starling.Js.Hosting` + `Starling.Bindings.Jint` to the interop-seam allowlist (verified P/Invoke-free). No lock-file change needed (repo restores `--locked-mode` as a no-op; no `packages.lock.json`). |
 | J5b | 🟢 | tests | Run test262 harness against Jint as a compat-delta baseline (informational). `JintTest262Runner` + `JintTest262Tests.Jint_conformance_pass_rate` reuse the shared corpus enumeration/frontmatter/skip-set (`Test262Corpus`, `Test262Runner.ParseMetadata`/`OutOfScopeFeatures`); report-only (FLOOR defaults 0). **Measured (pinned SHA `c42f56d`, dirs=language): Jint 99.58% (38120→38415/38578) vs Starling.Js 80.91% (34249/42330).** NB: the in-house engine has climbed well past the ~41% the brief cited — the gap Jint buys is now ~19pts, not ~59. |
-| J5c | ⚫ | docs | README env-var note + `browser-plan/09_JS_ENGINE.md` section + removal checklist. |
+| J5c | 🟢 | docs | README JS-engine row updated (Jint env var + corrected ≈81% Starling.Js / ≈99.6% Jint Test262 numbers); new `browser-plan/09_JS_ENGINE.md#alternative-engine-backend-jint` section (why-Jint, selection, conformance delta, the narrow-seam architecture, and a 5-step removal checklist). |
 
 ## Acceptance (overall)
 - `STARLING_JS_ENGINE` unset → byte-for-byte today's behavior (Starling.Js).
@@ -327,3 +327,12 @@ starts only after the previous wave builds green.
     dynamic-`import()` rejections that leak as host `ModuleResolutionException`
     instead of a rejected promise (~60 scenarios) — left as genuine, not papered
     over.
+- 2026-05-22 — **Wave 3 complete (J5a CI, J5c docs)** (agent-claude-cody, main tree).
+  CI: new `STARLING_JS_ENGINE=jint` Engine-suite step on every matrix OS; the two
+  new managed projects added to the interop-seam allowlist (verified pure-managed).
+  Docs: README JS row + `browser-plan/09_JS_ENGINE.md` alt-engine section +
+  removal checklist. **ALL PACKAGES COMPLETE (J0–J7, J5a–c).** Final verification:
+  `dotnet build Starling.slnx` green; Engine suite 151/151 under BOTH engines;
+  Jint backend 75/75; Starling.Bindings 204/204; Starling.Js 1439/1440. Jint
+  backend depends on neither `Starling.Js` nor `Starling.Bindings` (one-step
+  removable). Committed on `jint-js-engine`; not pushed.

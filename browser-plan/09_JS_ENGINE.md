@@ -15,6 +15,69 @@
 
 These are read for **structure** and **algorithm**, not copied. Our shape is closer to LibJS: AST → bytecode → register VM.
 
+## Alternative engine backend (Jint)
+
+The browser can run on a second, runtime-selectable JS engine: **[Jint](https://github.com/sebastienros/jint)**,
+a pure-managed C# ECMAScript interpreter. It is a **temporary compatibility
+crutch** — it lets Starling render real-world pages at near-full ECMAScript
+conformance *today* while the in-house `Starling.Js` engine climbs toward its
+own conformance target. It is meant to be removed once `Starling.Js` is good
+enough; the architecture is built so removal is a one-step deletion.
+
+- **Why Jint fits the interop policy.** Jint is pure-managed (its only dependency
+  is the managed Acornima parser; no `runtimes/` native assets, no P/Invoke), so
+  it satisfies the managed-first rule exactly like BouncyCastle. Both new
+  projects are in the CI interop-seam allowlist.
+- **Selection.** Set `STARLING_JS_ENGINE=jint` (default `starling`). The selector
+  (`Starling.Engine/JsEngineSelector.cs`) mirrors `PaintBackendSelector`: lazy,
+  default-on-unset, loud-fail on an unknown value.
+- **Conformance delta (measured on tc39/test262 `language`, identical corpus).**
+  Jint ≈ **99.6%** vs `Starling.Js` ≈ **81%** — about a 19-point web-compat gap
+  that the crutch closes while the in-house engine catches up. Run both numbers
+  yourself via the `Conformance_pass_rate` / `Jint_conformance_pass_rate` tests
+  in `tests/Starling.Js.Test262.Tests` (corpus fetched by `tools/fetch-test262.sh`).
+
+### Architecture — the narrow seam
+
+The engine-neutral shared asset is `Starling.Dom` (the real DOM); both engines
+wrap *the same* Dom nodes, only the marshalling differs. So the abstraction lives
+at the `Starling.Engine` ↔ JS boundary, **not** at the `JsValue`/`JsObject`
+level — the ~956 existing `Starling.Bindings` call sites are untouched.
+
+- `src/Starling.Js.Hosting` — the seam: `IScriptEngineFactory`, `IScriptSession`,
+  `ScriptSessionOptions`, `ScriptThrow`, and the shared `ILayoutHost`. Depends
+  only on Dom/Net/Common/Url; references neither engine.
+- `src/Starling.Bindings` — hosts the default **Starling.Js** backend
+  (`StarlingScriptSession`) over the existing `JsRuntime` path.
+- `src/Starling.Bindings.Jint` — the **Jint** backend: `JintScriptSession` plus a
+  full, idiomatic re-exposure of the Web-API surface over Jint interop
+  (Node/Element/Document, EventTarget/Event, Window/Storage/History/Performance,
+  timers/rAF + event-loop pump, fetch, XMLHttpRequest, observers/crypto/cookies,
+  ES modules). References Jint + the seam + Dom/Net/Css/Html/Common/Url — **not**
+  `Starling.Js` or `Starling.Bindings`.
+
+`Starling.Engine` keeps all orchestration (script ordering, DOMContentLoaded/load
+timing, the async pump) and talks only to `IScriptSession`. Both backends pass
+the same engine integration suite (`tests/Starling.Engine.Tests`, 151/151) and
+CI runs that suite under both engines.
+
+The full design contract and the work-package history are in
+[`tasks/jint/DESIGN.md`](../tasks/jint/DESIGN.md) and
+[`tasks/jint/TRACKER.md`](../tasks/jint/TRACKER.md).
+
+### Removal checklist (when `Starling.Js` is good enough)
+
+1. Delete `src/Starling.Bindings.Jint/` and `tests/Starling.Bindings.Jint.Tests/`.
+2. Remove the `jint` arm from `Starling.Engine/JsEngineSelector.cs` (and its
+   `Starling.Bindings.Jint` project reference); the env var then only accepts
+   `starling`.
+3. Remove the `Jint` `PackageVersion` from `Directory.Packages.props`.
+4. Remove the Jint test262 harness (`Jint*Test262*` in
+   `tests/Starling.Js.Test262.Tests`) and the Jint files from `Starling.slnx`,
+   the CI interop allowlist, and the `STARLING_JS_ENGINE=jint` CI step.
+5. **Keep** `src/Starling.Js.Hosting` (the seam) and `ILayoutHost` there — the
+   seam is a clean abstraction worth retaining even with a single engine.
+
 ## Spec refs
 
 - [SPEC: ECMA-262 (15th edition, 2024)](https://tc39.es/ecma262/)
