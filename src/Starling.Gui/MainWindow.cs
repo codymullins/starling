@@ -19,6 +19,7 @@ using Starling.Common;
 using Starling.Common.Diagnostics;
 using Starling.Css.Media;
 using Starling.Engine;
+using Starling.Paint.Backend;
 using Starling.Gui;
 using Starling.Html;
 using Starling.Telemetry;
@@ -203,7 +204,7 @@ public sealed class MainWindow : Window, IBrowserController
         _contentStack.Children.Add(middle); Grid.SetRow(middle, 1);
         _contentStack.Children.Add(_statusBar); Grid.SetRow(_statusBar, 2);
 
-        _sidebar = new Sidebar(_tm, Bookmarks, activeId: null, OnSidebarTabActivated, buildLabel: GetBuildLabel());
+        _sidebar = new Sidebar(_tm, Bookmarks, activeId: null, OnSidebarTabActivated, build: GetBuildInfo());
 
         var rootGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
         rootGrid.Children.Add(_sidebar); Grid.SetColumn(_sidebar, 0);
@@ -471,10 +472,16 @@ public sealed class MainWindow : Window, IBrowserController
 
     private void OnWebviewStatus(string text, bool isError) => _statusBar.SetHint(text, isError);
 
+    // Build facts for the sidebar footer: the build's commit plus the JS and
+    // render engines this process actually selected (single source of truth —
+    // the same selectors the engine/paint pipeline read).
+    private static BuildInfo GetBuildInfo()
+        => new(GetBuildLabel(), GetJsEngineLabel(), GetRenderBackendLabel());
+
     private static string GetBuildLabel()
     {
         // Short build-sha label from assembly informational version. Falls
-        // back to "" if none — the footer just renders nothing.
+        // back to "" if none — the footer just renders a dash.
         var asm = Assembly.GetExecutingAssembly();
         var info = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
                    ?? string.Empty;
@@ -483,6 +490,20 @@ public sealed class MainWindow : Window, IBrowserController
         if (info.Length > 8) info = info[..8];
         return info;
     }
+
+    // Canonical names matching the AppHost selection flags / README (--starling/
+    // --jint, --imagesharp/--imagesharp-gpu).
+    private static string GetJsEngineLabel() => JsEngineSelector.Selected switch
+    {
+        JsEngineKind.Jint => "jint",
+        _ => "starling",
+    };
+
+    private static string GetRenderBackendLabel() => PaintBackendSelector.Selected switch
+    {
+        PaintBackendKind.ImageSharpWebGpu => "imagesharp-gpu",
+        _ => "imagesharp",
+    };
 
     private async void OnSidebarTabActivated(TabInfo tab)
     {

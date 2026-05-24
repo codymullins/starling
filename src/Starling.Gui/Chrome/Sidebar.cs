@@ -9,10 +9,15 @@ using Starling.Gui.Theme;
 
 namespace Starling.Gui.Chrome;
 
+/// <summary>Runtime build facts shown in the sidebar footer: the build's git
+/// commit (short SHA) and which JS / render engines this process is running.</summary>
+public sealed record BuildInfo(string? Commit, string? JsEngine, string? RenderEngine);
+
 /// <summary>
 /// 232px vertical bookmark sidebar — calm-modern redesign. A small gradient
 /// app-mark + "Starling" wordmark at top, a single Bookmarks section with
-/// deterministic-color favicon tiles, and a quiet single-line footer.
+/// deterministic-color favicon tiles, and a footer column of build facts
+/// (commit / JS engine / render engine).
 /// </summary>
 public sealed class Sidebar : Grid
 {
@@ -36,7 +41,7 @@ public sealed class Sidebar : Grid
         IReadOnlyList<TabInfo> bookmarks,
         string? activeId,
         Action<TabInfo>? onTabActivated = null,
-        string? buildLabel = null)
+        BuildInfo? build = null)
     {
         var t = tm.Tokens;
 
@@ -53,7 +58,7 @@ public sealed class Sidebar : Grid
         var list = BuildList(tm, bookmarks, activeId, onTabActivated);
         Children.Add(list); SetRow(list, 2);
 
-        var footer = BuildFooter(tm, buildLabel);
+        var footer = BuildFooter(tm, build);
         Children.Add(footer); SetRow(footer, 3);
 
         // Right-edge hairline rules the whole height
@@ -286,22 +291,21 @@ public sealed class Sidebar : Grid
         VerticalAlignment = VerticalAlignment.Center,
     };
 
-    private static Control BuildFooter(ThemeManager tm, string? buildLabel)
+    // Footer is a small column of build facts: commit / JS engine / render
+    // engine, each a faint label paired with a monospace value.
+    private static Control BuildFooter(ThemeManager tm, BuildInfo? build)
     {
         var t = tm.Tokens;
-        var label = new TextBlock
-        {
-            Text = buildLabel ?? string.Empty,
-            FontFamily = new FontFamily(tm.MonoFont),
-            FontSize = 10.5,
-            Foreground = new SolidColorBrush(t.Faint),
-            VerticalAlignment = VerticalAlignment.Center,
-        };
+
+        var rows = new StackPanel { Spacing = 3 };
+        rows.Children.Add(FooterRow(tm, "commit", build?.Commit));
+        rows.Children.Add(FooterRow(tm, "js", build?.JsEngine));
+        rows.Children.Add(FooterRow(tm, "render", build?.RenderEngine));
 
         var content = new Border
         {
             Padding = new Thickness(20, 12, 20, 14),
-            Child = label,
+            Child = rows,
         };
 
         var wrap = new Grid();
@@ -314,5 +318,32 @@ public sealed class Sidebar : Grid
         wrap.Children.Add(hairline);
         wrap.Children.Add(content);
         return wrap;
+    }
+
+    private static Control FooterRow(ThemeManager tm, string label, string? value)
+    {
+        var t = tm.Tokens;
+        var key = new TextBlock
+        {
+            Text = label,
+            FontFamily = new FontFamily(tm.SansFont),
+            FontSize = 10,
+            Foreground = new SolidColorBrush(t.Faint),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var val = new TextBlock
+        {
+            Text = string.IsNullOrEmpty(value) ? "—" : value,
+            FontFamily = new FontFamily(tm.MonoFont),
+            FontSize = 10.5,
+            Foreground = new SolidColorBrush(t.Muted),
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+        grid.Children.Add(key); SetColumn(key, 0);
+        grid.Children.Add(val); SetColumn(val, 1);
+        return grid;
     }
 }

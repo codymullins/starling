@@ -5,6 +5,9 @@
   <ItemGroup>
     <!-- Engine.Tests exercises internal helpers like ExtractDisplayText. -->
     <InternalsVisibleTo Include="Starling.Engine.Tests" />
+    <!-- Gui reads JsEngineSelector.Selected to label the active JS engine in the
+         sidebar footer (mirrors the InternalsVisibleTo Starling.Paint already grants). -->
+    <InternalsVisibleTo Include="Starling.Gui" />
   </ItemGroup>
   <ItemGroup>
     <!-- Pure-managed legacy single-byte / CJK encodings (Rule-0 clean).

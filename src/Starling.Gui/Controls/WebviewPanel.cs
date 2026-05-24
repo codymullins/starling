@@ -809,10 +809,23 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         var tb = FindValueTextBox(inputBox, cx, cy);
         if (tb is { } th)
         {
+            // The value is laid out as one fragment per whitespace-delimited token
+            // (words and the spaces between them), all in this text box. Walk them
+            // in order, mapping the global caret index onto the fragment that holds
+            // it — using only Fragments[0] froze the caret at the first space.
             var t = (Starling.Layout.Box.TextBox)th.Box;
-            var frag = t.Fragments[0];
-            return (th.X + frag.X + XOffsetInFragment(frag, caretIndex),
-                    th.Y + frag.Y, frag.Height, color);
+            var remaining = Math.Max(0, caretIndex);
+            foreach (var frag in t.Fragments)
+            {
+                if (remaining <= frag.Text.Length)
+                    return (th.X + frag.X + XOffsetInFragment(frag, remaining),
+                            th.Y + frag.Y, frag.Height, color);
+                remaining -= frag.Text.Length;
+            }
+            // Past the last character → caret at the end of the final fragment.
+            var last = t.Fragments[^1];
+            return (th.X + last.X + XOffsetInFragment(last, last.Text.Length),
+                    th.Y + last.Y, last.Height, color);
         }
 
         // Empty field: caret at the content origin, spanning the content box.
@@ -834,10 +847,29 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         var cy = found.Y + inputBox.Border.Top + inputBox.Padding.Top;
         if (FindValueTextBox(inputBox, cx, cy) is not { } th) return val.Length;
 
-        var frag = ((Starling.Layout.Box.TextBox)th.Box).Fragments[0];
-        var localX = clickDoc.X - (th.X + frag.X);
-        if (localX <= 0) return 0;
+        // Find the value fragment under the click (or the last one when the click
+        // is past the text), then add the char offset within it to the count of
+        // characters in the fragments before it.
+        var t = (Starling.Layout.Box.TextBox)th.Box;
+        var prior = 0;
+        for (var fi = 0; fi < t.Fragments.Count; fi++)
+        {
+            var frag = t.Fragments[fi];
+            var fragLeft = th.X + frag.X;
+            var isLast = fi == t.Fragments.Count - 1;
+            if (clickDoc.X < fragLeft + frag.Width || isLast)
+                return prior + CharOffsetInFragment(frag, clickDoc.X - fragLeft);
+            prior += frag.Text.Length;
+        }
+        return val.Length;
+    }
 
+    /// <summary>Character index (0..len) within <paramref name="frag"/> nearest to
+    /// local x-offset <paramref name="localX"/> from the fragment's left edge,
+    /// using shaped glyph midpoints when available and a proportional fallback.</summary>
+    private static int CharOffsetInFragment(Starling.Layout.Box.TextFragment frag, double localX)
+    {
+        if (localX <= 0) return 0;
         if (frag.Shaped is { } sh && sh.Glyphs.Length == frag.Text.Length)
         {
             for (var i = 0; i < sh.Glyphs.Length; i++)
@@ -848,7 +880,6 @@ internal sealed class WebviewPanel : UserControl, IDisposable
             }
             return frag.Text.Length;
         }
-
         var approx = (int)Math.Round(localX / Math.Max(1, frag.Width) * frag.Text.Length);
         return Math.Clamp(approx, 0, frag.Text.Length);
     }

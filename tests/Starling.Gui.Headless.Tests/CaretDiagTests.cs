@@ -56,7 +56,7 @@ public class CaretDiagTests
         }
 
         var liveTick = typeof(WebviewPanel).GetMethod("LiveTick", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        foreach (var ch in "abcdef")
+        foreach (var ch in "ab cd ef")
         {
             window.KeyTextInput(ch.ToString());
             lines.Add($"typed '{ch}': caretX={CaretX(panel)}, idx={CaretIndex(panel)}, val='{input.InputValue}'");
