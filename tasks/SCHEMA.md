@@ -9,7 +9,7 @@ schema. The format is checked by `tasks/lib/claim.sh` and (eventually) by CI.
 ---
 id: wp:M1-01a-tokenizer-scaffold       # required, must equal "wp:" + filename minus ".md"
 parent: wp:M1-01-html-tokenizer        # optional, rolls sub-tasks up to their parent
-milestone: M1                          # required, one of M0..M11
+milestone: M1                          # required, one of M0..M13
 status: available                      # required, one of:
                                        #   available  — anyone may claim
                                        #   claimed    — someone is working on it
@@ -20,6 +20,7 @@ claimed_by: ""                         # required, agent identifier or "" when u
 claimed_at: ""                         # required, ISO-8601 UTC ("2026-05-11T15:30:00Z") or ""
 branch: ""                             # required; defaults to "main" — work happens on main and the field is informational. Historical packages may record a per-package branch name (e.g., wp-M1-01a) from when that convention was active.
 completed_at: ""                       # optional, set when status flips to complete
+reviewed_commit: ""                    # optional, for review tasks: git commit SHA/ref that was reviewed
 depends_on:                            # required, list of wp ids (may be empty)
   - wp:M0-01-scaffold
 blocks:                                # optional, informational reverse-deps

@@ -34,6 +34,7 @@ status: available
 claimed_by: ""
 claimed_at: ""
 branch: ""
+reviewed_commit: ""  # optional: required for review-only packages before complete
 depends_on: []
 blocks: ["wp:M1-01b-tokenizer-text-states"]
 subsystem: Starling.Html
@@ -137,6 +138,9 @@ When acceptance criteria pass:
 4. Re-scan `INDEX.md` — your completion may have unblocked downstream
    packages; if so, note them in the handoff log so the next agent knows
    to pick them up.
+
+For review-only packages, also set `reviewed_commit:` to the exact commit SHA
+that was reviewed before marking the package `complete`.
 
 > The `in_review` state in `SCHEMA.md` is preserved for projects that wire
 > up a remote with PR review later. Today this repo doesn't use it —

@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using Starling.Common.Diagnostics;
 using Starling.Common.Image;
 
 namespace Starling.Codecs.Mac;
@@ -28,7 +27,6 @@ internal sealed partial class ImageIODecoder : IImageDecoder
         nint cgImage = 0;
         nint colorSpace = 0;
         nint context = 0;
-        NativeCallTrace.Enter("ImageIODecoder.Decode", 0, $"bytes={bytes.Length}");
         try
         {
             fixed (byte* p = bytes)
@@ -93,10 +91,8 @@ internal sealed partial class ImageIODecoder : IImageDecoder
                     // image at the origin already lands top-down in memory. No
                     // CTM flip is needed (a flip would invert it).
                     var rect = new CGRect { X = 0, Y = 0, Width = w, Height = h };
-                    NativeCallTrace.Enter("CGContextDrawImage", ctx, $"{w}x{h}");
                     CGContextDrawImage(ctx, rect, cgImage);
                     CGContextFlush(ctx);
-                    NativeCallTrace.Exit("CGContextDrawImage", ctx);
 
                     UnpremultiplyInPlace(span);
                 }
@@ -117,7 +113,6 @@ internal sealed partial class ImageIODecoder : IImageDecoder
             if (cgImage != 0) CGImageRelease(cgImage);
             if (source != 0) CFRelease(source);
             if (data != 0) CFRelease(data);
-            NativeCallTrace.Exit("ImageIODecoder.Decode");
         }
     }
 

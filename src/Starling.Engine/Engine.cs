@@ -1185,9 +1185,7 @@ public sealed class StarlingEngine
 
         for (var redirects = 0; redirects <= MaxRedirects; redirects++)
         {
-            NativeCallTrace.Mark("http.get", $"{current} redirect#{redirects}");
             var response = await http.GetAsync(current, ct).ConfigureAwait(false);
-            NativeCallTrace.Mark("http.get.done", response.IsErr ? "err" : "ok");
             if (response.IsErr)
                 return Result<(string, StarlingUrl, Starling.Net.Http.ConnectionSecurity?), RenderError>.Err(new RenderError(
                     $"Network error fetching {current}: {response.Error}"));

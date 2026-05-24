@@ -215,7 +215,29 @@ quality monotonically improves at every step.
 | [wp:M12-11-glyph-atlas-cpu](M12/wp-M12-11-glyph-atlas-cpu.md) | 🔵 available | — | Starling.Paint |
 | [wp:M12-12-webgpu-scene-cache](M12/wp-M12-12-webgpu-scene-cache.md) | ⚫ closed (not viable — RenderScene bakes transform) | — | Starling.Paint |
 
+## M13 — Engine module code review
+
+Parallel review track for targeted module audits. Each package records
+`reviewed_commit` in frontmatter and mirrors it in this table's commit column.
+
+| ID | Status | Owner | Subsystem | Commit reviewed |
+|---|---|---|---|---|
+| [wp:M13-01-review-common](M13/wp-M13-01-review-common.md) | 🔵 available | — | Starling.Common | — |
+| [wp:M13-02-review-url](M13/wp-M13-02-review-url.md) | 🔵 available | — | Starling.Url | — |
+| [wp:M13-03-review-net](M13/wp-M13-03-review-net.md) | 🔵 available | — | Starling.Net | — |
+| [wp:M13-04-review-html](M13/wp-M13-04-review-html.md) | 🔵 available | — | Starling.Html | — |
+| [wp:M13-05-review-dom](M13/wp-M13-05-review-dom.md) | 🔵 available | — | Starling.Dom | — |
+| [wp:M13-06-review-css](M13/wp-M13-06-review-css.md) | 🔵 available | — | Starling.Css | — |
+| [wp:M13-07-review-layout](M13/wp-M13-07-review-layout.md) | 🔵 available | — | Starling.Layout | — |
+| [wp:M13-08-review-paint](M13/wp-M13-08-review-paint.md) | 🔵 available | — | Starling.Paint | — |
+| [wp:M13-09-review-js](M13/wp-M13-09-review-js.md) | 🔵 available | — | Starling.Js | — |
+| [wp:M13-10-review-bindings](M13/wp-M13-10-review-bindings.md) | 🔵 available | — | Starling.Bindings | — |
+| [wp:M13-11-review-engine](M13/wp-M13-11-review-engine.md) | 🔵 available | — | Starling.Engine | — |
+
 ## Available right now (no dependencies pending)
+
+Engine code-review track (`M13`) is fully open: all module review packages
+`wp:M13-01` through `wp:M13-11` are available to claim.
 
 The M3-06 native interop pivot is closed. Remaining pivot follow-ups (win/linux
 native builds, `CAMetalLayer` GUI presentation, HarfBuzz shaping, PR-CI native

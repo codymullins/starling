@@ -221,8 +221,6 @@ public sealed class Painter
     {
         ArgumentNullException.ThrowIfNull(document);
 
-        Starling.Common.Diagnostics.NativeCallTrace.Mark("layout.begin");
-
         StyleEngine style;
         using (_diag.Span("paint", "style_cascade"))
             style = CreateStyleEngine(document, viewport, defaultFontSize, externalStylesheet, _diag, colorScheme);
@@ -234,7 +232,6 @@ public sealed class Painter
             Starling.Layout.Box.BlockBox root;
             using (_diag.Span("paint", "layout"))
                 root = layoutEngine.LayoutDocument(document, viewport, nowMs);
-            Starling.Common.Diagnostics.NativeCallTrace.Mark("layout.end");
             return (root, style);
         }
         finally
