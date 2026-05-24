@@ -61,7 +61,14 @@ internal sealed class FlexLayout
         var mainSize = props.IsRow ? containerWidth : (explicitHeight ?? _viewport.Height);
         var crossSize = props.IsRow ? (explicitHeight ?? double.NaN) : containerWidth;
 
-        var children = container.Children;
+        // CSS Flexbox §4: an absolutely/fixed-positioned child is NOT a flex
+        // item — it takes no part in flex sizing or spacing and is placed later
+        // by PositionLayout. Skipping it here keeps a hidden `position: fixed`
+        // overlay (e.g. Google's slide-out menu, height: 100vh) from consuming
+        // a flex line and shoving the real content off-screen.
+        var children = new List<Box.Box>(container.Children.Count);
+        foreach (var c in container.Children)
+            if (!BlockLayout.IsOutOfFlow(c.Style)) children.Add(c);
         if (children.Count == 0)
             return explicitHeight ?? 0;
 

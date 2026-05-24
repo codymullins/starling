@@ -312,7 +312,14 @@ internal sealed class BoxTreeBuilder
         if (_images.TryResolveInlineSvg(svg, currentColor, out var resolved))
         {
             var (width, height) = ResolveImageSize(svg, resolved);
-            parentBox.AppendChild(new ImageBox(style, svg, width, height, resolved.Source));
+            // A `viewBox`-only svg (no width/height attribute) has an intrinsic
+            // ratio but no intrinsic size: its used size comes from CSS, falling
+            // back to the available inline size — not the viewBox px (which would
+            // blow a `viewBox="0 -960 960 960"` Material Symbols icon up to 960px
+            // when its CSS size is `auto`). The viewBox dims still feed the ratio.
+            var ratioOnly = string.IsNullOrEmpty(svg.GetAttribute("width"))
+                && string.IsNullOrEmpty(svg.GetAttribute("height"));
+            parentBox.AppendChild(new ImageBox(style, svg, width, height, resolved.Source, ratioOnly));
             return;
         }
 

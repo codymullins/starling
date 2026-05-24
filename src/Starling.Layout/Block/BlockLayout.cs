@@ -228,7 +228,14 @@ internal sealed class BlockLayout
             fullHeight);
     }
 
-    private static bool IsOutOfFlow(ComputedStyle? style)
+    /// <summary>
+    /// True for <c>position: absolute</c> / <c>fixed</c> boxes, which are
+    /// removed from normal flow (CSS 2.1 §9.3.1) and placed in a later pass by
+    /// <see cref="Position.PositionLayout"/>. Flex (CSS Flexbox §4) and Grid
+    /// (CSS Grid §9) likewise exclude such children from item layout, so this
+    /// is shared with <see cref="Flex.FlexLayout"/> / <see cref="Grid.GridLayout"/>.
+    /// </summary>
+    internal static bool IsOutOfFlow(ComputedStyle? style)
     {
         if (style is null) return false;
         if (style.Get(PropertyId.Position) is not CssKeyword k) return false;

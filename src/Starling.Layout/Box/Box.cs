@@ -100,17 +100,30 @@ public sealed class ImageBox : Box
         Element? element,
         double intrinsicWidth,
         double intrinsicHeight,
-        DecodedImage source)
+        DecodedImage source,
+        bool intrinsicSizeIsRatioOnly = false)
         : base(BoxKind.Replaced, style, element)
     {
         IntrinsicWidth = intrinsicWidth;
         IntrinsicHeight = intrinsicHeight;
         Source = source;
+        IntrinsicSizeIsRatioOnly = intrinsicSizeIsRatioOnly;
     }
 
     public double IntrinsicWidth { get; }
     public double IntrinsicHeight { get; }
     public DecodedImage Source { get; }
+
+    /// <summary>
+    /// True when the box has an intrinsic aspect ratio but no definite intrinsic
+    /// size — e.g. an inline <c>&lt;svg&gt;</c> with a <c>viewBox</c> but no
+    /// <c>width</c>/<c>height</c> attribute. Per CSS Images §5.3.1 such a box,
+    /// when both <c>width</c> and <c>height</c> compute to <c>auto</c>, fills the
+    /// available inline size (and derives the other axis from the ratio) instead
+    /// of rendering at the <c>viewBox</c> pixel size. <see cref="IntrinsicWidth"/>
+    /// / <see cref="IntrinsicHeight"/> then carry the ratio only.
+    /// </summary>
+    public bool IntrinsicSizeIsRatioOnly { get; }
 }
 
 /// <summary>

@@ -987,6 +987,17 @@ internal sealed class InlineLayout
             h = specH.Value;
             w = h * ratio;
         }
+        else if (image.IntrinsicSizeIsRatioOnly)
+        {
+            // Ratio-only replaced box (e.g. a viewBox-only <svg>) with both axes
+            // auto: use the viewBox size but never overflow the available inline
+            // size — a `viewBox="0 0 24 24"` icon keeps its 24px size, while a
+            // `viewBox="0 -960 960 960"` Material Symbols icon shrinks to fit its
+            // (e.g. 24px) box instead of rendering at 960px. Height follows the
+            // ratio so the aspect is preserved when clamped.
+            w = Math.Min(iw, availableWidth);
+            h = w / ratio;
+        }
         else
         {
             w = iw;
