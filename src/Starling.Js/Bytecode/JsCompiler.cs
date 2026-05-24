@@ -2056,14 +2056,16 @@ public sealed partial class JsCompiler
     {
         // Always start with the first quasi (which can be "") to anchor as a string —
         // ensures arithmetic '+' on subsequent operands becomes string concat.
-        _b.EmitU16(Opcode.LoadConst, _b.AddConstant(tpl.Quasis[0]));
+        // Untagged templates never have a null cooked segment (the parser rejects
+        // invalid escapes here); coalesce defensively to keep the type non-null.
+        _b.EmitU16(Opcode.LoadConst, _b.AddConstant(tpl.Quasis[0] ?? ""));
         for (var i = 0; i < tpl.Expressions.Count; i++)
         {
             EmitExpression(tpl.Expressions[i]);
             _b.Emit(Opcode.Add);
-            if (tpl.Quasis[i + 1].Length > 0)
+            if ((tpl.Quasis[i + 1] ?? "").Length > 0)
             {
-                _b.EmitU16(Opcode.LoadConst, _b.AddConstant(tpl.Quasis[i + 1]));
+                _b.EmitU16(Opcode.LoadConst, _b.AddConstant(tpl.Quasis[i + 1]!));
                 _b.Emit(Opcode.Add);
             }
         }

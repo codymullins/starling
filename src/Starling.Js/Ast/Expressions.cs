@@ -197,11 +197,14 @@ public sealed record ArrowFunctionExpression(
 
 /// <summary>
 /// Template literal <c>`pre ${a} mid ${b} tail`</c>. <see cref="Quasis"/> is
-/// the literal string segments; <see cref="Expressions"/> is the substitution
-/// expressions. Always <c>Quasis.Count == Expressions.Count + 1</c>.
+/// the cooked literal string segments; <see cref="Expressions"/> is the
+/// substitution expressions. Always <c>Quasis.Count == Expressions.Count + 1</c>.
+/// A cooked segment is <c>null</c> only for a tagged template that contains an
+/// invalid escape sequence (§12.9.6) — there the cooked element is
+/// <c>undefined</c> while <see cref="RawQuasis"/> still holds its raw source.
 /// </summary>
 public sealed record TemplateLiteral(
-    IReadOnlyList<string> Quasis,
+    IReadOnlyList<string?> Quasis,
     IReadOnlyList<Expression> Expressions,
     IReadOnlyList<string> RawQuasis,
     JsPosition Start, JsPosition End)

@@ -963,7 +963,8 @@ public sealed partial class JsParser
                 return ParseSuperExpression();
             case JsTokenKind.TemplateNoSubstitution:
             case JsTokenKind.TemplateHead:
-                return ParseTemplateLiteral();
+                // An untagged template literal must not contain an invalid escape.
+                return RejectUncookableTemplate(ParseTemplateLiteral());
             case JsTokenKind.Import:
                 // wp:M3-03c — `import(...)` (dynamic import call) and
                 // `import.meta` (meta-property) are the only expression-context
@@ -997,19 +998,19 @@ public sealed partial class JsParser
     private TemplateLiteral ParseTemplateLiteral()
     {
         var startTok = _current;
-        var quasis = new List<string>();
+        var quasis = new List<string?>();
         var raws = new List<string>();
         var expressions = new List<Expression>();
         if (_current.Kind == JsTokenKind.TemplateNoSubstitution)
         {
-            quasis.Add((string)_current.Value!);
+            quasis.Add(CookedValue(_current));
             raws.Add(TemplateRaw(_current));
             var end = _current.End;
             Advance();
             return new TemplateLiteral(quasis, expressions, raws, startTok.Start, end);
         }
         // Head ... (expr ... Middle)* expr ... Tail
-        quasis.Add((string)_current.Value!);
+        quasis.Add(CookedValue(_current));
         raws.Add(TemplateRaw(_current));
         Advance();
         while (true)
@@ -1025,7 +1026,7 @@ public sealed partial class JsParser
             _current = _lex.ScanTemplateContinuation();
             if (_current.Kind == JsTokenKind.TemplateTail)
             {
-                quasis.Add((string)_current.Value!);
+                quasis.Add(CookedValue(_current));
                 raws.Add(TemplateRaw(_current));
                 var endTok = _current;
                 Advance();
@@ -1033,7 +1034,7 @@ public sealed partial class JsParser
             }
             if (_current.Kind == JsTokenKind.TemplateMiddle)
             {
-                quasis.Add((string)_current.Value!);
+                quasis.Add(CookedValue(_current));
                 raws.Add(TemplateRaw(_current));
                 Advance();
                 continue;
@@ -1050,6 +1051,28 @@ public sealed partial class JsParser
     /// NoSubstitution/Tail, <c>${</c> for Head/Middle), so we strip that, then
     /// normalise <c>&lt;CR&gt;&lt;LF&gt;</c> and lone <c>&lt;CR&gt;</c> to <c>&lt;LF&gt;</c>.
     /// </summary>
+    /// <summary>§12.9.6 — the cooked value of a template segment, or <c>null</c>
+    /// when the segment held an invalid escape sequence (a NotEscapeSequence).
+    /// A null cooked element is legal only in a tagged template (where it maps to
+    /// <c>undefined</c>); an untagged literal with a null cooked element is a
+    /// SyntaxError, rejected by <see cref="RejectUncookableTemplate"/>.</summary>
+    private static string? CookedValue(in JsToken t)
+        => t.InvalidEscape ? null : (string)t.Value!;
+
+    /// <summary>Reject an untagged template literal that contains an invalid
+    /// escape sequence (§12.9.6 — only tagged templates may carry an undefined
+    /// cooked element).</summary>
+    private static TemplateLiteral RejectUncookableTemplate(TemplateLiteral tpl)
+    {
+        for (var i = 0; i < tpl.Quasis.Count; i++)
+        {
+            if (tpl.Quasis[i] is null)
+                throw new JsParseException(
+                    "invalid escape sequence in untagged template literal", tpl.Start);
+        }
+        return tpl;
+    }
+
     private static string TemplateRaw(in JsToken t)
     {
         var lex = t.Lexeme;

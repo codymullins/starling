@@ -36,6 +36,16 @@ public readonly record struct JsToken(
     /// (<c>{ if } = …</c> is a SyntaxError).</summary>
     public bool ContainsEscape { get; init; }
 
+    /// <summary>True when a template segment token (NoSubstitution / Head /
+    /// Middle / Tail) contained a syntactically invalid escape sequence
+    /// (§12.9.6 NotEscapeSequence — e.g. <c>\unicode</c>, <c>\xg</c>, a legacy
+    /// octal <c>\07</c>, or <c>\8</c>/<c>\9</c>). Such a segment has NO cooked
+    /// value (<see cref="Value"/> is <c>null</c>) but keeps its raw lexeme. It
+    /// is a SyntaxError in an untagged template literal but legal in a tagged
+    /// template, where the cooked element becomes <c>undefined</c>; the parser
+    /// enforces that distinction.</summary>
+    public bool InvalidEscape { get; init; }
+
     public override string ToString() =>
         $"{Kind} \"{Lexeme}\" at {Start}";
 }

@@ -95,6 +95,57 @@ public class JsTaggedTemplateTests
             """).AsString.Should().Be("O:hi42");
     }
 
+    [TestMethod]
+    public void Substitutions_are_passed_in_source_order()
+    {
+        Eval("""
+            function tag(s, a, b, c){ return [a, b, c].join('-'); }
+            tag`${10}${20}${30}`;
+            """).AsString.Should().Be("10-20-30");
+    }
+
+    [TestMethod]
+    public void Invalid_escape_yields_undefined_cooked_with_raw_preserved()
+    {
+        // §12.9.6 — an invalid escape sequence is legal in a tagged template:
+        // the cooked element is `undefined` while the raw source is preserved.
+        Eval("""
+            function tag(s){ return (s[0] === undefined) + '|' + s.raw[0]; }
+            tag`\unicode`;
+            """).AsString.Should().Be(@"true|\unicode");
+    }
+
+    [TestMethod]
+    public void Invalid_escape_only_blanks_its_own_segment_cooked()
+    {
+        // A valid leading segment still cooks; only the bad segment is undefined,
+        // and that segment's raw value is intact.
+        Eval("""
+            function tag(s){ return s[0] + '|' + (s[1] === undefined) + '|' + s.raw[1]; }
+            tag`ok${1}\xg done`;
+            """).AsString.Should().Be(@"ok|true|\xg done");
+    }
+
+    [TestMethod]
+    public void Invalid_escape_in_untagged_template_is_a_syntax_error()
+    {
+        var act = () => Eval(@"var x = `\unicode`;");
+        act.Should().Throw<JsParseException>();
+    }
+
+    [TestMethod]
+    public void Same_call_site_caches_one_object_across_repeated_evaluation()
+    {
+        // The same site is evaluated three times via a loop; every evaluation must
+        // hand the tag the very same frozen template object.
+        Eval("""
+            var seen = [];
+            function id(s){ return s; }
+            for (var i = 0; i < 3; i++) seen.push(id`a${i}b`);
+            seen[0] === seen[1] && seen[1] === seen[2];
+            """).AsBool.Should().BeTrue();
+    }
+
     private static JsValue Eval(string src)
     {
         var program = new JsParser(src).ParseProgram();

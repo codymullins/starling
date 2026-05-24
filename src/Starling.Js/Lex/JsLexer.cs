@@ -44,6 +44,19 @@ public sealed class JsLexer
     /// reads it to tag the resulting string token as a strict-mode error.</summary>
     private bool _lastEscapeWasLegacyOctal;
 
+    /// <summary>§12.9.6 — while scanning a template segment body, escape errors
+    /// are NOT fatal: an invalid escape (<c>\unicode</c>, <c>\xg</c>, legacy
+    /// octal, <c>\8</c>/<c>\9</c>) is a NotEscapeSequence that yields no cooked
+    /// value rather than a lexer error (the parser later rejects it only when
+    /// the template is untagged). When this flag is set, <see cref="ScanEscape"/>
+    /// and its helpers suppress error reporting and set
+    /// <see cref="_lastEscapeWasInvalid"/> instead.</summary>
+    private bool _inTemplateBody;
+
+    /// <summary>Set by <see cref="ScanEscape"/> (when <see cref="_inTemplateBody"/>
+    /// is true) if the escape it just consumed was syntactically invalid.</summary>
+    private bool _lastEscapeWasInvalid;
+
     public JsLexer(string source, IJsLexErrorSink? errors = null)
     {
         _src = source ?? throw new ArgumentNullException(nameof(source));
@@ -309,49 +322,64 @@ public sealed class JsLexer
         }
         var begin = _i;
         var sb = new StringBuilder();
-        while (_i < _src.Length)
+        // §12.9.6 — within a template body an invalid escape is a NotEscapeSequence:
+        // it produces no cooked value (legal only in a tagged template) rather than
+        // a lexer error. Track that here so the token can be flagged with no cooked
+        // value while its raw lexeme is preserved.
+        var prevInTemplate = _inTemplateBody;
+        _inTemplateBody = true;
+        var segmentInvalid = false;
+        try
         {
-            var c = _src[_i];
-            if (c == '`')
+            while (_i < _src.Length)
             {
-                Advance();
-                var kind = head ? JsTokenKind.TemplateNoSubstitution : JsTokenKind.TemplateTail;
-                return MakeToken(kind, _src[begin.._i], start, CurrentPos(), precededByLT, sb.ToString());
-            }
-            if (c == '$' && _i + 1 < _src.Length && _src[_i + 1] == '{')
-            {
-                Advance(); Advance();
-                var kind = head ? JsTokenKind.TemplateHead : JsTokenKind.TemplateMiddle;
-                return MakeToken(kind, _src[begin.._i], start, CurrentPos(), precededByLT, sb.ToString());
-            }
-            if (c == '\\')
-            {
-                Advance();
-                if (_i >= _src.Length) break;
-                // Line continuation \<LineTerminator> is dropped.
-                if (IsLineTerminator(_src[_i]))
+                var c = _src[_i];
+                if (c == '`')
                 {
-                    if (_src[_i] == '\r' && _i + 1 < _src.Length && _src[_i + 1] == '\n') AdvanceRaw();
-                    _i++; _line++; _col = 1; _precedingLineTerm = true;
+                    Advance();
+                    var kind = head ? JsTokenKind.TemplateNoSubstitution : JsTokenKind.TemplateTail;
+                    return MakeToken(kind, _src[begin.._i], start, CurrentPos(), precededByLT,
+                        segmentInvalid ? null : sb.ToString(), invalidEscape: segmentInvalid);
+                }
+                if (c == '$' && _i + 1 < _src.Length && _src[_i + 1] == '{')
+                {
+                    Advance(); Advance();
+                    var kind = head ? JsTokenKind.TemplateHead : JsTokenKind.TemplateMiddle;
+                    return MakeToken(kind, _src[begin.._i], start, CurrentPos(), precededByLT,
+                        segmentInvalid ? null : sb.ToString(), invalidEscape: segmentInvalid);
+                }
+                if (c == '\\')
+                {
+                    Advance();
+                    if (_i >= _src.Length) break;
+                    // Line continuation \<LineTerminator> is dropped.
+                    if (IsLineTerminator(_src[_i]))
+                    {
+                        if (_src[_i] == '\r' && _i + 1 < _src.Length && _src[_i + 1] == '\n') AdvanceRaw();
+                        _i++; _line++; _col = 1; _precedingLineTerm = true;
+                        continue;
+                    }
+                    _lastEscapeWasInvalid = false;
+                    sb.Append(ScanEscape(start));
+                    if (_lastEscapeWasInvalid) segmentInvalid = true;
                     continue;
                 }
-                sb.Append(ScanEscape(start));
-                continue;
+                if (IsLineTerminator(c))
+                {
+                    // Raw newlines are legal inside templates; track them for ASI.
+                    _precedingLineTerm = true;
+                    if (c == '\r' && _i + 1 < _src.Length && _src[_i + 1] == '\n') AdvanceRaw();
+                    sb.Append('\n');
+                    _i++; _line++; _col = 1;
+                    continue;
+                }
+                sb.Append(c);
+                Advance();
             }
-            if (IsLineTerminator(c))
-            {
-                // Raw newlines are legal inside templates; track them for ASI.
-                _precedingLineTerm = true;
-                if (c == '\r' && _i + 1 < _src.Length && _src[_i + 1] == '\n') AdvanceRaw();
-                sb.Append('\n');
-                _i++; _line++; _col = 1;
-                continue;
-            }
-            sb.Append(c);
-            Advance();
+            _errors.Report(JsLexError.UnterminatedTemplate, start, "unterminated template literal");
+            return MakeToken(JsTokenKind.Invalid, _src[begin.._i], start, CurrentPos(), precededByLT, sb.ToString());
         }
-        _errors.Report(JsLexError.UnterminatedTemplate, start, "unterminated template literal");
-        return MakeToken(JsTokenKind.Invalid, _src[begin.._i], start, CurrentPos(), precededByLT, sb.ToString());
+        finally { _inTemplateBody = prevInTemplate; }
     }
 
     private JsToken ScanPrivateIdentifier(JsPosition start, bool precededByLT)
@@ -867,6 +895,21 @@ public sealed class JsLexer
             start, CurrentPos(), precededByLT, sb.ToString());
     }
 
+    /// <summary>Report an escape-sequence error, or — inside a template body —
+    /// merely record that an invalid escape occurred (a NotEscapeSequence is
+    /// only fatal in an untagged template, which the parser decides). Returns
+    /// the placeholder cooked text the caller should fall back to.</summary>
+    private string ReportEscapeError(JsLexError code, JsPosition pos, string message, string placeholder)
+    {
+        if (_inTemplateBody)
+        {
+            _lastEscapeWasInvalid = true;
+            return placeholder;
+        }
+        _errors.Report(code, pos, message);
+        return placeholder;
+    }
+
     private string ScanEscape(JsPosition start)
     {
         _lastEscapeWasLegacyOctal = false;
@@ -883,13 +926,20 @@ public sealed class JsLexer
             case '0' when _i >= _src.Length || !IsAsciiDigit(_src[_i]): return "\0";
             // §B.1.2 LegacyOctalEscapeSequence — `\` followed by an octal digit
             // (incl. `\0` followed by another digit). Decode the octal value
-            // (sloppy semantics) and tag it as a strict-mode error.
+            // (sloppy semantics) and tag it as a strict-mode error. In a template
+            // body this form is itself a NotEscapeSequence (no cooked value).
             case >= '0' and <= '7':
-                return ScanLegacyOctalEscape(e);
+            {
+                var v = ScanLegacyOctalEscape(e);
+                if (_inTemplateBody) { _lastEscapeWasInvalid = true; _lastEscapeWasLegacyOctal = false; }
+                return v;
+            }
             // §B.1.2 NonOctalDecimalEscapeSequence — `\8` / `\9`. The value is
-            // just the digit, but it is a strict-mode error.
+            // just the digit, but it is a strict-mode error (and a template
+            // NotEscapeSequence).
             case '8':
             case '9':
+                if (_inTemplateBody) { _lastEscapeWasInvalid = true; return e.ToString(); }
                 _lastEscapeWasLegacyOctal = true;
                 return e.ToString();
             case '\'': return "'";
@@ -906,24 +956,28 @@ public sealed class JsLexer
                 {
                     Advance();
                     var sb = new StringBuilder();
+                    var sawBadHex = false;
                     while (_i < _src.Length && _src[_i] != '}')
                     {
                         if (!IsHex(_src[_i]))
                         {
-                            _errors.Report(JsLexError.InvalidUnicodeEscape, start, "expected hex digit");
+                            sawBadHex = true;
+                            ReportEscapeError(JsLexError.InvalidUnicodeEscape, start, "expected hex digit", "");
                             break;
                         }
                         sb.Append(_src[_i]);
                         Advance();
                     }
                     if (_i < _src.Length && _src[_i] == '}') Advance();
-                    if (sb.Length == 0) return "";
+                    if (sawBadHex) return "�";
+                    if (sb.Length == 0)
+                    {
+                        if (_inTemplateBody) _lastEscapeWasInvalid = true;
+                        return "";
+                    }
                     var code = Convert.ToInt32(sb.ToString(), 16);
                     if (code > 0x10FFFF)
-                    {
-                        _errors.Report(JsLexError.InvalidUnicodeEscape, start, "code point out of range");
-                        return "�";
-                    }
+                        return ReportEscapeError(JsLexError.InvalidUnicodeEscape, start, "code point out of range", "�");
                     return char.ConvertFromUtf32(code);
                 }
                 return ScanHexEscape(start, 4);
@@ -954,18 +1008,12 @@ public sealed class JsLexer
     private string ScanHexEscape(JsPosition start, int digits)
     {
         if (_i + digits > _src.Length)
-        {
-            _errors.Report(JsLexError.InvalidEscape, start, "truncated hex escape");
-            return "�";
-        }
+            return ReportEscapeError(JsLexError.InvalidEscape, start, "truncated hex escape", "�");
         var slice = _src.Substring(_i, digits);
         foreach (var ch in slice)
         {
             if (!IsHex(ch))
-            {
-                _errors.Report(JsLexError.InvalidEscape, start, "bad hex digit");
-                return "�";
-            }
+                return ReportEscapeError(JsLexError.InvalidEscape, start, "bad hex digit", "�");
         }
         for (var k = 0; k < digits; k++) Advance();
         return ((char)Convert.ToInt32(slice, 16)).ToString();
@@ -1264,11 +1312,12 @@ public sealed class JsLexer
     private static JsToken MakeToken(
         JsTokenKind kind, string lexeme, JsPosition start, JsPosition end,
         bool precededByLT, object? value = null, bool legacyOctal = false,
-        bool containsEscape = false)
+        bool containsEscape = false, bool invalidEscape = false)
         => new(kind, lexeme, start, end, value)
         {
             PrecededByLineTerminator = precededByLT,
             LegacyOctal = legacyOctal,
             ContainsEscape = containsEscape,
+            InvalidEscape = invalidEscape,
         };
 }
