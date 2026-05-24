@@ -157,6 +157,15 @@ internal sealed class BoxLayoutHost : ILayoutHost
         return false;
     }
 
+    public bool MatchMedia(string query)
+    {
+        if (string.IsNullOrEmpty(query)) return false;
+        EnsureFresh();
+        if (_style is null) return false;
+        try { return _style.MatchMedia(query); }
+        catch { return false; }
+    }
+
     public string GetComputedProperty(Element element, string propertyName)
     {
         if (string.IsNullOrEmpty(propertyName)) return string.Empty;

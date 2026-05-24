@@ -220,6 +220,31 @@ internal static class NodeBindings
                 if (w.UnwrapElement(t) is { } e) e.SetAttribute("class", args.Length > 0 ? Str(args[0]) : "");
                 return JsValue.Undefined;
             });
+        // `value` IDL attribute of form controls. Real browsers expose it on
+        // HTMLInputElement/HTMLTextAreaElement/... prototypes, not on every
+        // Element; we share one element prototype, so we gate on the tag and
+        // return undefined for non-controls (keeps `'value' in el` / `el.value
+        // !== undefined` feature tests honest). Backed by the `value` attribute
+        // — the same source BoxTreeBuilder paints input text from — so a JS
+        // `el.value = x` round-trips and shows up in layout. Without this,
+        // `input.value` was undefined and `input.value.toLowerCase()` threw,
+        // which is what aborted McMaster's search-box init and blanked the page.
+        Accessor(ctx, proto, "value",
+            (t, _) =>
+            {
+                if (w.UnwrapElement(t) is not { } e || !IsFormControl(e)) return JsValue.Undefined;
+                return JintInterop.Str(IsTextArea(e) ? e.TextContent : e.GetAttribute("value") ?? "");
+            },
+            (t, args) =>
+            {
+                if (w.UnwrapElement(t) is { } e && IsFormControl(e))
+                {
+                    var v = args.Length > 0 ? Str(args[0]) : "";
+                    if (IsTextArea(e)) e.TextContent = v;
+                    else e.SetAttribute("value", v);
+                }
+                return JsValue.Undefined;
+            });
         Accessor(ctx, proto, "innerHTML",
             (t, _) => w.UnwrapElement(t) is { } e ? JintInterop.Str(HtmlSerializer.SerializeChildren(e)) : JintInterop.Str(""),
             (t, args) =>
@@ -883,6 +908,8 @@ internal static class NodeBindings
         {
             Global(engine, name, MakeCtor(engine, name, NewProto(engine, null)));
         }
+        InstallImageConstructor(ctx);
+
         foreach (var name in new[]
         {
             "HTMLInputElement", "HTMLAnchorElement", "HTMLImageElement", "HTMLFormElement",
@@ -1336,6 +1363,35 @@ internal static class NodeBindings
         return o;
     }
 
+    // HTML §4.8.5 — `new Image(width?, height?)` constructs a detached
+    // HTMLImageElement (an <img> not yet in any document). Pages use it to
+    // preload sprites and to feature-test image support; a missing `Image`
+    // global throws ReferenceError and aborts the surrounding init (McMaster's
+    // Shell_InitContent_Loaded). Jint's ClrFunction isn't constructable, so we
+    // install a real JS function whose body returns a freshly wrapped <img>:
+    // a constructor that returns an object yields that object from `new`.
+    private const string ImageHook = "__starlingCreateImage";
+
+    private static void InstallImageConstructor(JintBackendContext ctx)
+    {
+        var engine = ctx.Engine;
+        JintInterop.DefineDataProp(engine.Global, ImageHook,
+            new ClrFunction(engine, ImageHook, (_, a) =>
+            {
+                var img = ctx.Document.CreateElement("img");
+                if (a.Length > 0 && !a[0].IsUndefined())
+                    img.SetAttribute("width", ((int)Num(a[0])).ToString(System.Globalization.CultureInfo.InvariantCulture));
+                if (a.Length > 1 && !a[1].IsUndefined())
+                    img.SetAttribute("height", ((int)Num(a[1])).ToString(System.Globalization.CultureInfo.InvariantCulture));
+                return ctx.Wrappers.Wrap(img);
+            }, 2),
+            writable: false, enumerable: false, configurable: true);
+
+        var ctor = (ObjectInstance)engine.Evaluate(
+            $"(function Image(width, height){{ return {ImageHook}(width, height); }})");
+        Global(engine, "Image", ctor);
+    }
+
     private static ClrFunction MakeCtor(global::Jint.Engine engine, string name, ObjectInstance proto)
     {
         var ctor = new ClrFunction(engine, name,
@@ -1350,6 +1406,20 @@ internal static class NodeBindings
 
     private static void Global(global::Jint.Engine engine, string name, JsValue value)
         => JintInterop.DefineDataProp(engine.Global, name, value, writable: true, enumerable: false, configurable: true);
+
+    // Elements that carry a `value` IDL attribute (HTML §4.10). `select` is
+    // included even though its real value reflects the selected option — for a
+    // statically-rendered page reflecting the value attribute is close enough
+    // and, crucially, never undefined.
+    private static bool IsFormControl(Element e) => e.LocalName.ToLowerInvariant() switch
+    {
+        "input" or "textarea" or "select" or "option" or "button"
+            or "li" or "meter" or "progress" or "param" or "data" => true,
+        _ => false,
+    };
+
+    private static bool IsTextArea(Element e)
+        => string.Equals(e.LocalName, "textarea", StringComparison.OrdinalIgnoreCase);
 
     private static void DefineNodeConstants(ObjectInstance target)
     {

@@ -46,6 +46,9 @@
     <PackageVersion Include="System.Text.Encoding.CodePages" Version="9.0.0" />
 
     <!-- Aspire orchestration + observability (Starling.AppHost + Starling.ServiceDefaults). -->
+    <!-- YARP hosting integration: serves the repo-root sites/ directory at stable
+         localhost paths for engine smoke-testing (Starling.AppHost "sites" resource). -->
+    <PackageVersion Include="Aspire.Hosting.Yarp"                           Version="13.3.5" />
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience"          Version="10.5.0" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery"         Version="10.5.0" />
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol"  Version="1.15.3" />

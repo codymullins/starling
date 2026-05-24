@@ -36,11 +36,12 @@ public sealed class MainWindow : Window, IBrowserController
 {
     private static readonly IReadOnlyList<TabInfo> Bookmarks =
     [
+        new TabInfo("b0t", "localhost:8088",   "Todo",                    Url: "http://localhost:8088/todo/"),
         new TabInfo("b0a", "example.com",      "Example",                 Url: "https://example.com"),
         new TabInfo("b0b", "Todos",            "Todos",                   Url: "https://jsonplaceholder.typicode.com/todos"),
         new TabInfo("b0c", "netclaw.dev",      "netclaw.dev",             Url: "https://netclaw.dev/"),
         new TabInfo("b1", "google.com",       "Google",                  Url: "https://google.com"),
-        new TabInfo("b2", "justinjackson.ca", "Words — Justin Jackson",  Url: "https://justinjackson.ca/words.html"),
+        new TabInfo("b2", "localhost:8088",   "Words",                   Url: "http://localhost:8088/words/"),
         new TabInfo("b3", "ladybird.org",     "Ladybird",                Url: "https://ladybird.org/"),
         new TabInfo("b4", "mcmaster.com",     "McMaster-Carr",           Url: "https://www.mcmaster.com/"),
     ];

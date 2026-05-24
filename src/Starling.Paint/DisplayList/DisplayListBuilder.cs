@@ -119,6 +119,17 @@ public sealed class DisplayListBuilder
     private static ComputedStyle? EffectiveStyle(Box box, Func<Box, ComputedStyle?>? styleOverride)
         => styleOverride?.Invoke(box) ?? box.Style;
 
+    /// <summary>
+    /// Whether this box paints its own content (CSS 2.2 §11.2). `visibility:
+    /// hidden`/`collapse` suppresses the box's own background, border, text and
+    /// replaced content; children are unaffected (they may flip back to
+    /// `visible`). Boxes with no style (rare) are treated as visible.
+    /// </summary>
+    private static bool IsSelfVisible(Box box, Func<Box, ComputedStyle?>? styleOverride)
+        => EffectiveStyle(box, styleOverride) is not { } style
+           || style.Get(PropertyId.Visibility) is not CssKeyword k
+           || k.Name.Equals("visible", StringComparison.OrdinalIgnoreCase);
+
     private static void Visit(Box box, DisplayList list, double originX, double originY, Matrix2D current, Rect? cull, Func<Box, ComputedStyle?>? styleOverride, IImageResolver? images, LayerSlice? slice)
     {
         // Layer-slice mode: a descendant that is itself a layer root paints into
@@ -206,9 +217,17 @@ public sealed class DisplayListBuilder
         // here re-painted the parent's — visible as a brighter rectangle behind
         // the text whenever that background was semi-transparent (e.g. a pill or
         // search field with rgba()/#rrggbbaa fill).
+        // CSS 2.2 §11.2 — `visibility: hidden`/`collapse` makes a box invisible
+        // (no background, border, text, or replaced content) while it still
+        // takes part in layout. It is inherited, but a descendant may flip back
+        // to `visible`, so we suppress only THIS box's own painting and always
+        // recurse into children.
+        var selfVisible = IsSelfVisible(box, styleOverride);
+
         var hasFrame = box.Frame.Width > 0 && box.Frame.Height > 0;
-        var paintsBox = box.Kind is BoxKind.BlockContainer
-            || (box.Kind == BoxKind.Inline && hasFrame);
+        var paintsBox = selfVisible
+            && (box.Kind is BoxKind.BlockContainer
+                || (box.Kind == BoxKind.Inline && hasFrame));
         if (paintsBox && EffectiveStyle(box, styleOverride) is { } style)
         {
             var bounds = new Rect(frameX, frameY, box.Frame.Width, box.Frame.Height);
@@ -246,7 +265,8 @@ public sealed class DisplayListBuilder
         // anonymous-block parent's content box.
         if (box is TextBox textBox)
         {
-            EmitTextFragments(textBox, frameX, frameY, list, current, cull, styleOverride);
+            if (selfVisible)
+                EmitTextFragments(textBox, frameX, frameY, list, current, cull, styleOverride);
             return; // Text boxes have no children.
         }
 
@@ -256,8 +276,11 @@ public sealed class DisplayListBuilder
         // document-space top-left.
         if (box is ImageBox imageBox)
         {
-            var bounds = new Rect(frameX, frameY, imageBox.Frame.Width, imageBox.Frame.Height);
-            Emit(list, new DrawImage(bounds, imageBox.Source), bounds, current, cull);
+            if (selfVisible)
+            {
+                var bounds = new Rect(frameX, frameY, imageBox.Frame.Width, imageBox.Frame.Height);
+                Emit(list, new DrawImage(bounds, imageBox.Source), bounds, current, cull);
+            }
             return; // ImageBox has no children.
         }
 

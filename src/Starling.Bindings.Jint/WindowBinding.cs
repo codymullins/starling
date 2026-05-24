@@ -1,4 +1,5 @@
 using System.Globalization;
+using Jint;
 using Jint.Native;
 
 namespace Starling.Bindings.Jint;
@@ -112,6 +113,37 @@ internal static class WindowBinding
                     "getComputedStyle requires an Element argument");
             return BuildComputedStyleDeclaration(ctx, el);
         }, length: 1);
+
+        // matchMedia(query) — CSSOM View §4.2. Returns a MediaQueryList whose
+        // `matches` is evaluated against the layout host's media context
+        // (viewport size, color scheme). No host → matches is false. We have no
+        // resize signal behind the seam, so the list never changes after creation
+        // and the listener registration methods are accepted but inert.
+        JintInterop.DefineMethod(engine, global, "matchMedia", (_, args) =>
+        {
+            var query = args.Length > 0 && !args[0].IsUndefined() ? args[0].ToString() : "";
+            return BuildMediaQueryList(ctx, query);
+        }, length: 1);
+    }
+
+    /// <summary>Build a MediaQueryList object for <paramref name="query"/>. The
+    /// <c>matches</c> flag is resolved once via the layout host; <c>media</c>
+    /// echoes the (normalized-as-given) query. Listener methods are accepted as
+    /// no-ops because a static render has no viewport-change events to fire.</summary>
+    private static JsObject BuildMediaQueryList(JintBackendContext ctx, string query)
+    {
+        var engine = ctx.Engine;
+        var mql = new JsObject(engine);
+        var matches = ctx.LayoutHost?.MatchMedia(query) ?? false;
+        JintInterop.DefineAccessor(engine, mql, "matches", (_, _) => JintInterop.Bool(matches));
+        JintInterop.DefineAccessor(engine, mql, "media", (_, _) => JintInterop.Str(query));
+        JintInterop.DefineDataProp(mql, "onchange", JsValue.Null);
+        // Legacy (addListener/removeListener) + modern EventTarget surface. All
+        // inert: there is no media-change event source behind the seam.
+        foreach (var m in new[] { "addListener", "removeListener", "addEventListener", "removeEventListener" })
+            JintInterop.DefineMethod(engine, mql, m, (_, _) => JsValue.Undefined, length: 1);
+        JintInterop.DefineMethod(engine, mql, "dispatchEvent", (_, _) => JsBoolean.False, length: 1);
+        return mql;
     }
 
     /// <summary>Build a <c>window.screen</c> object. We have no display device
@@ -142,11 +174,24 @@ internal static class WindowBinding
     private static JsObject BuildNavigator(global::Jint.Engine engine)
     {
         var nav = new JsObject(engine);
-        const string ua = "Mozilla/5.0 (Starling) StarlingBrowser/0.1";
+        // Present a mainstream UA so the UA-sniffing libraries real sites ship
+        // (browser/OS/version detection) recognise us. Our own honest UA
+        // ("StarlingBrowser/0.1") matches no known browser token, so those
+        // parsers return undefined for browser/OS and then crash on
+        // `result.version.toLowerCase()` — which is exactly what broke
+        // McMaster's ContentTransitionManager and left the page blank. We
+        // identify as Chrome-on-macOS (the engine we are closest to in
+        // behaviour) and append a Starling token, mirroring how Edge/Brave
+        // extend the Chrome UA.
+        const string ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            + "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Starling/0.1";
         JintInterop.DefineAccessor(engine, nav, "userAgent", (_, _) => JintInterop.Str(ua));
         JintInterop.DefineAccessor(engine, nav, "appName", (_, _) => JintInterop.Str("Netscape"));
-        JintInterop.DefineAccessor(engine, nav, "appVersion", (_, _) => JintInterop.Str("5.0 (Starling)"));
-        JintInterop.DefineAccessor(engine, nav, "platform", (_, _) => JintInterop.Str(Environment.OSVersion.Platform.ToString()));
+        JintInterop.DefineAccessor(engine, nav, "appVersion", (_, _) => JintInterop.Str(ua["Mozilla/".Length..]));
+        JintInterop.DefineAccessor(engine, nav, "vendor", (_, _) => JintInterop.Str("Google Inc."));
+        // platform must agree with the UA's OS token; the previous value
+        // (Environment.OSVersion.Platform → "Unix") contradicted it.
+        JintInterop.DefineAccessor(engine, nav, "platform", (_, _) => JintInterop.Str("MacIntel"));
         JintInterop.DefineAccessor(engine, nav, "language", (_, _) => JintInterop.Str("en-US"));
         var langs = new global::Jint.Native.JsArray(engine, new JsValue[] { new JsString("en-US"), new JsString("en") });
         JintInterop.DefineAccessor(engine, nav, "languages", (_, _) => langs);

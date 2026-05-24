@@ -1,0 +1,232 @@
+:root {
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --ink: #1f2430;
+  --ink-soft: #6b7280;
+  --line: #e6e8ec;
+  --accent: #4f46e5;
+  --accent-soft: #eef0fe;
+  --danger: #d6455d;
+  --done: #9aa1ad;
+  --radius: 12px;
+  --shadow: 0 1px 2px rgba(20, 24, 35, 0.04), 0 12px 28px rgba(20, 24, 35, 0.08);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  display: flex;
+  justify-content: center;
+  padding: 48px 16px;
+}
+
+.app {
+  width: 100%;
+  max-width: 520px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.app__header {
+  padding: 28px 28px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.app__title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.app__sub {
+  margin: 4px 0 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.composer {
+  display: flex;
+  gap: 10px;
+  padding: 18px 28px;
+}
+
+.composer__input {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 14px;
+  font-size: 15px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.composer__input:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.composer__add {
+  padding: 0 18px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: filter 0.15s;
+}
+
+.composer__add:hover { filter: brightness(1.08); }
+.composer__add:active { filter: brightness(0.95); }
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0 12px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 9px;
+  transition: background 0.12s;
+}
+
+.item:hover { background: var(--bg); }
+
+.item__check {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--line);
+  border-radius: 50%;
+  cursor: pointer;
+  position: relative;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.item__check:checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.item__check:checked::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 1px;
+  width: 5px;
+  height: 10px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.item__title {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  word-break: break-word;
+}
+
+.item.is-done .item__title {
+  color: var(--done);
+  text-decoration: line-through;
+}
+
+.item__delete {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--ink-soft);
+  background: none;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s, background 0.12s;
+}
+
+.item:hover .item__delete,
+.item__delete:focus { opacity: 1; }
+
+.item__delete:hover {
+  color: var(--danger);
+  background: #fbe9ed;
+}
+
+.empty {
+  margin: 0;
+  padding: 36px 28px 44px;
+  text-align: center;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.toolbar__count { color: var(--ink-soft); }
+
+.filters { display: flex; gap: 4px; }
+
+.filter {
+  padding: 5px 11px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.filter:hover { background: var(--bg); }
+
+.filter[aria-pressed="true"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.toolbar__clear {
+  color: var(--ink-soft);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.toolbar__clear:hover { color: var(--danger); }

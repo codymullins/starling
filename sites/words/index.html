@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Words</title>
+    <link href="words.css" rel="stylesheet" />
+  </head>
+  <body>
+    <h1>This is a test page.</h1>
+    <p>There&apos;s not much here.</p>
+    <p>Just words.</p>
+    <p><strong>And the engine is rendering them.</strong></p>
+    <p>
+      This page is a small fixture for Starling. It deliberately uses the same
+      handful of elements and CSS rules as a famously simple HTML page&nbsp;&mdash;
+      <em>nothing fancy</em>, just markup for hierarchy and emphasis.
+    </p>
+    <p>
+      <strong>The point is coverage, not decoration.</strong>
+    </p>
+    <p>
+      You and the renderer connect because <em>this markup was written</em> and
+      <em>the layout engine read it.</em> <strong>That&apos;s the web</strong>,
+      reduced to <em>one&nbsp;simple HTML page</em>.
+    </p>
+    <p>
+      It weighs almost nothing. No framework, no build step: just paragraphs,
+      a heading or two, a list, and a sprinkle of inline emphasis. Every tag on
+      this page exists so a test can answer one question &mdash; &quot;did this
+      render?&quot;
+    </p>
+    <p>Start with words.</p>
+    <p>
+      Cheers,<br />
+      The Starling test suite<br />
+      <a href="https://example.com/" hreflang="en">example.com</a><br />
+    </p>
+    <p class="note">
+      This paragraph carries <span>class=&quot;note&quot;</span>, so the
+      stylesheet renders it in italics.
+      <br />
+      It is the one styled exception on an otherwise plain page.
+    </p>
+    <h2>Elements exercised</h2>
+    <ul>
+      <li><a href="#" hreflang="en">a</a> &mdash; anchor (with href, hreflang)</li>
+      <li><strong>strong</strong> &mdash; strong emphasis</li>
+      <li><em>em</em> &mdash; stress emphasis</li>
+      <li><span lang="fr">span</span> &mdash; inline grouping (with lang)</li>
+      <li>br &mdash; the line break above this list</li>
+      <li>ul / li &mdash; this very list</li>
+      <li>h1 / h2 &mdash; the two headings</li>
+      <li>p / p.note &mdash; the paragraphs, one styled</li>
+    </ul>
+    <script src="words.js"></script>
+  </body>
+</html>

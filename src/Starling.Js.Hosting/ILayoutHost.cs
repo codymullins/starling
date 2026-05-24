@@ -51,6 +51,13 @@ public interface ILayoutHost
     /// <c>string.Empty</c> when the property is unknown or the element
     /// has no computed style.</summary>
     string GetComputedProperty(Element element, string propertyName);
+
+    /// <summary>Evaluates a CSS media query string (e.g. <c>"(max-width:
+    /// 768px)"</c>) against the document's media context — viewport size,
+    /// color scheme, etc. — backing <c>window.matchMedia(q).matches</c>.
+    /// Returns <c>false</c> for an unparseable query or when no style context
+    /// is available.</summary>
+    bool MatchMedia(string query);
 }
 
 /// <summary>Viewport-relative CSS-px rect returned by

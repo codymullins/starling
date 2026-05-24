@@ -76,6 +76,18 @@ if (!string.IsNullOrWhiteSpace(jsEngine))
     gui.WithEnvironment("STARLING_JS_ENGINE", jsEngine);
 }
 
+// Test sites. A YARP resource serves the repo-root sites/ directory as static
+// files, so every subfolder is reachable at a stable localhost path
+// (e.g. sites/todo/ -> http://localhost:8088/todo/). The browser engine can
+// then load these like any HTTP page. The YARP integration runs as a container
+// and copies the folder in at container start (not a live bind-mount), so adding
+// or editing a site needs an AppHost (or "sites" resource) restart to take
+// effect. The fixed host port keeps the URLs stable across runs; drop the
+// WithHostPort call to let Aspire assign one (read it from the dashboard).
+builder.AddYarp("sites")
+    .WithStaticFiles(Path.Combine(repoRoot, "sites"))
+    .WithHostPort(8088);
+
 builder.Build().Run();
 
 // Walk up from this binary's location until we find Starling.slnx. AppContext.

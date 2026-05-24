@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Todo · Starling test site</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app">
+    <header class="app__header">
+      <h1 class="app__title">Todo</h1>
+      <p class="app__sub" id="status">No tasks yet</p>
+    </header>
+
+    <form class="composer" id="composer" autocomplete="off">
+      <input
+        class="composer__input"
+        id="new-todo"
+        type="text"
+        name="title"
+        placeholder="What needs doing?"
+        aria-label="New task"
+        maxlength="200">
+      <button class="composer__add" type="submit">Add</button>
+    </form>
+
+    <ul class="list" id="list" aria-live="polite"></ul>
+
+    <p class="empty" id="empty">Nothing here. Add your first task above.</p>
+
+    <footer class="toolbar" id="toolbar" hidden>
+      <span class="toolbar__count" id="count">0 left</span>
+      <div class="filters" role="group" aria-label="Filter tasks">
+        <button class="filter" data-filter="all" aria-pressed="true">All</button>
+        <button class="filter" data-filter="active" aria-pressed="false">Active</button>
+        <button class="filter" data-filter="completed" aria-pressed="false">Done</button>
+      </div>
+      <button class="toolbar__clear" id="clear-completed" type="button">Clear done</button>
+    </footer>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
