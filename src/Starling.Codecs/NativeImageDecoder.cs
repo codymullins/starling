@@ -20,6 +20,10 @@ namespace Starling.Codecs;
 /// </remarks>
 public static class NativeImageDecoder
 {
+    // Hard cap for decoded RGBA8888 surfaces to prevent memory-exhaustion
+    // attacks from oversized/untrusted image dimensions.
+    internal const int MaxDecodedImageBytes = 256 * 1024 * 1024; // 256 MiB
+
     /// <summary>
     /// Decode a complete encoded image (PNG/JPEG/WebP) into a
     /// <see cref="DecodedImage"/>. The caller owns the result and must dispose
@@ -27,7 +31,8 @@ public static class NativeImageDecoder
     /// </summary>
     /// <exception cref="ImageDecodeException">
     /// The bytes are empty, an unrecognised format, corrupt/truncated, or the
-    /// host OS has no supported codec backend.
+    /// host OS has no supported codec backend, or decoded dimensions exceed
+    /// the safety cap.
     /// </exception>
     public static DecodedImage Decode(ReadOnlySpan<byte> bytes)
     {
@@ -47,6 +52,35 @@ public static class NativeImageDecoder
 
         IImageDecoder backend = SelectBackend();
         return backend.Decode(bytes);
+    }
+
+    /// <summary>
+    /// Validates decoded bitmap dimensions and enforces a global safety cap on
+    /// RGBA8888 output size.
+    /// </summary>
+    internal static (int Width, int Height, int ByteLength) ValidateDecodedDimensions(long width, long height)
+    {
+        if (width <= 0 || height <= 0)
+            throw new ImageDecodeException($"Decoded image has invalid dimensions {width}x{height}.");
+        if (width > int.MaxValue || height > int.MaxValue)
+            throw new ImageDecodeException($"Decoded image dimensions {width}x{height} exceed supported integer range.");
+
+        long bytes;
+        try
+        {
+            bytes = checked(width * height * 4L);
+        }
+        catch (OverflowException)
+        {
+            throw new ImageDecodeException($"Decoded image dimensions {width}x{height} overflow RGBA byte size.");
+        }
+
+        if (bytes > MaxDecodedImageBytes)
+            throw new ImageDecodeException(
+                $"Decoded image dimensions {width}x{height} require {bytes} bytes, " +
+                $"exceeding the safety cap of {MaxDecodedImageBytes} bytes.");
+
+        return ((int)width, (int)height, (int)bytes);
     }
 
     /// <summary>

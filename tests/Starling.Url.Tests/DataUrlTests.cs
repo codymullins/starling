@@ -89,4 +89,33 @@ public sealed class DataUrlTests
         // GIF89a magic bytes.
         payload.Bytes.Should().StartWith(new byte[] { (byte)'G', (byte)'I', (byte)'F', (byte)'8', (byte)'9', (byte)'a' });
     }
+
+    [TestMethod]
+    public void Rejects_base64_payload_over_custom_limit()
+    {
+        var parsed = UrlParser.Parse("data:text/plain;base64,SGVsbG8=");
+        parsed.IsOk.Should().BeTrue();
+
+        // "Hello" is 5 bytes decoded; cap at 4.
+        DataUrl.TryDecode(parsed.Value, out _, maxBytes: 4).Should().BeFalse();
+    }
+
+    [TestMethod]
+    public void Rejects_percent_payload_over_custom_limit()
+    {
+        var parsed = UrlParser.Parse("data:text/plain,Hello");
+        parsed.IsOk.Should().BeTrue();
+
+        DataUrl.TryDecode(parsed.Value, out _, maxBytes: 4).Should().BeFalse();
+    }
+
+    [TestMethod]
+    public void Accepts_payload_at_custom_limit_boundary()
+    {
+        var parsed = UrlParser.Parse("data:text/plain,Hello");
+        parsed.IsOk.Should().BeTrue();
+
+        DataUrl.TryDecode(parsed.Value, out var payload, maxBytes: 5).Should().BeTrue();
+        System.Text.Encoding.ASCII.GetString(payload.Bytes).Should().Be("Hello");
+    }
 }

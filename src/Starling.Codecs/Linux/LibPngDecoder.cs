@@ -56,13 +56,7 @@ internal static partial class LibPngDecoder
 
         image.Format = PNG_FORMAT_RGBA;
 
-        int w = checked((int)image.Width);
-        int h = checked((int)image.Height);
-        if (w <= 0 || h <= 0)
-        {
-            png_image_free(ref image);
-            throw new ImageDecodeException($"libpng: invalid dimensions {w}x{h}.");
-        }
+        var (w, h, _) = NativeImageDecoder.ValidateDecodedDimensions(image.Width, image.Height);
 
         nint stride = (nint)w * 4;
         try

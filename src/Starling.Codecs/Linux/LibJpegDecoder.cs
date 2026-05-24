@@ -49,10 +49,7 @@ internal static partial class LibJpegDecoder
                 if (hr != 0)
                     throw new ImageDecodeException($"libturbojpeg: tjDecompressHeader3 failed ({ReadError(handle)}).");
             }
-            if (width <= 0 || height <= 0)
-                throw new ImageDecodeException($"libturbojpeg: invalid dimensions {width}x{height}.");
-
-            int w = width, h = height;
+            var (w, h, _) = NativeImageDecoder.ValidateDecodedDimensions(width, height);
             int stride = w * 4;
 
             return DecodedImage.CreatePooled(w, h, span =>

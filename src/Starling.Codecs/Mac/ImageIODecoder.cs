@@ -46,15 +46,12 @@ internal sealed partial class ImageIODecoder : IImageDecoder
 
             nint width = CGImageGetWidth(cgImage);
             nint height = CGImageGetHeight(cgImage);
-            if (width <= 0 || height <= 0)
-                throw new ImageDecodeException($"ImageIO: decoded image has non-positive dimensions {width}x{height}.");
+            var (w, h, _) = NativeImageDecoder.ValidateDecodedDimensions(width, height);
 
             colorSpace = CGColorSpaceCreateDeviceRGB();
             if (colorSpace == 0)
                 throw new ImageDecodeException("ImageIO: CGColorSpaceCreateDeviceRGB failed.");
 
-            int w = checked((int)width);
-            int h = checked((int)height);
             nint stride = (nint)w * 4;
 
             // CoreGraphics bitmap contexts only support *premultiplied* (or

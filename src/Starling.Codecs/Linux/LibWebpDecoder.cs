@@ -23,12 +23,8 @@ internal static partial class LibWebpDecoder
         {
             if (WebPGetInfo((nint)src, (nuint)bytes.Length, out width, out height) == 0)
                 throw new ImageDecodeException("libwebp: WebPGetInfo rejected the data (not a valid WebP).");
-            if (width <= 0 || height <= 0)
-                throw new ImageDecodeException($"libwebp: invalid dimensions {width}x{height}.");
-
-            int w = width, h = height;
+            var (w, h, byteLength) = NativeImageDecoder.ValidateDecodedDimensions(width, height);
             nint stride = (nint)w * 4;
-            long size = (long)stride * h;
 
             byte[] srcCopy = bytes.ToArray();
             return DecodedImage.CreatePooled(w, h, span =>
@@ -37,7 +33,7 @@ internal static partial class LibWebpDecoder
                 fixed (byte* dst = span)
                 {
                     nint result = WebPDecodeRGBAInto(
-                        (nint)s, (nuint)srcCopy.Length, (nint)dst, (nuint)size, (int)stride);
+                        (nint)s, (nuint)srcCopy.Length, (nint)dst, (nuint)byteLength, (int)stride);
                     if (result == 0)
                         throw new ImageDecodeException("libwebp: WebPDecodeRGBAInto failed (corrupt WebP).");
                 }

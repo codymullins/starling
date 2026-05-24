@@ -70,6 +70,25 @@ public sealed class NativeImageDecoderTests
     }
 
     [TestMethod]
+    public void ValidateDecodedDimensionsRejectsOversizedImages()
+    {
+        // 16384x16384 RGBA = 1 GiB, well above the 256 MiB safety cap.
+        var act = () => NativeImageDecoder.ValidateDecodedDimensions(16_384, 16_384);
+        act.Should().Throw<ImageDecodeException>()
+            .WithMessage("*exceeding the safety cap*");
+    }
+
+    [TestMethod]
+    public void ValidateDecodedDimensionsAcceptsReasonableImages()
+    {
+        // 4096x4096 RGBA = 64 MiB, below the cap.
+        var (w, h, bytes) = NativeImageDecoder.ValidateDecodedDimensions(4_096, 4_096);
+        w.Should().Be(4_096);
+        h.Should().Be(4_096);
+        bytes.Should().Be(4_096 * 4_096 * 4);
+    }
+
+    [TestMethod]
     public void SvgIsReportedByIsSvg()
     {
         NativeImageDecoder.IsSvg("<svg></svg>"u8).Should().BeTrue();

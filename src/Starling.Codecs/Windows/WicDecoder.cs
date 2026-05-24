@@ -50,16 +50,13 @@ internal sealed partial class WicDecoder : IImageDecoder
                 frame = decoder.GetFrame(0);
 
                 frame.GetSize(out uint width, out uint height);
-                if (width == 0 || height == 0)
-                    throw new ImageDecodeException($"WIC: decoded image has zero dimensions {width}x{height}.");
+                var (w, h, _) = NativeImageDecoder.ValidateDecodedDimensions(width, height);
 
                 converter = factory.CreateFormatConverter();
                 converter.Initialize(
                     frame, in GUID_WICPixelFormat32bppRGBA,
                     WICBitmapDitherTypeNone, 0, 0.0, WICBitmapPaletteTypeCustom);
 
-                int w = checked((int)width);
-                int h = checked((int)height);
                 uint stride = (uint)w * 4;
 
                 return DecodedImage.CreatePooled(w, h, span =>
