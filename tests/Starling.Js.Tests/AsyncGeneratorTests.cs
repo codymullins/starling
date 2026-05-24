@@ -277,6 +277,76 @@ public class AsyncGeneratorTests
         runtime.GetGlobal("r").AsNumber.Should().Be(6);
     }
 
+    [TestMethod]
+    public void Yield_star_delegates_to_an_async_iterable()
+    {
+        // The inner is a true async iterator (has @@asyncIterator and its
+        // next() returns a promise). Before the fix yield* used the sync
+        // iteration protocol and threw "value is not iterable" because the
+        // object had no @@iterator.
+        var (runtime, _) = Eval(@"
+            function makeAsyncIterable(values) {
+                return {
+                    [Symbol.asyncIterator]() {
+                        var i = 0;
+                        return {
+                            next() {
+                                return Promise.resolve(
+                                    i < values.length
+                                        ? { value: values[i++], done: false }
+                                        : { value: undefined, done: true });
+                            }
+                        };
+                    }
+                };
+            }
+            async function* g() {
+                yield* makeAsyncIterable([1, 2, 3]);
+                yield 4;
+            }
+            async function run() {
+                var sum = 0;
+                for await (var x of g()) sum += x;
+                return sum;
+            }
+            run().then(function(v) { globalThis.r = v });
+        ");
+        runtime.GetGlobal("r").AsNumber.Should().Be(10);
+    }
+
+    [TestMethod]
+    public void Yield_star_delegates_to_async_generator()
+    {
+        var (runtime, _) = Eval(@"
+            async function* inner() { yield 'a'; yield await Promise.resolve('b'); }
+            async function* outer() { yield* inner(); yield 'c'; }
+            async function run() {
+                var out = '';
+                for await (var x of outer()) out += x;
+                return out;
+            }
+            run().then(function(v) { globalThis.r = v });
+        ");
+        runtime.GetGlobal("r").AsString.Should().Be("abc");
+    }
+
+    [TestMethod]
+    public void Yield_star_async_returns_inner_final_value()
+    {
+        // yield* evaluates to the inner iterator's return value.
+        var (runtime, _) = Eval(@"
+            async function* inner() { yield 1; return 99; }
+            async function* outer() { var v = yield* inner(); yield v; }
+            async function run() {
+                var parts = [];
+                for await (var x of outer()) parts.push(x);
+                return parts.join(',');
+            }
+            run().then(function(v) { globalThis.r = v });
+        ");
+        runtime.GetGlobal("r").AsString.Should().Be("1,99");
+    }
+
     private static (JsRuntime runtime, JsValue result) Eval(string src)
     {
         var program = new JsParser(src).ParseProgram();

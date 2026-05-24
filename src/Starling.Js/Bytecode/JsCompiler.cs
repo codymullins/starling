@@ -61,6 +61,14 @@ public sealed partial class JsCompiler
     /// before initialization throws ReferenceError.</summary>
     private bool _inLexicalDeclInit;
 
+    /// <summary>True while compiling the body of an async generator. Read by
+    /// <see cref="EmitYield"/> so a <c>yield*</c> in an async generator uses
+    /// the async iteration protocol (<c>@@asyncIterator</c> with the sync
+    /// fallback wrapper, §27.6.3.7) instead of the sync one — without this an
+    /// async <c>yield* asyncIterable</c> wrongly throws "value is not
+    /// iterable".</summary>
+    private bool _currentIsAsyncGenerator;
+
     /// <summary>Stack of class private-name scopes — each frame maps the
     /// source-level name (e.g. <c>#x</c>) to its mangled own-property key
     /// for the active class. Resolution walks outer-to-inner so nested
@@ -565,6 +573,7 @@ public sealed partial class JsCompiler
         // binding prologue above must run synchronously at call time; mark the
         // boundary so the runtime can hand off here before the body runs lazily.
         EmitPrologueEndIfSuspendable(fd.Async, fd.Generator);
+        _currentIsAsyncGenerator = fd.Async && fd.Generator;
         foreach (var inner in fd.Body.Body) EmitStatement(inner);
         // Implicit `return undefined` if the body didn't return.
         _b.Emit(Opcode.ReturnUndefined);
@@ -3122,6 +3131,7 @@ public sealed partial class JsCompiler
         // §10.2.1.3 — synchronous parameter-binding prologue boundary for
         // generator / async (incl. async-arrow) bodies; see EmitFunctionBody.
         sub.EmitPrologueEndIfSuspendable(fe.Async, fe.Generator);
+        sub._currentIsAsyncGenerator = fe.Async && fe.Generator;
         foreach (var s in fe.Body.Body) sub.EmitStatement(s);
         sub._b.Emit(Opcode.ReturnUndefined);
         // Per ES2024 §15.2 NamedEvaluation, anonymous FunctionExpression
@@ -3148,6 +3158,9 @@ public sealed partial class JsCompiler
             // yield* expression.
             EmitExpression(yld.Argument!);
             _b.Emit(Opcode.YieldDelegate);
+            // operand: 1 = async generator (use async iteration protocol,
+            // §27.6.3.7), 0 = sync generator (§27.5.3.2).
+            _b.EmitU8Raw((byte)(_currentIsAsyncGenerator ? 1 : 0));
             return;
         }
 

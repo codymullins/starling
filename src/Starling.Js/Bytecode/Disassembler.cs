@@ -180,8 +180,12 @@ public static class Disassembler
                     break;
                 }
                 case Opcode.YieldDelegate:
-                    sb.Append(op);
+                {
+                    var isAsync = code[i];
+                    i++;
+                    sb.Append(op).Append(' ').Append(isAsync);
                     break;
+                }
                 default:
                     sb.Append(op);
                     break;

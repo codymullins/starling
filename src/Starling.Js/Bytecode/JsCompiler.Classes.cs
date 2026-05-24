@@ -305,6 +305,7 @@ public sealed partial class JsCompiler
         // §10.2.1.3 — synchronous parameter-binding prologue boundary for
         // generator / async / async-generator methods; see EmitFunctionBody.
         sub.EmitPrologueEndIfSuspendable(md.Async, md.Generator);
+        sub._currentIsAsyncGenerator = md.Async && md.Generator;
         foreach (var s in md.Body.Body) sub.EmitStatement(s);
         sub._b.Emit(Opcode.ReturnUndefined);
         sub._privateScopes.Pop();

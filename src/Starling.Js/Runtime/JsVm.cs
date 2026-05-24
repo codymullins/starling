@@ -2029,13 +2029,14 @@ public sealed class JsVm
                 }
                 case Opcode.YieldDelegate:
                 {
+                    var isAsync = ReadU8() != 0;
                     var iterable = Pop();
                     if (suspension is null)
                     {
                         throw new JsThrow(_runtime.Realm.NewSyntaxError(
                             "yield is only valid in generator functions"));
                     }
-                    Push(ExecuteYieldDelegate(suspension, iterable));
+                    Push(ExecuteYieldDelegate(suspension, iterable, isAsync));
                     break;
                 }
                 case Opcode.BuildClass:
@@ -2146,19 +2147,47 @@ public sealed class JsVm
         }
     }
 
-    /// <summary>§27.5.3.2 YieldDelegate body — runs the full <c>yield*</c>
-    /// protocol inside a single opcode handler. Forwards the outer
+    /// <summary>§27.5.3.2 / §27.6.3.7 YieldDelegate body — runs the full
+    /// <c>yield*</c> protocol inside a single opcode handler. Forwards the outer
     /// generator's resume kind (next / return / throw) into the inner
     /// iterator's matching method on each round-trip with the outer
     /// caller. Returns the value to push as the result of the yield*
     /// expression (the inner iterator's final <c>value</c> on done, or
-    /// the value of an inner .return that completes early).</summary>
-    private JsValue ExecuteYieldDelegate(SuspendedFrame suspension, JsValue iterable)
+    /// the value of an inner .return that completes early).
+    /// <para>When <paramref name="isAsync"/> the inner iterator is acquired via
+    /// the async iteration protocol (<c>@@asyncIterator</c>, falling back to a
+    /// sync iterator wrapped as async per §27.1.4.1) and every result returned
+    /// by inner.next / .throw / .return is <c>await</c>ed before use.</para></summary>
+    private JsValue ExecuteYieldDelegate(SuspendedFrame suspension, JsValue iterable, bool isAsync)
     {
         var realm = _runtime.Realm;
-        var record = AbstractOperations.GetIterator(realm, this, iterable);
+        IteratorRecord record;
+        bool syncWrapped = false;
+        if (isAsync)
+        {
+            var handle = GetAsyncIteratorHandle(iterable);
+            record = handle.Record;
+            syncWrapped = handle.SyncWrapped;
+        }
+        else
+        {
+            record = AbstractOperations.GetIterator(realm, this, iterable);
+        }
         var innerIter = record.Iterator;
         var nextMethod = record.NextMethod;
+
+        // §27.6.3.7 — in an async generator, `yield* x` awaits every result the
+        // inner iterator produces before inspecting done/value. For a true
+        // async iterator next/throw/return already return a promise; for a
+        // sync iterable wrapped as async (§27.1.4) the result is a plain
+        // iterator-result whose `value` must itself be awaited.
+        JsValue MaybeAwait(JsValue v)
+        {
+            if (!isAsync) return v;
+            if (syncWrapped)
+                v = JsValue.Object(WrapSyncIteratorResult(v));
+            return AwaitOnWorker(suspension, v);
+        }
         // Bootstrap: caller's first .next() value (the one already on the
         // suspension's resume slot, or whatever they sent on the call that
         // brought us to yield*). The first round we always invoke
@@ -2176,8 +2205,8 @@ public sealed class JsVm
             if (receivedKind == 0)
             {
                 // Normal completion → inner.next(received)
-                innerResult = AbstractOperations.Call(this, nextMethod, innerIter,
-                    new[] { received });
+                innerResult = MaybeAwait(AbstractOperations.Call(this, nextMethod, innerIter,
+                    new[] { received }));
             }
             else if (receivedKind == 1)
             {
@@ -2186,12 +2215,16 @@ public sealed class JsVm
                 if (throwM.IsUndefined || throwM.IsNull)
                 {
                     // No throw method: close the iterator and re-throw.
-                    AbstractOperations.IteratorClose(this, record, isThrowing: true);
+                    // §27.6.3.7 — for an async iterator the close is awaited.
+                    if (isAsync)
+                        AsyncIteratorCloseOnWorker(suspension, innerIter);
+                    else
+                        AbstractOperations.IteratorClose(this, record, isThrowing: true);
                     throw new JsThrow(realm.NewTypeError(
                         "Inner iterator does not have a 'throw' method"));
                 }
-                innerResult = AbstractOperations.Call(this, throwM, innerIter,
-                    new[] { received });
+                innerResult = MaybeAwait(AbstractOperations.Call(this, throwM, innerIter,
+                    new[] { received }));
             }
             else
             {
@@ -2204,8 +2237,8 @@ public sealed class JsVm
                     // outer generator body via the sentinel path.
                     throw new JsReturnSentinel(received);
                 }
-                innerResult = AbstractOperations.Call(this, retM, innerIter,
-                    new[] { received });
+                innerResult = MaybeAwait(AbstractOperations.Call(this, retM, innerIter,
+                    new[] { received }));
                 if (!innerResult.IsObject)
                     throw new JsThrow(realm.NewTypeError(
                         "iterator.return() did not return an object"));
@@ -2219,6 +2252,7 @@ public sealed class JsVm
                     throw new JsReturnSentinel(valR);
                 }
                 // Inner refused to close — yield its value, continue.
+                suspension.SuspendKind = 0; // real yield (not an internal await)
                 var resumedR = suspension.WorkerYield(valR);
                 if (suspension.ResumeWithThrow)
                 {
@@ -2252,6 +2286,7 @@ public sealed class JsVm
             }
 
             // Suspend the outer generator with the inner's yielded value.
+            suspension.SuspendKind = 0; // real yield (not an internal await)
             var resumed = suspension.WorkerYield(value);
             if (suspension.ResumeWithThrow)
             {
@@ -2271,6 +2306,48 @@ public sealed class JsVm
                 receivedKind = 0;
             }
         }
+    }
+
+    /// <summary>Worker-side <c>await</c> used by <c>yield*</c> inside an async
+    /// generator (§27.6.3.7). Suspends the worker with <see cref="SuspendedFrame.SuspendKind"/>
+    /// = 1 so the async-generator driver settles <paramref name="value"/> as a
+    /// promise and resumes us with the resolved value (or injects a throw on
+    /// rejection). Mirrors the <c>Suspend</c> opcode's await arm.</summary>
+    private static JsValue AwaitOnWorker(SuspendedFrame suspension, JsValue value)
+    {
+        suspension.SuspendKind = 1;
+        var resumed = suspension.WorkerYield(value);
+        if (suspension.ResumeWithThrow)
+        {
+            suspension.ResumeWithThrow = false;
+            throw new JsThrow(resumed);
+        }
+        // A .return() injected while awaiting still has to unwind the body.
+        if (suspension.ResumeWithReturn)
+        {
+            suspension.ResumeWithReturn = false;
+            throw new JsReturnSentinel(resumed);
+        }
+        return resumed;
+    }
+
+    /// <summary>§7.4.11 AsyncIteratorClose used by <c>yield*</c> when the inner
+    /// async iterator lacks a <c>throw</c> method — invoke its <c>return</c>
+    /// (if any) and <c>await</c> the result on the worker thread before the
+    /// outer TypeError propagates.</summary>
+    private void AsyncIteratorCloseOnWorker(SuspendedFrame suspension, JsValue innerIter)
+    {
+        JsValue ret;
+        try { ret = AbstractOperations.GetMethod(this, innerIter, "return"); }
+        catch { return; }
+        if (ret.IsUndefined || ret.IsNull) return;
+        JsValue result;
+        try { result = AbstractOperations.Call(this, ret, innerIter, Array.Empty<JsValue>()); }
+        catch { return; }
+        // Await the close result; swallow any rejection so the original throw
+        // (the missing-throw-method TypeError) wins per §7.4.11.
+        try { AwaitOnWorker(suspension, result); }
+        catch (JsThrow) { /* original completion already throwing */ }
     }
 
     /// <summary>§14.15 — divert a return through any enclosing finalizer.</summary>

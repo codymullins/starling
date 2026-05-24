@@ -257,6 +257,101 @@ public class IteratorProtocolTests
     }
 
     // ============================================================
+    //          TypedArrays are iterable (§23.2.3.36)
+    // ============================================================
+
+    [TestMethod]
+    public void ForOf_iterates_typed_array()
+    {
+        // %TypedArray%.prototype[@@iterator] === %TypedArray%.prototype.values.
+        // Before the fix this threw "value is not iterable".
+        var v = Eval(@"
+            var ta = new Int32Array([5, 10, 15]);
+            var s = 0;
+            for (var x of ta) s = s + x;
+            s;
+        ");
+        v.AsNumber.Should().Be(30);
+    }
+
+    [TestMethod]
+    public void TypedArray_symbol_iterator_is_values()
+    {
+        var v = Eval("Uint8Array.prototype[Symbol.iterator] === Uint8Array.prototype.values;");
+        v.AsBool.Should().BeTrue();
+    }
+
+    [TestMethod]
+    public void Spread_typed_array_into_array_literal()
+    {
+        var v = Eval(@"
+            var a = [...new Float64Array([1, 2, 3])];
+            a.length + ':' + a[0] + ',' + a[1] + ',' + a[2];
+        ");
+        v.AsString.Should().Be("3:1,2,3");
+    }
+
+    [TestMethod]
+    public void Array_destructuring_a_typed_array()
+    {
+        var v = Eval(@"
+            var [a, b, c] = new Uint16Array([7, 8, 9]);
+            a + ',' + b + ',' + c;
+        ");
+        v.AsString.Should().Be("7,8,9");
+    }
+
+    // ============================================================
+    //          Inherited / getter-provided @@iterator
+    // ============================================================
+
+    [TestMethod]
+    public void ForOf_uses_inherited_symbol_iterator_from_prototype()
+    {
+        // @@iterator lives on the prototype, not the own object — GetIterator
+        // must walk the prototype chain (§7.4.1 → GetMethod → [[Get]]).
+        var v = Eval(@"
+            var proto = {};
+            proto[Symbol.iterator] = function() {
+                var i = 0;
+                return { next: function() {
+                    return i < 3
+                        ? { value: i++, done: false }
+                        : { value: undefined, done: true };
+                }};
+            };
+            var obj = Object.create(proto);
+            var s = 0;
+            for (var x of obj) s += x;
+            s;
+        ");
+        v.AsNumber.Should().Be(3);
+    }
+
+    [TestMethod]
+    public void Spread_object_whose_iterator_comes_from_a_getter()
+    {
+        // @@iterator resolved through an accessor (getter) must still work.
+        var v = Eval(@"
+            var obj = {
+                get [Symbol.iterator]() {
+                    return function() {
+                        var i = 1;
+                        return { next: function() {
+                            return i <= 2
+                                ? { value: i++, done: false }
+                                : { value: undefined, done: true };
+                        }};
+                    };
+                }
+            };
+            var a = [...obj];
+            a.length + ':' + a[0] + ',' + a[1];
+        ");
+        v.AsString.Should().Be("2:1,2");
+    }
+
+    // ============================================================
     //                         Helpers
     // ============================================================
 

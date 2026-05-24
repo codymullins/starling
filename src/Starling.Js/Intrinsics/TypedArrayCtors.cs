@@ -1,4 +1,3 @@
-using System.Globalization;
 using Starling.Js.Runtime;
 
 namespace Starling.Js.Intrinsics;
@@ -159,8 +158,14 @@ public static class TypedArrayCtors
         ArrayBufferCtor.DefineMethod(proto, "toReversed", (thisV, args) => ToReversed(realm, thisV), 0);
         ArrayBufferCtor.DefineMethod(proto, "toSorted", (thisV, args) => ToSorted(realm, thisV, args), 1);
         ArrayBufferCtor.DefineMethod(proto, "toString", (thisV, args) => Join(realm, thisV, args), 0);
-        ArrayBufferCtor.DefineMethod(proto, "values", (thisV, args) => Values(realm, thisV), 0);
+        var valuesFn = IntrinsicHelpers.DefineMethod(realm, proto, "values", 0,
+            (thisV, args) => Values(realm, thisV));
         ArrayBufferCtor.DefineMethod(proto, "with", (thisV, args) => With(realm, thisV, args), 2);
+
+        // §23.2.3.36 %TypedArray%.prototype[@@iterator] is the same function
+        // object as %TypedArray%.prototype.values per spec.
+        proto.DefineOwnProperty(SymbolCtor.Iterator,
+            PropertyDescriptor.BuiltinMethod(JsValue.Object(valuesFn)));
 
         // §23.2.3.34 get %TypedArray%.prototype[@@toStringTag] — accessor
         // returning the receiver's [[TypedArrayName]] (Kind-derived name) or
@@ -434,37 +439,27 @@ public static class TypedArrayCtors
         return JsValue.Object(copy);
     }
 
+    // §23.2.3.{19,36,7} keys / values / entries return a real Array Iterator
+    // (%ArrayIteratorPrototype%) over the typed array, so the result has a
+    // working `next` and is itself iterable — required for `for…of`, spread,
+    // and destructuring to consume a typed array (the @@iterator alias of
+    // `values`). ThisTA validates the receiver is a TypedArray first.
     private static JsValue Keys(JsRealm realm, JsValue thisV)
     {
         var ta = ThisTA(realm, thisV);
-        var values = new List<JsValue>(ta.Length);
-        for (var i = 0; i < ta.Length; i++) values.Add(JsValue.Number(i));
-        return MakeArrayLike(realm, values);
+        return IteratorIntrinsics.CreateArrayIterator(realm, JsValue.Object(ta), ArrayIteratorKind.Key);
     }
 
     private static JsValue Values(JsRealm realm, JsValue thisV)
     {
         var ta = ThisTA(realm, thisV);
-        var values = new List<JsValue>(ta.Length);
-        for (var i = 0; i < ta.Length; i++) values.Add(ta.GetElement(i));
-        return MakeArrayLike(realm, values);
+        return IteratorIntrinsics.CreateArrayIterator(realm, JsValue.Object(ta), ArrayIteratorKind.Value);
     }
 
     private static JsValue Entries(JsRealm realm, JsValue thisV)
     {
         var ta = ThisTA(realm, thisV);
-        var entries = new List<JsValue>(ta.Length);
-        for (var i = 0; i < ta.Length; i++) entries.Add(MakeArrayLike(realm, new[] { JsValue.Number(i), ta.GetElement(i) }));
-        return MakeArrayLike(realm, entries);
-    }
-
-    private static JsValue MakeArrayLike(JsRealm realm, IReadOnlyList<JsValue> items)
-    {
-        var arr = realm.NewOrdinaryObject();
-        for (var i = 0; i < items.Count; i++)
-            arr.DefineOwnProperty(i.ToString(CultureInfo.InvariantCulture), PropertyDescriptor.Data(items[i], true, true, true));
-        arr.DefineOwnProperty("length", PropertyDescriptor.Data(JsValue.Number(items.Count), true, false, false));
-        return JsValue.Object(arr);
+        return IteratorIntrinsics.CreateArrayIterator(realm, JsValue.Object(ta), ArrayIteratorKind.KeyAndValue);
     }
 
     private static JsValue RequireCallback(JsRealm realm, JsValue[] args)

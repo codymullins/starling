@@ -106,9 +106,13 @@ public class TypedArrayTests
         Eval("var a = new Uint8Array({0:1,1:2,2:3,length:3}); a.reverse(); a.join();").AsString.Should().Be("3,2,1");
         Eval("var a = new Uint8Array({0:1,1:2,2:3,length:3}); var b = a.toReversed(); b[0] + a[0];").AsNumber.Should().Be(4);
         Eval("var a = new Uint8Array({0:3,1:1,2:2,length:3}); var b = a.toSorted(); b[0] + a[0];").AsNumber.Should().Be(4);
-        Eval("var a = new Uint8Array({0:1,1:2,length:2}); a.keys()[1];").AsNumber.Should().Be(1);
-        Eval("var a = new Uint8Array({0:1,1:2,length:2}); a.values()[1];").AsNumber.Should().Be(2);
-        Eval("var a = new Uint8Array({0:1,1:2,length:2}); a.entries()[1][0] + a.entries()[1][1];").AsNumber.Should().Be(3);
+        // §23.2.3.{19,36,7} keys/values/entries return real Array Iterators
+        // (not array-likes): they expose .next() and walk via the iterator
+        // protocol. The second .next() of keys/values yields index/value 1.
+        Eval("var a = new Uint8Array({0:1,1:2,length:2}); a.keys().next(); a.keys().next().value;").AsNumber.Should().Be(0);
+        Eval("var a = new Uint8Array({0:1,1:2,length:2}); var k = a.keys(); k.next(); k.next().value;").AsNumber.Should().Be(1);
+        Eval("var a = new Uint8Array({0:1,1:2,length:2}); var v = a.values(); v.next(); v.next().value;").AsNumber.Should().Be(2);
+        Eval("var a = new Uint8Array({0:1,1:2,length:2}); var e = a.entries(); e.next(); var p = e.next().value; p[0] + p[1];").AsNumber.Should().Be(3);
         Eval("var a = new Uint8Array({0:1,1:2,length:2}); var b = a['with'](1, 9); b[1] + a[1];").AsNumber.Should().Be(11);
         Eval("Uint8Array.BYTES_PER_ELEMENT + Int16Array.BYTES_PER_ELEMENT + Uint32Array.BYTES_PER_ELEMENT + Float64Array.BYTES_PER_ELEMENT;").AsNumber.Should().Be(15);
         Eval("new BigUint64Array(1).BYTES_PER_ELEMENT;").AsNumber.Should().Be(8);
