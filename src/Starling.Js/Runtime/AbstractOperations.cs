@@ -26,22 +26,55 @@ public static class AbstractOperations
             var r = Call(vm, exotic, input, new[] { JsValue.String(hint) });
             if (r.Kind != JsValueKind.Object) return r;
         }
-        // OrdinaryToPrimitive: try toString or valueOf in order.
+        // §13.4.10 OrdinaryToPrimitive: try toString/valueOf in hint order.
+        // Use Get (chain-walking) + Call so BOTH native (e.g.
+        // Error.prototype.toString) and user-defined JS methods are honored —
+        // calling nat.Body directly would have skipped JsFunction overrides.
         var first = hint == "string" ? "toString" : "valueOf";
         var second = hint == "string" ? "valueOf" : "toString";
-        var v = obj.Get(first);
-        if (v.IsObject && v.AsObject is JsNativeFunction nat1)
+        var m1 = Get(vm, obj, first);
+        if (IsCallable(m1))
         {
-            var r = nat1.Body(input, Array.Empty<JsValue>());
+            var r = Call(vm, m1, input, Array.Empty<JsValue>());
             if (r.Kind != JsValueKind.Object) return r;
         }
-        v = obj.Get(second);
-        if (v.IsObject && v.AsObject is JsNativeFunction nat2)
+        var m2 = Get(vm, obj, second);
+        if (IsCallable(m2))
         {
-            var r = nat2.Body(input, Array.Empty<JsValue>());
+            var r = Call(vm, m2, input, Array.Empty<JsValue>());
             if (r.Kind != JsValueKind.Object) return r;
         }
-        return JsValue.String(obj.ToString() ?? "[object Object]");
+        // §13.4.10 step 5: neither method returned a primitive.
+        throw new JsThrow(vm is not null
+            ? vm.Realm.NewTypeError("Cannot convert object to primitive value")
+            : JsValue.String("Cannot convert object to primitive value"));
+    }
+
+    /// <summary>§7.1.17 ToString — spec-faithful string coercion. For objects
+    /// it runs §7.1.1 ToPrimitive with the "string" hint (which invokes the
+    /// object's <c>Symbol.toPrimitive</c> / <c>toString</c> / <c>valueOf</c>,
+    /// e.g. <c>Error.prototype.toString</c>) before stringifying. Primitives
+    /// short-circuit to <see cref="JsValue.ToStringValue"/>. Symbols throw a
+    /// TypeError per step 2. A <see cref="JsVm"/> is needed so user-defined JS
+    /// <c>toString</c>/<c>valueOf</c> methods can be dispatched.</summary>
+    public static string ToStringJs(JsVm? vm, JsValue value)
+    {
+        if (value.IsSymbol)
+            throw new JsThrow(vm is not null
+                ? vm.Realm.NewTypeError("Cannot convert a Symbol value to a string")
+                : JsValue.String("Cannot convert a Symbol value to a string"));
+        if (value.Kind != JsValueKind.Object)
+            return JsValue.ToStringValue(value);
+        var prim = ToPrimitive(vm, value, "string");
+        // After ToPrimitive an object can only remain if a custom @@toPrimitive
+        // returned one; that path is a TypeError per ToPrimitive itself, so
+        // prim is guaranteed primitive here. Symbols from ToPrimitive still
+        // reject per step 2.
+        if (prim.IsSymbol)
+            throw new JsThrow(vm is not null
+                ? vm.Realm.NewTypeError("Cannot convert a Symbol value to a string")
+                : JsValue.String("Cannot convert a Symbol value to a string"));
+        return JsValue.ToStringValue(prim);
     }
 
     /// <summary>§7.1.18 ToObject — boxes primitives to their wrapper. Throws

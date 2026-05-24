@@ -21,8 +21,18 @@ public static class StringCtor
         var ctor = new JsNativeFunction(realm, "String", length: 1, (thisV, args) =>
         {
             // §22.1.1.1 String(value): no argument returns the empty string;
-            // otherwise route through §7.1.17 ToString.
-            var text = args.Length == 0 ? string.Empty : JsValue.ToStringValue(args[0]);
+            // otherwise route through §7.1.17 ToString. Use the AO variant so
+            // an object's toString/valueOf (e.g. Error.prototype.toString) is
+            // invoked instead of the flat "[object Object]" fallback. Note:
+            // String(symbol) is the one allowed Symbol→string path, so handle
+            // it before ToString (which rejects Symbols per step 2).
+            string text;
+            if (args.Length == 0)
+                text = string.Empty;
+            else if (args[0].IsSymbol)
+                text = args[0].AsSymbol.DescriptiveString;
+            else
+                text = AbstractOperations.ToStringJs(realm.ActiveVm, args[0]);
             if (thisV.IsObject && thisV.AsObject is JsNativeFunction native && native.Name == "String")
                 return JsValue.Object(CreateStringObject(realm, text));
             return JsValue.String(text);
