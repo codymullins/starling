@@ -6,16 +6,18 @@ using Starling.Layout.Box;
 namespace Starling.Layout.Flex;
 
 /// <summary>
-/// Single-line flex layout (CSS Flex Box Layout Module Level 1, simplified).
-/// Handles <c>flex-direction</c>, <c>justify-content</c>, <c>align-items</c>,
-/// the <c>flex</c> shorthand + individual <c>flex-grow</c>/<c>shrink</c>/
-/// <c>basis</c>, and <c>gap</c>/<c>row-gap</c>/<c>column-gap</c>.
-/// Out of scope (deferred to B6-3+):
+/// Flex layout (CSS Flex Box Layout Module Level 1, simplified). Handles
+/// <c>flex-direction</c>, <c>flex-wrap</c> (multi-line, row containers),
+/// <c>order</c>, <c>justify-content</c>, <c>align-items</c>, the <c>flex</c>
+/// shorthand + individual <c>flex-grow</c>/<c>shrink</c>/<c>basis</c>,
+/// <c>min-width</c>/<c>min-height</c> (and the automatic content minimum), and
+/// <c>gap</c>/<c>row-gap</c>/<c>column-gap</c>.
+/// Out of scope (deferred):
 /// <list type="bullet">
-///   <item><c>flex-wrap: wrap</c> — parsed but treated as <c>nowrap</c>.</item>
-///   <item><c>align-content</c>, <c>align-self</c>.</item>
+///   <item><c>flex-wrap</c> for column containers — falls back to a single line.</item>
+///   <item><c>align-content</c> (lines stack flex-start) and <c>align-self</c>.</item>
 ///   <item>True baseline alignment (currently falls back to <c>flex-start</c>).</item>
-///   <item>Min/max-width interaction with flex base size beyond a final clamp.</item>
+///   <item><c>max-width</c>/<c>max-height</c> clamping of the flex base size.</item>
 /// </list>
 /// </summary>
 /// <remarks>
@@ -108,20 +110,102 @@ internal sealed class FlexLayout
             };
         }
 
-        // ---- step 2: distribute free space along the main axis ----
-        // Free space compares the container's content-box main size against the
-        // items' *outer* (content + padding + border) main sizes, plus gaps.
-        var gapTotal = props.MainGap * Math.Max(0, items.Length - 1);
+        // ---- step 2: order — lay out (and paint) items in `order`-modified
+        // document order (CSS Flexbox §5.4). Stable so equal orders keep
+        // document order. We reorder the array itself; nothing downstream relies
+        // on the original index.
+        StableOrderSort(items);
+
+        // ---- step 3: collect items into flex lines (CSS Flexbox §9.3) ----
+        // Multi-line wrap is supported for row containers (where real-world
+        // wrapping lives — e.g. a footer whose `width:100%` banner forces the
+        // link groups onto a second line). Column wrap falls back to a single
+        // line. Each line is then sized and positioned independently; lines
+        // stack along the cross axis.
+        var lines = BreakIntoLines(items, props, mainSize);
+
+        var crossCursor = 0d;
+        var firstLineUsedMain = 0d;
+        for (var li = 0; li < lines.Count; li++)
+        {
+            var (start, count) = lines[li];
+            var (lineCross, usedMain) = LayoutLine(
+                items, start, count, props, mainSize, containerWidth, crossSize,
+                crossOffset: crossCursor, singleLine: lines.Count == 1);
+            if (li == 0) firstLineUsedMain = usedMain;
+            crossCursor += lineCross + props.CrossGap;
+        }
+        var totalCross = lines.Count > 0 ? crossCursor - props.CrossGap : 0;
+
+        // Row: consumed content height is the stacked line cross sizes (or the
+        // explicit container cross when a single line fills it). Column: the
+        // single line's main extent.
+        if (props.IsRow)
+            return !double.IsNaN(crossSize) && crossSize > 0 && lines.Count == 1 ? crossSize : totalCross;
+        return firstLineUsedMain;
+    }
+
+    /// <summary>
+    /// Partition items into flex lines. Row containers with <c>flex-wrap</c>
+    /// break to a new line when the next item's outer (border-box + gap) main
+    /// size would overflow the container's main size; the first item on a line
+    /// is always kept even if it alone overflows. Everything else (nowrap, or
+    /// column) is a single line.
+    /// </summary>
+    private static List<(int Start, int Count)> BreakIntoLines(Item[] items, FlexContainerProps props, double mainSize)
+    {
+        var lines = new List<(int, int)>();
+        if (!props.IsWrap || !props.IsRow)
+        {
+            lines.Add((0, items.Length));
+            return lines;
+        }
+
+        const double epsilon = 0.5;
+        var i = 0;
+        while (i < items.Length)
+        {
+            var start = i;
+            var lineMain = items[i].MainSize + items[i].MainPad;
+            i++;
+            while (i < items.Length)
+            {
+                var next = props.MainGap + items[i].MainSize + items[i].MainPad;
+                if (lineMain + next > mainSize + epsilon) break;
+                lineMain += next;
+                i++;
+            }
+            lines.Add((start, i - start));
+        }
+        return lines;
+    }
+
+    /// <summary>
+    /// Lay out one flex line (items[start..start+count]) along the main axis at
+    /// the container's main size and at <paramref name="crossOffset"/> on the
+    /// cross axis. Distributes main free space (grow/shrink, min-clamped),
+    /// resolves the line's cross size, applies align-items, lays each item's
+    /// contents, and writes every item's Frame. Returns the line's cross size
+    /// (border-box) and its used main extent.
+    /// </summary>
+    private (double LineCross, double UsedMain) LayoutLine(
+        Item[] items, int start, int count, FlexContainerProps props,
+        double mainSize, double containerWidth, double crossSize, double crossOffset, bool singleLine)
+    {
+        var end = start + count;
+
+        // Free space: container main size vs items' outer main sizes + gaps.
+        var gapTotal = props.MainGap * Math.Max(0, count - 1);
         var outerSum = 0d;
-        for (var i = 0; i < items.Length; i++) outerSum += items[i].MainSize + items[i].MainPad;
+        for (var i = start; i < end; i++) outerSum += items[i].MainSize + items[i].MainPad;
         var free = mainSize - outerSum - gapTotal;
 
         if (free > 0)
         {
             var totalGrow = 0d;
-            for (var i = 0; i < items.Length; i++) totalGrow += items[i].Props.Grow;
+            for (var i = start; i < end; i++) totalGrow += items[i].Props.Grow;
             if (totalGrow > 0)
-                for (var i = 0; i < items.Length; i++)
+                for (var i = start; i < end; i++)
                     items[i].MainSize += free * (items[i].Props.Grow / totalGrow);
         }
         else if (free < 0)
@@ -130,84 +214,86 @@ internal sealed class FlexLayout
             // multiplies by basis to make larger items absorb more
             // overflow — that's a TODO for the full algorithm).
             var totalShrink = 0d;
-            for (var i = 0; i < items.Length; i++) totalShrink += items[i].Props.Shrink;
+            for (var i = start; i < end; i++) totalShrink += items[i].Props.Shrink;
             if (totalShrink > 0)
-                for (var i = 0; i < items.Length; i++)
+                for (var i = start; i < end; i++)
                     items[i].MainSize = items[i].MainSize + free * (items[i].Props.Shrink / totalShrink);
         }
 
-        // CSS Flexbox §7.5 / §4.5 — clamp each item's used main size to its
-        // minimum. A flex item never shrinks below its minimum main size: an
-        // explicit `min-width`/`min-height`, or — when that is `auto` — its
-        // automatic (content-based) minimum. Without this, items overflowing a
-        // too-narrow flex container collapse toward 0 and their text overlaps
-        // (e.g. Google's footer link groups, which carry `min-width: 30%`).
-        for (var i = 0; i < items.Length; i++)
+        // CSS Flexbox §4.5 — clamp each item's used main size to its minimum so
+        // it never shrinks below its content/min-width (else nowrap text in a
+        // too-narrow container overlaps — Google's footer link groups).
+        for (var i = start; i < end; i++)
             items[i].MainSize = Math.Max(0, Math.Max(items[i].MainSize, items[i].MinMain));
 
-        // ---- step 3: measure each item's cross size (content-box) ----
+        // Cross size of each item, then the line's cross extent.
         var maxCrossOuter = 0d;
-        for (var i = 0; i < items.Length; i++)
+        for (var i = start; i < end; i++)
         {
             var crossSelf = MeasureCrossSize(items[i].Box, props, items[i].MainSize, containerWidth, crossSize);
             items[i].CrossSize = crossSelf;
             maxCrossOuter = Math.Max(maxCrossOuter, crossSelf + items[i].CrossPad);
         }
 
-        // Resolved cross-axis line size (a border-box extent): the explicit
-        // container cross size if given, else the tallest item's outer cross.
-        var lineCrossSize = !double.IsNaN(crossSize) && crossSize > 0 ? crossSize : maxCrossOuter;
+        // The explicit container cross size only sizes the line when it is the
+        // only line; with several lines each takes its content cross size and
+        // they stack (align-content: flex-start).
+        var lineCrossSize = singleLine && !double.IsNaN(crossSize) && crossSize > 0 ? crossSize : maxCrossOuter;
 
-        // ---- step 4: align-items: stretch grows auto-cross items to the line ----
-        for (var i = 0; i < items.Length; i++)
-        {
+        // align-items: stretch grows auto-cross items to the line.
+        for (var i = start; i < end; i++)
             if (props.Align == AlignItems.Stretch && ChildCrossSizeIsAuto(items[i].Box, props))
                 items[i].CrossSize = Math.Max(0, lineCrossSize - items[i].CrossPad);
-        }
 
-        // ---- step 5: lay each item's contents at the chosen content size ----
-        for (var i = 0; i < items.Length; i++)
+        for (var i = start; i < end; i++)
             LayoutItemContents(items[i], props);
 
-        // ---- step 6: position items along main + cross axes ----
+        // Position along main + cross.
         var usedMain = gapTotal;
-        for (var i = 0; i < items.Length; i++) usedMain += items[i].MainSize + items[i].MainPad;
+        for (var i = start; i < end; i++) usedMain += items[i].MainSize + items[i].MainPad;
 
-        var (leadingMain, betweenMain) = ResolveMainAxisSpacing(props.Justify, mainSize, usedMain, items.Length, props.MainGap);
+        var (leadingMain, betweenMain) = ResolveMainAxisSpacing(props.Justify, mainSize, usedMain, count, props.MainGap);
 
-        // Compute main-axis positions in "logical" order (item[0] at the
-        // main-start edge). For non-reverse directions logical == visual.
-        var logicalPositions = new double[items.Length];
+        var cursor = leadingMain;
+        for (var i = start; i < end; i++)
         {
-            var cursor = leadingMain;
-            for (var i = 0; i < items.Length; i++)
-            {
-                logicalPositions[i] = cursor;
-                cursor += items[i].MainSize + items[i].MainPad + betweenMain;
-            }
-        }
-
-        for (var paintIdx = 0; paintIdx < items.Length; paintIdx++)
-        {
-            var item = items[paintIdx];
-            // Frame spans the border box (content + padding + border).
+            var item = items[i];
             var mainExtent = item.MainSize + item.MainPad;
             var crossExtent = item.CrossSize + item.CrossPad;
 
-            // For *-reverse the main-start edge is on the right (row-reverse)
-            // or bottom (column-reverse). Mirror the logical position across
-            // the container's main axis so item[0] ends up at the far end of
-            // the container while paint order (children[0..n]) is preserved.
-            var logical = logicalPositions[paintIdx];
-            var mainPos = props.IsReverse ? mainSize - logical - mainExtent : logical;
-            var cross = ResolveCrossOffset(props.Align, lineCrossSize, crossExtent);
+            // For *-reverse the main-start edge is on the far end; mirror the
+            // logical position while keeping paint order.
+            var mainPos = props.IsReverse ? mainSize - cursor - mainExtent : cursor;
+            var cross = crossOffset + ResolveCrossOffset(props.Align, lineCrossSize, crossExtent);
 
             item.Box.Frame = props.IsRow
                 ? new Rect(mainPos, cross, mainExtent, crossExtent)
                 : new Rect(cross, mainPos, crossExtent, mainExtent);
+
+            cursor += mainExtent + betweenMain;
         }
 
-        return props.IsRow ? lineCrossSize : usedMain;
+        return (lineCrossSize, usedMain);
+    }
+
+    /// <summary>
+    /// Stable insertion sort of <paramref name="items"/> by <c>order</c>
+    /// (CSS Flexbox §5.4). Item counts in a flex container are small, so an
+    /// in-place stable insertion sort is both simplest and cheapest.
+    /// </summary>
+    private static void StableOrderSort(Item[] items)
+    {
+        for (var i = 1; i < items.Length; i++)
+        {
+            var key = items[i];
+            var j = i - 1;
+            while (j >= 0 && items[j].Props.Order > key.Props.Order)
+            {
+                items[j + 1] = items[j];
+                j--;
+            }
+            items[j + 1] = key;
+        }
     }
 
     private struct Item

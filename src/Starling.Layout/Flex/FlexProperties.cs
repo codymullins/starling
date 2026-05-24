@@ -56,9 +56,13 @@ internal readonly record struct FlexContainerProps(
 {
     public bool IsRow => Direction is FlexDirection.Row or FlexDirection.RowReverse;
     public bool IsReverse => Direction is FlexDirection.RowReverse or FlexDirection.ColumnReverse;
+    public bool IsWrap => Wrap is FlexWrap.Wrap or FlexWrap.WrapReverse;
 
     /// <summary>The gap between adjacent items along the main axis.</summary>
     public double MainGap => IsRow ? ColumnGap : RowGap;
+
+    /// <summary>The gap between adjacent flex lines (the cross axis).</summary>
+    public double CrossGap => IsRow ? RowGap : ColumnGap;
 }
 
 /// <summary>
@@ -71,4 +75,5 @@ internal readonly record struct FlexContainerProps(
 internal readonly record struct FlexItemProps(
     double Grow,
     double Shrink,
-    double? Basis);
+    double? Basis,
+    int Order);

@@ -69,7 +69,8 @@ internal static class FlexParser
         // CSS Flex §7.2: flex-shrink's initial value is 1.
         var shrink = NumberOr(style, PropertyId.FlexShrink, fallback: 1);
         var basis = ParseBasis(style);
-        return new FlexItemProps(grow, Math.Max(0, shrink), basis);
+        var order = (int)Math.Round(NumberOrZero(style, PropertyId.Order));
+        return new FlexItemProps(grow, Math.Max(0, shrink), basis, order);
     }
 
     /// <summary>

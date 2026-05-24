@@ -289,6 +289,86 @@ public sealed class FlexLayoutTests
         sized.Frame.Width.Should().BeApproximately(100, 0.5);
     }
 
+    [TestMethod]
+    public void Flex_wrap_breaks_overflowing_items_onto_multiple_lines()
+    {
+        // 300px row with flex-wrap: two 200px items can't share a line, so the
+        // second drops below the first line (whose cross size is 40px).
+        var root = Layout("""
+            <body><div id="c" style="display:flex; flex-wrap:wrap; width:300px">
+              <div style="width:200px; height:40px"></div>
+              <div style="width:200px; height:50px"></div>
+            </div></body>
+            """, new Size(800, 600));
+
+        var items = FlexChildren(root);
+        items[0].Frame.X.Should().BeApproximately(0, 0.5);
+        items[0].Frame.Y.Should().BeApproximately(0, 0.5);
+        items[1].Frame.X.Should().BeApproximately(0, 0.5);
+        items[1].Frame.Y.Should().BeApproximately(40, 0.5);
+
+        // Container height grows to enclose both lines (40 + 50).
+        var container = FindBox(root, b => b.Element?.GetAttribute("id") == "c")!;
+        container.Frame.Height.Should().BeApproximately(90, 0.5);
+    }
+
+    [TestMethod]
+    public void Nowrap_keeps_overflowing_items_on_a_single_line()
+    {
+        // Without flex-wrap (and with shrink disabled) the items overflow on one
+        // line rather than wrapping.
+        var root = Layout("""
+            <body><div id="c" style="display:flex; width:300px; height:40px">
+              <div style="width:200px; height:40px; flex-shrink:0"></div>
+              <div style="width:200px; height:40px; flex-shrink:0"></div>
+            </div></body>
+            """, new Size(800, 600));
+
+        var items = FlexChildren(root);
+        items[0].Frame.Y.Should().BeApproximately(0, 0.5);
+        items[1].Frame.Y.Should().BeApproximately(0, 0.5);
+        items[1].Frame.X.Should().BeApproximately(200, 0.5);
+    }
+
+    [TestMethod]
+    public void Order_reorders_items_for_layout_but_keeps_paint_order()
+    {
+        var root = Layout("""
+            <body><div id="c" style="display:flex; width:600px; height:40px">
+              <div id="a" style="width:100px; height:40px; order:2"></div>
+              <div id="b" style="width:100px; height:40px; order:1"></div>
+            </div></body>
+            """, new Size(800, 600));
+
+        var container = FindBox(root, b => b.Element?.GetAttribute("id") == "c")!;
+        var children = container.Children.OfType<BlockBox>().ToList();
+
+        // Paint order (box-tree order) stays document order: a, b.
+        children[0].Element!.GetAttribute("id").Should().Be("a");
+        children[1].Element!.GetAttribute("id").Should().Be("b");
+
+        // Layout order follows `order`: b (1) at the start, a (2) after it.
+        children.First(c => c.Element!.GetAttribute("id") == "b").Frame.X.Should().BeApproximately(0, 0.5);
+        children.First(c => c.Element!.GetAttribute("id") == "a").Frame.X.Should().BeApproximately(100, 0.5);
+    }
+
+    [TestMethod]
+    public void Flex_item_min_width_is_honored_over_a_smaller_basis()
+    {
+        // min-width:200 wins over the 50px width and isn't over-grown by its
+        // neighbour (regression for collapsing footer link groups).
+        var root = Layout("""
+            <body><div id="c" style="display:flex; width:600px; height:40px">
+              <div id="m" style="width:50px; min-width:200px; height:40px"></div>
+              <div id="n" style="width:100px; height:40px"></div>
+            </div></body>
+            """, new Size(800, 600));
+
+        var items = FlexChildren(root);
+        items.First(b => b.Element?.GetAttribute("id") == "m").Frame.Width.Should().BeApproximately(200, 0.5);
+        items.First(b => b.Element?.GetAttribute("id") == "n").Frame.X.Should().BeApproximately(200, 0.5);
+    }
+
     // ---------- helpers ----------
 
     private static List<Box.Box> FlexChildren(Box.Box root)
