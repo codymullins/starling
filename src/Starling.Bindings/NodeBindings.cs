@@ -923,6 +923,30 @@ public static class NodeBindings
             return JsValue.Object(DomWrappers.Wrap(realm, doc));
         }, length: 1);
 
+        // createDocumentType(qualifiedName, publicId, systemId) — DOM §4.5.1
+        EventTargetBinding.DefineMethod(realm, impl, "createDocumentType", (_, args) =>
+        {
+            var qname = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+            var publicId = args.Length > 1 ? JsValue.ToStringValue(args[1]) : "";
+            var systemId = args.Length > 2 ? JsValue.ToStringValue(args[2]) : "";
+            return JsValue.Object(DomWrappers.Wrap(realm, new DocumentType(qname, publicId, systemId)));
+        }, length: 3);
+
+        // createDocument(namespace, qualifiedName, doctype) — DOM §4.5.1. Builds
+        // an XML document; if a qualified name is given it becomes the document
+        // element, and a passed doctype is inserted first.
+        EventTargetBinding.DefineMethod(realm, impl, "createDocument", (_, args) =>
+        {
+            var ns = args.Length > 0 && !args[0].IsNullish ? JsValue.ToStringValue(args[0]) : null;
+            var qname = args.Length > 1 && !args[1].IsNullish ? JsValue.ToStringValue(args[1]) : "";
+            var doc = new Document();
+            if (args.Length > 2 && DomWrappers.UnwrapAs<DocumentType>(args[2]) is { } dt)
+                doc.AppendChild(dt);
+            if (!string.IsNullOrEmpty(qname))
+                doc.AppendChild(doc.CreateElement(qname, ns));
+            return JsValue.Object(DomWrappers.Wrap(realm, doc));
+        }, length: 3);
+
         // createDocumentFragment() — convenience stub
         EventTargetBinding.DefineMethod(realm, impl, "createDocumentFragment", (_, _) =>
         {
