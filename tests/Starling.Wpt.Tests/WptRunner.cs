@@ -84,7 +84,11 @@ public sealed class WptRunner
         var json = ReadResults(page);
 
         // Drive async tests: advance virtual time in 50 ms ticks until results
-        // appear, the loop goes idle, or we exhaust the time budget.
+        // appear, the loop goes idle, or we exhaust the time budget. The report
+        // script schedules a fallback testharness timeout() at 4 s of virtual
+        // time, so a testharness file always completes by ~80 ticks; the idle
+        // cutoff (above that) only stops pages with no testharness at all
+        // (reftests), avoiding a busy-spin to the real-time budget.
         var sw = Stopwatch.StartNew();
         var idleStreak = 0;
         while (json is null && sw.ElapsedMilliseconds < _timeoutMs && page.Scripting is not null)
@@ -92,7 +96,7 @@ public sealed class WptRunner
             var didWork = page.Scripting.PumpFrame(50);
             json = ReadResults(page);
             idleStreak = didWork ? 0 : idleStreak + 1;
-            if (idleStreak > 40) break; // ~2 s of virtual time with nothing pending
+            if (idleStreak > 120) break; // ~6 s virtual idle (past the 4 s fallback)
         }
 
         if (json is null)

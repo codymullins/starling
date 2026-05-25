@@ -129,15 +129,32 @@ internal sealed class WptFileServer : IDisposable
     /// </summary>
     internal const string ReportJs = """
         (function () {
-          // Disable testharness's visual result rendering. It builds a results
-          // table via DOM APIs (insertAdjacentText, createElementNS, …) inside a
-          // completion callback; any unimplemented one throws and aborts the
-          // callback chain before ours runs. We read results programmatically,
-          // so the rendering is pure overhead — turning it off bypasses that
-          // whole class of output-only DOM gaps. (setup() is global from
-          // testharness.js and runs before the test body.)
+          // Configure testharness for an embedded runner (setup() is global from
+          // testharness.js and runs before the test body):
+          //   output:false           — skip visual result rendering, whose DOM
+          //     APIs (insertAdjacentText, …) would throw inside a completion
+          //     callback and abort the chain before ours; we read results
+          //     programmatically, so it's pure overhead.
+          //   explicit_timeout:true  — disable testharness's own auto-timeout.
+          //     The host drives the event loop with advancing virtual time, so
+          //     the auto-timeout would trip before a load-driven async test calls
+          //     done(); the per-file worker-thread timeout IS our timeout
+          //     mechanism (the documented use of explicit_timeout).
           if (typeof setup === 'function') {
-            try { setup({ output: false }); } catch (e) { /* older harness */ }
+            try { setup({ output: false, explicit_timeout: true }); } catch (e) { /* older harness */ }
+          }
+          // With explicit_timeout the harness completes only when timeout() is
+          // called — so provide our own, but schedule it from INSIDE the load
+          // handler so the timer does not exist during the engine's pre-load
+          // quiescence pump (which collapses virtual time and would fire it
+          // prematurely, marking everything timeout — the very bug we're fixing).
+          // Scheduled post-load, it fires only after load-driven tests have had
+          // their turn, so a file with one hung async test still reports its
+          // completed siblings (pass/fail) with only the stuck ones as timeout.
+          if (typeof window !== 'undefined' && window.addEventListener && typeof timeout === 'function') {
+            window.addEventListener('load', function () {
+              setTimeout(function () { try { timeout(); } catch (e) { /* already complete */ } }, 4000);
+            });
           }
           if (typeof add_completion_callback !== 'function') return;
           add_completion_callback(function (tests, status) {

@@ -116,4 +116,20 @@ hand-rolled CSS `[Spec]` stub backlog where WPT now covers it.
   taxonomy and adds `other:Right-hand side of 'instanceof' is not an object` (43,
   likely missing interface objects). A/B delta = `diff` two `causes.txt`.
   Remaining Phase-0 item: scope policy (out-of-scope feature list).
-- _Next: Phase 1 — timeout concentration probe on `Document-createElementNS.html`._
+- 2026-05-25: **Phase 1 complete — timeout concentration was a harness/event-loop
+  confounder, now fixed.** A/B probe (`async_test` completing inside
+  `window.onload`, with vs without an iframe) proved both time out → not iframes.
+  Stage instrumentation showed the test fully ran (`done()` called) yet was marked
+  TIMEOUT: the engine's pre-load quiescence pump collapses virtual time and fires
+  testharness's auto-timeout before the load-driven completion. Fix (report
+  script): `setup({explicit_timeout:true})` to kill the auto-timeout, plus our own
+  `timeout()` scheduled **inside the load handler** (so the timer doesn't exist
+  during the pre-load pump and can't fire prematurely) at +4 s virtual; runner
+  idle cutoff raised past it. **Measured delta: pass 754→820 (+66), rate
+  14.54%→15.58%, timeouts 915→171 (genuine), no-result 52→50 (stable).** The
+  phantom-timeout bucket collapsed, so `causes.txt` now reflects the true backlog
+  (assert_equals 1256 is the real #1; createEvent 253, setAttributeNS 176, …).
+- _Next: Phase 2 — mechanical clusters in impact order, starting with the events
+  cluster (createEvent + MouseEvent/UIEvent/KeyboardEvent ctors). Note: 171
+  residual timeouts (genuinely hung tests) and the `missing-method:call` 120
+  bucket (likely a `.call`/`.apply` heuristic artifact — investigate) remain._
