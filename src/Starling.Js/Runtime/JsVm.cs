@@ -2750,6 +2750,11 @@ public sealed class JsVm
             {
                 // wp:M3-04f — coerced key value (Symbol or String) off the stack.
                 var keyPk = AbstractOperations.ToPropertyKey(this, methodComputedKeys[i]);
+                // §15.7.10 — a static class method/accessor may not be named
+                // "prototype" (a computed key resolving to it → TypeError).
+                if (m.IsStatic && keyPk.IsString && keyPk.AsString == "prototype")
+                    throw new JsThrow(realm.NewTypeError(
+                        "Classes may not have a static property named 'prototype'"));
                 StampMethodName(fnInstance, keyPk, m.Kind);
                 InstallMethodOrAccessor(owner, keyPk, m.Kind, fnInstance);
             }
@@ -2804,6 +2809,10 @@ public sealed class JsVm
             {
                 if (computedKey is { } sck)
                 {
+                    // §15.7.10 — a static field may not be named "prototype".
+                    if (sck.IsString && sck.AsString == "prototype")
+                        throw new JsThrow(realm.NewTypeError(
+                            "Classes may not have a static property named 'prototype'"));
                     // Static computed field: the thunk (when present) returns the
                     // initializer value; absent initializer ⇒ undefined.
                     var value = JsValue.Undefined;
