@@ -170,6 +170,65 @@ public abstract class Node : EventTarget
 
     public IEnumerable<Element> DescendantElements() => Descendants().OfType<Element>();
 
+    // ---- Namespace lookup (DOM §4.4 "locate a namespace / prefix").
+    private const string XmlnsNamespace = "http://www.w3.org/2000/xmlns/";
+
+    public string? LookupNamespaceURI(string? prefix)
+        => LocateNamespace(this, string.IsNullOrEmpty(prefix) ? null : prefix);
+
+    public bool IsDefaultNamespace(string? @namespace)
+        => LookupNamespaceURI(null) == (string.IsNullOrEmpty(@namespace) ? null : @namespace);
+
+    public string? LookupPrefix(string? @namespace)
+    {
+        if (string.IsNullOrEmpty(@namespace)) return null;
+        return LocatePrefix(this is Document d ? d.DocumentElement : this as Element ?? ParentNode as Element, @namespace);
+    }
+
+    private static string? LocateNamespace(Node? node, string? prefix)
+    {
+        switch (node)
+        {
+            case Element el:
+                if (!string.IsNullOrEmpty(el.Namespace) && el.Prefix == prefix) return el.Namespace;
+                foreach (var a in el.Attributes)
+                {
+                    if (a.Namespace != XmlnsNamespace) continue;
+                    var (pfx, local) = SplitName(a.Name);
+                    if (pfx == "xmlns" && local == prefix) return string.IsNullOrEmpty(a.Value) ? null : a.Value;
+                    if (pfx is null && a.Name == "xmlns" && prefix is null) return string.IsNullOrEmpty(a.Value) ? null : a.Value;
+                }
+                // Walk up to element ancestors only — stop at the document to avoid
+                // documentElement<->Document recursion.
+                return el.ParentNode is Element ep ? LocateNamespace(ep, prefix) : null;
+            case Document doc:
+                return doc.DocumentElement is { } de ? LocateNamespace(de, prefix) : null;
+            default:
+                return node?.ParentNode is Element p ? LocateNamespace(p, prefix) : null;
+        }
+    }
+
+    private static string? LocatePrefix(Element? el, string ns)
+    {
+        for (var node = el; node is not null; node = node.ParentNode as Element)
+        {
+            if (node.Namespace == ns && node.Prefix is not null) return node.Prefix;
+            foreach (var a in node.Attributes)
+            {
+                if (a.Namespace != XmlnsNamespace) continue;
+                var (pfx, local) = SplitName(a.Name);
+                if (pfx == "xmlns" && a.Value == ns) return local;
+            }
+        }
+        return null;
+    }
+
+    private static (string? Prefix, string Local) SplitName(string name)
+    {
+        var i = name.IndexOf(':', StringComparison.Ordinal);
+        return i >= 0 ? (name[..i], name[(i + 1)..]) : (null, name);
+    }
+
     public virtual string TextContent
     {
         get

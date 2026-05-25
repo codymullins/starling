@@ -469,7 +469,11 @@ public static class JsonObj
                 {
                     if (AbstractOperations.IsCallable(value)) return null;
                     var obj = value.AsObject;
-                    if (obj is JsonArray)
+                    // §25.5.2: serialize as a JSON array when IsArray(value) — that
+                    // is any real Array exotic object, not only the JsonArray that
+                    // JSON.parse builds. Without the JsArray arm, `[1,2,3]` and
+                    // `.map(...)` results stringified as objects ({"0":1,…}).
+                    if (obj is JsArray or JsonArray)
                         return SerializeArray(obj);
                     return SerializeObject(obj);
                 }

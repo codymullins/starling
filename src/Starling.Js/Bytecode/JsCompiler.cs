@@ -1014,6 +1014,12 @@ public sealed partial class JsCompiler
                 DeclarePatternBindings(handler.Param);
                 EmitPatternFromLocal(handler.Param, srcSlot, isDeclaration: true);
             }
+            // The catch block is its own lexical scope: TDZ-hoist its top-level
+            // let/const into the scope opened above (the same pass the
+            // BlockStatement case runs) before emitting the body, so a
+            // `const`/`let` at the top of the catch resolves to a slot instead
+            // of throwing "missing declared lexical".
+            HoistLexicalDeclarations(handler.Body.Body);
             foreach (var inner in handler.Body.Body) EmitStatement(inner);
             PopScope();
             _b.Emit(Opcode.LeaveTry);

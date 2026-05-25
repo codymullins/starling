@@ -1,0 +1,13 @@
+# WPT skip-list — files that crash the test host UNCATCHABLY (e.g. a native
+# stack overflow in the JS parser / layout / event dispatch that .NET cannot
+# trap), which would otherwise abort the whole run. One path substring per line;
+# '#' starts a comment. These are triage backlog, not permanent exclusions —
+# remove the entry once the underlying engine crash is fixed.
+#
+# Committed (this file lives under testdata/wpt/, which is tracked; only
+# testdata/wpt/suite/ and testdata/wpt/results/ are gitignored).
+
+# StackOverflow-class crash during load (deep async/recursion). Found 2026-05-24.
+dom/events/pointer-event-document-move.html
+dom/nodes/DocumentFragment-getElementById.html
+dom/nodes/svg-template-querySelector.html

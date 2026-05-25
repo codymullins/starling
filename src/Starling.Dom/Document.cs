@@ -58,6 +58,15 @@ public sealed class Document : Node
     public Element CreateElement(string tagName, string? @namespace = null)
         => new(tagName, @namespace) { OwnerDocument = this };
 
+    /// <summary>DOM §4.5 createElementNS — preserves the qualified name's case and
+    /// splits the prefix (unlike <see cref="CreateElement(string,string?)"/>).</summary>
+    public Element CreateElementNS(string? @namespace, string qualifiedName)
+    {
+        var e = Element.CreateNamespaced(@namespace, qualifiedName);
+        e.OwnerDocument = this;
+        return e;
+    }
+
     public Text CreateText(string data) => CreateTextNode(data);
 
     public Text CreateTextNode(string data)
@@ -129,6 +138,17 @@ public sealed class Document : Node
         var classes = names.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         return new LiveElementCollection(this, element =>
             classes.Length > 0 && classes.All(element.ClassList.Contains));
+    }
+
+    public IReadOnlyList<Element> GetElementsByTagNameNS(string? @namespace, string localName)
+    {
+        ArgumentNullException.ThrowIfNull(localName);
+        var anyNs = @namespace == "*";
+        var anyLocal = localName == "*";
+        var ns = string.IsNullOrEmpty(@namespace) ? null : @namespace;
+        return new LiveElementCollection(this, element =>
+            (anyNs || string.Equals(element.Namespace, ns, StringComparison.Ordinal))
+            && (anyLocal || element.LocalName.Equals(localName, StringComparison.Ordinal)));
     }
 
     /// <summary>

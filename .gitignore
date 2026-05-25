@@ -44,6 +44,9 @@ Thumbs.db
 
 # Starling-specific
 testdata/wpt/results/
+# web-platform-tests corpus (fetched via tools/fetch-wpt.sh; the rest of
+# testdata/wpt/ holds hand-committed encoding fixtures used by Engine tests).
+testdata/wpt/suite/
 *.png.actual
 bench/results/
 out.png

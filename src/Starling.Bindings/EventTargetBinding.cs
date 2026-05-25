@@ -96,6 +96,16 @@ public static class EventTargetBinding
             if (TryGetHostEvent(thisV, out var e)) e.StopImmediatePropagation();
             return JsValue.Undefined;
         }, length: 0);
+        // Legacy Event.initEvent (DOM §2.9) — used with document.createEvent.
+        DefineMethod(realm, evProto, "initEvent", (thisV, args) =>
+        {
+            if (TryGetHostEvent(thisV, out var e))
+                e.InitEvent(
+                    args.Length > 0 ? JsValue.ToStringValue(args[0]) : "",
+                    args.Length > 1 && JsValue.ToBoolean(args[1]),
+                    args.Length > 2 && JsValue.ToBoolean(args[2]));
+            return JsValue.Undefined;
+        }, length: 3);
 
         var evCtor = new JsNativeFunction(realm, "Event", 1, (thisV, args) =>
         {
@@ -127,11 +137,26 @@ public static class EventTargetBinding
         // CustomEvent class stores detail as object? but JS consumers expect it
         // as a JsValue. We stash the detail on the JsEventWrapper itself.
         var customEvProto = new JsObject(evProto);
+        realm.CustomEventPrototype = customEvProto;
         DefineAccessor(realm, customEvProto, "detail", (thisV, _) =>
         {
             if (thisV.IsObject && thisV.AsObject is JsCustomEventWrapper cw) return cw.Detail;
             return JsValue.Null;
         });
+        // Legacy CustomEvent.initCustomEvent (DOM §2.3) — used with createEvent.
+        DefineMethod(realm, customEvProto, "initCustomEvent", (thisV, args) =>
+        {
+            if (TryGetHostEvent(thisV, out var e))
+            {
+                e.InitEvent(
+                    args.Length > 0 ? JsValue.ToStringValue(args[0]) : "",
+                    args.Length > 1 && JsValue.ToBoolean(args[1]),
+                    args.Length > 2 && JsValue.ToBoolean(args[2]));
+                if (thisV.AsObject is JsCustomEventWrapper cw)
+                    cw.Detail = args.Length > 3 ? args[3] : JsValue.Null;
+            }
+            return JsValue.Undefined;
+        }, length: 4);
 
         var customEvCtor = new JsNativeFunction(realm, "CustomEvent", 1, (_, args) =>
         {
@@ -161,6 +186,43 @@ public static class EventTargetBinding
         realm.GlobalObject.DefineOwnProperty("CustomEvent",
             PropertyDescriptor.Data(JsValue.Object(customEvCtor), writable: true, enumerable: false, configurable: true));
     }
+
+    /// <summary>Legacy <c>document.createEvent(interface)</c> (DOM §2.9). Returns
+    /// an uninitialized event of the requested legacy interface; the caller must
+    /// call <c>initEvent</c>/<c>initCustomEvent</c> before dispatch. Throws a
+    /// TypeError for an unrecognized interface (DOMException NotSupportedError is
+    /// not yet modeled). Subtype-specific accessors aren't surfaced here; the
+    /// legacy path is dominated by Event/CustomEvent + init + dispatch.</summary>
+    public static JsValue CreateLegacyEvent(JsRealm realm, string interfaceName)
+    {
+        ArgumentNullException.ThrowIfNull(realm);
+        switch ((interfaceName ?? "").ToLowerInvariant())
+        {
+            case "customevent":
+                return JsValue.Object(new JsCustomEventWrapper(realm.CustomEventPrototype!, new CustomEvent(""), JsValue.Null));
+            case "event":
+            case "events":
+            case "htmlevents":
+            case "svgevents":
+                return WrapUninitEvent(realm, new Event(""));
+            case "uievent":
+            case "uievents":
+                return WrapUninitEvent(realm, new UiEvent(""));
+            case "mouseevent":
+            case "mouseevents":
+                return WrapUninitEvent(realm, new MouseEvent(""));
+            case "keyboardevent":
+            case "keyevents":
+                return WrapUninitEvent(realm, new KeyboardEvent(""));
+            case "focusevent":
+                return WrapUninitEvent(realm, new FocusEvent(""));
+            default:
+                throw new JsThrow(realm.NewTypeError($"createEvent: unsupported interface '{interfaceName}'"));
+        }
+    }
+
+    private static JsValue WrapUninitEvent(JsRealm realm, Event host)
+        => JsValue.Object(new JsEventWrapper(realm.EventPrototype!, host));
 
     /// <summary>Associate an existing host <see cref="EventTarget"/> with a JS
     /// wrapper object so JS-side listener registrations route to the same
@@ -368,7 +430,8 @@ internal class JsEventWrapper : JsObject
 /// <c>detail</c> slot alongside the host event object.</summary>
 internal sealed class JsCustomEventWrapper : JsEventWrapper
 {
-    public JsValue Detail { get; }
+    // Settable so legacy initCustomEvent(type, …, detail) can (re)assign it.
+    public JsValue Detail { get; set; }
     public JsCustomEventWrapper(JsObject proto, CustomEvent hostEvent, JsValue detail)
         : base(proto, hostEvent) { Detail = detail; }
 }

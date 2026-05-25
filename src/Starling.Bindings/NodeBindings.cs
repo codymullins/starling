@@ -165,6 +165,83 @@ public static class NodeBindings
             return JsValue.False;
         }, length: 1);
 
+        // ---- ChildNode + ParentNode mixins (DOM §4.2.1). Defined on Node.prototype
+        // so Element/CharacterData/etc. inherit them; node-or-string args coerce to
+        // Text nodes. Built on the host insert/remove primitives.
+        EventTargetBinding.DefineMethod(realm, nodeProto, "before", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapNode(thisV) is { ParentNode: { } parent } node)
+                foreach (var n in CoerceNodes(realm, node, args)) parent.InsertBefore(n, node);
+            return JsValue.Undefined;
+        }, length: 1);
+        EventTargetBinding.DefineMethod(realm, nodeProto, "after", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapNode(thisV) is { ParentNode: { } parent } node)
+            {
+                var refNode = node.NextSibling;
+                foreach (var n in CoerceNodes(realm, node, args)) parent.InsertBefore(n, refNode);
+            }
+            return JsValue.Undefined;
+        }, length: 1);
+        EventTargetBinding.DefineMethod(realm, nodeProto, "replaceWith", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapNode(thisV) is { ParentNode: { } parent } node)
+            {
+                var refNode = node.NextSibling;
+                var nodes = CoerceNodes(realm, node, args);
+                node.RemoveFromParent();
+                foreach (var n in nodes) parent.InsertBefore(n, refNode);
+            }
+            return JsValue.Undefined;
+        }, length: 1);
+        EventTargetBinding.DefineMethod(realm, nodeProto, "remove", (thisV, _) =>
+        {
+            DomWrappers.UnwrapNode(thisV)?.RemoveFromParent();
+            return JsValue.Undefined;
+        }, length: 0);
+        EventTargetBinding.DefineMethod(realm, nodeProto, "append", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapNode(thisV) is { } node)
+                foreach (var n in CoerceNodes(realm, node, args)) node.AppendChild(n);
+            return JsValue.Undefined;
+        }, length: 1);
+        EventTargetBinding.DefineMethod(realm, nodeProto, "prepend", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapNode(thisV) is { } node)
+            {
+                var refNode = node.FirstChild;
+                foreach (var n in CoerceNodes(realm, node, args)) node.InsertBefore(n, refNode);
+            }
+            return JsValue.Undefined;
+        }, length: 1);
+        EventTargetBinding.DefineMethod(realm, nodeProto, "replaceChildren", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapNode(thisV) is { } node)
+            {
+                var nodes = CoerceNodes(realm, node, args);
+                while (node.FirstChild is { } c) c.RemoveFromParent();
+                foreach (var n in nodes) node.AppendChild(n);
+            }
+            return JsValue.Undefined;
+        }, length: 1);
+
+        EventTargetBinding.DefineMethod(realm, nodeProto, "lookupNamespaceURI", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapNode(thisV) is not { } n) return JsValue.Null;
+            var r = n.LookupNamespaceURI(args.Length > 0 && !args[0].IsNullish ? JsValue.ToStringValue(args[0]) : null);
+            return r is null ? JsValue.Null : JsValue.String(r);
+        }, length: 1);
+        EventTargetBinding.DefineMethod(realm, nodeProto, "isDefaultNamespace", (thisV, args) =>
+            DomWrappers.UnwrapNode(thisV) is { } n
+                ? JsValue.Boolean(n.IsDefaultNamespace(args.Length > 0 && !args[0].IsNullish ? JsValue.ToStringValue(args[0]) : null))
+                : JsValue.False, length: 1);
+        EventTargetBinding.DefineMethod(realm, nodeProto, "lookupPrefix", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapNode(thisV) is not { } n) return JsValue.Null;
+            var r = n.LookupPrefix(args.Length > 0 && !args[0].IsNullish ? JsValue.ToStringValue(args[0]) : null);
+            return r is null ? JsValue.Null : JsValue.String(r);
+        }, length: 1);
+
         var nodeCtor = new JsNativeFunction(realm, "Node", 0, (_, _) =>
             throw new JsThrow(realm.NewTypeError("Illegal constructor")), isConstructor: false);
         nodeCtor.DefineOwnProperty("prototype",
@@ -379,6 +456,39 @@ public static class NodeBindings
                 e.RemoveAttribute(JsValue.ToStringValue(args[0]));
             return JsValue.Undefined;
         }, length: 1);
+        // ---- Namespace-aware attribute methods (DOM §4.9).
+        EventTargetBinding.DefineMethod(realm, elProto, "getAttributeNS", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is not { } e || args.Length < 2) return JsValue.Null;
+            var v = e.GetAttributeNS(args[0].IsNullish ? null : JsValue.ToStringValue(args[0]), JsValue.ToStringValue(args[1]));
+            return v is null ? JsValue.Null : JsValue.String(v);
+        }, length: 2);
+        EventTargetBinding.DefineMethod(realm, elProto, "setAttributeNS", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is { } e && args.Length >= 3)
+                e.SetAttributeNS(args[0].IsNullish ? null : JsValue.ToStringValue(args[0]),
+                    JsValue.ToStringValue(args[1]), JsValue.ToStringValue(args[2]));
+            return JsValue.Undefined;
+        }, length: 3);
+        EventTargetBinding.DefineMethod(realm, elProto, "hasAttributeNS", (thisV, args) =>
+            DomWrappers.UnwrapElement(thisV) is { } e && args.Length >= 2
+                ? JsValue.Boolean(e.HasAttributeNS(args[0].IsNullish ? null : JsValue.ToStringValue(args[0]), JsValue.ToStringValue(args[1])))
+                : JsValue.False, length: 2);
+        EventTargetBinding.DefineMethod(realm, elProto, "removeAttributeNS", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is { } e && args.Length >= 2)
+                e.RemoveAttributeNS(args[0].IsNullish ? null : JsValue.ToStringValue(args[0]), JsValue.ToStringValue(args[1]));
+            return JsValue.Undefined;
+        }, length: 2);
+        EventTargetBinding.DefineMethod(realm, elProto, "getElementsByTagNameNS", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is not { } e || args.Length < 2) return MakeArray(realm, Array.Empty<JsValue>());
+            var ns = args[0].IsNullish ? null : JsValue.ToStringValue(args[0]);
+            var items = new List<JsValue>();
+            foreach (var d in e.GetElementsByTagNameNS(ns, JsValue.ToStringValue(args[1])))
+                items.Add(JsValue.Object(DomWrappers.Wrap(realm, d)));
+            return MakeArray(realm, items);
+        }, length: 2);
         EventTargetBinding.DefineMethod(realm, elProto, "appendChild", (thisV, args) =>
         {
             // Inherits from Node — re-stamped here so JS-level instanceof tests
@@ -786,6 +896,15 @@ public static class NodeBindings
                 items.Add(JsValue.Object(DomWrappers.Wrap(realm, e)));
             return MakeArray(realm, items);
         }, length: 1);
+        EventTargetBinding.DefineMethod(realm, docProto, "getElementsByTagNameNS", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapDocument(thisV) is not { } d || args.Length < 2) return MakeArray(realm, Array.Empty<JsValue>());
+            var ns = args[0].IsNullish ? null : JsValue.ToStringValue(args[0]);
+            var items = new List<JsValue>();
+            foreach (var e in d.GetElementsByTagNameNS(ns, JsValue.ToStringValue(args[1])))
+                items.Add(JsValue.Object(DomWrappers.Wrap(realm, e)));
+            return MakeArray(realm, items);
+        }, length: 2);
         EventTargetBinding.DefineMethod(realm, docProto, "getElementsByClassName", (thisV, args) =>
         {
             if (DomWrappers.UnwrapDocument(thisV) is not { } d || args.Length == 0) return MakeArray(realm, Array.Empty<JsValue>());
@@ -812,8 +931,26 @@ public static class NodeBindings
         {
             if (DomWrappers.UnwrapDocument(thisV) is not { } d || args.Length == 0)
                 throw new JsThrow(realm.NewTypeError("createElement requires a tag name"));
-            var elt = d.CreateElement(JsValue.ToStringValue(args[0]));
-            return JsValue.Object(DomWrappers.Wrap(realm, elt));
+            var name = JsValue.ToStringValue(args[0]);
+            // DOM §4.5: an invalid Name throws InvalidCharacterError.
+            if (!IsValidName(name))
+                throw DomExceptionBinding.Throw(realm, "InvalidCharacterError", $"'{name}' is not a valid element name");
+            return JsValue.Object(DomWrappers.Wrap(realm, d.CreateElement(name)));
+        }, length: 1);
+        EventTargetBinding.DefineMethod(realm, docProto, "createElementNS", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapDocument(thisV) is not { } d || args.Length < 2)
+                throw new JsThrow(realm.NewTypeError("createElementNS requires (namespace, qualifiedName)"));
+            var ns = args[0].IsNullish ? null : JsValue.ToStringValue(args[0]);
+            var qname = args[1].IsNullish ? "" : JsValue.ToStringValue(args[1]);
+            ValidateQualifiedName(realm, ns, qname); // throws InvalidCharacterError / NamespaceError
+            return JsValue.Object(DomWrappers.Wrap(realm, d.CreateElementNS(ns, qname)));
+        }, length: 2);
+        EventTargetBinding.DefineMethod(realm, docProto, "createEvent", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapDocument(thisV) is null)
+                throw new JsThrow(realm.NewTypeError("createEvent called on non-Document"));
+            return EventTargetBinding.CreateLegacyEvent(realm, args.Length > 0 ? JsValue.ToStringValue(args[0]) : "");
         }, length: 1);
         EventTargetBinding.DefineMethod(realm, docProto, "createTextNode", (thisV, args) =>
         {
@@ -822,6 +959,13 @@ public static class NodeBindings
             var t = d.CreateTextNode(args.Length > 0 ? JsValue.ToStringValue(args[0]) : "");
             return JsValue.Object(DomWrappers.Wrap(realm, t));
         }, length: 1);
+        EventTargetBinding.DefineMethod(realm, docProto, "createProcessingInstruction", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapDocument(thisV) is not { } d || args.Length < 2)
+                throw new JsThrow(realm.NewTypeError("createProcessingInstruction requires (target, data)"));
+            return JsValue.Object(DomWrappers.Wrap(realm,
+                d.CreateProcessingInstruction(JsValue.ToStringValue(args[0]), JsValue.ToStringValue(args[1]))));
+        }, length: 2);
         EventTargetBinding.DefineMethod(realm, docProto, "createComment", (thisV, args) =>
         {
             if (DomWrappers.UnwrapDocument(thisV) is not { } d)
@@ -867,6 +1011,30 @@ public static class NodeBindings
             return JsValue.Object(DomWrappers.Wrap(realm, doc));
         }, length: 1);
 
+        // createDocumentType(qualifiedName, publicId, systemId) — DOM §4.5.1
+        EventTargetBinding.DefineMethod(realm, impl, "createDocumentType", (_, args) =>
+        {
+            var qname = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+            var publicId = args.Length > 1 ? JsValue.ToStringValue(args[1]) : "";
+            var systemId = args.Length > 2 ? JsValue.ToStringValue(args[2]) : "";
+            return JsValue.Object(DomWrappers.Wrap(realm, new DocumentType(qname, publicId, systemId)));
+        }, length: 3);
+
+        // createDocument(namespace, qualifiedName, doctype) — DOM §4.5.1. Builds
+        // an XML document; if a qualified name is given it becomes the document
+        // element, and a passed doctype is inserted first.
+        EventTargetBinding.DefineMethod(realm, impl, "createDocument", (_, args) =>
+        {
+            var ns = args.Length > 0 && !args[0].IsNullish ? JsValue.ToStringValue(args[0]) : null;
+            var qname = args.Length > 1 && !args[1].IsNullish ? JsValue.ToStringValue(args[1]) : "";
+            var doc = new Document();
+            if (args.Length > 2 && DomWrappers.UnwrapAs<DocumentType>(args[2]) is { } dt)
+                doc.AppendChild(dt);
+            if (!string.IsNullOrEmpty(qname))
+                doc.AppendChild(doc.CreateElementNS(ns, qname));
+            return JsValue.Object(DomWrappers.Wrap(realm, doc));
+        }, length: 3);
+
         // createDocumentFragment() — convenience stub
         EventTargetBinding.DefineMethod(realm, impl, "createDocumentFragment", (_, _) =>
         {
@@ -893,6 +1061,67 @@ public static class NodeBindings
     {
         var arr = new JsArray(realm, items);
         return JsValue.Object(arr);
+    }
+
+    // ---- DOM Name / QName validation (DOM §1 "validate", §4.5). Approximates
+    // the XML Name production: a NameStartChar (letter/_/:) followed by
+    // NameChars (+digit/-/.). Sufficient for the WPT create*Element error cases.
+    private const string XmlNamespace = "http://www.w3.org/XML/1998/namespace";
+    private const string XmlnsNamespace = "http://www.w3.org/2000/xmlns/";
+
+    /// <summary>Coerce ChildNode/ParentNode varargs to host nodes: a node arg
+    /// passes through; anything else becomes a Text node (DOM §4.2.1).</summary>
+    private static List<Node> CoerceNodes(JsRealm realm, Node context, JsValue[] args)
+    {
+        var doc = context.OwnerDocument ?? context as Document ?? new Document();
+        var list = new List<Node>(args.Length);
+        foreach (var a in args)
+            list.Add(DomWrappers.UnwrapNode(a) is { } n ? n : doc.CreateTextNode(JsValue.ToStringValue(a)));
+        return list;
+    }
+
+    private static bool IsNameStart(char c) => char.IsLetter(c) || c == '_' || c == ':';
+    private static bool IsNameChar(char c) => IsNameStart(c) || char.IsAsciiDigit(c) || c == '-' || c == '.';
+
+    private static bool IsValidName(string name)
+    {
+        if (string.IsNullOrEmpty(name) || !IsNameStart(name[0])) return false;
+        for (var i = 1; i < name.Length; i++)
+            if (!IsNameChar(name[i])) return false;
+        return true;
+    }
+
+    /// <summary>A qualified name is one or two valid Names joined by a single
+    /// internal colon.</summary>
+    private static bool IsValidQName(string qname, out string? prefix)
+    {
+        prefix = null;
+        if (string.IsNullOrEmpty(qname)) return false;
+        var colon = qname.IndexOf(':', StringComparison.Ordinal);
+        if (colon < 0) return IsValidName(qname);
+        if (colon == 0 || colon == qname.Length - 1) return false;
+        var p = qname[..colon];
+        var l = qname[(colon + 1)..];
+        if (l.Contains(':', StringComparison.Ordinal) || !IsValidName(p) || !IsValidName(l)) return false;
+        prefix = p;
+        return true;
+    }
+
+    /// <summary>DOM §4.5 "validate and extract" for createElementNS/setAttributeNS.
+    /// Throws InvalidCharacterError for a malformed qualified name and
+    /// NamespaceError for prefix/namespace mismatches.</summary>
+    private static void ValidateQualifiedName(JsRealm realm, string? ns, string qname)
+    {
+        if (!IsValidQName(qname, out var prefix))
+            throw DomExceptionBinding.Throw(realm, "InvalidCharacterError", $"'{qname}' is not a valid qualified name");
+        var nsOrNull = string.IsNullOrEmpty(ns) ? null : ns;
+        if (prefix is not null && nsOrNull is null)
+            throw DomExceptionBinding.Throw(realm, "NamespaceError", "a prefix requires a non-null namespace");
+        if (prefix == "xml" && nsOrNull != XmlNamespace)
+            throw DomExceptionBinding.Throw(realm, "NamespaceError", "the 'xml' prefix requires the XML namespace");
+        var isXmlns = qname == "xmlns" || prefix == "xmlns";
+        if (isXmlns != (nsOrNull == XmlnsNamespace))
+            throw DomExceptionBinding.Throw(realm, "NamespaceError", "the xmlns name/namespace must match");
     }
 
     /// <summary>Run the HTML fragment parsing algorithm for <paramref name="markup"/>
@@ -1050,10 +1279,14 @@ public static class NodeBindings
 
     private static Element CloneElement(Document doc, Element el)
     {
-        var clone = doc.CreateElement(el.TagName, el.Namespace);
-        // Copy attributes.
+        // Preserve case + prefix for namespaced elements; HTML elements keep the
+        // lowercasing path.
+        var clone = el.Prefix is not null || el.Namespace != Element.HtmlNamespace
+            ? doc.CreateElementNS(el.Namespace, el.Prefix is null ? el.LocalName : el.Prefix + ":" + el.LocalName)
+            : doc.CreateElement(el.LocalName);
+        // Copy attributes, preserving any namespace/qualified name.
         foreach (var attr in el.Attributes)
-            clone.SetAttribute(attr.Name, attr.Value ?? "");
+            clone.Attributes.SetNamedItemNS(attr);
         return clone;
     }
 

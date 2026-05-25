@@ -20,6 +20,34 @@ public class Element : Node
             value => SetAttribute("class", value));
     }
 
+    // Namespace-aware construction (createElementNS / createDocument): unlike the
+    // HTML ctor above it preserves the qualified name's case and splits the
+    // prefix, so prefix/localName/tagName and namespace lookups are correct.
+    private Element(string qualifiedName, string localName, string? prefix, string @namespace)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(qualifiedName);
+        TagName = qualifiedName;
+        LocalName = localName;
+        Prefix = prefix;
+        Namespace = @namespace;
+        Attributes = new NamedNodeMap(this);
+        ClassList = new DomTokenList(
+            () => GetAttribute("class") ?? string.Empty,
+            value => SetAttribute("class", value));
+    }
+
+    /// <summary>DOM §4.5 createElementNS construction: parse <paramref name="qualifiedName"/>
+    /// into prefix + local name (case preserved). A null/empty namespace maps to
+    /// the HTML namespace (this engine models Namespace as non-null).</summary>
+    public static Element CreateNamespaced(string? @namespace, string qualifiedName)
+    {
+        ArgumentNullException.ThrowIfNull(qualifiedName);
+        var i = qualifiedName.IndexOf(':', StringComparison.Ordinal);
+        var prefix = i >= 0 ? qualifiedName[..i] : null;
+        var local = i >= 0 ? qualifiedName[(i + 1)..] : qualifiedName;
+        return new Element(qualifiedName, local, prefix, string.IsNullOrEmpty(@namespace) ? HtmlNamespace : @namespace);
+    }
+
     public override NodeKind Kind => NodeKind.Element;
 
     public override string NodeName => TagName;
@@ -77,6 +105,50 @@ public class Element : Node
     {
         ArgumentNullException.ThrowIfNull(name);
         Attributes.RemoveNamedItem(name);
+    }
+
+    // ---- Namespace-aware attributes (DOM §4.9). setAttributeNS preserves the
+    // qualified name's case (unlike HTML setAttribute, which lower-cases).
+
+    public string? GetAttributeNS(string? @namespace, string localName)
+    {
+        ArgumentNullException.ThrowIfNull(localName);
+        return Attributes.GetNamedItemNS(@namespace, localName)?.Value;
+    }
+
+    public void SetAttributeNS(string? @namespace, string qualifiedName, string value)
+    {
+        ArgumentNullException.ThrowIfNull(qualifiedName);
+        ArgumentNullException.ThrowIfNull(value);
+        Attributes.SetNamedItemNS(new Attr(qualifiedName, value, string.IsNullOrEmpty(@namespace) ? null : @namespace));
+    }
+
+    public bool HasAttributeNS(string? @namespace, string localName)
+    {
+        ArgumentNullException.ThrowIfNull(localName);
+        return Attributes.GetNamedItemNS(@namespace, localName) is not null;
+    }
+
+    public void RemoveAttributeNS(string? @namespace, string localName)
+    {
+        ArgumentNullException.ThrowIfNull(localName);
+        Attributes.RemoveNamedItemNS(@namespace, localName);
+    }
+
+    /// <summary>DOM §4.9 getElementsByTagNameNS over this element's descendants.
+    /// "*" matches any namespace / any local name.</summary>
+    public IEnumerable<Element> GetElementsByTagNameNS(string? @namespace, string localName)
+    {
+        ArgumentNullException.ThrowIfNull(localName);
+        var anyNs = @namespace == "*";
+        var anyLocal = localName == "*";
+        var ns = string.IsNullOrEmpty(@namespace) ? null : @namespace;
+        foreach (var d in DescendantElements())
+        {
+            if (!anyNs && !string.Equals(d.Namespace, ns, StringComparison.Ordinal)) continue;
+            if (!anyLocal && !d.LocalName.Equals(localName, StringComparison.Ordinal)) continue;
+            yield return d;
+        }
     }
 
     public override string ToString() => $"<{TagName}>";

@@ -7,7 +7,9 @@ public class Event
 {
     public Event(string type, EventInit init = default)
     {
-        ArgumentException.ThrowIfNullOrEmpty(type);
+        // Empty type is allowed: document.createEvent() produces an event whose
+        // type is "" until legacy initEvent() sets it (DOM §2.9).
+        ArgumentNullException.ThrowIfNull(type);
         Type = type;
         Bubbles = init.Bubbles;
         Cancelable = init.Cancelable;
@@ -15,13 +17,33 @@ public class Event
         TimeStamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
     }
 
-    public string Type { get; }
+    public string Type { get; private set; }
     public EventTarget? Target { get; internal set; }
     public EventTarget? CurrentTarget { get; internal set; }
     public EventPhase EventPhase { get; internal set; } = EventPhase.None;
-    public bool Bubbles { get; }
-    public bool Cancelable { get; }
+    public bool Bubbles { get; private set; }
+    public bool Cancelable { get; private set; }
     public bool Composed { get; }
+
+    /// <summary>True once a legacy <c>document.createEvent</c> + <c>initEvent</c>
+    /// has initialized this event (or for constructor-built events, always).
+    /// An uninitialized event must not be dispatched (DOM §2.9).</summary>
+    public bool Initialized { get; internal set; } = true;
+
+    /// <summary>Legacy <c>Event.initEvent</c> (DOM §2.9). Re-initializes a
+    /// not-yet-dispatched event; a no-op while dispatching. Sets type/bubbles/
+    /// cancelable and clears the propagation + canceled flags.</summary>
+    public void InitEvent(string type, bool bubbles, bool cancelable)
+    {
+        if (DispatchFlag) return;
+        Initialized = true;
+        Type = type;
+        Bubbles = bubbles;
+        Cancelable = cancelable;
+        PropagationStopped = false;
+        ImmediatePropagationStopped = false;
+        DefaultPrevented = false;
+    }
     public bool DefaultPrevented { get; internal set; }
     public bool IsTrusted { get; internal set; }
     public long TimeStamp { get; }

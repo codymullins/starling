@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MSTest" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Starling.Engine\Starling.Engine.csproj" />
+    <ProjectReference Include="..\..\src\Starling.Dom\Starling.Dom.csproj" />
+    <ProjectReference Include="..\..\src\Starling.Layout\Starling.Layout.csproj" />
+    <ProjectReference Include="..\..\src\Starling.Common\Starling.Common.csproj" />
+  </ItemGroup>
+</Project>
