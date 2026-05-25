@@ -147,6 +147,7 @@ public sealed class JsRealm
     public JsObject? DocumentPrototype { get; set; }
     public JsObject? EventPrototype { get; set; }
     public JsObject? CustomEventPrototype { get; set; }
+    public JsObject? DomExceptionPrototype { get; set; }
     public JsObject? WindowPrototype { get; set; }
     public JsObject? EventTargetConstructor { get; set; }
     public JsObject? EventConstructor { get; set; }

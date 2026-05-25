@@ -67,6 +67,7 @@ public static class WindowBinding
         // 1) EventTarget + Event + Node/Element/Document prototypes.
         EventTargetBinding.Install(realm);
         NodeBindings.Install(realm);
+        DomExceptionBinding.Install(realm);
 
         // 2) Window prototype: inherits from EventTarget so `addEventListener`
         //    resolves both as `window.addEventListener(...)` and unqualified.

@@ -854,16 +854,20 @@ public static class NodeBindings
         {
             if (DomWrappers.UnwrapDocument(thisV) is not { } d || args.Length == 0)
                 throw new JsThrow(realm.NewTypeError("createElement requires a tag name"));
-            var elt = d.CreateElement(JsValue.ToStringValue(args[0]));
-            return JsValue.Object(DomWrappers.Wrap(realm, elt));
+            var name = JsValue.ToStringValue(args[0]);
+            // DOM §4.5: an invalid Name throws InvalidCharacterError.
+            if (!IsValidName(name))
+                throw DomExceptionBinding.Throw(realm, "InvalidCharacterError", $"'{name}' is not a valid element name");
+            return JsValue.Object(DomWrappers.Wrap(realm, d.CreateElement(name)));
         }, length: 1);
         EventTargetBinding.DefineMethod(realm, docProto, "createElementNS", (thisV, args) =>
         {
             if (DomWrappers.UnwrapDocument(thisV) is not { } d || args.Length < 2)
                 throw new JsThrow(realm.NewTypeError("createElementNS requires (namespace, qualifiedName)"));
             var ns = args[0].IsNullish ? null : JsValue.ToStringValue(args[0]);
-            var elt = d.CreateElement(JsValue.ToStringValue(args[1]), ns);
-            return JsValue.Object(DomWrappers.Wrap(realm, elt));
+            var qname = args[1].IsNullish ? "" : JsValue.ToStringValue(args[1]);
+            ValidateQualifiedName(realm, ns, qname); // throws InvalidCharacterError / NamespaceError
+            return JsValue.Object(DomWrappers.Wrap(realm, d.CreateElement(qname, ns)));
         }, length: 2);
         EventTargetBinding.DefineMethod(realm, docProto, "createEvent", (thisV, args) =>
         {
@@ -973,6 +977,56 @@ public static class NodeBindings
     {
         var arr = new JsArray(realm, items);
         return JsValue.Object(arr);
+    }
+
+    // ---- DOM Name / QName validation (DOM §1 "validate", §4.5). Approximates
+    // the XML Name production: a NameStartChar (letter/_/:) followed by
+    // NameChars (+digit/-/.). Sufficient for the WPT create*Element error cases.
+    private const string XmlNamespace = "http://www.w3.org/XML/1998/namespace";
+    private const string XmlnsNamespace = "http://www.w3.org/2000/xmlns/";
+
+    private static bool IsNameStart(char c) => char.IsLetter(c) || c == '_' || c == ':';
+    private static bool IsNameChar(char c) => IsNameStart(c) || char.IsAsciiDigit(c) || c == '-' || c == '.';
+
+    private static bool IsValidName(string name)
+    {
+        if (string.IsNullOrEmpty(name) || !IsNameStart(name[0])) return false;
+        for (var i = 1; i < name.Length; i++)
+            if (!IsNameChar(name[i])) return false;
+        return true;
+    }
+
+    /// <summary>A qualified name is one or two valid Names joined by a single
+    /// internal colon.</summary>
+    private static bool IsValidQName(string qname, out string? prefix)
+    {
+        prefix = null;
+        if (string.IsNullOrEmpty(qname)) return false;
+        var colon = qname.IndexOf(':', StringComparison.Ordinal);
+        if (colon < 0) return IsValidName(qname);
+        if (colon == 0 || colon == qname.Length - 1) return false;
+        var p = qname[..colon];
+        var l = qname[(colon + 1)..];
+        if (l.Contains(':', StringComparison.Ordinal) || !IsValidName(p) || !IsValidName(l)) return false;
+        prefix = p;
+        return true;
+    }
+
+    /// <summary>DOM §4.5 "validate and extract" for createElementNS/setAttributeNS.
+    /// Throws InvalidCharacterError for a malformed qualified name and
+    /// NamespaceError for prefix/namespace mismatches.</summary>
+    private static void ValidateQualifiedName(JsRealm realm, string? ns, string qname)
+    {
+        if (!IsValidQName(qname, out var prefix))
+            throw DomExceptionBinding.Throw(realm, "InvalidCharacterError", $"'{qname}' is not a valid qualified name");
+        var nsOrNull = string.IsNullOrEmpty(ns) ? null : ns;
+        if (prefix is not null && nsOrNull is null)
+            throw DomExceptionBinding.Throw(realm, "NamespaceError", "a prefix requires a non-null namespace");
+        if (prefix == "xml" && nsOrNull != XmlNamespace)
+            throw DomExceptionBinding.Throw(realm, "NamespaceError", "the 'xml' prefix requires the XML namespace");
+        var isXmlns = qname == "xmlns" || prefix == "xmlns";
+        if (isXmlns != (nsOrNull == XmlnsNamespace))
+            throw DomExceptionBinding.Throw(realm, "NamespaceError", "the xmlns name/namespace must match");
     }
 
     /// <summary>Run the HTML fragment parsing algorithm for <paramref name="markup"/>
