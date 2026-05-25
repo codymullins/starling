@@ -96,12 +96,16 @@ public sealed class JsVm
     /// code's this / new.target / super resolve as in §19.2.1.1. Does not drain
     /// microtasks (the outermost frame owns the drain).</summary>
     internal JsValue RunDirectEval(Chunk chunk, EvalScope evalScope, JsFunction? caller,
-        JsValue callerThis, JsObject? callerNewTarget) =>
+        JsValue callerThis, JsObject? callerNewTarget, EvalVarStore? callerVarStore = null) =>
         Run(chunk, args: Array.Empty<JsValue>(),
             thisValue: callerThis,
             upvalues: Array.Empty<JsValue>(), drainMicrotasks: false,
             currentFunction: caller, newTarget: callerNewTarget,
-            suspension: null, evalScope: evalScope);
+            suspension: null, evalScope: evalScope,
+            // wp:M3-73 — thread the caller frame's eval-introduced var store so
+            // the eval body's DeclareEvalVar/StoreEvalVar write into it and its
+            // own reads/writes of those names resolve through it.
+            frameVarStore: callerVarStore);
 
     /// <summary>wp:M3-71/72 — §19.2.1.1 PerformEval (direct path). Parse + compile
     /// <paramref name="args"/>[0] inheriting the CALLER's lexical context, then
@@ -115,12 +119,21 @@ public sealed class JsVm
     /// <see cref="Bytecode.EvalScopeDescriptor"/> + the live locals/upvalues). The
     /// eval body's free identifiers that name a caller binding read/write that
     /// live binding, and the §19.2.1.3 EvalDeclarationInstantiation early-error
-    /// checks run against the caller's lexical bindings. DEFERRED: injecting the
-    /// eval body's OWN new var/function bindings into the caller's
-    /// var-environment so they persist after eval returns (its own top-level
-    /// var/function still bind globally, as for indirect eval).</para></summary>
+    /// checks run against the caller's lexical bindings.</para>
+    /// <para>wp:M3-73 — a NON-strict direct eval whose caller is a function injects
+    /// the eval body's OWN top-level var/function declarations into the caller's
+    /// variable environment so they persist after eval returns (§19.2.1.3
+    /// non-global branch). Those new bindings live in the caller frame's
+    /// <see cref="EvalVarStore"/> (<paramref name="callerVarStore"/>, created
+    /// lazily here and propagated back to the caller frame via <c>ref</c>); a
+    /// top-level var/function whose name IS an existing caller binding updates
+    /// that live binding instead. A STRICT direct eval keeps its own
+    /// var-environment (no injection — its top-level var/function bind globally),
+    /// and a script-top (non-function) caller keeps the existing global-injection
+    /// path.</para></summary>
     private JsValue PerformDirectEval(JsValue[] args, EvalScope callerScope,
-        JsFunction? caller, JsValue callerThis, JsObject? callerNewTarget, bool callerStrict)
+        JsFunction? caller, JsValue callerThis, JsObject? callerNewTarget, bool callerStrict,
+        ref EvalVarStore? callerVarStore)
     {
         var x = args.Length > 0 ? args[0] : JsValue.Undefined;
         if (!x.IsString) return x;
@@ -136,6 +149,7 @@ public sealed class JsVm
         var inDerivedCtor = caller is { ConstructorKind: ClassConstructorKind.Derived };
 
         Chunk chunk;
+        bool injectVars;
         try
         {
             var ctx = new Parse.JsParser.DirectEvalContext(
@@ -161,18 +175,32 @@ public sealed class JsVm
                 }
             }
 
+            // wp:M3-73 — inject the eval body's own top-level var/function
+            // declarations into the CALLER's var-environment iff the eval is
+            // non-strict AND the caller is a function (a function var-env, not the
+            // global one). A strict eval keeps its own var-env; a script-top
+            // caller keeps the existing global-injection behaviour.
+            injectVars = !evalIsStrict && inFunction;
+
             var callerNames = new HashSet<string>(callerScope.Names, StringComparer.Ordinal);
-            chunk = JsCompiler.CompileForDirectEval(program, "<eval>", callerNames);
+            chunk = JsCompiler.CompileForDirectEval(program, "<eval>", callerNames, injectVars);
         }
         catch (Parse.JsParseException ex)
         {
             throw new JsThrow(_runtime.Realm.NewSyntaxError(ex.Message));
         }
 
+        // wp:M3-73 — when injecting, ensure the caller frame has a var store and
+        // run the eval body against it so its DeclareEvalVar/StoreEvalVar land in
+        // the caller's environment and its own reads/writes resolve there.
+        if (injectVars)
+            callerVarStore ??= new EvalVarStore();
+
         // Run on the caller's function (so super / this / new.target resolve)
         // with the caller scope installed so free identifiers reach the caller's
-        // live bindings.
-        return RunDirectEval(chunk, callerScope, caller, callerThis, callerNewTarget);
+        // live bindings, and the caller's eval-introduced var store threaded in.
+        return RunDirectEval(chunk, callerScope, caller, callerThis, callerNewTarget,
+            callerVarStore);
     }
 
     /// <summary>Invoke a JS function with an explicit <c>this</c> and args.
@@ -201,7 +229,11 @@ public sealed class JsVm
         if (fn.Kind == JsFunctionKind.AsyncGenerator)
             return StartAsyncGeneratorBody(fn, thisValue, args);
         return Run(fn.Body, args, thisValue, fn.Upvalues, drainMicrotasks: false,
-               currentFunction: fn, newTarget: null);
+               currentFunction: fn, newTarget: null,
+               // wp:M3-73 — inherit the eval-introduced var store this closure
+               // captured at creation so its free identifiers resolve through the
+               // vars a direct eval injected into the enclosing var-environment.
+               frameVarStore: fn.CapturedEvalVarStore);
     }
 
     /// <summary>Construct a JS function (spec [[Construct]] for ordinary
@@ -225,7 +257,8 @@ public sealed class JsVm
             try
             {
                 var result = Run(fn.Body, args, sentinel, fn.Upvalues,
-                    drainMicrotasks: false, currentFunction: fn, newTarget: newTarget);
+                    drainMicrotasks: false, currentFunction: fn, newTarget: newTarget,
+                    frameVarStore: fn.CapturedEvalVarStore); // wp:M3-73
                 if (result.IsObject) return result;
                 return _currentDerivedThis ?? throw new JsThrow(_runtime.Realm.NewReferenceError(
                     "Must call super constructor in derived class before returning from derived constructor"));
@@ -242,7 +275,8 @@ public sealed class JsVm
         var instance = _runtime.Realm.NewObjectWithProto(proto);
         var thisVal = JsValue.Object(instance);
         var resultBase = Run(fn.Body, args, thisVal, fn.Upvalues,
-            drainMicrotasks: false, currentFunction: fn, newTarget: newTarget);
+            drainMicrotasks: false, currentFunction: fn, newTarget: newTarget,
+            frameVarStore: fn.CapturedEvalVarStore); // wp:M3-73
         // Class constructors implicit return their own `this`; an explicit
         // return of a non-object is ignored (matching §10.2.1.4).
         return resultBase.IsObject ? resultBase : thisVal;
@@ -318,7 +352,8 @@ public sealed class JsVm
     private JsValue Run(Chunk chunk, JsValue[] args, JsValue thisValue,
         IReadOnlyList<JsValue> upvalues, bool drainMicrotasks,
         JsFunction? currentFunction, JsObject? newTarget,
-        SuspendedFrame? suspension = null, EvalScope? evalScope = null)
+        SuspendedFrame? suspension = null, EvalScope? evalScope = null,
+        EvalVarStore? frameVarStore = null)
     {
         // Publish this VM on the realm so native intrinsics (JSON.parse
         // reviver, JSON.stringify replacer/toJSON, etc.) can dispatch JS
@@ -345,7 +380,7 @@ public sealed class JsVm
         _callDepth++;
         try
         {
-            var result = RunInner(chunk, args, thisValue, upvalues, currentFunction, newTarget, suspension, evalScope);
+            var result = RunInner(chunk, args, thisValue, upvalues, currentFunction, newTarget, suspension, evalScope, frameVarStore);
             // Drain microtasks while ActiveVm still points to this VM so
             // reaction jobs that dispatch JS handlers find a usable VM
             // (AbstractOperations.Call needs one for JsFunction). Only the
@@ -363,7 +398,8 @@ public sealed class JsVm
 
     private JsValue RunInner(Chunk chunk, JsValue[] args, JsValue thisValue,
         IReadOnlyList<JsValue> upvalues, JsFunction? currentFunction, JsObject? newTarget,
-        SuspendedFrame? suspension = null, EvalScope? evalScope = null)
+        SuspendedFrame? suspension = null, EvalScope? evalScope = null,
+        EvalVarStore? frameVarStore = null)
     {
         var stack = new JsValue[MaxStack];
         var sp = 0;
@@ -378,6 +414,17 @@ public sealed class JsVm
         // Drives strict StoreGlobal (assignment to undeclared global throws) and
         // strict Set/delete failures.
         var frameStrict = chunk.IsStrict;
+
+        // wp:M3-73 — a non-strict function whose body/params contain a direct
+        // eval eagerly allocates its var store at frame entry so closures it
+        // creates (incl. ones created in a parameter initializer BEFORE the eval
+        // runs) snapshot the same store and observe the bindings a later direct
+        // eval injects into this function's variable environment. Any
+        // already-captured parent store (frameVarStore, from
+        // JsFunction.CapturedEvalVarStore) becomes this store's lookup parent so
+        // a free identifier resolves own-env -> enclosing eval-env -> global.
+        if (!frameStrict && chunk.HasDirectEval)
+            frameVarStore = new EvalVarStore { Parent = frameVarStore };
 
         void Push(JsValue v)
         {
@@ -637,6 +684,15 @@ public sealed class JsVm
                     var idx = ReadU16();
                     var name = (string)constants[idx]!;
                     _lastLoadName = name;
+                    // wp:M3-73 — a free identifier resolves through this frame's
+                    // eval-introduced var store (a var/function a direct eval
+                    // injected) before the global object (spec order: local ->
+                    // upvalue -> var-env -> global).
+                    if (frameVarStore is not null && frameVarStore.TryGet(name, out var evCell0))
+                    {
+                        Push(evCell0.Value);
+                        break;
+                    }
                     var globalObj = _runtime.Realm.GlobalObject;
                     Push(AbstractOperations.Get(this, globalObj, name, JsValue.Object(globalObj)));
                     break;
@@ -654,6 +710,13 @@ public sealed class JsVm
                     var idx = ReadU16();
                     var name = (string)constants[idx]!;
                     _lastLoadName = name;
+                    // wp:M3-73 — resolve through the eval-introduced var store
+                    // before the global object (see LoadGlobal).
+                    if (frameVarStore is not null && frameVarStore.TryGet(name, out var evCell1))
+                    {
+                        Push(evCell1.Value);
+                        break;
+                    }
                     var realm = _runtime.Realm;
                     var globalObj = realm.GlobalObject;
                     if (!globalObj.Has(name))
@@ -671,6 +734,16 @@ public sealed class JsVm
                     var idx = ReadU16();
                     var name = (string)constants[idx]!;
                     var value = Pop();
+                    // wp:M3-73 — an assignment to a free identifier writes through
+                    // this frame's eval-introduced var store when it owns the name
+                    // (a var/function a direct eval injected), before the global
+                    // object. This is how the eval body's own `x = 4` and the
+                    // caller's post-eval writes hit the injected binding.
+                    if (frameVarStore is not null && frameVarStore.TryGet(name, out var evCell2))
+                    {
+                        evCell2.Value = value;
+                        break;
+                    }
                     var globalObj = _runtime.Realm.GlobalObject;
                     // §9.1.1.4.16 / §13.15.2 — in strict code, assigning to an
                     // identifier that resolves to no existing binding is a
@@ -755,6 +828,45 @@ public sealed class JsVm
                             PropertyDescriptor.Data(JsValue.Undefined,
                                 writable: true, enumerable: true, configurable: false));
                     }
+                    break;
+                }
+
+                // wp:M3-73 — §19.2.1.3 EvalDeclarationInstantiation (non-global
+                // branch). Idempotent pre-declaration of an eval-body top-level
+                // var/function name into the CALLER frame's eval-introduced var
+                // store (frameVarStore is the caller's store while running eval'd
+                // code). Re-declaring an existing binding has no effect.
+                case Opcode.DeclareEvalVar:
+                {
+                    var idx = ReadU16();
+                    var name = (string)constants[idx]!;
+                    frameVarStore?.Declare(name);
+                    break;
+                }
+                // wp:M3-73 — set an eval-introduced binding (created by
+                // DeclareEvalVar): a var initializer's value or a hoisted
+                // function declaration's function object.
+                case Opcode.StoreEvalVar:
+                {
+                    var idx = ReadU16();
+                    var name = (string)constants[idx]!;
+                    var value = Pop();
+                    frameVarStore?.Set(name, value);
+                    break;
+                }
+                // wp:M3-73 — `delete name` where the name may be an
+                // eval-introduced binding. Such bindings are configurable
+                // (§19.2.1.3), so remove it from the store and push true; if the
+                // name isn't there this is the ordinary sloppy identifier-delete
+                // no-op (still true). Deletes only at the store's OWN level — an
+                // enclosing function's binding (parent store) is not in scope to
+                // delete from here.
+                case Opcode.DeleteEvalVar:
+                {
+                    var idx = ReadU16();
+                    var name = (string)constants[idx]!;
+                    frameVarStore?.Delete(name);
+                    Push(JsValue.Boolean(true));
                     break;
                 }
 
@@ -1163,8 +1275,13 @@ public sealed class JsVm
                         // caller's actual bindings.
                         var descriptor = (Bytecode.EvalScopeDescriptor)constants[descIdx]!;
                         var callerScope = BuildEvalScope(descriptor, locals, upvalues);
+                        // wp:M3-73 — a non-strict direct eval whose caller is a
+                        // function injects its own top-level var/function bindings
+                        // into the caller frame's eval-introduced var store. Pass
+                        // it by ref so PerformDirectEval can create it lazily and
+                        // the rest of THIS frame then resolves those names too.
                         Push(PerformDirectEval(callArgs, callerScope, currentFunction, thisV,
-                            newTarget, frameStrict));
+                            newTarget, frameStrict, ref frameVarStore));
                         break;
                     }
                     if (!IsCallableValue(callee))
@@ -1195,6 +1312,12 @@ public sealed class JsVm
                     // resolves against the enclosing method's home object.
                     if (template.Body.IsArrow && currentFunction?.HomeObject is { } h1)
                         fn.HomeObject = h1;
+                    // wp:M3-73 — snapshot the creating frame's eval-introduced var
+                    // store so this closure resolves free identifiers through the
+                    // vars a direct eval injected into the enclosing function's
+                    // variable environment (spec scope chain) before the global.
+                    if (frameVarStore is not null)
+                        fn.CapturedEvalVarStore = frameVarStore;
                     Push(JsValue.Object(fn));
                     break;
                 }
@@ -1223,6 +1346,10 @@ public sealed class JsVm
                     // [[HomeObject]] lexically for `super.x` (see LoadFunction).
                     if (template.Body.IsArrow && currentFunction?.HomeObject is { } h2)
                         closure.HomeObject = h2;
+                    // wp:M3-73 — snapshot the creating frame's eval-introduced var
+                    // store (see LoadFunction).
+                    if (frameVarStore is not null)
+                        closure.CapturedEvalVarStore = frameVarStore;
                     Push(JsValue.Object(closure));
                     break;
                 }

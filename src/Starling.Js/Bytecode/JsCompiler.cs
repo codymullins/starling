@@ -164,6 +164,17 @@ public sealed partial class JsCompiler
     /// identifiers can also reach the caller's environment.</summary>
     private IReadOnlySet<string>? _callerScopeNames;
 
+    /// <summary>wp:M3-73 — true when compiling a NON-strict direct eval whose
+    /// caller is a function: the eval body's OWN top-level var/function
+    /// declarations are injected into the caller frame's eval-introduced var
+    /// store (via <see cref="Opcode.DeclareEvalVar"/> / <see cref="Opcode.StoreEvalVar"/>)
+    /// — or, when the name is an existing caller binding, written through
+    /// <see cref="Opcode.StoreEvalScope"/> — instead of binding on the global
+    /// object. Only consulted at the eval body's TOP-LEVEL (script-top of the
+    /// eval chunk); nested function bodies inside the eval'd code have their own
+    /// real var-environments and never inject.</summary>
+    private bool _evalInjectVars;
+
     public JsCompiler() : this(parent: null) { }
 
     private JsCompiler(JsCompiler? parent)
@@ -360,10 +371,20 @@ public sealed partial class JsCompiler
     /// object. The eval body's OWN top-level var/lexical declarations still bind
     /// as usual (on the global object for non-strict eval — Starling's existing
     /// script-top behaviour — which the EvalDeclarationInstantiation conflict
-    /// check in the caller guards against colliding with caller lexicals).</summary>
-    public static Chunk CompileForDirectEval(Program program, string? name, IReadOnlySet<string> callerScopeNames)
+    /// check in the caller guards against colliding with caller lexicals).
+    /// <para>wp:M3-73 — when <paramref name="injectVars"/> is true (a non-strict
+    /// direct eval whose caller is a function), the eval body's OWN top-level
+    /// <c>var</c>/function declarations are instead injected into the caller's
+    /// variable environment: a name that is already a caller binding writes
+    /// through that live binding (<see cref="Opcode.StoreEvalScope"/>), and a
+    /// brand-new name lands in the caller frame's eval-introduced var store
+    /// (<see cref="Opcode.DeclareEvalVar"/> / <see cref="Opcode.StoreEvalVar"/>).
+    /// The eval body's reads/writes of those new names resolve through that store
+    /// at runtime (the global-fallback opcodes consult it first).</para></summary>
+    public static Chunk CompileForDirectEval(Program program, string? name,
+        IReadOnlySet<string> callerScopeNames, bool injectVars = false)
     {
-        var c = new JsCompiler { _callerScopeNames = callerScopeNames };
+        var c = new JsCompiler { _callerScopeNames = callerScopeNames, _evalInjectVars = injectVars };
         c._b.IsStrict = program.Strict;
         c._b.SourcePath = name;
         c.RunCaptureAnalysisForScript(program.Body);
@@ -393,6 +414,22 @@ public sealed partial class JsCompiler
 
     private void EmitProgram(Program p, bool keepLastExpression)
     {
+        // wp:M3-73 — §19.2.1.3 EvalDeclarationInstantiation (non-global branch):
+        // before any eval-body code runs, idempotently pre-declare every
+        // top-level var-declared name (and top-level function name) that is NOT
+        // already an existing caller binding into the caller frame's
+        // eval-introduced var store, so a `var x` is visible (as undefined) to
+        // reads that precede its textual position and a re-`var` of an existing
+        // store binding is a no-op. Names that ARE existing caller bindings are
+        // skipped (the binding already exists; re-declaration has no effect).
+        if (_evalInjectVars)
+        {
+            foreach (var vn in Parse.JsParser.EvalVarDeclaredNames(p))
+            {
+                if (_callerScopeNames is { } cs && cs.Contains(vn)) continue;
+                _b.EmitU16(Opcode.DeclareEvalVar, _b.AddConstant(vn));
+            }
+        }
         // gap:closure-write-back — pre-allocate captured top-level vars
         // BEFORE we hoist function declarations, so a hoisted function's
         // body resolves a captured name to the parent's local (cell) slot
@@ -485,7 +522,15 @@ public sealed partial class JsCompiler
             EmitFunctionConstructor(fd.Name.Name, chunk,
                 CountSimpleParams(fd.Params), sub._upvalues,
                 ResolveFunctionKind(fd.Async, fd.Generator));
-            if (isScriptTop)
+            if (isScriptTop && _evalInjectVars)
+            {
+                // wp:M3-73 — §19.2.1.3 (non-global branch). The function object is
+                // on the stack; bind it into the caller's variable environment:
+                // an existing caller binding is updated through its live storage,
+                // a new name lands in the caller frame's eval-introduced var store.
+                EmitEvalInjectedStore(fd.Name.Name);
+            }
+            else if (isScriptTop)
             {
                 // §16.1.7 GlobalDeclarationInstantiation — a hoisted function
                 // declaration creates a global binding before any code runs.
@@ -501,6 +546,21 @@ public sealed partial class JsCompiler
                 EmitStoreLocalSlot(slot!.Value);
             }
         }
+    }
+
+    /// <summary>wp:M3-73 — store the value on top of the stack into an eval-body
+    /// top-level <c>var</c>/function binding being injected into the caller's
+    /// variable environment. A name that is already an existing caller binding
+    /// writes through its live storage (<see cref="Opcode.StoreEvalScope"/>);
+    /// a brand-new name is set in the caller frame's eval-introduced var store
+    /// (the binding was pre-declared by <see cref="Opcode.DeclareEvalVar"/>).
+    /// Only valid while <see cref="_evalInjectVars"/> is set.</summary>
+    private void EmitEvalInjectedStore(string name)
+    {
+        if (_callerScopeNames is { } cs && cs.Contains(name))
+            _b.EmitU16(Opcode.StoreEvalScope, _b.AddConstant(name));
+        else
+            _b.EmitU16(Opcode.StoreEvalVar, _b.AddConstant(name));
     }
 
     /// <summary>gap:closure-write-back — emit the correct store opcode for
@@ -1329,10 +1389,23 @@ public sealed partial class JsCompiler
                     {
                         EmitWithGuarded(Opcode.WithStoreOrMiss, id.Name, () =>
                         {
-                            if (IsScriptTop) _b.EmitU16(Opcode.StoreGlobal, _b.AddConstant(id.Name));
+                            // wp:M3-73 — inject a top-level `var` initializer into
+                            // the caller's var-environment (let/const keep their
+                            // own script-top/global lexical binding).
+                            if (_evalInjectVars && functionScoped) EmitEvalInjectedStore(id.Name);
+                            else if (IsScriptTop) _b.EmitU16(Opcode.StoreGlobal, _b.AddConstant(id.Name));
                             else if (TryResolveLocal(id.Name, out var s)) EmitStoreLocalSlot(s);
                             else _b.EmitU16(Opcode.StoreGlobal, _b.AddConstant(id.Name));
                         });
+                    }
+                    // wp:M3-73 — a non-strict direct eval whose caller is a
+                    // function injects its top-level `var` initializer into the
+                    // caller's var-environment (an existing caller binding's live
+                    // storage, else the eval-introduced var store). let/const fall
+                    // through to the global script-top lexical binding below.
+                    else if (_evalInjectVars && functionScoped)
+                    {
+                        EmitEvalInjectedStore(id.Name);
                     }
                     // gap:script-top-var-not-global — at script top, the
                     // binding is a global property (not a local slot), so
@@ -2650,6 +2723,19 @@ public sealed partial class JsCompiler
                     () => _b.Emit(Opcode.LoadTrue));
                 return;
             }
+            // wp:M3-73 — in a non-strict direct eval (whose caller is a function),
+            // `delete name` for a free identifier may target a binding the eval
+            // introduced into the caller's var-environment. Those bindings are
+            // configurable, so the delete actually removes it from the
+            // eval-introduced var store (a later read then throws ReferenceError);
+            // a name not in the store is the ordinary sloppy no-op (true).
+            if (_evalInjectVars
+                && !TryResolveLocal(delId.Name, out _)
+                && !TryResolveUpvalue(delId.Name, out _))
+            {
+                _b.EmitU16(Opcode.DeleteEvalVar, _b.AddConstant(delId.Name));
+                return;
+            }
             _b.Emit(Opcode.LoadTrue);
             return;
         }
@@ -3174,6 +3260,12 @@ public sealed partial class JsCompiler
             // the VM can build the caller scope the eval'd code reads/writes and
             // run the §19.2.1.3 EvalDeclarationInstantiation early-error checks.
             var descIdx = _b.AddConstant(BuildEvalScopeDescriptor());
+            // wp:M3-73 — this chunk lexically contains a direct eval, so a
+            // non-strict frame built from it eagerly allocates a var store at
+            // entry: var/function bindings the eval injects into this function's
+            // variable environment are then visible to the rest of the frame AND
+            // to closures it creates (which snapshot the store at creation).
+            _b.HasDirectEval = true;
             EmitExpression(call.Callee);                  // [callee]
             foreach (var arg in call.Arguments) EmitExpression(arg);
             RecordPos(call);
@@ -3628,6 +3720,13 @@ public sealed partial class JsCompiler
                 // keeps its function value.
                 if (IsScriptTop)
                 {
+                    // wp:M3-73 — a non-strict direct eval whose caller is a
+                    // function injects its top-level vars into the caller's
+                    // var-environment, not the global object. The binding was
+                    // already pre-declared into the caller's eval-introduced var
+                    // store (EmitProgram), or already exists as a caller binding;
+                    // either way nothing to declare here.
+                    if (_evalInjectVars) return;
                     _b.EmitU16(Opcode.DeclareGlobalVar, _b.AddConstant(id.Name));
                     return;
                 }
