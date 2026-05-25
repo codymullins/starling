@@ -201,7 +201,27 @@ public sealed partial class JsParser
             throw new JsParseException(
                 "async function declaration cannot appear in a single-statement context",
                 _current.Start);
+        // The iteration-body labelled-function ban (set by ParseIterationBody)
+        // only applies to a label chain DIRECTLY in the body position. Once we
+        // enter any non-label statement (a block, etc.) the Annex B extension
+        // applies normally again, so clear the flag here.
+        var isLabel = _current.Kind == JsTokenKind.Identifier
+            && _lex.Peek().Kind == JsTokenKind.Colon;
+        if (!isLabel) _forbidLabelledFunction = false;
         return ParseStatement();
+    }
+
+    /// <summary>Parse the body of an iteration statement
+    /// (<c>for</c>/<c>for-in</c>/<c>for-of</c>/<c>while</c>/<c>do-while</c>). Same
+    /// as <see cref="ParseSubStatement"/> but additionally forbids a labelled
+    /// FunctionDeclaration body (Annex B.3.2 does not extend to iteration
+    /// bodies, so <c>for (;;) lbl: function f(){}</c> is always a SyntaxError).</summary>
+    private Statement ParseIterationBody()
+    {
+        var saved = _forbidLabelledFunction;
+        _forbidLabelledFunction = true;
+        try { return ParseSubStatement(); }
+        finally { _forbidLabelledFunction = saved; }
     }
 
     private static void AddLexical(Dictionary<string, JsPosition> lexical, string name, JsPosition pos)

@@ -28,6 +28,23 @@ public sealed partial class JsParser
     /// every grouped node is a distinct AST instance.</summary>
     private readonly HashSet<Expression> _parenthesized =
         new(ReferenceEqualityComparer.Instance);
+    /// <summary>SpreadElements in an array literal that were immediately followed
+    /// by a comma (`[...x,]` / `[...x, y]`). When such an array is reinterpreted
+    /// as a destructuring AssignmentPattern, the AssignmentRestElement must be
+    /// the last element with no trailing comma — so a trailing/intervening comma
+    /// is an early SyntaxError (§13.15.5.1). The parser drops the trailing comma
+    /// from the element list, so record it here by reference identity.</summary>
+    private readonly HashSet<Expression> _spreadFollowedByComma =
+        new(ReferenceEqualityComparer.Instance);
+    /// <summary>ObjectExpressions that contain a CoverInitializedName — a
+    /// shorthand property with an initializer (`{ a = 1 }`). This cover form is a
+    /// SyntaxError unless the object is reinterpreted as an
+    /// ObjectAssignmentPattern / ObjectBindingPattern (§13.2.5.1). Recorded by
+    /// reference identity at parse time and cleared by the reinterpret pass; any
+    /// object still present at the end of the parse was used as a value and is an
+    /// early SyntaxError.</summary>
+    private readonly HashSet<Expression> _coverInitObjects =
+        new(ReferenceEqualityComparer.Instance);
     /// <summary>Nesting depth of ordinary (non-arrow) function bodies. Arrow
     /// functions do NOT have their own <c>new.target</c>; they inherit the
     /// enclosing function's, so they don't bump this. <c>new.target</c> is an
@@ -59,6 +76,31 @@ public sealed partial class JsParser
     /// is NOT inherited by nested arrows for parameter purposes; like
     /// <see cref="_inAsync"/> it is saved/restored at every function scope.</summary>
     private bool _inGenerator;
+
+    /// <summary>True while parsing a FormalParameters / ArrowFormalParameters
+    /// list (including default-value expressions). FormalParameters may not
+    /// contain an <c>await</c> AwaitExpression (when <see cref="_inAsync"/>) nor
+    /// a <c>yield</c> YieldExpression (when <see cref="_inGenerator"/>) —
+    /// §15.1.1 / §15.5.1 / §15.8.1. Reset to false once the body is entered, and
+    /// saved/restored across nested function/arrow scopes parsed inside a
+    /// default value.</summary>
+    private bool _inFormalParameters;
+
+    /// <summary>True while parsing the (possibly label-prefixed) body of an
+    /// iteration statement (<c>for</c>/<c>for-in</c>/<c>for-of</c>/<c>while</c>/
+    /// <c>do-while</c>). In that position the Annex B.3.2 labelled
+    /// FunctionDeclaration extension does NOT apply, so even in sloppy mode
+    /// `for (;;) lbl: function f(){}` is an early SyntaxError (§14.13.1 /
+    /// Annex B.3.2). Stays set through a chain of nested labels; cleared once a
+    /// non-label statement is entered.</summary>
+    private bool _forbidLabelledFunction;
+
+    /// <summary>True while parsing a class static initialization block body.
+    /// §15.7.1 — `await` is fully reserved there: not a valid
+    /// BindingIdentifier/IdentifierReference NOR a usable AwaitExpression keyword
+    /// (ContainsAwait of a ClassStaticBlockBody is a Syntax Error). Reset by
+    /// nested function scopes parsed inside the block.</summary>
+    private bool _inStaticBlock;
 
     public JsParser(string source)
         : this(new JsLexer(source, ThrowingLexErrorSink.Instance)) { }
@@ -101,6 +143,7 @@ public sealed partial class JsParser
             expr = new SequenceExpression(parts, parts[0].Start, parts[^1].End);
         }
         Expect(JsTokenKind.EndOfFile, "expected end of input");
+        CheckNoPendingCoverInit();
         return expr;
     }
 
@@ -146,11 +189,26 @@ public sealed partial class JsParser
         // when we are actually inside a generator.
         if (_current.Kind == JsTokenKind.Yield && _inGenerator)
         {
+            // §15.5.1 — a generator's FormalParameters may not contain a
+            // YieldExpression (`*g(x = yield) {}`, `(x = yield) => {}` inside a
+            // generator).
+            if (_inFormalParameters)
+                throw new JsParseException(
+                    "a YieldExpression may not appear in formal parameters", _current.Start);
             var yieldTok = Advance();
-            var delegateYield = Match(JsTokenKind.Star);
-            // No argument when followed by `,` `;` `)` `]` `}` `:` or EOF.
+            // §15.5 — `yield * AssignmentExpression` (delegate yield) has a
+            // [no LineTerminator here] restriction before the `*`. A newline
+            // makes this a bare `yield` (ASI), so the following `*` is NOT a
+            // delegate marker (`yield \n * 1` is then an invalid `* 1`).
+            var delegateYield = _current.Kind == JsTokenKind.Star
+                && !_current.PrecededByLineTerminator
+                && Match(JsTokenKind.Star);
+            // No argument when followed by `,` `;` `)` `]` `}` `:` or EOF, or —
+            // per the [no LineTerminator here] restriction on the operand — when
+            // a LineTerminator separates `yield` from what follows.
             Expression? arg = null;
-            if (!delegateYield && (_current.Kind is JsTokenKind.Semicolon
+            if (!delegateYield && (_current.PrecededByLineTerminator
+                || _current.Kind is JsTokenKind.Semicolon
                 or JsTokenKind.Comma or JsTokenKind.RParen or JsTokenKind.RBracket
                 or JsTokenKind.RBrace or JsTokenKind.Colon or JsTokenKind.EndOfFile))
             {
@@ -160,7 +218,11 @@ public sealed partial class JsParser
             return new YieldExpression(arg, delegateYield, yieldTok.Start, arg.End);
         }
         // B1b-2c — async arrow function. `async x => …` or `async (…) => …`.
-        if (_current.Kind == JsTokenKind.Identifier && _current.Lexeme == "async")
+        // §12.7.2 — the contextual `async` keyword may NOT contain a Unicode
+        // escape (`async () => {}` is not an async arrow; it falls through
+        // and is rejected as an ordinary expression).
+        if (_current.Kind == JsTokenKind.Identifier && _current.Lexeme == "async"
+            && !_current.ContainsEscape)
         {
             var asyncPeek = _lex.Peek();
             // `async <ident> =>` — concise async arrow with single identifier param.
@@ -171,6 +233,11 @@ public sealed partial class JsParser
                 if (_current.Kind == JsTokenKind.Identifier && _lex.Peek().Kind == JsTokenKind.Arrow)
                 {
                     var paramTok = Advance();
+                    // §15.8 — `await` is forbidden as the BindingIdentifier param
+                    // of an async arrow (`async await => …`).
+                    if (paramTok.Lexeme == "await")
+                        throw new JsParseException(
+                            "'await' may not be used as a binding identifier in an async context", paramTok.Start);
                     var param = new Identifier(paramTok.Lexeme, paramTok.Start, paramTok.End);
                     Expect(JsTokenKind.Arrow, "expected '=>' in async arrow function");
                     return ParseArrowBody(new List<Expression> { param }, asyncTok.Start, async: true);
@@ -183,7 +250,11 @@ public sealed partial class JsParser
                 return ContinueAssignment(ident);
             }
             // `async (` — could be `async (…) => …` or `async(arg)` call.
-            if (asyncPeek.Kind == JsTokenKind.LParen)
+            // §12.7.2 — no LineTerminator is permitted between the `async`
+            // keyword and the parameter list of an async arrow; with one,
+            // `async` is an IdentifierReference (`async \n (foo) => {}` is then
+            // an invalid `async(foo) => {}` and falls through to an error).
+            if (asyncPeek.Kind == JsTokenKind.LParen && !asyncPeek.PrecededByLineTerminator)
             {
                 // Best-effort: try parse params + arrow. If it fails, the
                 // caller will have already consumed tokens — keep it simple
@@ -194,23 +265,35 @@ public sealed partial class JsParser
                     var asyncTok = Advance(); // async
                     Advance(); // (
                     var ps = new List<Expression>();
-                    if (!Check(JsTokenKind.RParen))
+                    // §15.8 / §15.9 — the FormalParameters of an async arrow are
+                    // parsed [+Await], so `await` may not appear as a binding
+                    // identifier anywhere in them (including default-value
+                    // expressions and nested-arrow parameter positions). Set the
+                    // async context for the duration of the param parse so
+                    // ParseBindingTarget / ParseUnary reject `await` uses.
+                    var savedAsyncParams = _inAsync;
+                    _inAsync = true;
+                    try
                     {
-                        while (true)
+                        if (!Check(JsTokenKind.RParen))
                         {
-                            if (Check(JsTokenKind.Ellipsis))
+                            while (true)
                             {
-                                var sstart = _current.Start;
-                                Advance();
-                                var inner = ParseBindingTarget();
-                                ps.Add(new SpreadElement(inner, sstart, inner.End));
-                                break;
+                                if (Check(JsTokenKind.Ellipsis))
+                                {
+                                    var sstart = _current.Start;
+                                    Advance();
+                                    var inner = ParseBindingTarget();
+                                    ps.Add(new SpreadElement(inner, sstart, inner.End));
+                                    break;
+                                }
+                                ps.Add(ParseParameter());
+                                if (!Match(JsTokenKind.Comma)) break;
                             }
-                            ps.Add(ParseParameter());
-                            if (!Match(JsTokenKind.Comma)) break;
                         }
+                        Expect(JsTokenKind.RParen, "expected ')' in async arrow params");
                     }
-                    Expect(JsTokenKind.RParen, "expected ')' in async arrow params");
+                    finally { _inAsync = savedAsyncParams; }
                     Expect(JsTokenKind.Arrow, "expected '=>' after async arrow params");
                     return ParseArrowBody(ps, asyncTok.Start, async: true);
                 }
@@ -227,7 +310,19 @@ public sealed partial class JsParser
         if (_current.Kind == JsTokenKind.Identifier && _lex.Peek().Kind == JsTokenKind.Arrow)
         {
             var paramTok = Advance();
+            // §15.8 — in an async context (e.g. the param list of an enclosing
+            // async arrow), `await` is the AwaitExpression keyword and may not be
+            // a single-identifier arrow parameter (`await => {}`).
+            if (_inAsync && paramTok.Lexeme == "await")
+                throw new JsParseException(
+                    "'await' may not be used as a binding identifier in an async context", paramTok.Start);
             var param = new Identifier(paramTok.Lexeme, paramTok.Start, paramTok.End);
+            // §15.3 — no LineTerminator is permitted before the `=>` of an arrow
+            // (the production has a [no LineTerminator here] restriction). With
+            // one, ASI would have ended the statement (`x \n => {}` is an error).
+            if (_current.PrecededByLineTerminator)
+                throw new JsParseException(
+                    "no line terminator allowed before '=>' in an arrow function", _current.Start);
             Expect(JsTokenKind.Arrow, "expected '=>' in arrow function");
             return ParseArrowBody(new List<Expression> { param }, paramTok.Start);
         }
@@ -236,6 +331,10 @@ public sealed partial class JsParser
         {
             var start = _current.Start;
             Advance(); Advance(); // consume `(` and `)`
+            // §15.3 — no LineTerminator before the `=>` (`() \n => {}` is invalid).
+            if (_current.PrecededByLineTerminator)
+                throw new JsParseException(
+                    "no line terminator allowed before '=>' in an arrow function", _current.Start);
             Expect(JsTokenKind.Arrow, "expected '=>' after '()' in arrow function");
             return ParseArrowBody(Array.Empty<Expression>(), start);
         }
@@ -256,20 +355,32 @@ public sealed partial class JsParser
             var start = _current.Start;
             Advance(); // consume `(`
             var ps = new List<Expression>();
-            while (!Check(JsTokenKind.RParen))
+            // §15.3.1 — ArrowFormalParameters may not contain a yield/await
+            // expression (`(x = yield) => {}` inside a generator).
+            var savedInParams = _inFormalParameters;
+            _inFormalParameters = true;
+            try
             {
-                if (Check(JsTokenKind.Ellipsis))
+                while (!Check(JsTokenKind.RParen))
                 {
-                    var sstart = _current.Start;
-                    Advance();
-                    var inner = ParseBindingTarget();
-                    ps.Add(new SpreadElement(inner, sstart, inner.End));
-                    break; // rest must be the last parameter
+                    if (Check(JsTokenKind.Ellipsis))
+                    {
+                        var sstart = _current.Start;
+                        Advance();
+                        var inner = ParseBindingTarget();
+                        ps.Add(new SpreadElement(inner, sstart, inner.End));
+                        break; // rest must be the last parameter
+                    }
+                    ps.Add(ParseParameter());
+                    if (!Match(JsTokenKind.Comma)) break;
                 }
-                ps.Add(ParseParameter());
-                if (!Match(JsTokenKind.Comma)) break;
+                Expect(JsTokenKind.RParen, "expected ')' in arrow params");
             }
-            Expect(JsTokenKind.RParen, "expected ')' in arrow params");
+            finally { _inFormalParameters = savedInParams; }
+            // §15.3 — no LineTerminator before the `=>`.
+            if (_current.PrecededByLineTerminator)
+                throw new JsParseException(
+                    "no line terminator allowed before '=>' in an arrow function", _current.Start);
             Expect(JsTokenKind.Arrow, "expected '=>' after arrow params");
             return ParseArrowBody(ps, start);
         }
@@ -280,6 +391,10 @@ public sealed partial class JsParser
         // to ArrowFunctionExpression when followed by `=>`.
         if (_current.Kind == JsTokenKind.Arrow)
         {
+            // §15.3 — no LineTerminator before the `=>`.
+            if (_current.PrecededByLineTerminator)
+                throw new JsParseException(
+                    "no line terminator allowed before '=>' in an arrow function", _current.Start);
             Advance();
             var paramList = LiftArrowParams(left);
             return ParseArrowBody(paramList, left.Start);
@@ -290,6 +405,9 @@ public sealed partial class JsParser
             var opPos = _current.Start;
             Advance();
             var right = ParseAssignment(); // right-associative
+            // Only `=` reinterprets the LHS as a destructuring pattern, where a
+            // CoverInitializedName (`{ a = 1 } = …`) is legal — clear any pending
+            // cover-init error for the reinterpreted tree.
             var target = op == "=" ? ReinterpretAssignmentTarget(left) : left;
             // §13.15.1 / §13.5.1 — assignment to `eval`/`arguments` is a strict
             // SyntaxError.
@@ -316,7 +434,7 @@ public sealed partial class JsParser
                 // §15.3.1 — arrow parameter early errors use the arrow's own
                 // strictness; arrow param lists are always checked for dups.
                 CheckUseStrictSimpleParams(@params, start);
-                ValidateParameters(@params, strict);
+                ValidateParameters(@params, strict, forceDuplicateCheck: true);
                 CheckParamsVsLexicalBody(@params, block);
                 return new ArrowFunctionExpression(@params, block, IsExpression: false,
                     Async: async, start, block.End, Strict: strict);
@@ -327,10 +445,15 @@ public sealed partial class JsParser
             // the inherited surrounding strictness.
             var savedNoIn = _disallowInDepth;
             _disallowInDepth = 0;
+            // A concise body is not formal parameters; clear the restriction so
+            // an enclosing param context (an arrow nested in another's default)
+            // does not leak in.
+            var savedInParams = _inFormalParameters;
+            _inFormalParameters = false;
             Expression expr;
             try { expr = ParseAssignment(); }
-            finally { _disallowInDepth = savedNoIn; }
-            ValidateParameters(@params, _strict);
+            finally { _disallowInDepth = savedNoIn; _inFormalParameters = savedInParams; }
+            ValidateParameters(@params, _strict, forceDuplicateCheck: true);
             return new ArrowFunctionExpression(@params, expr, IsExpression: true,
                 Async: async, start, expr.End, Strict: _strict);
         }
@@ -397,7 +520,7 @@ public sealed partial class JsParser
     /// <summary>Turn a parenthesized expression list (already parsed as a
     /// grouping or <see cref="SequenceExpression"/>) back into an arrow
     /// parameter list, reinterpreting cover literals as binding patterns.</summary>
-    private static List<Expression> LiftArrowParams(Expression expr)
+    private List<Expression> LiftArrowParams(Expression expr)
     {
         var list = new List<Expression>();
         switch (expr)
@@ -448,13 +571,34 @@ public sealed partial class JsParser
     private Expression ParseNullishCoalescing()
     {
         var left = ParseLogicalOr();
-        while (Check(JsTokenKind.QuestionQuestion))
+        if (Check(JsTokenKind.QuestionQuestion))
         {
-            var op = _current.Lexeme; Advance();
-            var right = ParseLogicalOr();
-            left = new LogicalExpression(op, left, right, left.Start, right.End);
+            // §12.6 — a CoalesceExpression may not immediately contain, nor be
+            // immediately contained within, a LogicalAND/LogicalOR operation
+            // (`a ?? b || c`, `a || b ?? c`, etc. must be parenthesized). The
+            // head (left) must not be an unparenthesized `&&`/`||`.
+            CheckCoalesceOperand(left);
+            while (Check(JsTokenKind.QuestionQuestion))
+            {
+                var op = _current.Lexeme; Advance();
+                var right = ParseLogicalOr();
+                // The right operand (a BitwiseOR per the grammar) likewise must
+                // not be an unparenthesized `&&`/`||`.
+                CheckCoalesceOperand(right);
+                left = new LogicalExpression(op, left, right, left.Start, right.End);
+            }
         }
         return left;
+    }
+
+    /// <summary>§12.6 — reject a <c>&amp;&amp;</c>/<c>||</c> operand adjacent to a
+    /// <c>??</c> unless it was parenthesized.</summary>
+    private void CheckCoalesceOperand(Expression operand)
+    {
+        if (operand is LogicalExpression { Op: "&&" or "||" }
+            && !_parenthesized.Contains(operand))
+            throw new JsParseException(
+                "'??' cannot be mixed with '&&' or '||' without parentheses", operand.Start);
     }
 
     private Expression ParseLogicalOr()
@@ -615,6 +759,11 @@ public sealed partial class JsParser
                 var arg = ParseUnary();
                 // §13.4.1 — ++/-- of `eval`/`arguments` is a strict SyntaxError.
                 CheckAssignmentTarget(arg, t.Start);
+                // §13.3.1.1 — an OptionalChain is not a valid assignment target,
+                // so `--a?.b` (prefix update on an optional chain) is an error.
+                if (IsOptionalChain(arg))
+                    throw new JsParseException(
+                        "optional chain is not a valid assignment target", arg.Start);
                 return new UpdateExpression(t.Lexeme, arg, Prefix: true, t.Start, arg.End);
             }
             case JsTokenKind.Identifier when _current.Lexeme == "await":
@@ -639,6 +788,16 @@ public sealed partial class JsParser
                     // `await` used as identifier (legacy). Fall through.
                     return ParseUpdate();
                 }
+                // §15.8.1 — an async function's FormalParameters may not contain
+                // an AwaitExpression (`async function*(x = await 1) {}`).
+                if (_inFormalParameters && _inAsync)
+                    throw new JsParseException(
+                        "an AwaitExpression may not appear in formal parameters", _current.Start);
+                // §15.7.1 — a class static initialization block may not contain
+                // an AwaitExpression (`static { await 0; }`).
+                if (_inStaticBlock)
+                    throw new JsParseException(
+                        "an AwaitExpression may not appear in a class static block", _current.Start);
                 var t = Advance();
                 var arg = ParseUnary();
                 return new AwaitExpression(arg, t.Start, arg.End);
@@ -658,6 +817,11 @@ public sealed partial class JsParser
             var t = Advance();
             // §13.4.1 — postfix ++/-- of `eval`/`arguments` is a strict SyntaxError.
             CheckAssignmentTarget(arg, t.Start);
+            // §13.3.1.1 — an OptionalChain is not a valid assignment target,
+            // so `a?.b++` (postfix update on an optional chain) is an error.
+            if (IsOptionalChain(arg))
+                throw new JsParseException(
+                    "optional chain is not a valid assignment target", arg.Start);
             return new UpdateExpression(t.Lexeme, arg, Prefix: false, arg.Start, t.End);
         }
         return arg;
@@ -816,6 +980,13 @@ public sealed partial class JsParser
             }
             else if (Check(JsTokenKind.TemplateNoSubstitution) || Check(JsTokenKind.TemplateHead))
             {
+                // §13.3.1.1 — `OptionalChain TemplateLiteral` is an early
+                // SyntaxError: a tagged template whose tag is an optional chain
+                // (`a?.b`...``) is forbidden (the `?.` and the template would
+                // make `??.` ambiguous / the short-circuit semantics ill-defined).
+                if (IsOptionalChain(node))
+                    throw new JsParseException(
+                        "tagged template may not be applied to an optional chain", node.Start);
                 // §13.3.11 TaggedTemplate — `tag`...`` binds tighter than any
                 // surrounding operator and may itself be re-tagged.
                 var quasi = ParseTemplateLiteral();
@@ -824,6 +995,32 @@ public sealed partial class JsParser
             else break;
         }
         return node;
+    }
+
+    /// <summary>True when <paramref name="expr"/> is (part of) an
+    /// OptionalExpression — i.e. any link in its Member/Call chain carries the
+    /// optional <c>?.</c> marker. Walks back through Member objects and Call
+    /// callees (a parenthesized sub-expression breaks the chain and is therefore
+    /// not in <see cref="_parenthesized"/>-tracked nodes here, matching §13.3).</summary>
+    private bool IsOptionalChain(Expression expr)
+    {
+        while (true)
+        {
+            if (_parenthesized.Contains(expr)) return false;
+            switch (expr)
+            {
+                case MemberExpression me:
+                    if (me.Optional) return true;
+                    expr = me.Object;
+                    break;
+                case CallExpression ce:
+                    if (ce.Optional) return true;
+                    expr = ce.Callee;
+                    break;
+                default:
+                    return false;
+            }
+        }
     }
 
     /// <summary>Parse an AssignmentExpression that appears between square
@@ -1102,18 +1299,23 @@ public sealed partial class JsParser
                 Advance();
                 continue;
             }
+            SpreadElement? spread = null;
             if (Check(JsTokenKind.Ellipsis))
             {
                 var sstart = _current.Start;
                 Advance();
                 var inner = ParseAssignment();
-                elements.Add(new SpreadElement(inner, sstart, inner.End));
+                spread = new SpreadElement(inner, sstart, inner.End);
+                elements.Add(spread);
             }
             else
             {
                 elements.Add(ParseAssignment());
             }
             if (!Match(JsTokenKind.Comma)) break;
+            // Record a spread that was directly followed by a comma so the
+            // destructuring reinterpret pass can reject `[...x,]` / `[...x, y]`.
+            if (spread is not null) _spreadFollowedByComma.Add(spread);
         }
         var end = _current.End;
         Expect(JsTokenKind.RBracket, "expected ']' to close array literal");
@@ -1158,7 +1360,17 @@ public sealed partial class JsParser
         }
         var end = _current.End;
         Expect(JsTokenKind.RBrace, "expected '}' to close object literal");
-        return new ObjectExpression(props, start, end);
+        var objExpr = new ObjectExpression(props, start, end);
+        // §13.2.5.1 — a CoverInitializedName (`{ a = 1 }`) is only valid when the
+        // object is later reinterpreted as a destructuring pattern. Record it so
+        // an unreinterpreted (value) use is rejected at the end of the parse.
+        foreach (var p in props)
+            if (p.Shorthand && p.Value is AssignmentExpression { Op: "=" })
+            {
+                _coverInitObjects.Add(objExpr);
+                break;
+            }
+        return objExpr;
     }
 
     /// <summary>Set by <see cref="ParseObjectProperty"/> when the just-parsed
@@ -1216,11 +1428,9 @@ public sealed partial class JsParser
                 Advance(); // consume 'get' / 'set'
                 var (akey, acomputed) = ParsePropertyKey();
                 var (parameters, body, endPos, astrict) = ParseMethodTail();
-                // §15.4.1 well-formedness: getter takes 0 params, setter exactly 1.
-                if (kind == MethodKind.Get && parameters.Count != 0)
-                    throw new JsParseException("getter must have no parameters", start);
-                if (kind == MethodKind.Set && parameters.Count != 1)
-                    throw new JsParseException("setter must have exactly one parameter", start);
+                // §15.4.1 well-formedness: getter takes 0 params, setter exactly
+                // one non-rest param.
+                CheckAccessorParams(kind, parameters, start);
                 var fn = MakeFnExpression(name: null, parameters, body, start, endPos, strict: astrict);
                 return new ObjectProperty(akey, fn,
                     Shorthand: false, Computed: acomputed, start, endPos, kind, IsMethod: true);
@@ -1375,7 +1585,9 @@ public sealed partial class JsParser
             var bodyStart = _current.Start;
             var (body, strict) = ParseFunctionBody();
             CheckUseStrictSimpleParams(parameters, bodyStart);
-            ValidateParameters(parameters, strict);
+            // §15.4.1 — a MethodDefinition has UniqueFormalParameters: duplicate
+            // parameter names are always an error (no Annex B sloppy exception).
+            ValidateParameters(parameters, strict, forceDuplicateCheck: true);
             CheckParamsVsLexicalBody(parameters, body);
             return (parameters, body, body.End, strict);
         }
@@ -1429,6 +1641,19 @@ public sealed partial class JsParser
     /// elsewhere. Throws a SyntaxError when the snapshot key token is illegal.</summary>
     private void CheckShorthandIdentifier(JsToken keyToken)
     {
+        // §13.2.5.1 / §12.7.1 — `yield` shorthand (`{ yield }`) is a valid
+        // IdentifierReference only in sloppy non-generator code. Inside a
+        // generator it is the YieldExpression keyword, and in strict code it is a
+        // reserved word — so reject it as a shorthand there.
+        if (keyToken.Kind == JsTokenKind.Yield && (_inGenerator || _strict))
+            throw new JsParseException(
+                "'yield' may not be used as a shorthand property here", keyToken.Start);
+        // §13.2.5.1 / §13.3.10.1 — in an async context `await` is the
+        // AwaitExpression keyword and is not a valid shorthand IdentifierReference
+        // (`({ await })` inside an async function / class static block).
+        if (keyToken.Kind == JsTokenKind.Identifier && keyToken.Lexeme == "await" && _inAsync)
+            throw new JsParseException(
+                "'await' may not be used as a shorthand property in an async context", keyToken.Start);
         // A genuine reserved-keyword token (other than the contextually-allowed
         // `yield`) is never a valid IdentifierReference.
         if (keyToken.Kind != JsTokenKind.Identifier
@@ -1441,15 +1666,17 @@ public sealed partial class JsParser
         if (keyToken.ContainsEscape && keyToken.Kind != JsTokenKind.Identifier)
             throw new JsParseException(
                 $"escaped reserved word '{keyToken.Lexeme}' cannot be used as a shorthand property", keyToken.Start);
-        // §12.7.2 — in strict code the strict FutureReservedWords are reserved,
-        // so an escaped one (`let`, `static`, …) is likewise an
-        // illegal IdentifierReference. (A non-escaped strict reserved word as a
-        // shorthand binding target is caught by the later binding-name checks.)
-        if (_strict && keyToken.ContainsEscape
+        // §12.7.2 / §13.2.5.1 — in strict code the strict FutureReservedWords
+        // (`let`, `static`, `implements`, `interface`, `package`, `private`,
+        // `protected`, `public`, `yield`) are reserved, so a shorthand using one
+        // as an IdentifierReference / binding target is an illegal
+        // IdentifierReference — whether escaped or not (`({ let })` /
+        // `({ let })` under "use strict").
+        if (_strict
             && keyToken.Kind == JsTokenKind.Identifier
             && IsStrictReservedWord(keyToken.Lexeme))
             throw new JsParseException(
-                $"escaped reserved word '{keyToken.Lexeme}' cannot be used as a shorthand property in strict mode", keyToken.Start);
+                $"'{keyToken.Lexeme}' is a reserved word and cannot be used as a shorthand property in strict mode", keyToken.Start);
     }
 
     // -----------------------------------------------------------------------

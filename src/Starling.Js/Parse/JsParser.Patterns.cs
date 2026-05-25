@@ -174,7 +174,7 @@ public sealed partial class JsParser
         throw new JsParseException($"expected property name, got {_current.Kind}", _current.Start);
     }
 
-    private static Expression ReinterpretAssignmentTarget(Expression expr)
+    private Expression ReinterpretAssignmentTarget(Expression expr)
         => expr switch
         {
             ArrayExpression array => ReinterpretArrayPattern(array),
@@ -210,7 +210,7 @@ public sealed partial class JsParser
         return false;
     }
 
-    private static Expression ReinterpretBindingParameter(Expression expr)
+    private Expression ReinterpretBindingParameter(Expression expr)
         => expr switch
         {
             AssignmentExpression { Op: "=" } assignment => new AssignmentPattern(
@@ -220,7 +220,7 @@ public sealed partial class JsParser
             _ => ReinterpretBindingTarget(expr),
         };
 
-    private static Expression ReinterpretBindingTarget(Expression expr)
+    private Expression ReinterpretBindingTarget(Expression expr)
         => expr switch
         {
             ArrayExpression array => ReinterpretArrayPattern(array),
@@ -230,7 +230,7 @@ public sealed partial class JsParser
             _ => throw new JsParseException("binding pattern must contain only binding identifiers", expr.Start),
         };
 
-    private static ArrayPattern ReinterpretArrayPattern(ArrayExpression array)
+    private ArrayPattern ReinterpretArrayPattern(ArrayExpression array)
     {
         var elements = new List<ArrayPatternElement>();
         for (var i = 0; i < array.Elements.Count; i++)
@@ -243,7 +243,10 @@ public sealed partial class JsParser
             }
             if (element is SpreadElement spread)
             {
-                if (i != array.Elements.Count - 1)
+                // §13.15.5.1 — the AssignmentRestElement must be the LAST element;
+                // a trailing/intervening comma (`[...x,]`, `[...x, y]`) is an
+                // early SyntaxError even though the parser drops the comma.
+                if (i != array.Elements.Count - 1 || _spreadFollowedByComma.Contains(spread))
                     throw new JsParseException("array rest binding must be last", spread.Start);
                 // §13.15.5.1 — a rest element's AssignmentRestElement is a bare
                 // DestructuringAssignmentTarget; it may NOT carry an Initializer
@@ -265,8 +268,11 @@ public sealed partial class JsParser
         return new ArrayPattern(elements, array.Start, array.End);
     }
 
-    private static ObjectPattern ReinterpretObjectPattern(ObjectExpression obj)
+    private ObjectPattern ReinterpretObjectPattern(ObjectExpression obj)
     {
+        // This object is becoming a destructuring pattern, so any
+        // CoverInitializedName it carried is now legal — drop the pending error.
+        _coverInitObjects.Remove(obj);
         var props = new List<ObjectPatternProperty>();
         RestElement? rest = null;
         for (var i = 0; i < obj.Properties.Count; i++)

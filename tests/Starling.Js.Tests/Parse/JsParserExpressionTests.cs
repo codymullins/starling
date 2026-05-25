@@ -80,9 +80,13 @@ public class JsParserExpressionTests
     [TestMethod]
     public void Nullish_and_logical_compose()
     {
-        // a ?? b || c — ?? has lower precedence than ||, so:
-        // a ?? (b || c)
-        var log = Parse("a ?? b || c").Should().BeOfType<LogicalExpression>().Subject;
+        // §12.6 — `a ?? b || c` is a SyntaxError: `??` may not be mixed with
+        // `&&`/`||` without parentheses. Parenthesizing one side is required.
+        Action mixed = () => Parse("a ?? b || c");
+        mixed.Should().Throw<JsParseException>();
+
+        // The parenthesized form is valid: `a ?? (b || c)`.
+        var log = Parse("a ?? (b || c)").Should().BeOfType<LogicalExpression>().Subject;
         log.Op.Should().Be("??");
         log.Right.Should().BeOfType<LogicalExpression>().Which.Op.Should().Be("||");
     }

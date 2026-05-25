@@ -29,7 +29,22 @@ public sealed partial class JsParser
         var end = _current.End;
         // §16.1.1 — Script top-level lexical/var early errors.
         CheckScopeEarlyErrors(body, ScopeKind.TopLevel);
+        // §13.2.5.1 — any object literal carrying a CoverInitializedName that was
+        // never reinterpreted as a destructuring pattern was used as a value,
+        // which is an early SyntaxError.
+        CheckNoPendingCoverInit();
         return new Program(body, start, end, Strict: _strict);
+    }
+
+    /// <summary>§13.2.5.1 — throw if any object with a CoverInitializedName
+    /// (`{ a = 1 }`) was used as a value rather than reinterpreted as a
+    /// destructuring pattern.</summary>
+    private void CheckNoPendingCoverInit()
+    {
+        foreach (var obj in _coverInitObjects)
+            throw new JsParseException(
+                "shorthand property with initializer is only valid in a destructuring pattern",
+                obj.Start);
     }
 
     /// <summary>§11.2.1 — parse the directive prologue (leading
@@ -231,7 +246,7 @@ public sealed partial class JsParser
         Expect(JsTokenKind.LParen, "( expected after 'while'");
         var test = ParseExpressionNoEof();
         Expect(JsTokenKind.RParen, "expected ')'");
-        var body = ParseSubStatement();
+        var body = ParseIterationBody();
         return new WhileStatement(test, body, start, body.End);
     }
 
@@ -239,7 +254,7 @@ public sealed partial class JsParser
     {
         var start = _current.Start;
         Advance(); // 'do'
-        var body = ParseSubStatement();
+        var body = ParseIterationBody();
         Expect(JsTokenKind.While, "expected 'while' after do-block");
         Expect(JsTokenKind.LParen, "( expected after 'while'");
         var test = ParseExpressionNoEof();
@@ -301,7 +316,16 @@ public sealed partial class JsParser
                     if (Check(JsTokenKind.In))
                         return FinishForIn(start, expr);
                     if (IsContextualOf())
+                    {
+                        // §14.7.5 — a for-of LeftHandSide may not be the single
+                        // token `async` (`for (async of …)` has a
+                        // [lookahead ≠ async of] restriction to keep it distinct
+                        // from `for await`). The bare `async` here is an error.
+                        if (expr is Identifier { Name: "async" })
+                            throw new JsParseException(
+                                "'async' may not be the left-hand side of a for-of loop", expr.Start);
                         return FinishForOf(start, expr, isAwait);
+                    }
                     init = new ExpressionStatement(expr, expr.Start, expr.End);
                 }
             }
@@ -318,7 +342,7 @@ public sealed partial class JsParser
         Expression? update = null;
         if (!Check(JsTokenKind.RParen)) update = ParseExpressionNoEof();
         Expect(JsTokenKind.RParen, "expected ')' to close for-loop header");
-        var body = ParseSubStatement();
+        var body = ParseIterationBody();
         CheckForHeadLexicalVsBodyVar(init, body);
         return new ForStatement(init, test, update, body, start, body.End);
     }
@@ -328,22 +352,45 @@ public sealed partial class JsParser
 
     private ForInStatement FinishForIn(JsPosition start, AstNode left)
     {
-        if (left is Expression expr) left = ReinterpretAssignmentTarget(expr);
+        if (left is Expression expr)
+        {
+            left = ReinterpretAssignmentTarget(expr);
+            // §13.15.1 — a destructuring assignment target may not bind strict
+            // `eval`/`arguments` (`for ({ eval } in …)` in strict mode).
+            CheckAssignmentTarget((Expression)left, ((Expression)left).Start);
+        }
         Advance(); // 'in'
         var right = ParseExpressionNoEof();
         Expect(JsTokenKind.RParen, "expected ')' after for-in head");
-        var body = ParseSubStatement();
+        var body = ParseIterationBody();
         CheckForHeadLexicalVsBodyVar(left, body);
         return new ForInStatement(left, right, body, start, body.End);
     }
 
     private ForOfStatement FinishForOf(JsPosition start, AstNode left, bool isAwait = false)
     {
-        if (left is Expression expr) left = ReinterpretAssignmentTarget(expr);
+        if (left is Expression expr)
+        {
+            left = ReinterpretAssignmentTarget(expr);
+            // §13.15.1 — a destructuring assignment target may not bind strict
+            // `eval`/`arguments` (`for ({ eval } of …)` in strict mode).
+            CheckAssignmentTarget((Expression)left, ((Expression)left).Start);
+        }
+        // §14.7.5 — the contextual `of` keyword may not contain a Unicode escape
+        // (`for (var x of [])` is a SyntaxError).
+        if (_current.ContainsEscape)
+            throw new JsParseException("'of' keyword may not contain an escape sequence", _current.Start);
         Advance(); // contextual 'of'
-        var right = ParseExpressionNoEof();
+        // §14.7.5 — the for-of right-hand side is a single AssignmentExpression[+In]
+        // (no comma sequence): `for (x of a, b)` is a SyntaxError. `in` is
+        // re-enabled here regardless of any enclosing for-header [NoIn].
+        var savedNoIn = _disallowInDepth;
+        _disallowInDepth = 0;
+        Expression right;
+        try { right = ParseAssignment(); }
+        finally { _disallowInDepth = savedNoIn; }
         Expect(JsTokenKind.RParen, "expected ')' after for-of head");
-        var body = ParseSubStatement();
+        var body = ParseIterationBody();
         CheckForHeadLexicalVsBodyVar(left, body);
         return new ForOfStatement(left, right, body, start, body.End, isAwait);
     }
@@ -355,6 +402,10 @@ public sealed partial class JsParser
     private ReturnStatement ParseReturn()
     {
         var start = _current.Start;
+        // §13.10.1 — a ReturnStatement is only valid inside a function body. A
+        // `return` at script/module top level (depth 0) is an early SyntaxError.
+        if (_functionDepth == 0)
+            throw new JsParseException("'return' statement outside of a function", start);
         Advance(); // 'return'
         Expression? arg = null;
         if (!_current.PrecededByLineTerminator
@@ -411,6 +462,48 @@ public sealed partial class JsParser
         return new ThrowStatement(arg, start, end);
     }
 
+    /// <summary>§14.15.1 — CatchParameter early errors: (a) its BoundNames must
+    /// not contain duplicates (a CatchParameter BindingPattern is
+    /// UniqueFormalParameters-like; `catch ([x, x])` is an error); (b) none of
+    /// its BoundNames may also appear in the catch Block's LexicallyDeclaredNames
+    /// (`catch (x) { let x; }`, `catch (e) { function e(){} }`).</summary>
+    private void CheckCatchBindings(Expression param, BlockStatement body)
+    {
+        var names = new List<(string Name, JsPosition Pos)>();
+        CollectPatternNames(param, names);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (name, pos) in names)
+            if (!seen.Add(name))
+                throw new JsParseException(
+                    $"duplicate catch parameter name '{name}'", pos);
+
+        // The catch Block's top-level LexicallyDeclaredNames: let/const/class and
+        // any directly-nested FunctionDeclaration (which is lexical in a Block).
+        var lexical = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var stmt in body.Body)
+        {
+            switch (stmt)
+            {
+                case VariableDeclaration vd when vd.Kind is "let" or "const":
+                    foreach (var n in BoundNamesOf(vd)) lexical.Add(n.Name);
+                    break;
+                case ClassDeclaration cd:
+                    lexical.Add(cd.Name.Name);
+                    break;
+                case FunctionDeclaration fd:
+                    lexical.Add(fd.Name.Name);
+                    break;
+                case LabeledStatement lab when Unlabel(lab) is FunctionDeclaration lfd:
+                    lexical.Add(lfd.Name.Name);
+                    break;
+            }
+        }
+        foreach (var (name, pos) in names)
+            if (lexical.Contains(name))
+                throw new JsParseException(
+                    $"catch parameter '{name}' is redeclared in the catch body", pos);
+    }
+
     // -----------------------------------------------------------------------
     // try / catch / finally
     // -----------------------------------------------------------------------
@@ -433,6 +526,7 @@ public sealed partial class JsParser
                 Expect(JsTokenKind.RParen, "expected ')' after catch parameter");
             }
             var body = ParseBlock();
+            if (param is not null) CheckCatchBindings(param, body);
             handler = new CatchClause(param, body, cstart, body.End);
         }
         BlockStatement? finalizer = null;
@@ -466,8 +560,24 @@ public sealed partial class JsParser
         Advance(); // ':'
         // §14.13.1 — a LabelledStatement body is a LabelledItem, which forbids
         // lexical/class declarations; Annex B.3.2 permits a sloppy plain
-        // function declaration.
-        var body = ParseSubStatement(allowSloppyFunction: true);
+        // function declaration — EXCEPT:
+        //  - when this label chain is the body of an iteration statement
+        //    (`for (;;) lbl: function f(){}`) — the extension does not apply, or
+        //  - when the function is under MORE THAN ONE label
+        //    (`a: b: function f(){}`) — only a single directly-applied label
+        //    qualifies for the Annex B.3.2 LabelledFunctionDeclaration form.
+        // So if this label's own body is itself a LabelledStatement, the inner
+        // (nested) label may not introduce a sloppy function — set the forbid
+        // flag for the nested parse. The flag is cleared by ParseSubStatement
+        // once a non-label statement (a block, etc.) is entered.
+        var bodyIsLabel = _current.Kind == JsTokenKind.Identifier
+            && _lex.Peek().Kind == JsTokenKind.Colon;
+        var allowFn = !_forbidLabelledFunction;
+        var savedForbid = _forbidLabelledFunction;
+        if (bodyIsLabel) _forbidLabelledFunction = true;
+        Statement body;
+        try { body = ParseSubStatement(allowSloppyFunction: allowFn); }
+        finally { _forbidLabelledFunction = savedForbid; }
         return new LabeledStatement(label, body, start, body.End);
     }
 
@@ -611,6 +721,12 @@ public sealed partial class JsParser
             if (Check(JsTokenKind.Identifier))
             {
                 var tok = Advance();
+                // §15.8.1 — an async FunctionExpression's BindingIdentifier is
+                // [+Await], so it may not be `await` (`async function await(){}`,
+                // `async function* await(){}`).
+                if (isAsync && tok.Lexeme == "await")
+                    throw new JsParseException(
+                        "'await' may not be used as the name of an async function", tok.Start);
                 fnName = new Identifier(tok.Lexeme, tok.Start, tok.End);
             }
             // §15.2.1 / §12.7.1 — a non-generator FunctionExpression's
@@ -689,19 +805,27 @@ public sealed partial class JsParser
     private List<Expression> ParseParameterList()
     {
         var parameters = new List<Expression>();
-        while (!Check(JsTokenKind.RParen))
+        // §15.1.1 / §15.5.1 / §15.8.1 — mark that we are in a FormalParameters
+        // list so a yield/await expression inside a default value is rejected.
+        var savedInParams = _inFormalParameters;
+        _inFormalParameters = true;
+        try
         {
-            if (Check(JsTokenKind.Ellipsis))
+            while (!Check(JsTokenKind.RParen))
             {
-                var sstart = _current.Start;
-                Advance();
-                var inner = ParseBindingTarget();
-                parameters.Add(new SpreadElement(inner, sstart, inner.End));
-                break;
+                if (Check(JsTokenKind.Ellipsis))
+                {
+                    var sstart = _current.Start;
+                    Advance();
+                    var inner = ParseBindingTarget();
+                    parameters.Add(new SpreadElement(inner, sstart, inner.End));
+                    break;
+                }
+                parameters.Add(ParseParameter());
+                if (!Match(JsTokenKind.Comma)) break;
             }
-            parameters.Add(ParseParameter());
-            if (!Match(JsTokenKind.Comma)) break;
         }
+        finally { _inFormalParameters = savedInParams; }
         return parameters;
     }
 
