@@ -41,6 +41,14 @@ public sealed class JsRealm
     // install order their dependencies.
     public JsObject? ObjectConstructor { get; internal set; }
     public JsObject? FunctionConstructor { get; internal set; }
+
+    /// <summary>wp:M3-71 — the realm's <c>%eval%</c> intrinsic (the function
+    /// installed as the global <c>eval</c>). The compiler emits a DirectEval
+    /// opcode for a bare-<c>eval</c> call that resolves to the global slot; the
+    /// VM uses this reference to confirm the callee is still the genuine
+    /// intrinsic before applying §19.2.1.1 direct-eval semantics. A reassigned
+    /// global <c>eval</c> (or any other callee) is an ordinary indirect call.</summary>
+    public JsObject? EvalFunction { get; internal set; }
     public JsObject? ArrayConstructor { get; internal set; }
     public JsObject? StringConstructor { get; internal set; }
     public JsObject? NumberConstructor { get; internal set; }

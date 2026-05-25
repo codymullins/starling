@@ -10,6 +10,22 @@ namespace Starling.Js.Parse;
 /// </summary>
 public sealed partial class JsParser
 {
+    /// <summary>wp:M3-71 — §19.2.1.1 — parse a DIRECT-eval program seeding the
+    /// caller's lexical context: caller strictness, in-function-ness (so
+    /// <c>new.target</c> is legal), in-method-ness (so a SuperProperty is legal),
+    /// and derived-constructor-ness (so a SuperCall is legal). With these seeded,
+    /// the §13.3 early errors fire (or don't) exactly as if the eval'd code were
+    /// spliced into the caller. Indirect/global eval uses the parameterless
+    /// <see cref="ParseProgram()"/> and inherits none of this.</summary>
+    public Program ParseProgram(DirectEvalContext ctx)
+    {
+        if (ctx.CallerStrict) _strict = true;
+        if (ctx.InFunction) _functionDepth = 1;       // §13.3.12 — new.target legal
+        if (ctx.InMethod) _superPropertyDepth = 1;    // §13.3.7.1 — SuperProperty legal
+        if (ctx.InDerivedConstructor) _derivedConstructorDepth = 1; // SuperCall legal
+        return ParseProgram();
+    }
+
     /// <summary>Parse a complete program — top-level statement list.</summary>
     public Program ParseProgram()
     {
@@ -733,6 +749,11 @@ public sealed partial class JsParser
         var savedStrict = _strict;
         var (savedAsync, savedGen) = (_inAsync, _inGenerator);
         var savedModuleAwait = _moduleTopAwait;
+        // §13.3.7.1 — an ordinary function has no [[HomeObject]], so a
+        // SuperProperty is NOT legal in its body even when nested inside a
+        // method. Reset the home-object scope (arrows inherit it — see ParseArrowBody).
+        var savedSuper = _superPropertyDepth;
+        _superPropertyDepth = 0;
         try
         {
             Identifier? fnName = null;
@@ -780,7 +801,7 @@ public sealed partial class JsParser
             return new FunctionExpression(fnName, parameters, body, generator, start, body.End,
                 Async: isAsync, Strict: strict);
         }
-        finally { _strict = savedStrict; (_inAsync, _inGenerator) = (savedAsync, savedGen); _moduleTopAwait = savedModuleAwait; }
+        finally { _strict = savedStrict; (_inAsync, _inGenerator) = (savedAsync, savedGen); _moduleTopAwait = savedModuleAwait; _superPropertyDepth = savedSuper; }
     }
 
     private FunctionDeclaration ParseFunctionDeclaration()
@@ -798,6 +819,10 @@ public sealed partial class JsParser
         var savedStrict = _strict;
         var (savedAsync, savedGen) = (_inAsync, _inGenerator);
         var savedModuleAwait = _moduleTopAwait;
+        // §13.3.7.1 — an ordinary function has no [[HomeObject]]; reset the
+        // home-object scope so a SuperProperty in its body is an early error.
+        var savedSuper = _superPropertyDepth;
+        _superPropertyDepth = 0;
         try
         {
             // §15 — fresh await/yield context for this function's params + body.
@@ -818,7 +843,7 @@ public sealed partial class JsParser
             return new FunctionDeclaration(name, parameters, body, generator, start, body.End,
                 Async: isAsync, Strict: strict);
         }
-        finally { _strict = savedStrict; (_inAsync, _inGenerator) = (savedAsync, savedGen); _moduleTopAwait = savedModuleAwait; }
+        finally { _strict = savedStrict; (_inAsync, _inGenerator) = (savedAsync, savedGen); _moduleTopAwait = savedModuleAwait; _superPropertyDepth = savedSuper; }
     }
 
     // -----------------------------------------------------------------------

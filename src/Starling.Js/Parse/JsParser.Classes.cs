@@ -316,14 +316,16 @@ public sealed partial class JsParser
             Expression? init = null;
             if (Match(JsTokenKind.Eq))
             {
-                // §15.7 — a field Initializer is [~Await][~Yield]: it runs in the
-                // instance/static init context, not the Module's [+Await] top
-                // level, so `await` there is not the keyword (the computed key
-                // above was parsed in the enclosing await context).
+                // §15.7 — a field Initializer is [~Await][~Yield]: `await` there
+                // is not the keyword. Also §13.3.7.1 — a field initializer has a
+                // [[HomeObject]] (the class prototype / constructor), so a
+                // SuperProperty inside it (incl. inside a direct eval) is legal.
                 var savedFieldModuleAwait = _moduleTopAwait;
+                var savedFieldSuper = _superPropertyDepth;
                 _moduleTopAwait = false;
+                _superPropertyDepth = savedFieldSuper + 1;
                 try { init = ParseAssignment(); }
-                finally { _moduleTopAwait = savedFieldModuleAwait; }
+                finally { _moduleTopAwait = savedFieldModuleAwait; _superPropertyDepth = savedFieldSuper; }
             }
             var fieldEnd = _current.End;
             ConsumeSemicolonOrAsi();
@@ -376,6 +378,9 @@ public sealed partial class JsParser
         JsPosition endPos;
         var (savedAsync, savedGen) = (_inAsync, _inGenerator);
         var savedModuleAwait = _moduleTopAwait;
+        // §13.3.7.1 — a class method / accessor / constructor has a
+        // [[HomeObject]], so a SuperProperty in its body is legal.
+        var savedSuper = _superPropertyDepth;
         try
         {
             // §15 — a method establishes its own await/yield context based on its
@@ -384,6 +389,7 @@ public sealed partial class JsParser
             _inAsync = isAsync;
             _inGenerator = isGenerator;
             _moduleTopAwait = false;
+            _superPropertyDepth = savedSuper + 1;
             Expect(JsTokenKind.LParen, "expected '(' in method definition");
             parameters = ParseParameterList();
             Expect(JsTokenKind.RParen, "expected ')' after method parameters");
@@ -405,6 +411,7 @@ public sealed partial class JsParser
             if (enteredDerivedCtor) _derivedConstructorDepth--;
             (_inAsync, _inGenerator) = (savedAsync, savedGen);
             _moduleTopAwait = savedModuleAwait;
+            _superPropertyDepth = savedSuper;
         }
 
         var method = new MethodDefinition(key, methodKind, isStatic, computed,
@@ -503,6 +510,12 @@ public sealed partial class JsParser
         Advance(); // 'super'
         if (Match(JsTokenKind.Dot))
         {
+            // §13.3.7.1 — a SuperProperty is only legal inside a method /
+            // accessor / constructor / class-field initializer (a scope with a
+            // [[HomeObject]]). Outside one — e.g. global code, an ordinary
+            // function, or indirect/global eval — it is an early SyntaxError.
+            if (_superPropertyDepth == 0)
+                throw new JsParseException("'super' keyword unexpected here", start);
             // super.x or super.#x — private super access is rare but valid.
             if (_current.Kind == JsTokenKind.PrivateIdentifier)
             {
@@ -515,6 +528,9 @@ public sealed partial class JsParser
         }
         if (Match(JsTokenKind.LBracket))
         {
+            // §13.3.7.1 — same gate as the dotted form (see above).
+            if (_superPropertyDepth == 0)
+                throw new JsParseException("'super' keyword unexpected here", start);
             var expr = ParseAssignment();
             var end = _current.End;
             Expect(JsTokenKind.RBracket, "expected ']' after computed super key");

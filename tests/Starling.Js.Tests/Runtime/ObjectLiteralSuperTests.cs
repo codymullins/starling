@@ -157,18 +157,16 @@ public class ObjectLiteralSuperTests
     // ---- super inside a plain data-property function is NOT a method ----
 
     [TestMethod]
-    public void Data_property_function_value_is_not_a_method_super_throws()
+    public void Data_property_function_value_is_not_a_method_super_is_a_syntax_error()
     {
-        // `{ x: function(){} }` is a data property whose value is a function,
-        // NOT a MethodDefinition — it gets no [[HomeObject]], so super.x throws
-        // a SyntaxError at runtime (the home-object guard).
-        var act = () => Eval(@"
-            var proto = { m() { return 'pm'; } };
+        // wp:M3-71 — `{ x: function(){} }` is a data property whose value is a
+        // function, NOT a MethodDefinition — it gets no [[HomeObject]], so a
+        // SuperProperty in its body is an early SyntaxError (§13.3.7.1), now
+        // surfaced at parse time rather than via the runtime home-object guard.
+        var act = () => new JsParser(@"
             var object = { call: function() { return super.m(); } };
-            Object.setPrototypeOf(object, proto);
-            object.call();
-        ");
-        act.Should().Throw<JsThrow>();
+        ").ParseProgram();
+        act.Should().Throw<JsParseException>();
     }
 
     // ---- SuperCall (super(...)) stays restricted to derived constructors ----

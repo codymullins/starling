@@ -127,6 +127,23 @@ public sealed partial class JsParser
     /// (<see cref="_moduleTopAwait"/>).</summary>
     private bool AwaitIsKeyword => _inAsync || _moduleTopAwait;
 
+    /// <summary>wp:M3-71 — §13.3.7.1 — depth of enclosing method/accessor/
+    /// constructor/class-field-initializer scopes, i.e. scopes that have a
+    /// <c>[[HomeObject]]</c> so a SuperProperty (<c>super.x</c> / <c>super[x]</c>)
+    /// is legal. A SuperProperty outside any such scope is an early SyntaxError
+    /// (§13.3.7.1). For direct-eval code the seeding context (see
+    /// <see cref="DirectEvalContext"/>) starts this at 1 when the caller is a
+    /// method so a SuperProperty in the source parses, while an indirect/global
+    /// eval keeps it at 0 and throws.</summary>
+    private int _superPropertyDepth;
+
+    /// <summary>wp:M3-71 — caller's lexical context threaded into a DIRECT eval's
+    /// parse so §19.2.1.1 / §13.3.7.1 early errors fire (or don't) per the
+    /// caller. Strictness, in-function-ness (for <c>new.target</c>), in-method-ness
+    /// (for SuperProperty), and derived-constructor-ness (for SuperCall).</summary>
+    public readonly record struct DirectEvalContext(
+        bool CallerStrict, bool InFunction, bool InMethod, bool InDerivedConstructor);
+
     public JsParser(string source)
         : this(new JsLexer(source, ThrowingLexErrorSink.Instance)) { }
 
@@ -1625,6 +1642,9 @@ public sealed partial class JsParser
         var savedStrict = _strict;
         var (savedAsync, savedGen) = (_inAsync, _inGenerator);
         var savedModuleAwait = _moduleTopAwait;
+        // §13.3.7.1 — an object-literal method (incl. accessors) has a
+        // [[HomeObject]], so a SuperProperty in its body is legal.
+        var savedSuper = _superPropertyDepth;
         try
         {
             // §15 — the method's own async/generator modifiers establish the
@@ -1633,6 +1653,7 @@ public sealed partial class JsParser
             _inAsync = isAsync;
             _inGenerator = isGenerator;
             _moduleTopAwait = false;
+            _superPropertyDepth = savedSuper + 1;
             Expect(JsTokenKind.LParen, "expected '(' for method parameters");
             var parameters = ParseParameterList();
             Expect(JsTokenKind.RParen, "expected ')' after method parameters");
@@ -1645,7 +1666,13 @@ public sealed partial class JsParser
             CheckParamsVsLexicalBody(parameters, body);
             return (parameters, body, body.End, strict);
         }
-        finally { _strict = savedStrict; (_inAsync, _inGenerator) = (savedAsync, savedGen); _moduleTopAwait = savedModuleAwait; }
+        finally
+        {
+            _strict = savedStrict;
+            (_inAsync, _inGenerator) = (savedAsync, savedGen);
+            _moduleTopAwait = savedModuleAwait;
+            _superPropertyDepth = savedSuper;
+        }
     }
 
     /// <summary>

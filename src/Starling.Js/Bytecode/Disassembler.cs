@@ -94,6 +94,7 @@ public static class Disassembler
                 // u8 operand opcodes
                 case Opcode.Call:
                 case Opcode.CallMethod:
+                case Opcode.DirectEval:
                 case Opcode.New:
                 case Opcode.Suspend:
                 {

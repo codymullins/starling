@@ -3107,6 +3107,27 @@ public sealed partial class JsCompiler
             return;
         }
 
+        // wp:M3-71 — §19.2.1.1 direct eval: the callee is a bare global-`eval`
+        // IdentifierReference that does NOT resolve to a local/upvalue (so it is
+        // the global slot) and is not subject to with-interception. Emit a
+        // distinct DirectEval that hands the VM the current frame's lexical
+        // context. The VM re-checks at runtime that the callee is still the realm
+        // intrinsic; a reassigned global binding, `(0, x)(...)`, `window.x(...)`,
+        // or a shadowed local binding never reaches here (or fails the runtime
+        // check) and stays an ordinary indirect call.
+        if (!call.Optional && !hasSpread
+            && IsDirectEvalCallee(call.Callee, out var directEvalId)
+            && !TryResolveLocal(directEvalId, out _)
+            && !TryResolveUpvalue(directEvalId, out _)
+            && !ShouldRouteWith(directEvalId))
+        {
+            EmitExpression(call.Callee);                  // [callee]
+            foreach (var arg in call.Arguments) EmitExpression(arg);
+            RecordPos(call);
+            _b.Emit(Opcode.DirectEval, (byte)call.Arguments.Count);
+            return;
+        }
+
         EmitExpression(call.Callee);
         if (hasSpread)
         {
@@ -3118,6 +3139,21 @@ public sealed partial class JsCompiler
         foreach (var arg in call.Arguments) EmitExpression(arg);
         RecordPos(call);
         _b.Emit(Opcode.Call, (byte)call.Arguments.Count);
+    }
+
+    /// <summary>wp:M3-71 — is <paramref name="callee"/> a bare <c>eval</c>
+    /// IdentifierReference (the only syntactic shape that can be a direct
+    /// eval)? Returns the identifier name so the caller can verify it resolves
+    /// to the global slot (not a local/upvalue).</summary>
+    private static bool IsDirectEvalCallee(Expression callee, out string name)
+    {
+        if (callee is Identifier { Name: "eval" } id)
+        {
+            name = id.Name;
+            return true;
+        }
+        name = string.Empty;
+        return false;
     }
 
     /// <summary>Materialise a possibly-spread argument list as a dense
