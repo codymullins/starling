@@ -160,4 +160,204 @@ public class JsModuleTests
         };
         RunGraph(modules, "main", "").AsString.Should().Be("world");
     }
+
+    // =====================================================================
+    // §10.4.6 Module Namespace Exotic Object behaviour.
+    // =====================================================================
+
+    [TestMethod]
+    public void Namespace_toStringTag_is_Module()
+    {
+        var modules = new Dictionary<string, string>
+        {
+            ["lib"] = "export const a = 1;",
+            ["main"] = "import * as ns from 'lib'; " +
+                       "report(ns[Symbol.toStringTag] + '/' + Object.prototype.toString.call(ns));",
+        };
+        RunGraph(modules, "main", "").AsString.Should().Be("Module/[object Module]");
+    }
+
+    [TestMethod]
+    public void Namespace_is_not_extensible()
+    {
+        var modules = new Dictionary<string, string>
+        {
+            ["lib"] = "export const a = 1;",
+            ["main"] = "import * as ns from 'lib'; report(Object.isExtensible(ns));",
+        };
+        RunGraph(modules, "main", "").AsBool.Should().BeFalse();
+    }
+
+    [TestMethod]
+    public void Namespace_prototype_is_null()
+    {
+        var modules = new Dictionary<string, string>
+        {
+            ["lib"] = "export const a = 1;",
+            ["main"] = "import * as ns from 'lib'; report(Object.getPrototypeOf(ns) === null);",
+        };
+        RunGraph(modules, "main", "").AsBool.Should().BeTrue();
+    }
+
+    [TestMethod]
+    public void Namespace_keys_are_sorted_exports_without_toStringTag()
+    {
+        // Declared out of code-unit order; [[OwnPropertyKeys]] must sort them.
+        var modules = new Dictionary<string, string>
+        {
+            ["lib"] = "export const c = 3; export const a = 1; export const b = 2;",
+            ["main"] = "import * as ns from 'lib'; report(Object.keys(ns).join(','));",
+        };
+        RunGraph(modules, "main", "").AsString.Should().Be("a,b,c");
+    }
+
+    [TestMethod]
+    public void Namespace_ownPropertyNames_sorted_then_default_excludes_symbol()
+    {
+        // getOwnPropertyNames returns only string keys (sorted); the
+        // @@toStringTag symbol is not among them.
+        var modules = new Dictionary<string, string>
+        {
+            ["lib"] = "export const z = 1; export const a = 2;",
+            ["main"] = "import * as ns from 'lib'; report(Object.getOwnPropertyNames(ns).join(','));",
+        };
+        RunGraph(modules, "main", "").AsString.Should().Be("a,z");
+    }
+
+    [TestMethod]
+    public void Namespace_reflect_own_keys_is_sorted_strings_then_toStringTag()
+    {
+        var modules = new Dictionary<string, string>
+        {
+            ["lib"] = "export const b = 1; export const a = 2;",
+            ["main"] = "import * as ns from 'lib'; const ks = Reflect.ownKeys(ns); " +
+                       "report(ks.length + '|' + ks[0] + '|' + ks[1] + '|' + (ks[2] === Symbol.toStringTag));",
+        };
+        RunGraph(modules, "main", "").AsString.Should().Be("3|a|b|true");
+    }
+
+    [TestMethod]
+    public void Namespace_getOwnPropertySymbols_is_toStringTag_only()
+    {
+        var modules = new Dictionary<string, string>
+        {
+            ["lib"] = "export const a = 1;",
+            ["main"] = "import * as ns from 'lib'; const syms = Object.getOwnPropertySymbols(ns); " +
+                       "report(syms.length + '|' + (syms[0] === Symbol.toStringTag));",
+        };
+        RunGraph(modules, "main", "").AsString.Should().Be("1|true");
+    }
+
+    [TestMethod]
+    public void Namespace_live_binding_value_updates_through_namespace()
+    {
+        // The namespace must reflect a later mutation of the exporting binding.
+        var modules = new Dictionary<string, string>
+        {
+            ["counter"] = "export let count = 0; export function tick(){ count = count + 1; }",
+            ["main"] = "import * as ns from 'counter'; const before = ns.count; " +
+                       "ns.tick(); ns.tick(); report(before + '->' + ns.count);",
+        };
+        RunGraph(modules, "main", "").AsString.Should().Be("0->2");
+    }
+
+    [TestMethod]
+    public void Namespace_get_own_property_descriptor_is_live_data_descriptor()
+    {
+        var modules = new Dictionary<string, string>
+        {
+            ["lib"] = "export const a = 42;",
+            ["main"] = "import * as ns from 'lib'; " +
+                       "const d = Object.getOwnPropertyDescriptor(ns, 'a'); " +
+                       "report(d.value + '/' + d.writable + '/' + d.enumerable + '/' + d.configurable);",
+        };
+        RunGraph(modules, "main", "").AsString.Should().Be("42/true/true/false");
+    }
+
+    [TestMethod]
+    public void Namespace_get_missing_export_is_undefined()
+    {
+        var modules = new Dictionary<string, string>
+        {
+            ["lib"] = "export const a = 1;",
+            ["main"] = "import * as ns from 'lib'; report(typeof ns.nope);",
+        };
+        RunGraph(modules, "main", "").AsString.Should().Be("undefined");
+    }
+
+    [TestMethod]
+    public void Namespace_has_reports_exports_and_toStringTag_only()
+    {
+        var modules = new Dictionary<string, string>
+        {
+            ["lib"] = "export const a = 1;",
+            ["main"] = "import * as ns from 'lib'; " +
+                       "report(('a' in ns) + ',' + ('b' in ns) + ',' + (Symbol.toStringTag in ns) + ',' + (Symbol.iterator in ns));",
+        };
+        RunGraph(modules, "main", "").AsString.Should().Be("true,false,true,false");
+    }
+
+    [TestMethod]
+    public void Namespace_strict_assignment_throws()
+    {
+        // Module code is always strict, so [[Set]] returning false throws.
+        var modules = new Dictionary<string, string>
+        {
+            ["lib"] = "export const a = 1;",
+            ["main"] = "import * as ns from 'lib'; " +
+                       "let threw = false; try { ns.a = 5; } catch (e) { threw = e instanceof TypeError; } " +
+                       "report(threw + '/' + ns.a);",
+        };
+        RunGraph(modules, "main", "").AsString.Should().Be("true/1");
+    }
+
+    [TestMethod]
+    public void Namespace_defineProperty_throws_on_change()
+    {
+        var modules = new Dictionary<string, string>
+        {
+            ["lib"] = "export const a = 1;",
+            ["main"] = "import * as ns from 'lib'; " +
+                       "let threw = false; " +
+                       "try { Object.defineProperty(ns, 'a', { value: 9 }); } catch (e) { threw = e instanceof TypeError; } " +
+                       "report(threw + '/' + ns.a);",
+        };
+        RunGraph(modules, "main", "").AsString.Should().Be("true/1");
+    }
+
+    [TestMethod]
+    public void Namespace_defineProperty_succeeds_on_exact_match()
+    {
+        // Redefining with the exact current descriptor is allowed (returns true).
+        var modules = new Dictionary<string, string>
+        {
+            ["lib"] = "export const a = 1;",
+            ["main"] = "import * as ns from 'lib'; " +
+                       "let ok = true; " +
+                       "try { Object.defineProperty(ns, 'a', " +
+                       "  { value: 1, writable: true, enumerable: true, configurable: false }); } " +
+                       "catch (e) { ok = false; } report(ok);",
+        };
+        RunGraph(modules, "main", "").AsBool.Should().BeTrue();
+    }
+
+    [TestMethod]
+    public void Namespace_delete_existing_export_fails_unknown_succeeds()
+    {
+        // delete returns false for an existing export (and @@toStringTag) and
+        // true for any other key. In sloppy-eval'd report we just observe the
+        // results; the delete on the export is a strict-mode TypeError, so we
+        // probe via the boolean result inside a try.
+        var modules = new Dictionary<string, string>
+        {
+            ["lib"] = "export const a = 1;",
+            ["main"] = "import * as ns from 'lib'; " +
+                       "let delA = false; try { delA = delete ns.a; } catch (e) { delA = 'threw'; } " +
+                       "const delB = delete ns.nope; " +
+                       "report(delA + '/' + delB);",
+        };
+        // `delete ns.a` in strict module code: the binding exists and is
+        // non-configurable, so [[Delete]] returns false → strict delete throws.
+        RunGraph(modules, "main", "").AsString.Should().Be("threw/true");
+    }
 }

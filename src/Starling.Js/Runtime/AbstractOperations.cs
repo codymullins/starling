@@ -172,6 +172,12 @@ public static class AbstractOperations
         // override is not enough.
         if (obj is JsProxy proxy)
             return proxy.GetWithReceiver(key, receiver);
+        // §10.4.6.8 — a Module Namespace Exotic Object's [[Get]] returns the live
+        // value of the exported binding (or "Module" for @@toStringTag); it does
+        // not walk a prototype chain (it has none). Dispatch by type here so every
+        // call site picks it up, mirroring the Proxy handling above.
+        if (obj is JsModuleNamespace ns)
+            return key.IsSymbol ? ns.Get(key.AsSymbol) : ns.Get(key.AsString);
         // ECMA-262 §25.2.5: integer-indexed exotic element access is handled
         // by the typed-array object before ordinary descriptor lookup.
         if (obj is JsTypedArray ta && key.IsString && IsCanonicalArrayIndex(key.AsString))
@@ -217,6 +223,12 @@ public static class AbstractOperations
         // method (which consults the `set` trap). See note on Get above.
         if (obj is JsProxy proxy)
             return proxy.SetWithReceiver(key, value, receiver);
+        // §10.4.6.9 — a Module Namespace Exotic Object's [[Set]] always returns
+        // false: a strict assignment throws (the caller surfaces it), a sloppy one
+        // silently no-ops. Dispatch by type so the boolean rejection is observed
+        // everywhere (the void JsObject.Set override cannot signal it).
+        if (obj is JsModuleNamespace)
+            return false;
         // ECMA-262 §25.2.5 integer-indexed exotic writes go to the backing
         // ArrayBuffer instead of creating ordinary own properties.
         if (obj is JsTypedArray ta && key.IsString && IsCanonicalArrayIndex(key.AsString))

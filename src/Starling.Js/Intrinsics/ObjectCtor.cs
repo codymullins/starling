@@ -340,6 +340,15 @@ public static class ObjectCtor
     {
         var target = RequireObject(realm, args.Length > 0 ? args[0] : JsValue.Undefined);
         var symbols = new List<JsValue>();
+        // §10.4.6 — a Module Namespace Exotic Object carries @@toStringTag as an
+        // own symbol key surfaced through its [[OwnPropertyKeys]] (not the base
+        // symbol-property bag, which it keeps empty), so iterate that.
+        if (target is JsModuleNamespace)
+        {
+            foreach (var k in target.OwnPropertyKeys)
+                if (k.IsSymbol) symbols.Add(JsValue.Symbol(k.AsSymbol));
+            return MakeArrayLike(realm, symbols);
+        }
         foreach (var k in target.SymbolKeys) symbols.Add(JsValue.Symbol(k));
         return MakeArrayLike(realm, symbols);
     }

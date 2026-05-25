@@ -98,6 +98,15 @@ public static class ReflectObj
         {
             var target = RequireObject(realm, args, 0, "ownKeys");
             var arr = new JsArray(realm);
+            // §10.4.6.11 — a Module Namespace Exotic Object's [[OwnPropertyKeys]]
+            // is authoritative (sorted export names then @@toStringTag); use it
+            // verbatim rather than re-deriving the ordinary integer-first order.
+            if (target is JsModuleNamespace)
+            {
+                foreach (var k in target.OwnPropertyKeys)
+                    arr.Push(k.IsSymbol ? JsValue.Symbol(k.AsSymbol) : JsValue.String(k.AsString));
+                return JsValue.Object(arr);
+            }
             // Spec §10.1.11.1 OrdinaryOwnPropertyKeys order: integer indices, then
             // string keys (insertion order), then symbol keys (insertion order).
             var intKeys = new List<(uint Index, string Key)>();

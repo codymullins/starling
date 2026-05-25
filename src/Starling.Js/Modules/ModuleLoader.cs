@@ -711,23 +711,30 @@ public sealed class ModuleLoader
     // Module Namespace Exotic Object (§10.4.6) — live-binding accessor view.
     // -----------------------------------------------------------------------
 
-    /// <summary>Build (or return cached) the namespace object for a module:
-    /// every exported name is an accessor property whose getter reads the live
-    /// backing cell.</summary>
+    /// <summary>Build (or return cached) the §10.4.6 Module Namespace Exotic
+    /// Object for a module. Each resolved exported name is wired to the live
+    /// backing <see cref="Cell"/> the exporting module writes, so reads through
+    /// the namespace reflect later mutations of the binding. The returned object
+    /// is a <see cref="JsModuleNamespace"/> whose internal methods implement the
+    /// exotic behaviour (null prototype, non-extensible, read-only/immutable
+    /// keys, code-unit-sorted [[OwnPropertyKeys]], <c>@@toStringTag</c> of
+    /// <c>"Module"</c>).</summary>
     public JsObject GetOrBuildNamespace(ModuleRecord module)
     {
         if (module.Namespace is not null) return module.Namespace;
 
-        var ns = _runtime.Realm.NewObjectWithProto(null);
+        // §10.4.6 / §16.2.1.10 ModuleNamespaceCreate: the [[Exports]] list is the
+        // module's resolved export names (export * expanded, default excluded
+        // from re-exported stars), each bound to its live cell. A name that fails
+        // to resolve to a cell is dropped (it is not a usable binding).
+        var exports = new Dictionary<string, Cell>(StringComparer.Ordinal);
         foreach (var name in ExportedNames(module, new HashSet<string>(StringComparer.Ordinal)))
         {
             var cell = ResolveExportCell(module, name, new HashSet<string>(StringComparer.Ordinal));
-            if (cell is null) continue;
-            var getter = new JsNativeFunction(_runtime.Realm, $"get {name}", length: 0,
-                (_, _) => cell.Value, isConstructor: false);
-            ns.DefineOwnProperty(name,
-                PropertyDescriptor.Accessor(getter, setter: null, enumerable: true, configurable: false));
+            if (cell is not null) exports[name] = cell;
         }
+
+        var ns = new JsModuleNamespace(exports);
         module.Namespace = ns;
         return ns;
     }
