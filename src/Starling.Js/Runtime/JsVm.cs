@@ -512,18 +512,26 @@ public sealed class JsVm
                 }
                 case Opcode.LoadGlobalChecked:
                 {
-                    // §6.2.5.5 GetValue — an unresolvable Reference throws a
-                    // ReferenceError. Plain LoadGlobal yields undefined for a
-                    // missing global; this variant (emitted for computed
-                    // property keys that are bare free identifiers) makes the
-                    // key's GetValue fire its ReferenceError so an unresolvable
-                    // key aborts the class/object definition.
+                    // §6.2.5.5 GetValue — reading a free identifier that resolves
+                    // to no binding is an unresolvable Reference and throws a
+                    // ReferenceError. Emitted for all free-identifier reads
+                    // (except the operand of typeof/delete). An embedder — e.g.
+                    // the browser, for graceful degradation of host globals it
+                    // hasn't implemented yet — can suppress the throw via the
+                    // realm's ThrowOnUnresolvedGlobalRead flag / LenientGlobalNames
+                    // allowlist (then the read yields undefined, the old behavior).
                     var idx = ReadU16();
                     var name = (string)constants[idx]!;
                     _lastLoadName = name;
-                    var globalObj = _runtime.Realm.GlobalObject;
+                    var realm = _runtime.Realm;
+                    var globalObj = realm.GlobalObject;
                     if (!globalObj.Has(name))
-                        throw new JsThrow(_runtime.Realm.NewReferenceError(name + " is not defined"));
+                    {
+                        if (realm.ThrowOnUnresolvedGlobalRead && !realm.LenientGlobalNames.Contains(name))
+                            throw new JsThrow(realm.NewReferenceError(name + " is not defined"));
+                        Push(JsValue.Undefined);
+                        break;
+                    }
                     Push(AbstractOperations.Get(this, globalObj, name, JsValue.Object(globalObj)));
                     break;
                 }

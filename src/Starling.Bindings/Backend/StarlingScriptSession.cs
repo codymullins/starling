@@ -60,6 +60,13 @@ internal sealed class StarlingScriptSession : IScriptSession
         _loop = new WebEventLoop();
 
         _runtime = new JsRuntime();
+        // wp:M3-68 — page JS reads many host globals this engine doesn't
+        // implement yet (and pages routinely probe `someGlobal` directly). Keep
+        // unresolved global reads lenient (yield undefined, the legacy behavior)
+        // for the page realm so a missing host global degrades gracefully instead
+        // of throwing a ReferenceError and breaking the page. (The strict,
+        // spec-correct default stays on for Test262 / the default realm.)
+        _runtime.Realm.ThrowOnUnresolvedGlobalRead = false;
 
         // Route the realm's console through the host sink. The realm sink uses
         // Starling.Js.ConsoleLevel; map to the hosting-neutral enum here so the

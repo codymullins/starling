@@ -280,7 +280,10 @@ public class JsVmTests
     [TestMethod]
     public void Not_a_function_error_names_the_global_callee()
     {
-        var act = () => Eval("nopeFn();");
+        // `nopeFn` is declared but undefined-valued, so the call is a
+        // not-a-function TypeError that must name the callee. (A bare undeclared
+        // call now throws ReferenceError instead — see the unresolved-read tests.)
+        var act = () => Eval("var nopeFn;\nnopeFn();");
         act.Should().Throw<JsThrow>()
             .Which.Value.AsString.Should().Contain("nopeFn");
     }

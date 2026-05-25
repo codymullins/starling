@@ -1963,6 +1963,16 @@ public sealed partial class JsCompiler
                     _b.Emit(Opcode.LoadUndefined);
                     return;
                 }
+                // §13.5.3 — `typeof` on a bare identifier that resolves to no
+                // binding yields "undefined" instead of throwing, so its read
+                // uses the silent (unchecked) global load. Any other operand
+                // shape evaluates normally and throws where the spec requires.
+                if (u.Op == "typeof" && u.Argument is Identifier typeofId)
+                {
+                    EmitIdLoad(typeofId.Name, checkedGlobal: false);
+                    _b.Emit(Opcode.TypeOf);
+                    return;
+                }
                 EmitExpression(u.Argument);
                 _b.Emit(UnaryOpToOpcode(u.Op));
                 return;
@@ -2200,14 +2210,14 @@ public sealed partial class JsCompiler
         _b.PatchI32(jumpPos, delta);
     }
 
-    private void EmitIdLoad(string name)
+    private void EmitIdLoad(string name, bool checkedGlobal = true)
     {
         if (ShouldRouteWith(name))
         {
-            EmitWithGuarded(Opcode.WithLoadOrMiss, name, () => EmitIdLoadStatic(name));
+            EmitWithGuarded(Opcode.WithLoadOrMiss, name, () => EmitIdLoadStatic(name, checkedGlobal));
             return;
         }
-        EmitIdLoadStatic(name);
+        EmitIdLoadStatic(name, checkedGlobal);
     }
 
     /// <summary>Emit a store of the value on top of the stack into the binding
@@ -2246,7 +2256,7 @@ public sealed partial class JsCompiler
             _b.EmitU16(Opcode.StoreGlobal, _b.AddConstant(name));
     }
 
-    private void EmitIdLoadStatic(string name)
+    private void EmitIdLoadStatic(string name, bool checkedGlobal = true)
     {
         if (TryResolveLocal(name, out var slot))
         {
@@ -2272,7 +2282,14 @@ public sealed partial class JsCompiler
                 ? Opcode.LoadUpvalueChecked : Opcode.LoadUpvalue, upIdx);
             return;
         }
-        _b.EmitU16(Opcode.LoadGlobal, _b.AddConstant(name));
+        // §6.2.5.5 GetValue — a free identifier that resolves to no binding
+        // (neither local/upvalue nor an own/inherited global property) is an
+        // unresolvable Reference whose GetValue throws a ReferenceError. The
+        // checked opcode performs that throw; the silent LoadGlobal (yields
+        // undefined) is used only where the spec tolerates a missing global —
+        // the operand of `typeof` (§13.5.3).
+        _b.EmitU16(checkedGlobal ? Opcode.LoadGlobalChecked : Opcode.LoadGlobal,
+            _b.AddConstant(name));
     }
 
     /// <summary>Emit a computed property-key expression (class/object member
@@ -2416,7 +2433,9 @@ public sealed partial class JsCompiler
             // arms above so postfix returns the pre-update value and prefix
             // returns the post-update value.
             var nameIdx = _b.AddConstant(id.Name);
-            _b.EmitU16(Opcode.LoadGlobal, nameIdx);
+            // §13.4.4.1 — the initial read is GetValue, so an unresolvable free
+            // identifier throws a ReferenceError (checked global load).
+            _b.EmitU16(Opcode.LoadGlobalChecked, nameIdx);
             if (!up.Prefix) _b.Emit(Opcode.Dup);
             _b.EmitU16(Opcode.LoadConst, _b.AddConstant(1.0));
             _b.Emit(up.Op == "++" ? Opcode.Add : Opcode.Sub);
@@ -2791,7 +2810,9 @@ public sealed partial class JsCompiler
             }
             // Global / script-top var target.
             var nameIdx = _b.AddConstant(id.Name);
-            _b.EmitU16(Opcode.LoadGlobal, nameIdx);   // [cur]
+            // §13.15.2 — the leading read is GetValue, so an unresolvable free
+            // identifier throws a ReferenceError (checked global load).
+            _b.EmitU16(Opcode.LoadGlobalChecked, nameIdx);   // [cur]
             _b.Emit(Opcode.Dup);
             var jg = _b.EmitJump(jmp);
             _b.Emit(Opcode.Pop);

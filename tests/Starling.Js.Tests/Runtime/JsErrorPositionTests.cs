@@ -27,9 +27,13 @@ public class JsErrorPositionTests
     [TestMethod]
     public void Bare_call_to_undefined_global_carries_position()
     {
-        var act = () => Eval("nope();");
+        // `nope` is declared (resolvable read, no ReferenceError) but
+        // undefined-valued, so calling it is a not-a-function TypeError that must
+        // carry position. (A *bare undeclared* call now throws ReferenceError
+        // before the call — see the unresolved-global-read tests.)
+        var act = () => Eval("var nope;\nnope();");
         var msg = act.Should().Throw<JsThrow>().Which.Value.AsString;
-        msg.Should().Contain("(at 1:1)");
+        msg.Should().Contain("(at 2:1)");
     }
 
     [TestMethod]

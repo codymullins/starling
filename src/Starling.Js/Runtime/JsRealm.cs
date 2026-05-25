@@ -218,6 +218,21 @@ public sealed class JsRealm
     /// <see cref="JsFunction"/> dispatch.</summary>
     public JsVm? ActiveVm { get; internal set; }
 
+    /// <summary>wp:M3-68 — §6.2.5.5: reading a bare free identifier that resolves
+    /// to no binding throws a ReferenceError. Default <c>true</c> (spec-correct;
+    /// what Test262 expects). An embedder can set this <c>false</c> so unresolved
+    /// global reads yield <c>undefined</c> instead — used by the browser page
+    /// realm to gracefully degrade host globals it hasn't implemented yet rather
+    /// than crash a page. See also <see cref="LenientGlobalNames"/> for a
+    /// per-name opt-out while the flag stays on.</summary>
+    public bool ThrowOnUnresolvedGlobalRead { get; set; } = true;
+
+    /// <summary>wp:M3-68 — names that stay lenient (read → <c>undefined</c>)
+    /// even when <see cref="ThrowOnUnresolvedGlobalRead"/> is <c>true</c>: an
+    /// allowlist of known host globals an embedder intends to provide. Empty by
+    /// default (so Test262 / the default realm is fully strict).</summary>
+    public HashSet<string> LenientGlobalNames { get; } = new(StringComparer.Ordinal);
+
     /// <summary>wp:M3-03c — the active module loader for this realm, if module
     /// evaluation is in flight. Set by <see cref="Modules.ModuleLoader"/> on
     /// construction so the VM can service dynamic <c>import()</c> and
