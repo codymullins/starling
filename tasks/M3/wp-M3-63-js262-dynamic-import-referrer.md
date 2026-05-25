@@ -2,8 +2,10 @@
 id: "wp:M3-63-js262-dynamic-import-referrer"
 parent: "wp:M3-02e-js-test262"
 milestone: "M3"
-status: "in_progress"
+status: "complete"
 phase: "2"
+integrated: "main 9f65d20 (also js262-phase0-2)"
+impact: "added Chunk.SourcePath inherited by nested chunks; DynamicImport/import.meta use SourcePath ?? Name. 'Failed to fetch module' 239->2."
 subsystem: "Starling.Js"
 depends_on: []
 blocks: []
