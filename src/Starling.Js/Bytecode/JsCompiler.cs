@@ -120,6 +120,13 @@ public sealed partial class JsCompiler
     /// storage.</summary>
     private HashSet<string> _capturedNames = new(StringComparer.Ordinal);
 
+    /// <summary>§10.2.1.1 / §13.2.5 — synthetic binding name for the captured
+    /// lexical <c>this</c>. An arrow function resolves <c>this</c> to the
+    /// nearest enclosing ordinary function's <c>this</c>; the enclosing function
+    /// materializes it into a captured Cell under this name (illegal as a user
+    /// identifier, so no collision) which the arrow reads as an upvalue.</summary>
+    private const string LexicalThisName = "<this>";
+
     /// <summary>B7-followup-b — open-loop tracking for <c>break</c> /
     /// <c>continue</c>. Each entry holds the patch lists for jumps targeting
     /// the loop's continue / break sites; the loop body emits forward
@@ -415,11 +422,17 @@ public sealed partial class JsCompiler
     /// The eval body's reads/writes of those new names resolve through that store
     /// at runtime (the global-fallback opcodes consult it first).</para></summary>
     public static Chunk CompileForDirectEval(Program program, string? name,
-        IReadOnlySet<string> callerScopeNames, bool injectVars = false)
+        IReadOnlySet<string> callerScopeNames, bool injectVars = false,
+        IReadOnlyDictionary<string, string>? privateNameScope = null)
     {
         var c = new JsCompiler { _callerScopeNames = callerScopeNames, _evalInjectVars = injectVars };
         c._b.IsStrict = program.Strict;
         c._b.SourcePath = name;
+        // §19.2.1.1 — a direct eval inherits the caller's PrivateEnvironment, so
+        // eval'd code can resolve `this.#m` against the enclosing class's private
+        // names. Seed the private-name scope from the caller's chunk.
+        if (privateNameScope is { Count: > 0 })
+            c._privateScopes.Push(new Dictionary<string, string>(privateNameScope, StringComparer.Ordinal));
         c.RunCaptureAnalysisForScript(program.Body);
         c.EmitProgram(program, keepLastExpression: true);
         return c._b.Build(name);
@@ -443,6 +456,10 @@ public sealed partial class JsCompiler
     private void RunCaptureAnalysisForFunction(IReadOnlyList<Expression> parameters, IReadOnlyList<Statement> body)
     {
         _capturedNames = CaptureAnalysis.Compute(parameters, body);
+        // §10.2.1.1 — a nested arrow that reads `this` captures this function's
+        // `this` binding. Seed the synthetic name so the prologue boxes it.
+        if (CaptureAnalysis.ReferencesThisInNestedArrow(parameters, body))
+            _capturedNames.Add(LexicalThisName);
     }
 
     private void EmitProgram(Program p, bool keepLastExpression)
@@ -723,6 +740,8 @@ public sealed partial class JsCompiler
         HoistFunctionDeclarations(fd.Body.Body);
         // wp:M3-20 — synthesize the `arguments` object if the body reads it.
         MaybeBindArguments(fd.Params, fd.Body.Body);
+        // §10.2.1.1 — box `this` if a nested arrow reads it.
+        MaybeBindLexicalThis();
         // TDZ — instantiate top-level let/const of the function body in the
         // uninitialized state so reads before their declaration throw.
         HoistLexicalDeclarations(fd.Body.Body);
@@ -2148,6 +2167,13 @@ public sealed partial class JsCompiler
                 EmitIdLoad(id.Name);
                 return;
             case ThisExpression:
+                // §10.2.1.1 — inside an arrow, `this` is the enclosing ordinary
+                // function's binding, captured as the synthetic <this> upvalue.
+                if (_b.IsArrow && TryResolveUpvalue(LexicalThisName, out var thisUp))
+                {
+                    _b.EmitUpvalue(Opcode.LoadUpvalue, thisUp);
+                    return;
+                }
                 _b.Emit(_classMethodDepth > 0 ? Opcode.LoadThisChecked : Opcode.LoadThis);
                 return;
             case BinaryExpression bin:
@@ -3564,6 +3590,9 @@ public sealed partial class JsCompiler
         // *declarations* bind in the enclosing scope (HoistFunctionDeclarations)
         // and must not double-bind here.
         if (!isArrow && fe.Name is not null) sub.MaybeBindSelfName(fe.Name.Name);
+        // §10.2.1.1 — arrows have no own `this` binding; only an ordinary
+        // function expression boxes `this` for a nested arrow that reads it.
+        if (!isArrow) sub.MaybeBindLexicalThis();
         // TDZ — instantiate top-level let/const of the body in the
         // uninitialized state so reads before their declaration throw.
         sub.HoistLexicalDeclarations(fe.Body.Body);
@@ -3761,6 +3790,37 @@ public sealed partial class JsCompiler
             _b.EmitSlot(Opcode.InitCellLocal, slot);
         }
         _b.EmitSlot(Opcode.MakeArguments, slot);
+    }
+
+    /// <summary>§10.2.1.1 — when a nested arrow reads <c>this</c>, materialize
+    /// this (non-arrow) function's <c>this</c> into a captured Cell under the
+    /// synthetic <see cref="LexicalThisName"/> binding so the arrow closure
+    /// resolves it as an upvalue. Run in the prologue (after parameter binding)
+    /// once <c>LoadThis</c> is valid. For a base/ordinary function the
+    /// frame's <c>this</c> is already bound here; a derived constructor binds
+    /// <c>this</c> only at <c>super()</c>, so its store is (re)emitted after
+    /// <see cref="Opcode.BindThis"/> via <see cref="StoreLexicalThisCell"/>.</summary>
+    private void MaybeBindLexicalThis()
+    {
+        if (!IsNameCaptured(LexicalThisName)) return;
+        var slot = _b.ReserveLocal();
+        _scopes[^1][LexicalThisName] = slot;
+        _b.MarkCaptured(slot);
+        _b.EmitSlot(Opcode.InitCellLocal, slot);
+        // Seed the cell with the current `this` (a no-op store of the TDZ-bound
+        // value for a derived ctor, which re-stores after super()).
+        _b.Emit(Opcode.LoadThis);
+        _b.EmitSlot(Opcode.StoreCellLocal, slot);
+    }
+
+    /// <summary>Re-store the (now bound) <c>this</c> into the lexical-<c>this</c>
+    /// Cell after a derived constructor's <c>super()</c> binds it. No-op when no
+    /// nested arrow captured <c>this</c>.</summary>
+    private void StoreLexicalThisCell()
+    {
+        if (!_scopes[^1].TryGetValue(LexicalThisName, out var slot)) return;
+        _b.Emit(Opcode.LoadThis);
+        _b.EmitSlot(Opcode.StoreCellLocal, slot);
     }
 
     /// <summary>wp:M3-21 — §15.2.5 InstantiateOrdinaryFunctionExpression. Bind a
@@ -4091,6 +4151,17 @@ public sealed partial class JsCompiler
         var valueSlot = _b.ReserveLocal();
         _b.EmitSlot(Opcode.StoreLocal, valueSlot);
         EmitExpression(me.Object);
+        // §13.15.5.5 / §13.3.7 — a private member destructuring target stores
+        // through PrivateSet (brand-checked), which pops [obj, value] and
+        // re-pushes value; discard the re-pushed value to balance the stack.
+        if (!me.Computed && me.Property is PrivateNameExpression pne)
+        {
+            var mangled = ResolvePrivateName(pne.Name, pne.Start);
+            _b.EmitSlot(Opcode.LoadLocal, valueSlot);
+            _b.EmitU16(Opcode.PrivateSet, _b.AddConstant(mangled));
+            _b.Emit(Opcode.Pop);
+            return;
+        }
         if (me.Computed) EmitExpression(me.Property);
         _b.EmitSlot(Opcode.LoadLocal, valueSlot);
         if (me.Computed) _b.Emit(Opcode.StoreComputed);
@@ -4280,7 +4351,14 @@ public sealed partial class JsCompiler
         _b.EmitSlot(Opcode.LoadLocal, objSlot);
         if (me.Computed) _b.EmitSlot(Opcode.LoadLocal, keySlot);
         _b.EmitSlot(Opcode.LoadLocal, valueSlot);
-        if (me.Computed) _b.Emit(Opcode.StoreComputed);
+        // §13.3.7 — a private member target stores through PrivateSet (brand-
+        // checked); it pops [obj, value] and re-pushes value, which we discard.
+        if (!me.Computed && me.Property is PrivateNameExpression pne)
+        {
+            var mangled = ResolvePrivateName(pne.Name, pne.Start);
+            _b.EmitU16(Opcode.PrivateSet, _b.AddConstant(mangled));
+        }
+        else if (me.Computed) _b.Emit(Opcode.StoreComputed);
         else _b.EmitU16(Opcode.StoreProperty, _b.AddConstant(((Identifier)me.Property).Name));
         _b.Emit(Opcode.Pop);
     }

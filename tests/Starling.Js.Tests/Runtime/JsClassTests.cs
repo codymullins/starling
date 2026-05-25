@@ -365,6 +365,131 @@ public class JsClassTests
         ");
     }
 
+    // ------------------------------------------ wp:M3-77 private element fixes
+
+    [TestMethod]
+    public void Private_in_returns_true_for_instance_false_otherwise_no_crash()
+    {
+        // §13.10 ergonomic brand check — `#x in obj` evaluates to whether obj
+        // carries the #x brand; it never crashes and yields false for a plain
+        // object that lacks the brand.
+        Eval(@"
+            class C { #x = 1; static has(o) { return #x in o; } }
+            var c = new C();
+            (C.has(c) === true) && (C.has({}) === false);
+        ").AsBool.Should().BeTrue();
+    }
+
+    [TestMethod]
+    public void Private_in_for_method_brand_is_true_on_instance()
+    {
+        Eval(@"
+            class C { #m() { return 1; } static has(o) { return #m in o; } }
+            C.has(new C());
+        ").AsBool.Should().BeTrue();
+    }
+
+    [TestMethod]
+    public void Private_method_getter_setter_callable_on_valid_instance()
+    {
+        // A private method, getter, and setter all register their brand on the
+        // instance, so valid access from inside the class succeeds.
+        Eval(@"
+            class C {
+                #v = 0;
+                #m() { return 7; }
+                get #g() { return this.#v; }
+                set #s(x) { this.#v = x; }
+                run() { this.#s = 5; return this.#m() + this.#g; }
+            }
+            new C().run();
+        ").AsNumber.Should().Be(12);
+    }
+
+    [TestMethod]
+    public void Private_method_access_through_inner_arrow_succeeds()
+    {
+        // §10.2.1.1 — an inner arrow inherits the method's `this`, so the brand
+        // check on `this.#m()` finds the instance's brand.
+        Eval(@"
+            class C { #m() { return 'ok'; } method() { var f = () => this.#m(); return f(); } }
+            new C().method();
+        ").AsString.Should().Be("ok");
+    }
+
+    [TestMethod]
+    public void Private_method_call_on_wrong_receiver_via_arrow_still_throws()
+    {
+        ExpectTypeError(@"
+            class C { #m() { return 1; } method() { var f = () => this.#m(); return f(); } }
+            var c = new C(); var o = {};
+            c.method.call(o);
+        ");
+    }
+
+    [TestMethod]
+    public void Forward_referenced_private_name_resolves()
+    {
+        // A method body references #later before its declaration appears in the
+        // class body; CollectPrivateNames makes all private names visible first.
+        Eval(@"
+            class C { early() { return this.#later(); } #later() { return 99; } }
+            new C().early();
+        ").AsNumber.Should().Be(99);
+    }
+
+    [TestMethod]
+    public void Nested_class_references_outer_private_name()
+    {
+        // An inner class's method references the OUTER class's private name; the
+        // private-name scope of every enclosing class body is visible.
+        Eval(@"
+            class Outer {
+                #secret = 42;
+                make() {
+                    var self = this;
+                    class Inner { read() { return self.#secret; } }
+                    return new Inner().read();
+                }
+            }
+            new Outer().make();
+        ").AsNumber.Should().Be(42);
+    }
+
+    [TestMethod]
+    public void Destructuring_into_private_member_target_works_no_crash()
+    {
+        // §13.15 — `({a: this.#x} = obj)` and `[this.#y] = arr`: a private member
+        // as a destructuring-assignment target stores through the brand-checked
+        // PrivateSet (previously crashed casting PrivateNameExpression to Identifier).
+        Eval(@"
+            class C {
+                #x = 0; #y = 0;
+                load() {
+                    ({ a: this.#x } = { a: 11 });
+                    [this.#y] = [22];
+                    return this.#x + this.#y;
+                }
+            }
+            new C().load();
+        ").AsNumber.Should().Be(33);
+    }
+
+    [TestMethod]
+    public void Private_name_visible_to_direct_eval()
+    {
+        // §19.2.1.1 — a direct eval inherits the enclosing class's private
+        // environment, so a private-member access resolves inside eval'd code.
+        Eval("class C { #m = 44; getWithEval() { return eval('this.#m'); } } new C().getWithEval();")
+            .AsNumber.Should().Be(44);
+    }
+
+    [TestMethod]
+    public void Private_name_in_direct_eval_wrong_receiver_throws()
+    {
+        ExpectTypeError("class C { #m = 44; getWithEval() { return eval('this.#m'); } } class D { #m = 44; } var c = new C(); var d = new D(); c.getWithEval.call(d);");
+    }
+
     // ----------------------------------------------------- Helpers
 
     private static void ExpectTypeError(string src)

@@ -265,11 +265,18 @@ public sealed partial class JsCompiler
             // wp:M3-20 — class constructors are non-arrow functions; give them
             // an `arguments` object when the body reads it.
             sub.MaybeBindArguments(parameters, bodyBlock.Body);
+            // §10.2.1.1 — box `this` for a nested arrow. For a derived ctor the
+            // cell starts undefined and EmitSuperCall re-stores it once super()
+            // binds `this` (StoreLexicalThisCell).
+            sub.MaybeBindLexicalThis();
             sub.HoistLexicalDeclarations(bodyBlock.Body); // TDZ
             foreach (var s in bodyBlock.Body) sub.EmitStatement(s);
         }
 
         sub._b.Emit(Opcode.ReturnUndefined);
+        // §16.1.7 — stamp the in-scope private names so a direct eval in the
+        // constructor body can resolve them. Captured before popping the scope.
+        sub._b.PrivateNameScope = sub.FlattenPrivateScopes();
         sub._privateScopes.Pop();
 
         var arity = CountSimpleParams(parameters);
@@ -301,6 +308,9 @@ public sealed partial class JsCompiler
         // wp:M3-20 — methods/accessors are non-arrow functions; synthesize an
         // `arguments` object when the body reads it.
         sub.MaybeBindArguments(md.Params, md.Body.Body);
+        // §10.2.1.1 — box `this` for a nested arrow that reads it (the common
+        // `method(){ ... () => this.#x ... }` private-access case).
+        sub.MaybeBindLexicalThis();
         sub.HoistLexicalDeclarations(md.Body.Body); // TDZ
         // §10.2.1.3 — synchronous parameter-binding prologue boundary for
         // generator / async / async-generator methods; see EmitFunctionBody.
@@ -308,6 +318,8 @@ public sealed partial class JsCompiler
         sub._currentIsAsyncGenerator = md.Async && md.Generator;
         foreach (var s in md.Body.Body) sub.EmitStatement(s);
         sub._b.Emit(Opcode.ReturnUndefined);
+        // §16.1.7 — stamp in-scope private names for a direct eval in the body.
+        sub._b.PrivateNameScope = sub.FlattenPrivateScopes();
         sub._privateScopes.Pop();
 
         // wp:M3-04f — computed keys have no statically-known name; the
@@ -412,6 +424,9 @@ public sealed partial class JsCompiler
         sub.RunCaptureAnalysisForFunction(
             Array.Empty<Expression>(),
             new[] { (Statement)new ExpressionStatement(field.Initializer, field.Initializer.Start, field.Initializer.End) });
+        // §10.2.1.1 — box `this` (the instance / constructor) for a nested arrow
+        // inside the initializer (e.g. `#f = () => this.#g`).
+        sub.MaybeBindLexicalThis();
         if (field.Computed)
         {
             sub.EmitExpression(field.Initializer);
@@ -432,6 +447,8 @@ public sealed partial class JsCompiler
             }
             sub._b.Emit(Opcode.ReturnUndefined);
         }
+        // §16.1.7 — stamp in-scope private names for a direct eval in the init.
+        sub._b.PrivateNameScope = sub.FlattenPrivateScopes();
         sub._privateScopes.Pop();
         var chunk = sub._b.Build($"#field-init:{(staticKey ?? mangled ?? "[computed]")}");
         var initTemplate = new JsFunction("", chunk, 0);
@@ -450,9 +467,13 @@ public sealed partial class JsCompiler
         sub.RunCaptureAnalysisForFunction(Array.Empty<Expression>(), block.Body);
         sub.PreallocateCapturedVarBindings(block.Body);
         sub.HoistFunctionDeclarations(block.Body);
+        // §10.2.1.1 — box `this` (the constructor) for a nested arrow.
+        sub.MaybeBindLexicalThis();
         sub.HoistLexicalDeclarations(block.Body); // TDZ
         foreach (var s in block.Body) sub.EmitStatement(s);
         sub._b.Emit(Opcode.ReturnUndefined);
+        // §16.1.7 — stamp in-scope private names for a direct eval in the block.
+        sub._b.PrivateNameScope = sub.FlattenPrivateScopes();
         sub._privateScopes.Pop();
         var chunk = sub._b.Build("#static-block");
         var tmpl = new JsFunction("", chunk, 0);
@@ -491,11 +512,37 @@ public sealed partial class JsCompiler
         // Stack: [constructed]. Bind as this.
         _b.Emit(Opcode.Dup);
         _b.Emit(Opcode.BindThis);
+        // §10.2.1.1 — `this` is now bound; refresh the lexical-this Cell so any
+        // arrow created after super() observes the constructed instance.
+        StoreLexicalThisCell();
         // Run instance field initializers immediately after super() per spec.
         _b.Emit(Opcode.RunFieldInits);
         // The value of `super(...)` as an expression is the constructed
         // object — leave it on the stack so an enclosing ExpressionStatement
         // can pop it.
+    }
+
+    /// <summary>§16.1.7 — flatten every private-name scope visible at this point
+    /// (this compiler's <c>_privateScopes</c> plus the enclosing-compiler chain)
+    /// into a single name→mangled map. Stamped onto a method/ctor/field/static
+    /// body's chunk so a direct <c>eval</c> in it can resolve the enclosing
+    /// class's private names. Returns null when no private names are in scope.
+    /// Inner scopes override outer ones (added first, then not overwritten).</summary>
+    private Dictionary<string, string>? FlattenPrivateScopes()
+    {
+        Dictionary<string, string>? flat = null;
+        void Merge(Dictionary<string, string> scope)
+        {
+            foreach (var kv in scope)
+            {
+                flat ??= new Dictionary<string, string>(StringComparer.Ordinal);
+                flat.TryAdd(kv.Key, kv.Value); // inner (visited first) wins
+            }
+        }
+        foreach (var scope in _privateScopes) Merge(scope);
+        for (var p = _parent; p is not null; p = p._parent)
+            foreach (var scope in p._privateScopes) Merge(scope);
+        return flat;
     }
 
     /// <summary>Resolve a private name (<c>#name</c>) to its mangled own

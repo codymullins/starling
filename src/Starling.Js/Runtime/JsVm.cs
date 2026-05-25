@@ -183,7 +183,10 @@ public sealed class JsVm
             injectVars = !evalIsStrict && inFunction;
 
             var callerNames = new HashSet<string>(callerScope.Names, StringComparer.Ordinal);
-            chunk = JsCompiler.CompileForDirectEval(program, "<eval>", callerNames, injectVars);
+            // §19.2.1.1 — thread the caller's PrivateEnvironment so eval'd code
+            // resolves private names (`this.#m`) against the enclosing class.
+            chunk = JsCompiler.CompileForDirectEval(program, "<eval>", callerNames, injectVars,
+                caller?.Body.PrivateNameScope);
         }
         catch (Parse.JsParseException ex)
         {

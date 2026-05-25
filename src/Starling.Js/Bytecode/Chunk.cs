@@ -84,6 +84,15 @@ public sealed class Chunk
     /// the compiler recorded positions. Lookup via <see cref="PositionAt"/>.</summary>
     public IReadOnlyList<(int Offset, int Line, int Col)> Positions { get; }
 
+    /// <summary>§16.1.7 / §19.2.1.1 — the private-name environment in scope for
+    /// this chunk's body: a map from each visible private name (e.g.
+    /// <c>"#m"</c>) to its mangled own-property key. A direct <c>eval</c> running
+    /// in this function's context inherits it so eval'd code can resolve
+    /// <c>this.#m</c> against the enclosing class's private names (the spec's
+    /// PrivateEnvironment threaded into the eval). Null when no private names are
+    /// in scope (the common case).</summary>
+    public IReadOnlyDictionary<string, string>? PrivateNameScope { get; init; }
+
     public Chunk(byte[] code, IReadOnlyList<object?> constants, int localCount, string? name = null)
         : this(code, constants, localCount, name, capturedSlots: null)
     {
@@ -376,6 +385,11 @@ public sealed class ChunkBuilder
     /// <c>super</c>.</summary>
     public bool IsArrow { get; set; }
 
+    /// <summary>§16.1.7 — the private-name environment in scope for this body;
+    /// stamped onto <see cref="Chunk.PrivateNameScope"/> so a direct eval can
+    /// recover the enclosing class's private names. Null when none are in scope.</summary>
+    public IReadOnlyDictionary<string, string>? PrivateNameScope { get; set; }
+
     /// <summary>wp:M3-63 — the source path/URL of the script or module being
     /// compiled. Set on the top-level compiler's builder from the compile
     /// entry-point's <c>name</c> (the script/module URL) and inherited by every
@@ -386,5 +400,5 @@ public sealed class ChunkBuilder
     public Chunk Build(string? name = null)
         => new(_code.ToArray(), _constants.ToArray(), LocalCount, name, _capturedSlots,
             _positions is null ? null : _positions.ToArray())
-        { IsStrict = IsStrict, HasPrologue = HasPrologue, CapturesWith = CapturesWith, SourcePath = SourcePath, IsArrow = IsArrow, HasDirectEval = HasDirectEval };
+        { IsStrict = IsStrict, HasPrologue = HasPrologue, CapturesWith = CapturesWith, SourcePath = SourcePath, IsArrow = IsArrow, HasDirectEval = HasDirectEval, PrivateNameScope = PrivateNameScope };
 }

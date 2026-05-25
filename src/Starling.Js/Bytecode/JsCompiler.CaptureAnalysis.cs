@@ -76,6 +76,234 @@ internal static class CaptureAnalysis
     /// boundaries). Used to enforce the class-field-initializer early error.</summary>
     public static bool ContainsArguments(Expression? e) => ArgRefExpr(e);
 
+    /// <summary>§10.2.1.1 / §13.2.5 — does any <em>nested arrow</em> in this
+    /// (non-arrow) function's body reference <c>this</c>? Arrow functions have
+    /// no own <c>this</c> binding; they resolve <c>this</c> lexically to the
+    /// nearest enclosing ordinary function. When such a reference exists, the
+    /// enclosing function must materialize its <c>this</c> into a captured Cell
+    /// (under the synthetic name <c>&lt;this&gt;</c>) so the arrow closure can
+    /// read it as an upvalue. Mirrors <see cref="ReferencesArguments"/> but for
+    /// the <c>this</c> binding. Implemented as: does the body contain any arrow
+    /// whose body (descending through further arrows, not ordinary functions)
+    /// references <c>this</c>? A bare <c>this</c> in the ordinary body does not
+    /// count — it uses <see cref="Opcode.LoadThis"/> directly.</summary>
+    public static bool ReferencesThisInNestedArrow(
+        IReadOnlyList<Expression> parameters,
+        IReadOnlyList<Statement> body)
+    {
+        foreach (var p in parameters)
+            if (FindArrowThisExpr(p)) return true;
+        foreach (var s in body)
+            if (FindArrowThisStmt(s)) return true;
+        return false;
+    }
+
+    // Phase 1: locate a nested arrow (without counting the ordinary body's own
+    // `this`). Reuses ArgRef*'s traversal shape but the leaf trigger is an arrow
+    // whose body references `this`. Ordinary function bodies establish their own
+    // `this`, so we do NOT descend into them.
+    private static bool FindArrowThisStmt(Statement? s)
+    {
+        if (s is null) return false;
+        switch (s)
+        {
+            case BlockStatement b: return b.Body.Any(FindArrowThisStmt);
+            case ExpressionStatement es: return FindArrowThisExpr(es.Expression);
+            case ReturnStatement r: return FindArrowThisExpr(r.Argument);
+            case ThrowStatement t: return FindArrowThisExpr(t.Argument);
+            case IfStatement i:
+                return FindArrowThisExpr(i.Test) || FindArrowThisStmt(i.Consequent) || FindArrowThisStmt(i.Alternate);
+            case WhileStatement w: return FindArrowThisExpr(w.Test) || FindArrowThisStmt(w.Body);
+            case DoWhileStatement dw: return FindArrowThisStmt(dw.Body) || FindArrowThisExpr(dw.Test);
+            case ForStatement f:
+                if (f.Init is Statement fis && FindArrowThisStmt(fis)) return true;
+                if (f.Init is Expression fie && FindArrowThisExpr(fie)) return true;
+                return FindArrowThisExpr(f.Test) || FindArrowThisExpr(f.Update) || FindArrowThisStmt(f.Body);
+            case ForInStatement fi:
+                if (fi.Left is Statement fil && FindArrowThisStmt(fil)) return true;
+                if (fi.Left is Expression file && FindArrowThisExpr(file)) return true;
+                return FindArrowThisExpr(fi.Right) || FindArrowThisStmt(fi.Body);
+            case ForOfStatement fo:
+                if (fo.Left is Statement fol && FindArrowThisStmt(fol)) return true;
+                if (fo.Left is Expression foe && FindArrowThisExpr(foe)) return true;
+                return FindArrowThisExpr(fo.Right) || FindArrowThisStmt(fo.Body);
+            case SwitchStatement sw:
+                if (FindArrowThisExpr(sw.Discriminant)) return true;
+                foreach (var c in sw.Cases)
+                {
+                    if (FindArrowThisExpr(c.Test)) return true;
+                    if (c.Consequent.Any(FindArrowThisStmt)) return true;
+                }
+                return false;
+            case TryStatement tr:
+                if (FindArrowThisStmt(tr.Block)) return true;
+                if (tr.Handler is not null && tr.Handler.Body.Body.Any(FindArrowThisStmt)) return true;
+                return tr.Finalizer is not null && FindArrowThisStmt(tr.Finalizer);
+            case LabeledStatement ls: return FindArrowThisStmt(ls.Body);
+            case WithStatement ws: return FindArrowThisExpr(ws.Object) || FindArrowThisStmt(ws.Body);
+            case VariableDeclaration vd:
+                return vd.Declarations.Any(d => FindArrowThisExpr(d.Init));
+            // Ordinary nested function/class declarations have their own `this`.
+            case FunctionDeclaration: return false;
+            case ClassDeclaration cd: return FindArrowThisExpr(cd.BaseClass);
+            default: return false;
+        }
+    }
+
+    private static bool FindArrowThisExpr(Expression? e)
+    {
+        if (e is null) return false;
+        switch (e)
+        {
+            // Found an arrow: count if its body references `this` lexically.
+            case ArrowFunctionExpression arrow:
+                if (arrow.Params.Any(ThisRefExpr)) return true;
+                return arrow.Body switch
+                {
+                    BlockStatement block => block.Body.Any(ThisRefStmt),
+                    Expression expr => ThisRefExpr(expr),
+                    _ => false,
+                };
+            case BinaryExpression bin: return FindArrowThisExpr(bin.Left) || FindArrowThisExpr(bin.Right);
+            case LogicalExpression log: return FindArrowThisExpr(log.Left) || FindArrowThisExpr(log.Right);
+            case UnaryExpression u: return FindArrowThisExpr(u.Argument);
+            case UpdateExpression up: return FindArrowThisExpr(up.Argument);
+            case AssignmentExpression a: return FindArrowThisExpr(a.Target) || FindArrowThisExpr(a.Value);
+            case AssignmentPattern ap: return FindArrowThisExpr(ap.Target) || FindArrowThisExpr(ap.Default);
+            case RestElement rest: return FindArrowThisExpr(rest.Argument);
+            case ConditionalExpression c:
+                return FindArrowThisExpr(c.Test) || FindArrowThisExpr(c.Consequent) || FindArrowThisExpr(c.Alternate);
+            case MemberExpression m:
+                return FindArrowThisExpr(m.Object) || (m.Computed && FindArrowThisExpr(m.Property));
+            case CallExpression call:
+                return FindArrowThisExpr(call.Callee) || call.Arguments.Any(FindArrowThisExpr);
+            case NewExpression ne:
+                return FindArrowThisExpr(ne.Callee) || ne.Arguments.Any(FindArrowThisExpr);
+            case ArrayExpression aex: return aex.Elements.Any(FindArrowThisExpr);
+            case ObjectExpression oe:
+                foreach (var prop in oe.Properties)
+                {
+                    if (prop.Computed && FindArrowThisExpr(prop.Key)) return true;
+                    if (FindArrowThisExpr(prop.Value)) return true;
+                }
+                return false;
+            case SequenceExpression seq: return seq.Expressions.Any(FindArrowThisExpr);
+            case TemplateLiteral tpl: return tpl.Expressions.Any(FindArrowThisExpr);
+            case TaggedTemplateExpression tte: return FindArrowThisExpr(tte.Tag) || FindArrowThisExpr(tte.Quasi);
+            case SpreadElement sp: return FindArrowThisExpr(sp.Argument);
+            // Ordinary nested function expressions / classes have their own `this`.
+            case FunctionExpression: return false;
+            case ClassExpression cls: return FindArrowThisExpr(cls.BaseClass);
+            case SuperPropertyExpression sp2: return sp2.Computed && FindArrowThisExpr(sp2.Property);
+            case SuperCallExpression scx: return scx.Arguments.Any(FindArrowThisExpr);
+            default: return false;
+        }
+    }
+
+    // Phase 2: once inside an arrow, any `this` (descending through further
+    // arrows, not ordinary functions) triggers. Reuses ArgRef*'s traversal but
+    // with `this` (not the `arguments` identifier) as the leaf.
+    private static bool ThisRefStmt(Statement? s)
+    {
+        if (s is null) return false;
+        switch (s)
+        {
+            case BlockStatement b: return b.Body.Any(ThisRefStmt);
+            case ExpressionStatement es: return ThisRefExpr(es.Expression);
+            case ReturnStatement r: return ThisRefExpr(r.Argument);
+            case ThrowStatement t: return ThisRefExpr(t.Argument);
+            case IfStatement i:
+                return ThisRefExpr(i.Test) || ThisRefStmt(i.Consequent) || ThisRefStmt(i.Alternate);
+            case WhileStatement w: return ThisRefExpr(w.Test) || ThisRefStmt(w.Body);
+            case DoWhileStatement dw: return ThisRefStmt(dw.Body) || ThisRefExpr(dw.Test);
+            case ForStatement f:
+                if (f.Init is Statement fis && ThisRefStmt(fis)) return true;
+                if (f.Init is Expression fie && ThisRefExpr(fie)) return true;
+                return ThisRefExpr(f.Test) || ThisRefExpr(f.Update) || ThisRefStmt(f.Body);
+            case ForInStatement fi:
+                if (fi.Left is Statement fil && ThisRefStmt(fil)) return true;
+                if (fi.Left is Expression file && ThisRefExpr(file)) return true;
+                return ThisRefExpr(fi.Right) || ThisRefStmt(fi.Body);
+            case ForOfStatement fo:
+                if (fo.Left is Statement fol && ThisRefStmt(fol)) return true;
+                if (fo.Left is Expression foe && ThisRefExpr(foe)) return true;
+                return ThisRefExpr(fo.Right) || ThisRefStmt(fo.Body);
+            case SwitchStatement sw:
+                if (ThisRefExpr(sw.Discriminant)) return true;
+                foreach (var c in sw.Cases)
+                {
+                    if (ThisRefExpr(c.Test)) return true;
+                    if (c.Consequent.Any(ThisRefStmt)) return true;
+                }
+                return false;
+            case TryStatement tr:
+                if (ThisRefStmt(tr.Block)) return true;
+                if (tr.Handler is not null && tr.Handler.Body.Body.Any(ThisRefStmt)) return true;
+                return tr.Finalizer is not null && ThisRefStmt(tr.Finalizer);
+            case LabeledStatement ls: return ThisRefStmt(ls.Body);
+            case WithStatement ws: return ThisRefExpr(ws.Object) || ThisRefStmt(ws.Body);
+            case VariableDeclaration vd:
+                return vd.Declarations.Any(d => ThisRefExpr(d.Init));
+            // An ordinary nested function/class declaration has its own `this`.
+            case FunctionDeclaration: return false;
+            case ClassDeclaration cd: return ThisRefExpr(cd.BaseClass);
+            default: return false;
+        }
+    }
+
+    private static bool ThisRefExpr(Expression? e)
+    {
+        if (e is null) return false;
+        switch (e)
+        {
+            case ThisExpression: return true;
+            case BinaryExpression bin: return ThisRefExpr(bin.Left) || ThisRefExpr(bin.Right);
+            case LogicalExpression log: return ThisRefExpr(log.Left) || ThisRefExpr(log.Right);
+            case UnaryExpression u: return ThisRefExpr(u.Argument);
+            case UpdateExpression up: return ThisRefExpr(up.Argument);
+            case AssignmentExpression a: return ThisRefExpr(a.Target) || ThisRefExpr(a.Value);
+            case AssignmentPattern ap: return ThisRefExpr(ap.Target) || ThisRefExpr(ap.Default);
+            case RestElement rest: return ThisRefExpr(rest.Argument);
+            case ConditionalExpression c:
+                return ThisRefExpr(c.Test) || ThisRefExpr(c.Consequent) || ThisRefExpr(c.Alternate);
+            case MemberExpression m:
+                return ThisRefExpr(m.Object) || (m.Computed && ThisRefExpr(m.Property));
+            case CallExpression call:
+                return ThisRefExpr(call.Callee) || call.Arguments.Any(ThisRefExpr);
+            case NewExpression ne:
+                return ThisRefExpr(ne.Callee) || ne.Arguments.Any(ThisRefExpr);
+            case ArrayExpression aex: return aex.Elements.Any(ThisRefExpr);
+            case ObjectExpression oe:
+                foreach (var prop in oe.Properties)
+                {
+                    if (prop.Computed && ThisRefExpr(prop.Key)) return true;
+                    if (ThisRefExpr(prop.Value)) return true;
+                }
+                return false;
+            case SequenceExpression seq: return seq.Expressions.Any(ThisRefExpr);
+            case TemplateLiteral tpl: return tpl.Expressions.Any(ThisRefExpr);
+            case TaggedTemplateExpression tte: return ThisRefExpr(tte.Tag) || ThisRefExpr(tte.Quasi);
+            case SpreadElement sp: return ThisRefExpr(sp.Argument);
+            // A nested arrow still inherits the same lexical `this`.
+            case ArrowFunctionExpression arrow:
+                if (arrow.Params.Any(ThisRefExpr)) return true;
+                return arrow.Body switch
+                {
+                    BlockStatement block => block.Body.Any(ThisRefStmt),
+                    Expression expr => ThisRefExpr(expr),
+                    _ => false,
+                };
+            // Ordinary nested function expressions / classes have their own `this`.
+            case FunctionExpression: return false;
+            case ClassExpression cls: return ThisRefExpr(cls.BaseClass);
+            // `super.x` / `super[k]` / `super(...)` implicitly read the lexical
+            // `this`, so they also require the captured binding.
+            case SuperPropertyExpression: return true;
+            case SuperCallExpression: return true;
+            default: return false;
+        }
+    }
+
     private static bool ArgRefStmt(Statement? s)
     {
         if (s is null) return false;

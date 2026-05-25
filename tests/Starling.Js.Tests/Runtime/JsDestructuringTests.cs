@@ -147,9 +147,16 @@ public class JsDestructuringTests
     }
 
     [TestMethod]
-    public void Arrow_this_binding_gap_is_pinned_for_follow_up_work()
+    public void Arrow_captures_enclosing_method_this_lexically()
     {
-        Eval("var o = { x: 3, m() { var f = () => this.x; return f(); } }; o.m() === undefined;").AsBool.Should().BeTrue();
+        // §10.2.1.1 / §13.2.5 — an arrow has no own `this`; it resolves `this`
+        // to the nearest enclosing ordinary function (here the method `m`). The
+        // earlier compiler used the arrow's call-time `this`, yielding undefined;
+        // wp:M3-77 makes the arrow capture the method's `this` as an upvalue.
+        Eval("var o = { x: 3, m() { var f = () => this.x; return f(); } }; o.m();")
+            .AsNumber.Should().Be(3);
+        Eval("var o = { m() { var f = () => this; return f() === this; } }; o.m();")
+            .AsBool.Should().BeTrue();
     }
 
     private static JsValue Eval(string src)
