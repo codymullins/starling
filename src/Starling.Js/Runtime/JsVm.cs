@@ -88,6 +88,54 @@ public sealed class JsVm
             upvalues: Array.Empty<JsValue>(), drainMicrotasks: false,
             currentFunction: null, newTarget: null);
 
+    /// <summary>wp:M3-71 — §19.2.1.1 PerformEval (direct path). Parse + compile
+    /// <paramref name="args"/>[0] inheriting the CALLER's lexical context, then
+    /// run the resulting chunk on the caller's function so a SuperProperty
+    /// resolves via <paramref name="caller"/>'s <c>[[HomeObject]]</c>,
+    /// <c>new.target</c> sees <paramref name="callerNewTarget"/>, and <c>this</c>
+    /// is <paramref name="callerThis"/>. A non-string argument is returned unchanged
+    /// (§19.2.1 step 2). DEFERRED: caller variable-scope access
+    /// (EvalDeclarationInstantiation) — the eval'd code cannot read/declare the
+    /// caller's let/const/var locals by name; it resolves free names globally.</summary>
+    private JsValue PerformDirectEval(JsValue[] args, JsFunction? caller,
+        JsValue callerThis, JsObject? callerNewTarget, bool callerStrict)
+    {
+        var x = args.Length > 0 ? args[0] : JsValue.Undefined;
+        if (!x.IsString) return x;
+
+        // §19.2.1.1 steps 4-6: derive the early-error context from the caller.
+        // A [[HomeObject]] ⇒ the caller is a method (inMethod). A class
+        // constructor (HomeObject + [[Construct]]) ⇒ inConstructor (derived-ctor
+        // gating for SuperCall). new.target is available iff the caller is
+        // function code (inFunction); arrow callers inherit their enclosing
+        // function's, so a caller at all (non-null) means inFunction.
+        var inFunction = caller is not null;
+        var inMethod = caller?.HomeObject is not null;
+        var inDerivedCtor = caller is { ConstructorKind: ClassConstructorKind.Derived };
+
+        Chunk chunk;
+        try
+        {
+            var ctx = new Parse.JsParser.DirectEvalContext(
+                CallerStrict: callerStrict, InFunction: inFunction,
+                InMethod: inMethod, InDerivedConstructor: inDerivedCtor);
+            var program = new Parse.JsParser(x.AsString).ParseProgram(ctx);
+            chunk = JsCompiler.CompileForEval(program, "<eval>");
+        }
+        catch (Parse.JsParseException ex)
+        {
+            throw new JsThrow(_runtime.Realm.NewSyntaxError(ex.Message));
+        }
+
+        // Run on the caller's function so currentFunction.HomeObject / this /
+        // new.target are visible to the eval'd code's super / this / new.target
+        // opcodes. No upvalues are threaded (variable-scope access is deferred).
+        return Run(chunk, args: Array.Empty<JsValue>(),
+            thisValue: callerThis, upvalues: Array.Empty<JsValue>(),
+            drainMicrotasks: false, currentFunction: caller,
+            newTarget: callerNewTarget);
+    }
+
     /// <summary>Invoke a JS function with an explicit <c>this</c> and args.
     /// Used by <see cref="AbstractOperations.Call"/>. B1b-2c: when the
     /// callee is async / generator / async-generator, this entry instead
@@ -954,6 +1002,30 @@ public sealed class JsVm
                     if (!IsCallableValue(callee))
                         throw new JsThrow(JsValue.String(AtPos($"not a function: {JsValue.ToStringValue(callee)} (method hint: '{_lastLoadName}')")));
                     Push(AbstractOperations.Call(this, callee, receiver, callArgs));
+                    break;
+                }
+                case Opcode.DirectEval:
+                {
+                    // wp:M3-71 — §19.2.1.1 PerformEval (direct path). The compiler
+                    // emitted this for a bare-`eval` call resolving to the global
+                    // slot. Confirm the callee is STILL the realm intrinsic; if it
+                    // was reassigned (or is otherwise not the intrinsic), fall back
+                    // to an ordinary indirect call with this=undefined.
+                    var argc = ReadU8();
+                    var callArgs = new JsValue[argc];
+                    for (var i = argc - 1; i >= 0; i--) callArgs[i] = Pop();
+                    var callee = Pop();
+                    var intrinsic = _runtime.Realm.EvalFunction;
+                    if (intrinsic is not null && callee.IsObject
+                        && ReferenceEquals(callee.AsObject, intrinsic))
+                    {
+                        Push(PerformDirectEval(callArgs, currentFunction, thisV,
+                            newTarget, frameStrict));
+                        break;
+                    }
+                    if (!IsCallableValue(callee))
+                        throw new JsThrow(JsValue.String(AtPos($"not a function: {JsValue.ToStringValue(callee)} (callee hint: 'eval')")));
+                    Push(AbstractOperations.Call(this, callee, JsValue.Undefined, callArgs));
                     break;
                 }
 
@@ -2869,6 +2941,10 @@ public sealed class JsVm
                 var thunk = f.InitializerTemplate is not null
                     ? JsFunction.CreateInstance(realm, f.InitializerTemplate, fieldUpvalues[i])
                     : MakeUndefinedReturningThunk(realm);
+                // wp:M3-71 — an instance field initializer has [[HomeObject]] =
+                // the class prototype so `super.x` (incl. inside a direct eval in
+                // the initializer) resolves against the parent prototype.
+                thunk.HomeObject = protoObj;
                 instanceFieldInits.Add(new InstanceFieldInit("", IsPrivate: false, thunk, ick));
             }
             else
@@ -2887,6 +2963,9 @@ public sealed class JsVm
                 else
                 {
                     var initFn = JsFunction.CreateInstance(realm, thunkInit, fieldUpvalues[i]);
+                    // wp:M3-71 — [[HomeObject]] = class prototype so `super.x`
+                    // (incl. inside a direct eval in the initializer) resolves.
+                    initFn.HomeObject = protoObj;
                     instanceFieldInits.Add(new InstanceFieldInit(
                         f.MangledPrivateKey ?? f.StaticKey!,
                         f.MangledPrivateKey is not null,

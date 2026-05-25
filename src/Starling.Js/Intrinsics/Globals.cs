@@ -14,7 +14,10 @@ public static class Globals
     public static void Install(JsRealm realm)
     {
         ArgumentNullException.ThrowIfNull(realm);
-        DefineGlobal(realm, "eval", (_, args) => PerformEval(realm, args), 1);
+        var evalFn = DefineGlobal(realm, "eval", (_, args) => PerformEval(realm, args), 1);
+        // wp:M3-71 — record the genuine %eval% intrinsic so the VM's DirectEval
+        // opcode can confirm the callee before applying caller-context semantics.
+        realm.EvalFunction = evalFn;
         DefineGlobal(realm, "parseInt", (_, args) => NumberCtor.ParseInt(args), 2);
         DefineGlobal(realm, "parseFloat", (_, args) => NumberCtor.ParseFloat(args), 1);
         DefineGlobal(realm, "isNaN", (_, args) => JsValue.Boolean(double.IsNaN(NumberCtor.ToNumber(args.Length > 0 ? args[0] : JsValue.Undefined))), 1);
@@ -118,12 +121,13 @@ public static class Globals
     private static bool IsHex(char c) => char.IsAsciiHexDigit(c);
     private static int HexValue(char c) => c <= '9' ? c - '0' : (c <= 'F' ? c - 'A' + 10 : c - 'a' + 10);
 
-    private static void DefineGlobal(JsRealm realm, string name, Func<JsValue, JsValue[], JsValue> body, int length)
+    private static JsNativeFunction DefineGlobal(JsRealm realm, string name, Func<JsValue, JsValue[], JsValue> body, int length)
     {
         // Realm-aware ctor wires [[Prototype]] = realm.FunctionPrototype and
         // stamps name + length so globals like parseInt/parseFloat inherit
         // call/apply/bind from Function.prototype.
         var fn = new JsNativeFunction(realm, name, length, body, isConstructor: false);
         realm.GlobalObject.DefineOwnProperty(name, PropertyDescriptor.Data(JsValue.Object(fn), true, false, true));
+        return fn;
     }
 }

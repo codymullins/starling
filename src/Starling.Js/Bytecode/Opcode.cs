@@ -178,6 +178,20 @@ public enum Opcode : byte
     // ----- Calls -----
     Call,           // [u8 argc] callee + args on stack; this=Undefined
     CallMethod,     // [u8 argc] receiver + callee + args on stack; this=receiver
+
+    /// <summary>wp:M3-71 — §19.2.1.1 PerformEval (direct path). Emitted only
+    /// when the callee is a bare <c>eval</c> IdentifierReference that resolves
+    /// to NO local/upvalue (i.e. the realm <c>%eval%</c> intrinsic). Operand is
+    /// [u8 argc]; the stack holds <c>[eval, arg0..argN]</c>. The VM checks the
+    /// callee is still the realm eval intrinsic at runtime (a reassigned global
+    /// <c>eval</c> falls back to an ordinary indirect call) and, if so, parses +
+    /// compiles the source inheriting the CURRENT frame's lexical context
+    /// (strict / <c>[[HomeObject]]</c> for <c>super</c> / <c>new.target</c> /
+    /// <c>this</c> / derived-ctor-ness), then runs it on the same frame's
+    /// function so <c>super.x</c> and <c>new.target</c> resolve. A non-string
+    /// argument is returned unchanged.</summary>
+    DirectEval,     // [u8 argc] eval-intrinsic + args on stack
+
     New,            // [u8 argc]
     Return,         // pop and return
     ReturnUndefined,

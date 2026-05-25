@@ -5,7 +5,7 @@ namespace Starling.Js.Parse;
 
 /// <summary>
 /// ES2024 §16.2 module item parsing. These productions are only dispatched by
-/// <see cref="ParseProgram"/> so static import/export declarations remain
+/// <see cref="ParseProgram()"/> so static import/export declarations remain
 /// restricted to program scope.
 /// </summary>
 public sealed partial class JsParser
