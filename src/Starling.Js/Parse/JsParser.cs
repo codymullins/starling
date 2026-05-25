@@ -1462,6 +1462,11 @@ public sealed partial class JsParser
     {
         if (lexeme.Length > 0 && lexeme[^1] == 'n')
             lexeme = lexeme[..^1];
+        // Numeric separators (`1_000n`, `0xA_Bn`) are validated for placement by
+        // the lexer; strip them before BigInteger conversion. They never sit at
+        // the prefix boundary, so the `0x`/`0b`/`0o` checks below stay correct.
+        if (lexeme.IndexOf('_') >= 0)
+            lexeme = lexeme.Replace("_", "");
         if (lexeme.Length > 2 && lexeme[0] == '0')
         {
             var p = lexeme[1];

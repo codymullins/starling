@@ -821,8 +821,10 @@ public sealed class JsLexer
     {
         var begin = _i;
         Advance(); // consume the '.'
-        // Fractional digits (guaranteed at least one by caller's lookahead check).
-        while (_i < _src.Length && IsAsciiDigit(_src[_i])) Advance();
+        // Fractional digits (guaranteed at least one by caller's lookahead
+        // check) — allow `_` separators between digits (§12.9.3), same as
+        // ScanNumber's fraction.
+        ScanDecimalDigits(start, allowSeparator: true);
         // Optional exponent part: [eE] [+-]? Digits
         if (_i < _src.Length && (_src[_i] == 'e' || _src[_i] == 'E'))
         {
@@ -830,10 +832,19 @@ public sealed class JsLexer
             if (_i < _src.Length && (_src[_i] == '+' || _src[_i] == '-')) Advance();
             if (_i >= _src.Length || !IsAsciiDigit(_src[_i]))
                 _errors.Report(JsLexError.InvalidNumericLiteral, start, "exponent has no digits");
-            while (_i < _src.Length && IsAsciiDigit(_src[_i])) Advance();
+            // `_` immediately after exponent sign/marker is a SyntaxError.
+            if (_i < _src.Length && _src[_i] == '_')
+            {
+                _errors.Report(JsLexError.InvalidNumericLiteral, start,
+                    "numeric separator cannot appear immediately after exponent marker");
+                Advance();
+            }
+            ScanDecimalDigits(start, allowSeparator: true);
         }
         var lex = _src[begin.._i];
-        if (!double.TryParse(lex, System.Globalization.NumberStyles.Float,
+        // Strip separators before numeric conversion (`.0_1e2` -> `.01e2`).
+        var lexNoSep = lex.Contains('_') ? lex.Replace("_", "") : lex;
+        if (!double.TryParse(lexNoSep, System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture, out var value))
         {
             _errors.Report(JsLexError.InvalidNumericLiteral, start, lex);
