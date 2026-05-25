@@ -195,6 +195,23 @@ public static class Disassembler
                       .Append(" miss→").Append((i + miss).ToString("D4"));
                     break;
                 }
+                // u16 nameIdx + u16 baseSlot + i32 missOffset — with-aware
+                // compound-assignment read/write halves (§13.15.2).
+                case Opcode.WithCompoundLoad:
+                case Opcode.WithCompoundStore:
+                {
+                    var nameIdx = BinaryPrimitives.ReadUInt16LittleEndian(code.AsSpan(i, 2));
+                    i += 2;
+                    var baseSlot = BinaryPrimitives.ReadUInt16LittleEndian(code.AsSpan(i, 2));
+                    i += 2;
+                    var miss = BinaryPrimitives.ReadInt32LittleEndian(code.AsSpan(i, 4));
+                    i += 4;
+                    sb.Append(op).Append(' ').Append(nameIdx).Append(" base=").Append(baseSlot)
+                      .Append(' ').Append(miss);
+                    sb.Append("  ; ").Append(FormatConstant(chunk.Constants[nameIdx]))
+                      .Append(" miss→").Append((i + miss).ToString("D4"));
+                    break;
+                }
                 case Opcode.YieldDelegate:
                 {
                     var isAsync = code[i];

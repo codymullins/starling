@@ -52,6 +52,18 @@ public sealed partial class JsCompiler
     /// check.</summary>
     private readonly List<HashSet<string>> _lexicalScopes = [new(StringComparer.Ordinal)];
 
+    /// <summary>§13.15.2 / §16.2.1.6.2 — names in each <see cref="_scopes"/>
+    /// frame that are <c>const</c> bindings, so a write (plain or compound)
+    /// after initialization is a runtime TypeError. Parallel to
+    /// <see cref="_scopes"/>. Unlike <see cref="_lexicalScopes"/> (which is
+    /// cleared once a binding is provably initialized so post-decl reads skip the
+    /// TDZ check), const-ness is permanent — a const stays read-only for its
+    /// whole lifetime — so entries here are NEVER removed. A store to a name in
+    /// this set emits <see cref="Opcode.ThrowConstAssignment"/> instead of the
+    /// real store, EXCEPT inside the binding's own initializer
+    /// (<see cref="_inLexicalDeclInit"/>), which performs the one legal write.</summary>
+    private readonly List<HashSet<string>> _constScopes = [new(StringComparer.Ordinal)];
+
     /// <summary>TDZ — true while emitting a <c>let</c>/<c>const</c>
     /// declaration's own initializer store (including destructuring leaves).
     /// In this window a store to an in-scope lexical binding is the
@@ -261,12 +273,32 @@ public sealed partial class JsCompiler
     /// innermost scope frame (must already be reserved as a local there).</summary>
     private void MarkLexical(string name) => _lexicalScopes[^1].Add(name);
 
+    /// <summary>§13.15.2 — mark <paramref name="name"/> as a <c>const</c> binding
+    /// in the innermost scope frame so later writes throw TypeError.</summary>
+    private void MarkConst(string name) => _constScopes[^1].Add(name);
+
+    /// <summary>§13.15.2 — is <paramref name="name"/> a <c>const</c> binding in
+    /// some currently-open scope of THIS function? Mirrors
+    /// <see cref="IsLexicalLocal"/>: walk innermost-out and stop at the first
+    /// frame that declares the name as a local, so an inner <c>var</c> shadowing
+    /// the name (only legal across function boundaries) does not misreport.</summary>
+    private bool IsConstLocal(string name)
+    {
+        for (var i = _scopes.Count - 1; i >= 0; i--)
+        {
+            if (_scopes[i].ContainsKey(name))
+                return _constScopes[i].Contains(name);
+        }
+        return false;
+    }
+
     /// <summary>Push a fresh lexical scope frame, keeping
     /// <see cref="_scopes"/> and <see cref="_lexicalScopes"/> aligned.</summary>
     private void PushScope()
     {
         _scopes.Add(new());
         _lexicalScopes.Add(new(StringComparer.Ordinal));
+        _constScopes.Add(new(StringComparer.Ordinal));
     }
 
     /// <summary>Pop the innermost lexical scope frame.</summary>
@@ -274,6 +306,7 @@ public sealed partial class JsCompiler
     {
         _scopes.RemoveAt(_scopes.Count - 1);
         _lexicalScopes.RemoveAt(_lexicalScopes.Count - 1);
+        _constScopes.RemoveAt(_constScopes.Count - 1);
     }
 
     /// <summary>TDZ — is <paramref name="name"/> a lexical binding in one of
@@ -888,6 +921,47 @@ public sealed partial class JsCompiler
         }
     }
 
+    /// <summary>§13.15.2 — walk a <c>const</c> declarator's binding pattern and
+    /// <see cref="MarkConst"/> every bound name in the innermost scope frame, so
+    /// later writes throw TypeError. Mirrors <see cref="HoistLexicalPattern"/>'s
+    /// pattern traversal (identifier / array / object / rest / default).</summary>
+    private void MarkConstNames(Expression pattern)
+    {
+        switch (pattern)
+        {
+            case Identifier id: MarkConst(id.Name); return;
+            case AssignmentExpression { Op: "=" } a: MarkConstNames(a.Target); return;
+            case AssignmentPattern a: MarkConstNames(a.Target); return;
+            case ArrayPattern arr:
+                foreach (var el in arr.Elements)
+                {
+                    switch (el)
+                    {
+                        case ArrayPatternBindingElement b: MarkConstNames(b.Target); break;
+                        case ArrayPatternRestElement r: MarkConstNames(r.Target); break;
+                    }
+                }
+                return;
+            case ObjectPattern obj:
+                foreach (var prop in obj.Properties) MarkConstNames(prop.Target);
+                if (obj.Rest is not null) MarkConstNames(obj.Rest.Argument);
+                return;
+            case ArrayExpression arr:
+                foreach (var el in arr.Elements)
+                {
+                    if (el is null) continue;
+                    MarkConstNames(el is SpreadElement sp ? sp.Argument : el);
+                }
+                return;
+            case ObjectExpression obj:
+                foreach (var prop in obj.Properties)
+                    MarkConstNames(prop.Value is SpreadElement sp ? sp.Argument : prop.Value);
+                return;
+            case SpreadElement spread: MarkConstNames(spread.Argument); return;
+            case RestElement rest: MarkConstNames(rest.Argument); return;
+        }
+    }
+
     private void HoistLexicalPattern(Expression pattern)
     {
         switch (pattern)
@@ -1363,6 +1437,13 @@ public sealed partial class JsCompiler
         // so its store must be UNCHECKED (the slot legitimately still holds the
         // sentinel at this point). A bare `let x;` initializes to undefined.
         var lexical = (vd.Kind is "let" or "const") && !IsGlobalLexicalScope;
+        // §13.15.2 — record const bindings so a post-initialization write (plain
+        // `c = x` or compound `c op= x`) throws TypeError. The declarator's own
+        // initializer below routes through EmitStoreLocalSlot / StoreBindingIdentifier
+        // (with _inLexicalDeclInit), which never consult IsConstLocal, so this
+        // marking does not block the one legal write.
+        if (vd.Kind == "const" && lexical)
+            foreach (var d in vd.Declarations) MarkConstNames(d.Id);
         foreach (var d in vd.Declarations)
         {
             if (lexical)
@@ -2337,6 +2418,46 @@ public sealed partial class JsCompiler
         _b.PatchI32(jumpPos, delta);
     }
 
+    /// <summary>§13.15.2 — lower a compound assignment <c>name op= rhs</c> whose
+    /// target routes through a <c>with</c>. The LHS Reference base is resolved
+    /// ONCE (by <see cref="Opcode.WithCompoundLoad"/>) and reused for the write
+    /// (by <see cref="Opcode.WithCompoundStore"/>) so a getter that deletes the
+    /// binding mid-read does not redirect the store to the outer binding. The
+    /// resolved base is parked in a reserved local for the duration of the op.
+    /// On a with-miss both opcodes fall through to the ordinary static
+    /// load/store fallback (so a name that does not live on any with-object
+    /// behaves exactly as the non-with compound path).</summary>
+    private void EmitWithCompoundAssignment(string name, AssignmentExpression a)
+    {
+        var nameIdx = _b.AddConstant(name);
+        var baseSlot = _b.ReserveLocal();
+
+        // WithCompoundLoad: hit → [oldVal] (base parked in baseSlot), jump past
+        // the static fallback load; miss → fall through to the static load.
+        _b.EmitU16(Opcode.WithCompoundLoad, nameIdx);
+        _b.EmitU16Raw(baseSlot);
+        var loadMissPos = _b.Position;
+        _b.EmitI32Raw(0);
+        EmitIdLoadStatic(name);                       // static fallback load
+        _b.PatchI32(loadMissPos, _b.Position - (loadMissPos + 4));
+
+        EmitExpression(a.Value);                      // [oldVal, rhs]
+        _b.Emit(CompoundOpToBinaryOpcode(a.Op));      // [newVal]
+        _b.Emit(Opcode.Dup);                          // [newVal, newVal] (result + store copy)
+
+        // WithCompoundStore: hit → pop the top copy, Set on the parked base,
+        // jump past the static fallback store (leaving the result copy); miss →
+        // fall through to the static store, which consumes the top copy.
+        _b.EmitU16(Opcode.WithCompoundStore, nameIdx);
+        _b.EmitU16Raw(baseSlot);
+        var storeMissPos = _b.Position;
+        _b.EmitI32Raw(0);
+        // The leading read already proved the binding exists (or fell back to a
+        // static read), so the static store needs no TDZ check.
+        EmitIdStoreStatic(name, needsTdzCheck: false); // static fallback store
+        _b.PatchI32(storeMissPos, _b.Position - (storeMissPos + 4));
+    }
+
     private void EmitIdLoad(string name, bool checkedGlobal = true)
     {
         if (ShouldRouteWith(name))
@@ -2367,6 +2488,14 @@ public sealed partial class JsCompiler
     {
         if (TryResolveLocal(name, out var slot))
         {
+            // §13.15.2 — a write to a const local (other than its own
+            // initializer, which never routes through here) is a runtime
+            // TypeError.
+            if (IsConstLocal(name) && !_inLexicalDeclInit)
+            {
+                _b.EmitU16(Opcode.ThrowConstAssignment, _b.AddConstant(name));
+                return;
+            }
             if (needsTdzCheck && IsLexicalLocal(name))
             {
                 if (IsSlotCaptured(slot)) _b.EmitSlot(Opcode.StoreCellLocalChecked, slot);
@@ -2772,6 +2901,20 @@ public sealed partial class JsCompiler
         }
         if (a.Target is Identifier id)
         {
+            // §13.15.2 — a compound assignment whose target routes through a
+            // `with` must resolve the LHS Reference's base EXACTLY ONCE and
+            // reuse it for both the read and the write. A self-deleting getter
+            // can remove the binding from the with-object during the read; the
+            // store must still land on that SAME object (PutValue(lref, v) uses
+            // the initially-created Reference). The plain WithLoad/WithStore
+            // pair re-resolves the name on the store side, which would miss the
+            // (now-deleted) binding and write the outer binding instead. The
+            // WithCompoundLoad/WithCompoundStore pair captures the base once.
+            if (a.Op != "=" && ShouldRouteWith(id.Name))
+            {
+                EmitWithCompoundAssignment(id.Name, a);
+                return;
+            }
             if (a.Op != "=")
             {
                 // Compound: load + apply binary + store.
@@ -2880,7 +3023,11 @@ public sealed partial class JsCompiler
                 EmitExpression(me.Object);
                 if (me.Computed)
                 {
-                    EmitExpression(me.Property);
+                    EmitExpression(me.Property);          // base, rawKey
+                    // §13.3.3 — resolve the key once (and reject a nullish base
+                    // before ToPropertyKey runs), so a user toString/@@toPrimitive
+                    // on the key fires exactly once across the read and the write.
+                    _b.Emit(Opcode.ResolveComputedKey);   // base, key
                     _b.Emit(Opcode.Dup2);                 // base, key, base, key
                     _b.Emit(Opcode.LoadComputed);         // base, key, oldVal
                     EmitExpression(a.Value);              // base, key, oldVal, rhs
@@ -3879,6 +4026,14 @@ public sealed partial class JsCompiler
         // gap:closure-write-back — captured-local writes route through the cell.
         if (TryResolveLocal(name, out var slot))
         {
+            // §13.15.2 — a write to a const local outside its own initializer is
+            // a runtime TypeError (e.g. a destructuring-assignment leaf or a
+            // for-of/in re-bind onto a const name from an outer scope).
+            if (IsConstLocal(name) && !_inLexicalDeclInit)
+            {
+                _b.EmitU16(Opcode.ThrowConstAssignment, _b.AddConstant(name));
+                return;
+            }
             // TDZ — a write to a lexical binding before initialization throws,
             // UNLESS this store is the declaration's own initializer (which is
             // what transitions the binding out of the TDZ).
