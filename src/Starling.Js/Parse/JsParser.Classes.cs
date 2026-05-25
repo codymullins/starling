@@ -316,7 +316,14 @@ public sealed partial class JsParser
             Expression? init = null;
             if (Match(JsTokenKind.Eq))
             {
-                init = ParseAssignment();
+                // §15.7 — a field Initializer is [~Await][~Yield]: it runs in the
+                // instance/static init context, not the Module's [+Await] top
+                // level, so `await` there is not the keyword (the computed key
+                // above was parsed in the enclosing await context).
+                var savedFieldModuleAwait = _moduleTopAwait;
+                _moduleTopAwait = false;
+                try { init = ParseAssignment(); }
+                finally { _moduleTopAwait = savedFieldModuleAwait; }
             }
             var fieldEnd = _current.End;
             ConsumeSemicolonOrAsi();
@@ -368,12 +375,15 @@ public sealed partial class JsParser
         BlockStatement body;
         JsPosition endPos;
         var (savedAsync, savedGen) = (_inAsync, _inGenerator);
+        var savedModuleAwait = _moduleTopAwait;
         try
         {
             // §15 — a method establishes its own await/yield context based on its
-            // async/generator modifiers, regardless of any enclosing context.
+            // async/generator modifiers, regardless of any enclosing context. A
+            // method body is never the Module's [+Await] top level.
             _inAsync = isAsync;
             _inGenerator = isGenerator;
+            _moduleTopAwait = false;
             Expect(JsTokenKind.LParen, "expected '(' in method definition");
             parameters = ParseParameterList();
             Expect(JsTokenKind.RParen, "expected ')' after method parameters");
@@ -394,6 +404,7 @@ public sealed partial class JsParser
         {
             if (enteredDerivedCtor) _derivedConstructorDepth--;
             (_inAsync, _inGenerator) = (savedAsync, savedGen);
+            _moduleTopAwait = savedModuleAwait;
         }
 
         var method = new MethodDefinition(key, methodKind, isStatic, computed,

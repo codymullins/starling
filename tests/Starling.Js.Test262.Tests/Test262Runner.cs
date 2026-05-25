@@ -169,11 +169,17 @@ public sealed class Test262Runner
         {
             try
             {
-                var prog = new JsParser(WithStrict(source, mode)).ParseProgram();
-                // Module code has its own early-error pass (CompileModule); a
-                // classic script uses the script compiler. Routing each to its
-                // own compiler keeps module-only syntax (import/export at top
-                // level, top-level await) classified correctly.
+                // Parse under the matching goal symbol: a [module] test uses the
+                // Module goal (strict, [+Await] top level, module early errors via
+                // ParseModule); a classic script uses ParseProgram. Module code
+                // then runs its own early-error pass (CompileModule); a classic
+                // script uses the script compiler. Routing each to its own goal +
+                // compiler keeps module-only syntax (import/export at top level,
+                // top-level await) and module-only early errors classified
+                // correctly.
+                var prog = meta.IsModule
+                    ? new JsParser(source).ParseModule()
+                    : new JsParser(WithStrict(source, mode)).ParseProgram();
                 if (meta.IsModule) _ = JsCompiler.CompileModule(prog, "<test262>");
                 else _ = JsCompiler.Compile(prog, "<test262>");
                 return (Outcome.Fail, "expected parse error, parsed OK");

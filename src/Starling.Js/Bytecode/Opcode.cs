@@ -191,6 +191,12 @@ public enum Opcode : byte
     // ----- Misc -----
     TypeOf,
     Throw,
+    /// <summary>[u16 nameConst] — pop the value being assigned, then throw a
+    /// TypeError "Assignment to constant variable." Emitted for an assignment to
+    /// an immutable binding (a module's imported binding, §16.2.1.6.2 — imported
+    /// bindings are immutable and an assignment is a runtime TypeError). The
+    /// operand names the binding for the message.</summary>
+    ThrowConstAssignment,
     RequireObjectCoercible, // peek top-of-stack; throw a TypeError if it is null/undefined (§7.2.1). Used before object-destructuring property access.
     SetFunctionName, // [u16 nameConst] peek top-of-stack; if it is an anonymous function/class (name===""), set its `name` own property to the constant string. §named-evaluation.
     SpreadInto,     // pop src and dst objects, copy own enumerable props from src onto dst (object-literal spread)

@@ -46,6 +46,20 @@ public sealed partial class JsCompiler
     /// resolve module bindings as upvalues (cells) rather than globals.</summary>
     private Dictionary<string, int>? _moduleBindingUpvalues;
 
+    /// <summary>TDZ — module top-level binding names that are <em>lexical</em>
+    /// (<c>let</c>/<c>const</c>/<c>class</c> and every imported binding). Reads
+    /// and pre-init writes of these go through the TDZ-checked upvalue opcodes so
+    /// access before initialization throws a ReferenceError (§16.2.1.6.2). A
+    /// <c>var</c>/function binding is NOT lexical (var is initialized to
+    /// <c>undefined</c>, functions are hoisted) and uses the plain opcodes.</summary>
+    private HashSet<string>? _moduleLexicalBindings;
+
+    /// <summary>Module top-level binding names that are <em>immutable</em> — i.e.
+    /// imported bindings. An assignment to one is a runtime TypeError
+    /// (§16.2.1.6.2: imported bindings are immutable), emitted as
+    /// <see cref="Opcode.ThrowConstAssignment"/>.</summary>
+    private HashSet<string>? _moduleImmutableBindings;
+
     /// <summary>Compile a module body. Returns the chunk plus the static
     /// import/export tables. The chunk expects one upvalue per entry in the
     /// returned binding-order list (locals first, then imports), supplied by the
@@ -55,7 +69,12 @@ public sealed partial class JsCompiler
         // Parent a throwaway root so IsScriptTop is false (top-level bindings
         // become non-global) and the upvalue machinery is available.
         var root = new JsCompiler();
-        var c = new JsCompiler(parent: root) { _moduleBindingUpvalues = new(StringComparer.Ordinal) };
+        var c = new JsCompiler(parent: root)
+        {
+            _moduleBindingUpvalues = new(StringComparer.Ordinal),
+            _moduleLexicalBindings = new(StringComparer.Ordinal),
+            _moduleImmutableBindings = new(StringComparer.Ordinal),
+        };
         c._b.IsStrict = true; // §11.2.2 — module code is always strict
         c._b.SourcePath = name; // wp:M3-63 — referrer for dynamic import() + import.meta.url
         return c.EmitModule(program, name);
@@ -72,15 +91,24 @@ public sealed partial class JsCompiler
         CollectExportEntries(program.Body, exports, requested);
 
         // 1) Reserve an upvalue slot for every local top-level binding name…
+        //    distinguishing lexical (let/const/class/default) from var/function
+        //    so the former get TDZ-checked access and a sentinel-seeded cell, and
+        //    const from the rest so an assignment to it is a TypeError.
         var localNames = new List<string>();
-        CollectLocalBindingNames(program.Body, localNames);
+        var lexicalLocals = new HashSet<string>(StringComparer.Ordinal);
+        var constLocals = new HashSet<string>(StringComparer.Ordinal);
+        CollectLocalBindingNames(program.Body, localNames, lexicalLocals, constLocals);
         foreach (var local in localNames)
-            ReserveModuleBinding(local, isImport: false, bindingOrder);
+            ReserveModuleBinding(local, isImport: false, bindingOrder,
+                isLexical: lexicalLocals.Contains(local),
+                isImmutable: constLocals.Contains(local));
 
         // 2) …then one per imported local name (each resolves to the exporting
-        //    module's cell at instantiation).
+        //    module's cell at instantiation). Imported bindings are immutable and
+        //    are TDZ-checked (they mirror the source module's lexical binding).
         foreach (var imp in imports)
-            ReserveModuleBinding(imp.LocalName, isImport: true, bindingOrder, imp);
+            ReserveModuleBinding(imp.LocalName, isImport: true, bindingOrder, imp,
+                isLexical: true);
 
         // Hoist module-top function declarations (they bind into the upvalue
         // cell so importers see them, and so they are callable before their
@@ -184,15 +212,32 @@ public sealed partial class JsCompiler
                     if (d.Init is not null && ExprHasTopLevelAwait(d.Init)) return true;
                 return false;
 
+            // A class declaration's `extends` heritage clause and any computed
+            // member keys are evaluated in the *enclosing* (module top-level)
+            // context, so a top-level await there marks the module async. Method
+            // bodies and field initializers introduce their own context and do
+            // NOT count.
+            case ClassDeclaration cd:
+                return ClassHasTopLevelAwait(cd.BaseClass, cd.Body);
+
             // Module items: a declaration's initializer can hold a top-level
             // await (e.g. `export const x = await f();`).
             case ExportLocalDeclaration eld:
                 return StatementHasTopLevelAwait(eld.Declaration);
             case ExportDefaultDeclaration edd:
-                return edd.Declaration is Expression dde && ExprHasTopLevelAwait(dde);
+                return edd.Declaration switch
+                {
+                    // `export default class extends (await x) {}` / computed keys.
+                    ClassExpression ce => ClassHasTopLevelAwait(ce.BaseClass, ce.Body),
+                    // `export default function …` introduces its own context.
+                    FunctionExpression => false,
+                    // `export default <AssignmentExpression>` is module top-level.
+                    Expression dde => ExprHasTopLevelAwait(dde),
+                    _ => false,
+                };
 
-            // FunctionDeclaration / ClassDeclaration introduce their own context;
-            // their bodies are NOT module top-level. import/export-spec lists,
+            // FunctionDeclaration introduces its own context; its body is NOT
+            // module top-level. import/export-spec lists,
             // empty/break/continue/debugger: no top-level await.
             default:
                 return false;
@@ -210,8 +255,13 @@ public sealed partial class JsCompiler
             // context, so awaits within are NOT module top-level.
             case FunctionExpression:
             case ArrowFunctionExpression:
-            case ClassExpression:
                 return false;
+
+            // A class expression's `extends` heritage and computed member keys
+            // are evaluated in the enclosing context — a top-level await there
+            // is module top-level. Bodies/initializers are not (see helper).
+            case ClassExpression ce:
+                return ClassHasTopLevelAwait(ce.BaseClass, ce.Body);
 
             case UnaryExpression u: return ExprHasTopLevelAwait(u.Argument);
             case UpdateExpression up: return ExprHasTopLevelAwait(up.Argument);
@@ -264,18 +314,43 @@ public sealed partial class JsCompiler
         }
     }
 
+    /// <summary>True when a class's <c>extends</c> heritage clause or any computed
+    /// member key contains a top-level <c>await</c>. Those sub-expressions are
+    /// evaluated in the enclosing (module top-level) context per §15.7
+    /// ClassDefinitionEvaluation, so an await there makes the module async. Method
+    /// bodies and field initializers run in their own context and are excluded.</summary>
+    private static bool ClassHasTopLevelAwait(Expression? baseClass, ClassBody body)
+    {
+        if (baseClass is not null && ExprHasTopLevelAwait(baseClass)) return true;
+        if (body.Constructor is { Computed: true } ctor && ExprHasTopLevelAwait(ctor.Key)) return true;
+        foreach (var m in body.Methods)
+            if (m.Computed && ExprHasTopLevelAwait(m.Key)) return true;
+        foreach (var f in body.Fields)
+            if (f.Computed && ExprHasTopLevelAwait(f.Key)) return true;
+        return false;
+    }
+
     /// <summary>Register a module top-level binding name as an upvalue. The
     /// returned index is the slot the loader fills with the binding's
     /// <see cref="Cell"/>.</summary>
     private void ReserveModuleBinding(
-        string name, bool isImport, List<ModuleBindingSlot> order, ModuleImportEntry? import = null)
+        string name, bool isImport, List<ModuleBindingSlot> order,
+        ModuleImportEntry? import = null, bool isLexical = false, bool isImmutable = false)
     {
         if (_moduleBindingUpvalues!.ContainsKey(name)) return; // first binding wins
         var idx = order.Count;
         _moduleBindingUpvalues[name] = idx;
         _upvalues.Add(new UpvalueRef(IsLocalCapture: false, Index: idx));
         _upvalueByName[name] = idx;
-        order.Add(new ModuleBindingSlot(name, isImport, import));
+        if (isLexical) _moduleLexicalBindings!.Add(name);
+        // An imported binding (§16.2.1.6.2) and a local `const` are immutable: an
+        // assignment to either is a runtime TypeError.
+        if (isImport || isImmutable) _moduleImmutableBindings!.Add(name);
+        // Only a local lexical (let/const/class) cell is seeded with the TDZ
+        // sentinel by the loader; an imported binding aliases the source's cell
+        // (which the source seeds), so it is lexical-for-reads but not sentinel-
+        // seeded here.
+        order.Add(new ModuleBindingSlot(name, isImport, import, IsLexical: isLexical && !isImport));
     }
 
     // -----------------------------------------------------------------------
@@ -406,23 +481,52 @@ public sealed partial class JsCompiler
     /// <summary>Every top-level binding name a module declares locally
     /// (var/let/const/function/class, plus default-export bindings) — these get
     /// loader-allocated cells.</summary>
-    private static void CollectLocalBindingNames(IReadOnlyList<Statement> body, List<string> names)
+    private static void CollectLocalBindingNames(
+        IReadOnlyList<Statement> body, List<string> names,
+        HashSet<string> lexical, HashSet<string> immutableConst)
     {
         void Add(string n) { if (!names.Contains(n)) names.Add(n); }
+        void AddLex(string n) { Add(n); lexical.Add(n); }
+        void AddConst(string n) { AddLex(n); immutableConst.Add(n); }
+
+        // A bare or exported declaration contributes its bound names; let/const/
+        // class are lexical (TDZ), var/function are not; a `const` is also
+        // immutable (a later assignment is a TypeError).
+        void AddDecl(Statement decl)
+        {
+            switch (decl)
+            {
+                case VariableDeclaration vd:
+                    var isConst = vd.Kind == "const";
+                    var isLex = vd.Kind is "let" or "const";
+                    foreach (var d in vd.Declarations)
+                        foreach (var n in PatternNames(d.Id))
+                            if (isConst) AddConst(n); else if (isLex) AddLex(n); else Add(n);
+                    break;
+                case FunctionDeclaration fd: Add(fd.Name.Name); break;       // hoisted, not TDZ
+                case ClassDeclaration cd: AddLex(cd.Name.Name); break;       // lexical (TDZ)
+            }
+        }
+
         foreach (var s in body)
         {
             switch (s)
             {
-                case VariableDeclaration vd:
-                    foreach (var d in vd.Declarations)
-                        foreach (var n in PatternNames(d.Id)) Add(n);
+                case VariableDeclaration:
+                case FunctionDeclaration:
+                case ClassDeclaration:
+                    AddDecl(s);
                     break;
-                case FunctionDeclaration fd: Add(fd.Name.Name); break;
-                case ClassDeclaration cd: Add(cd.Name.Name); break;
                 case ExportLocalDeclaration local:
-                    foreach (var n in DeclaredNames(local.Declaration)) Add(n);
+                    AddDecl(local.Declaration);
                     break;
-                case ExportDefaultDeclaration: Add(DefaultBindingName); break;
+                // `export default` binds the synthetic *default* name; the
+                // default-export binding is lexical/const-like (initialized once
+                // when the body runs). Mark it lexical (TDZ) but NOT immutable —
+                // the binding is only ever written by the body's own init, and an
+                // anonymous default has no name to reassign, so const-immutability
+                // adds nothing while risking the init store being rejected.
+                case ExportDefaultDeclaration: AddLex(DefaultBindingName); break;
             }
         }
     }
@@ -557,9 +661,23 @@ public sealed partial class JsCompiler
     /// </remarks>
     private void EmitModuleVarDecl(VariableDeclaration vd)
     {
+        var isLexical = vd.Kind is "let" or "const";
         foreach (var d in vd.Declarations)
         {
-            if (d.Init is null) continue;
+            if (d.Init is null)
+            {
+                // `let x;` (no initializer) initializes the binding to `undefined`,
+                // transitioning it out of the TDZ — otherwise its loader-seeded
+                // sentinel cell would make every later read throw. A bare `var x;`
+                // needs no store (its cell already holds `undefined`).
+                if (isLexical && d.Id is Identifier lexId
+                    && _moduleBindingUpvalues!.ContainsKey(lexId.Name))
+                {
+                    _b.Emit(Opcode.LoadUndefined);
+                    StoreModuleBinding(lexId.Name);
+                }
+                continue;
+            }
             if (d.Id is Identifier id && _moduleBindingUpvalues!.ContainsKey(id.Name))
             {
                 EmitExpression(d.Init);
@@ -573,7 +691,14 @@ public sealed partial class JsCompiler
                 // local, so live bindings stay intact (the subtlety the prior
                 // implementation's NotSupportedException guarded against).
                 EmitExpression(d.Init);
-                EmitDestructuringFromStack(d.Id);
+                // TDZ — a let/const destructuring init is the binding's own
+                // initializer, so its leaf stores must be unchecked (they write
+                // the sentinel-seeded cell to its first value); _inLexicalDeclInit
+                // suppresses the StoreUpvalueChecked the leaves would otherwise use.
+                var prevInit = _inLexicalDeclInit;
+                if (isLexical) _inLexicalDeclInit = true;
+                try { EmitDestructuringFromStack(d.Id); }
+                finally { _inLexicalDeclInit = prevInit; }
             }
         }
     }
@@ -614,4 +739,10 @@ public sealed record ModuleCompilation(
 /// <param name="Name">Local binding name this slot backs.</param>
 /// <param name="IsImport">True when the slot is an imported binding.</param>
 /// <param name="Import">Import metadata when <see cref="IsImport"/>; null for locals.</param>
-public sealed record ModuleBindingSlot(string Name, bool IsImport, ModuleImportEntry? Import);
+/// <param name="IsLexical">TDZ — true for a <em>local</em> lexical binding
+/// (<c>let</c>/<c>const</c>/<c>class</c>/default) whose cell the loader must seed
+/// with the TDZ sentinel so a read before the module body initializes it throws a
+/// ReferenceError. False for <c>var</c>/function locals and for imports (imports
+/// alias the source module's cell, which the source seeds).</param>
+public sealed record ModuleBindingSlot(
+    string Name, bool IsImport, ModuleImportEntry? Import, bool IsLexical = false);

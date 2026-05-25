@@ -47,6 +47,23 @@ public sealed partial class JsParser
                 obj.Start);
     }
 
+    /// <summary>Parse a Module goal (§16.2.1.6). Module code is always strict
+    /// (§11.2.2) and is an implicit <c>[+Await]</c> context at its top level
+    /// (§16.2.1.6.2), so <c>await</c> is the AwaitExpression keyword and may not
+    /// be a binding identifier in module global code. Routes through the same
+    /// program body parser as a classic Script so import/export declarations stay
+    /// at program scope, then applies the Module-specific early errors
+    /// (§16.2.1.5 / §16.2.1.6) via <see cref="CheckModuleEarlyErrors"/>.</summary>
+    public Program ParseModule()
+    {
+        _module = true;          // goal symbol is Module (persists through the parse)
+        _strict = true;          // §11.2.2 — module code is always strict
+        _moduleTopAwait = true;  // §16.2.1.6.2 — module top level is [+Await]
+        var program = ParseProgram();
+        CheckModuleEarlyErrors(program.Body);
+        return program;
+    }
+
     /// <summary>§11.2.1 — parse the directive prologue (leading
     /// ExpressionStatements that are bare StringLiterals) using
     /// <paramref name="parseOne"/>, appending each parsed statement to
@@ -715,6 +732,7 @@ public sealed partial class JsParser
         var generator = Match(JsTokenKind.Star);
         var savedStrict = _strict;
         var (savedAsync, savedGen) = (_inAsync, _inGenerator);
+        var savedModuleAwait = _moduleTopAwait;
         try
         {
             Identifier? fnName = null;
@@ -745,8 +763,10 @@ public sealed partial class JsParser
             // §15 — a function establishes a fresh await/yield context for its
             // own parameters and body (an async/generator turns the keyword on;
             // an ordinary function turns it off, shadowing any enclosing one).
+            // A function body is never the Module's [+Await] top level.
             _inAsync = isAsync;
             _inGenerator = generator;
+            _moduleTopAwait = false;
             Expect(JsTokenKind.LParen, "( expected after function expression");
             var parameters = ParseParameterList();
             Expect(JsTokenKind.RParen, "expected ')'");
@@ -760,7 +780,7 @@ public sealed partial class JsParser
             return new FunctionExpression(fnName, parameters, body, generator, start, body.End,
                 Async: isAsync, Strict: strict);
         }
-        finally { _strict = savedStrict; (_inAsync, _inGenerator) = (savedAsync, savedGen); }
+        finally { _strict = savedStrict; (_inAsync, _inGenerator) = (savedAsync, savedGen); _moduleTopAwait = savedModuleAwait; }
     }
 
     private FunctionDeclaration ParseFunctionDeclaration()
@@ -777,11 +797,14 @@ public sealed partial class JsParser
         var name = new Identifier(nameTok.Lexeme, nameTok.Start, nameTok.End);
         var savedStrict = _strict;
         var (savedAsync, savedGen) = (_inAsync, _inGenerator);
+        var savedModuleAwait = _moduleTopAwait;
         try
         {
             // §15 — fresh await/yield context for this function's params + body.
+            // A function body is never the Module's [+Await] top level.
             _inAsync = isAsync;
             _inGenerator = generator;
+            _moduleTopAwait = false;
             Expect(JsTokenKind.LParen, "( expected after function name");
             var parameters = ParseParameterList();
             Expect(JsTokenKind.RParen, "expected ')'");
@@ -795,7 +818,7 @@ public sealed partial class JsParser
             return new FunctionDeclaration(name, parameters, body, generator, start, body.End,
                 Async: isAsync, Strict: strict);
         }
-        finally { _strict = savedStrict; (_inAsync, _inGenerator) = (savedAsync, savedGen); }
+        finally { _strict = savedStrict; (_inAsync, _inGenerator) = (savedAsync, savedGen); _moduleTopAwait = savedModuleAwait; }
     }
 
     // -----------------------------------------------------------------------

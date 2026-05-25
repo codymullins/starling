@@ -200,7 +200,11 @@ public sealed class ModuleLoader
             ?? throw new JsThrow(_runtime.Realm.NewError(
                 _runtime.Realm.TypeErrorPrototype, $"Failed to fetch module: {url}"));
 
-        var program = new JsParser(source).ParseProgram();
+        // §16.2.1.6 — parse under the Module goal: module code is strict and an
+        // implicit [+Await] context at top level, and the Module-specific early
+        // errors (duplicate exports, escaped reserved words in import/export,
+        // unresolvable exports, top-level new.target/super, …) run here.
+        var program = new JsParser(source).ParseModule();
         var compiled = JsCompiler.CompileModule(program, url);
 
         var record = new ModuleRecord(
@@ -264,7 +268,40 @@ public sealed class ModuleLoader
             // and keep the synchronous evaluation contract.
             Kind = record.HasTopLevelAwait ? JsFunctionKind.Async : JsFunctionKind.Normal,
         };
+
+        // §16.2.1.5.2 Link step 9 — after wiring, every name the module exports
+        // must resolve unambiguously (ResolveExport ≠ null / ≠ "ambiguous").
+        // This catches re-export errors (`export { x } from` a module that does
+        // not export x, a `default` requested through `export *`, and circular
+        // indirect re-exports) at link time as a SyntaxError, BEFORE evaluation.
+        ValidateModuleExports(record);
+
         record.Status = ModuleStatus.Linked;
+    }
+
+    /// <summary>§16.2.1.5.2 Link — validate that each name this module exports
+    /// (excluding pure local declarations, which trivially resolve) resolves to a
+    /// binding. An unresolvable re-export is a link-time SyntaxError.</summary>
+    private void ValidateModuleExports(ModuleRecord record)
+    {
+        foreach (var e in record.ExportEntries)
+        {
+            // Only indirect (`export { x } from`) and named-star
+            // (`export * as ns`) entries can fail to resolve; a local export or a
+            // bare `export *` either has a cell or contributes no single name.
+            if (e.IsLocal) continue;
+            if (e.IsStar && e.ExportName is null) continue; // bare `export *` — per-name checked lazily
+
+            // Indirect re-export: the imported name must resolve in the target.
+            if (!e.IsStar && e.ImportName is not null && e.ModuleRequest is not null)
+            {
+                var dep = Resolve(e.ModuleRequest, record.Url);
+                var cell = ResolveExportCell(dep, e.ImportName, new HashSet<string>(StringComparer.Ordinal));
+                if (cell is null)
+                    throw new JsThrow(_runtime.Realm.NewSyntaxError(
+                        $"The requested module '{e.ModuleRequest}' does not provide an export named '{e.ImportName}'"));
+            }
+        }
     }
 
     /// <summary>§16.2.1.5.3-style ResolveExport, reduced to cell resolution: find
@@ -319,14 +356,19 @@ public sealed class ModuleLoader
 
         // 3) Star re-export (export * from "..."). Search each star target for
         //    the name (named star re-exports — export * as ns — bind a namespace
-        //    and are handled as a local export above once built).
-        foreach (var e in module.ExportEntries)
+        //    and are handled as a local export above once built). §16.2.1.5.3 —
+        //    `export *` never re-exports the `default` name, so a request for
+        //    `default` must NOT be satisfied through a star edge.
+        if (exportName != "default")
         {
-            if (!e.IsLocal && e.IsStar && e.ExportName is null)
+            foreach (var e in module.ExportEntries)
             {
-                var dep = Resolve(e.ModuleRequest!, module.Url);
-                var c = ResolveExportCell(dep, exportName, seen);
-                if (c is not null) return c;
+                if (!e.IsLocal && e.IsStar && e.ExportName is null)
+                {
+                    var dep = Resolve(e.ModuleRequest!, module.Url);
+                    var c = ResolveExportCell(dep, exportName, seen);
+                    if (c is not null) return c;
+                }
             }
         }
 
@@ -725,7 +767,18 @@ public sealed class ModuleLoader
     {
         foreach (var slot in _bindingOrders[record])
             if (!slot.IsImport)
-                record.LocalBindings.TryAdd(slot.Name, new Cell(JsValue.Undefined));
+            {
+                // §16.2.1.6.2 / §9.4.2 — a local lexical binding (let/const/class/
+                // default) starts in the Temporal Dead Zone: its cell holds the TDZ
+                // sentinel until the module body's initializer writes it, so a read
+                // before then throws a ReferenceError (the body emits TDZ-checked
+                // reads for these). A var/function binding starts as `undefined`
+                // (var is pre-initialized; functions are hoisted into the cell).
+                var initial = slot.IsLexical
+                    ? JsValue.Object(_runtime.Realm.TdzSentinel)
+                    : JsValue.Undefined;
+                record.LocalBindings.TryAdd(slot.Name, new Cell(initial));
+            }
     }
 
     private ModuleRecord Resolve(string specifier, string referrer)
