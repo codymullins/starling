@@ -613,6 +613,19 @@ public sealed partial class JsParser
                 var tok = Advance();
                 fnName = new Identifier(tok.Lexeme, tok.Start, tok.End);
             }
+            // §15.2.1 / §12.7.1 — a non-generator FunctionExpression's
+            // BindingIdentifier uses the [~Yield] context regardless of the
+            // enclosing generator scope, so `yield` is a valid name for it in
+            // sloppy non-generator code.  A generator expression may NOT use
+            // `yield` as its name (its BindingIdentifier is [+Yield]).  If the
+            // body's "use strict" directive flips the function to strict mode,
+            // CheckBindingIdentifier below will reject `yield` as a
+            // FutureReservedWord.
+            else if (!generator && Check(JsTokenKind.Yield))
+            {
+                var tok = Advance();
+                fnName = new Identifier(tok.Lexeme, tok.Start, tok.End);
+            }
             // §15 — a function establishes a fresh await/yield context for its
             // own parameters and body (an async/generator turns the keyword on;
             // an ordinary function turns it off, shadowing any enclosing one).
