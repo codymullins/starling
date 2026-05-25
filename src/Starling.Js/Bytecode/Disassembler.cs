@@ -55,6 +55,9 @@ public static class Disassembler
                 case Opcode.BuildClass:
                 case Opcode.LoadEvalScope:
                 case Opcode.StoreEvalScope:
+                case Opcode.DeclareEvalVar:
+                case Opcode.StoreEvalVar:
+                case Opcode.DeleteEvalVar:
                 {
                     var idx = BinaryPrimitives.ReadUInt16LittleEndian(code.AsSpan(i, 2));
                     i += 2;

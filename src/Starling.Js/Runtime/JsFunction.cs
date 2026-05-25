@@ -83,6 +83,16 @@ public sealed class JsFunction : JsObject
     /// captured environment.</summary>
     public IReadOnlyList<JsObject>? CapturedWith { get; set; }
 
+    /// <summary>wp:M3-73 — the eval-introduced var store of the frame that created
+    /// this function instance, when that frame is a non-strict function
+    /// containing a direct eval (<see cref="Chunk.HasDirectEval"/>). Lets this
+    /// closure resolve a free identifier through the var bindings a direct eval
+    /// injected into the enclosing function's variable environment (spec scope
+    /// chain) before falling back to the global object — e.g. a closure created
+    /// in a parameter initializer that reads a name a sibling default's direct
+    /// eval introduced. Null for the common case.</summary>
+    internal EvalVarStore? CapturedEvalVarStore { get; set; }
+
     public JsFunction(string name, Chunk body, int arityDeclared)
         : this(name, body, arityDeclared, Array.Empty<JsValue>())
     {

@@ -207,6 +207,27 @@ public enum Opcode : byte
     /// the caller binding's live storage; otherwise falls back to a global
     /// store.</summary>
     StoreEvalScope, // [u16 nameIdx]
+    /// <summary>wp:M3-73 — [u16 nameIdx] — §19.2.1.3 EvalDeclarationInstantiation
+    /// (non-global branch). Idempotent var/function pre-declaration into the
+    /// caller frame's eval-introduced var store: create a binding (value
+    /// <c>undefined</c>) for the name if one does not already exist, else no
+    /// effect. Emitted only when compiling a NON-strict direct eval whose caller
+    /// is a function, for the eval body's OWN top-level var/function names that
+    /// are NOT already caller bindings.</summary>
+    DeclareEvalVar, // [u16 nameIdx]
+    /// <summary>wp:M3-73 — [u16 nameIdx] — pop the value and set the named
+    /// binding in the caller frame's eval-introduced var store (the binding was
+    /// created by <see cref="DeclareEvalVar"/>). Used for an eval-body var
+    /// initializer and a hoisted function declaration's function object.</summary>
+    StoreEvalVar,   // [u16 nameIdx]
+    /// <summary>wp:M3-73 — [u16 nameIdx] — push true after removing the named
+    /// binding from this frame's eval-introduced var store if present (an
+    /// eval-introduced var/function binding is configurable, §19.2.1.3, so
+    /// <c>delete</c> succeeds and removes it). When the name is not in the store
+    /// this is the ordinary sloppy-mode identifier <c>delete</c> no-op (pushes
+    /// true). Emitted for <c>delete name</c> in code that may carry such a
+    /// store.</summary>
+    DeleteEvalVar,  // [u16 nameIdx]
 
     New,            // [u8 argc]
     Return,         // pop and return

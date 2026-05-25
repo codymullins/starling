@@ -55,6 +55,15 @@ public sealed class Chunk
     /// (stored on <see cref="Starling.Js.Runtime.JsFunction.CapturedWith"/>)
     /// and the VM must seed the callee frame's with-stack from it.</summary>
     public bool CapturesWith { get; init; }
+    /// <summary>wp:M3-73 — true when this function's body or parameter list
+    /// lexically contains a direct eval call (not crossing nested function
+    /// boundaries). A non-strict such function's frame eagerly allocates an
+    /// <see cref="Starling.Js.Runtime.EvalVarStore"/> at entry so the §19.2.1.3
+    /// var/function bindings that a direct eval injects into this function's
+    /// variable environment are visible both to the rest of this frame and to
+    /// closures it creates (which snapshot the store onto
+    /// <see cref="Starling.Js.Runtime.JsFunction.CapturedEvalVarStore"/>).</summary>
+    public bool HasDirectEval { get; init; }
     /// <summary>wp:M3-64 — true when this chunk is an arrow-function body. Arrows
     /// inherit <c>super</c> / <c>[[HomeObject]]</c> lexically (§14.2 / §13.2.5
     /// note): they are never made into methods themselves, so the VM stamps the
@@ -356,6 +365,11 @@ public sealed class ChunkBuilder
 
     public bool CapturesWith { get; set; }
 
+    /// <summary>wp:M3-73 — set by the compiler when this function's body/params
+    /// lexically contain a direct eval call; stamped onto
+    /// <see cref="Chunk.HasDirectEval"/>.</summary>
+    public bool HasDirectEval { get; set; }
+
     /// <summary>wp:M3-64 — set true while building an arrow-function body so the
     /// produced <see cref="Chunk.IsArrow"/> is stamped. The VM uses it to copy
     /// the enclosing frame's [[HomeObject]] onto the arrow closure for lexical
@@ -372,5 +386,5 @@ public sealed class ChunkBuilder
     public Chunk Build(string? name = null)
         => new(_code.ToArray(), _constants.ToArray(), LocalCount, name, _capturedSlots,
             _positions is null ? null : _positions.ToArray())
-        { IsStrict = IsStrict, HasPrologue = HasPrologue, CapturesWith = CapturesWith, SourcePath = SourcePath, IsArrow = IsArrow };
+        { IsStrict = IsStrict, HasPrologue = HasPrologue, CapturesWith = CapturesWith, SourcePath = SourcePath, IsArrow = IsArrow, HasDirectEval = HasDirectEval };
 }
