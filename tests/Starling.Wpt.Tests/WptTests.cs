@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Starling.Wpt.Tests;
 
@@ -53,6 +54,15 @@ public class WptTests
         var failSamples = new List<string>();
         var noResultSamples = new List<string>();
         var allFails = new List<string>();
+        // Phase-0 classifier: bucket every non-passing subtest by root-cause
+        // signature so causes.txt is the auto-generated, impact-ranked backlog.
+        var causes = new Dictionary<string, (int count, string example)>(StringComparer.Ordinal);
+        void Bump(string cause, string rel)
+        {
+            (int count, string example) cur = causes.TryGetValue(cause, out var c) ? c : (0, rel);
+            causes[cause] = (cur.count + 1, cur.example);
+        }
+
         var sw = Stopwatch.StartNew();
         var fileCount = 0;
 
@@ -69,13 +79,14 @@ public class WptTests
             if (!res.HasResult)
             {
                 noResult++;
+                Bump("no-result", rel);
                 if (noResultSamples.Count < 40) noResultSamples.Add($"{rel} :: {res.Detail}");
             }
             else if (res.Subtests.Count == 0)
             {
                 // Harness ran but errored (or a single-page test with no subtests).
                 if (res.HarnessStatus == 0) { pass++; cur = (cur.pass + 1, cur.total + 1); }
-                else { fail++; harnessErr++; cur = (cur.pass, cur.total + 1); RecordFail(failSamples, allFails, rel, res.Detail); }
+                else { fail++; harnessErr++; cur = (cur.pass, cur.total + 1); RecordFail(failSamples, allFails, rel, res.Detail); Bump("harness-error", rel); }
             }
             else
             {
@@ -84,9 +95,9 @@ public class WptTests
                     switch (t.Outcome)
                     {
                         case WptOutcome.Pass: pass++; cur = (cur.pass + 1, cur.total + 1); break;
-                        case WptOutcome.Timeout: timeout++; cur = (cur.pass, cur.total + 1); RecordFail(failSamples, allFails, rel, $"[timeout] {t.Name}: {t.Message}"); break;
-                        case WptOutcome.NotRun: notrun++; cur = (cur.pass, cur.total + 1); break;
-                        default: fail++; cur = (cur.pass, cur.total + 1); RecordFail(failSamples, allFails, rel, $"{t.Name}: {t.Message}"); break;
+                        case WptOutcome.Timeout: timeout++; cur = (cur.pass, cur.total + 1); RecordFail(failSamples, allFails, rel, $"[timeout] {t.Name}: {t.Message}"); Bump("timeout", rel); break;
+                        case WptOutcome.NotRun: notrun++; cur = (cur.pass, cur.total + 1); Bump("notrun", rel); break;
+                        default: fail++; cur = (cur.pass, cur.total + 1); RecordFail(failSamples, allFails, rel, $"{t.Name}: {t.Message}"); Bump(ClassifyCause(t.Message), rel); break;
                     }
                 }
             }
@@ -107,6 +118,13 @@ public class WptTests
         foreach (var (cat, cc) in byCat)
             report.AppendLine($"  {cc.pass,7}/{cc.total,-7} {100d * cc.pass / Math.Max(1, cc.total),6:F1}%  {cat}");
         report.AppendLine();
+        // Impact-ranked root-cause histogram (Phase 0). The full list goes to
+        // causes.txt; the top slice is inlined for at-a-glance triage.
+        var rankedCauses = causes.OrderByDescending(kv => kv.Value.count).ThenBy(kv => kv.Key, StringComparer.Ordinal).ToList();
+        report.AppendLine($"Top failure causes (subtests; full list → causes.txt):");
+        foreach (var kv in rankedCauses.Take(25))
+            report.AppendLine($"  {kv.Value.count,6}  {kv.Key,-34}  e.g. {kv.Value.example}");
+        report.AppendLine();
         report.AppendLine($"Failure samples ({failSamples.Count} shown):");
         foreach (var s in failSamples) report.AppendLine("  " + s);
         report.AppendLine();
@@ -117,12 +135,39 @@ public class WptTests
         var reportPath = Path.Combine(resultsDir, "summary.txt");
         File.WriteAllText(reportPath, report.ToString(), enc);
         File.WriteAllLines(Path.Combine(resultsDir, "failures.txt"), allFails, enc);
+        File.WriteAllLines(Path.Combine(resultsDir, "causes.txt"),
+            rankedCauses.Select(kv => $"{kv.Value.count}\t{kv.Key}\te.g. {kv.Value.example}"), enc);
 
         TestContext.WriteLine(report.ToString());
         TestContext.WriteLine("report: " + reportPath);
 
         if (floor > 0)
             Assert.IsTrue(rate >= floor, $"WPT pass rate {rate:F2}% < floor {floor:F2}% — see {reportPath}");
+    }
+
+    /// <summary>Map a failing subtest's message to a root-cause signature so
+    /// causes that share a fix collapse into one ranked bucket. Mechanical gaps
+    /// resolve to the specific missing API (e.g. <c>missing-method:createEvent</c>);
+    /// semantic failures resolve to the assertion kind (<c>assert:assert_equals</c>).
+    /// The "hint" the engine attaches to a "not a function" throw is a heuristic
+    /// and sometimes misfires (length/e/alias/plural/undefined) — those buckets
+    /// are noise, not real missing methods (see tasks/wpt/PLAN.md).</summary>
+    private static string ClassifyCause(string? message)
+    {
+        var m = message ?? "";
+        var mh = Regex.Match(m, @"method hint: '([^']+)'");
+        if (mh.Success) return "missing-method:" + mh.Groups[1].Value;
+        var nh = Regex.Match(m, @"new hint: '([^']+)'");
+        if (nh.Success) return "missing-ctor:" + nh.Groups[1].Value;
+        if (m.Contains("not a function", StringComparison.Ordinal)) return "missing-method:(unknown)";
+        if (m.Contains("not a constructor", StringComparison.Ordinal)) return "missing-ctor:(unknown)";
+        var am = Regex.Match(m, @"\bassert_[a-z_]+");
+        if (am.Success) return "assert:" + am.Value;
+        if (m.Contains("is not defined", StringComparison.Ordinal)) return "reference-error";
+        if (m.Contains("Test timed out", StringComparison.Ordinal)) return "timeout";
+        var trimmed = m.Trim();
+        if (trimmed.Length == 0) return "other:(empty)";
+        return "other:" + (trimmed.Length > 48 ? trimmed[..48] : trimmed);
     }
 
     private static void RecordFail(List<string> samples, List<string> all, string rel, string? detail)
