@@ -86,6 +86,19 @@ public static class WindowBinding
             PropertyDescriptor.Data(JsValue.Object(global), writable: true, enumerable: true, configurable: true));
         global.DefineOwnProperty("self",
             PropertyDescriptor.Data(JsValue.Object(global), writable: true, enumerable: true, configurable: true));
+        // Top-level browsing context with no parent/opener: parent, top, and
+        // frames all refer to this window; opener is null (WHATWG HTML §window).
+        // Without these, a script that climbs window.parent or reads
+        // window.opener — e.g. testharness.js's _forEach_windows — walks off
+        // into undefined and calls postMessage on a phantom window.
+        global.DefineOwnProperty("parent",
+            PropertyDescriptor.Data(JsValue.Object(global), writable: true, enumerable: true, configurable: true));
+        global.DefineOwnProperty("top",
+            PropertyDescriptor.Data(JsValue.Object(global), writable: true, enumerable: true, configurable: true));
+        global.DefineOwnProperty("frames",
+            PropertyDescriptor.Data(JsValue.Object(global), writable: true, enumerable: true, configurable: true));
+        global.DefineOwnProperty("opener",
+            PropertyDescriptor.Data(JsValue.Null, writable: true, enumerable: true, configurable: true));
         global.DefineOwnProperty("document",
             PropertyDescriptor.Data(JsValue.Object(docWrapper), writable: true, enumerable: true, configurable: true));
         // `location` is exposed as an accessor on the global so reads always

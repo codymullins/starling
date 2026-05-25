@@ -815,6 +815,14 @@ public static class NodeBindings
             var elt = d.CreateElement(JsValue.ToStringValue(args[0]));
             return JsValue.Object(DomWrappers.Wrap(realm, elt));
         }, length: 1);
+        EventTargetBinding.DefineMethod(realm, docProto, "createElementNS", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapDocument(thisV) is not { } d || args.Length < 2)
+                throw new JsThrow(realm.NewTypeError("createElementNS requires (namespace, qualifiedName)"));
+            var ns = args[0].IsNullish ? null : JsValue.ToStringValue(args[0]);
+            var elt = d.CreateElement(JsValue.ToStringValue(args[1]), ns);
+            return JsValue.Object(DomWrappers.Wrap(realm, elt));
+        }, length: 2);
         EventTargetBinding.DefineMethod(realm, docProto, "createTextNode", (thisV, args) =>
         {
             if (DomWrappers.UnwrapDocument(thisV) is not { } d)

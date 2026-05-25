@@ -50,4 +50,5 @@
   <Project Path="tests/Starling.Net.Tests/Starling.Net.Tests.csproj" />
   <Project Path="tests/Starling.Paint.Tests/Starling.Paint.Tests.csproj" />
   <Project Path="tests/Starling.Url.Tests/Starling.Url.Tests.csproj" />
+  <Project Path="tests/Starling.Wpt.Tests/Starling.Wpt.Tests.csproj" />
 </Solution>
