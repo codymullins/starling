@@ -32,9 +32,9 @@ public static class DataViewCtor
         var proto = realm.DataViewPrototype;
 
         JsNativeFunction? ctor = null;
-        ctor = new JsNativeFunction("DataView", (thisV, args) =>
+        ctor = new JsNativeFunction("DataView", (newTarget, args) =>
         {
-            if (!thisV.IsObject || !ReferenceEquals(thisV.AsObject, ctor))
+            if (!IntrinsicHelpers.IsConstructInvocation(newTarget))
                 throw new JsThrow(realm.NewTypeError("DataView constructor requires 'new'"));
             if (args.Length == 0 || !args[0].IsObject || args[0].AsObject is not JsArrayBuffer buffer)
                 throw new JsThrow(realm.NewTypeError("DataView buffer must be an ArrayBuffer"));
@@ -44,7 +44,9 @@ public static class DataViewCtor
                 ? ArrayBufferCtor.ToIndex(realm, args[2])
                 : buffer.ByteLength - offset;
             if (offset + length > buffer.ByteLength) throw new JsThrow(realm.NewRangeError("DataView byteLength out of range"));
-            return JsValue.Object(new JsDataView(proto, buffer, offset, length));
+            // §25.3.2.1 step 10: OrdinaryCreateFromConstructor — prototype from new.target.
+            var instProto = IntrinsicHelpers.NewTargetPrototype(realm.ActiveVm, newTarget, proto);
+            return JsValue.Object(new JsDataView(instProto, buffer, offset, length));
         }, isConstructor: true);
         ctor.SetPrototypeOf(realm.FunctionPrototype);
         ArrayBufferCtor.DefineData(ctor, "prototype", JsValue.Object(proto), false, false, false);

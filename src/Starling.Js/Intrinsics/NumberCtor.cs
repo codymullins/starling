@@ -17,11 +17,17 @@ public static class NumberCtor
         var proto = realm.NumberPrototype;
 
         JsNativeFunction? ctor = null;
-        ctor = new JsNativeFunction(realm, "Number", length: 1, (thisV, args) =>
+        ctor = new JsNativeFunction(realm, "Number", length: 1, (newTarget, args) =>
         {
             var n = args.Length == 0 ? 0 : ToNumber(args[0]);
-            if (thisV.IsObject && ReferenceEquals(thisV.AsObject, ctor))
-                return JsValue.Object(realm.BoxNumber(JsValue.Number(n)));
+            // §21.1.1.1: constructed → wrapper prototyped from new.target.
+            if (IntrinsicHelpers.IsConstructInvocation(newTarget))
+            {
+                var box = realm.BoxNumber(JsValue.Number(n));
+                var instProto = IntrinsicHelpers.NewTargetPrototype(realm.ActiveVm, newTarget, proto);
+                if (!ReferenceEquals(instProto, proto)) box.SetPrototypeOf(instProto);
+                return JsValue.Object(box);
+            }
             return JsValue.Number(n);
         }, isConstructor: true);
         DefineData(ctor, "prototype", JsValue.Object(proto), false, false, false);

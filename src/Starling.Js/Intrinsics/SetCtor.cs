@@ -22,9 +22,15 @@ public static class SetCtor
         var proto = realm.SetPrototype;
         var iterProto = realm.SetIteratorPrototype;
 
-        // §24.2.1.1 Set([iterable]).
+        // §24.2.1.1 Set([iterable]). §24.2.1.1 step 1: requires `new`.
         var ctor = new JsNativeFunction(realm, "Set", length: 0,
-            (_, args) => JsValue.Object(Construct(realm, args)),
+            (newTarget, args) =>
+            {
+                if (!IntrinsicHelpers.IsConstructInvocation(newTarget))
+                    throw new JsThrow(realm.NewTypeError("Constructor Set requires 'new'"));
+                var instProto = IntrinsicHelpers.NewTargetPrototype(realm.ActiveVm, newTarget, proto);
+                return JsValue.Object(Construct(realm, instProto, args));
+            },
             isConstructor: true);
         ctor.DefineOwnProperty("prototype",
             PropertyDescriptor.Data(JsValue.Object(proto), writable: false, enumerable: false, configurable: false));
@@ -95,9 +101,10 @@ public static class SetCtor
             PropertyDescriptor.Data(JsValue.Object(ctor), writable: true, enumerable: false, configurable: true));
     }
 
-    private static JsSet Construct(JsRealm realm, JsValue[] args)
+    private static JsSet Construct(JsRealm realm, JsObject instProto, JsValue[] args)
     {
         var set = new JsSet(realm);
+        if (!ReferenceEquals(instProto, realm.SetPrototype)) set.SetPrototypeOf(instProto);
         if (args.Length == 0 || args[0].IsNullish) return set;
 
         var iterable = args[0];

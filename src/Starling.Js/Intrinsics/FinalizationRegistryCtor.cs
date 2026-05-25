@@ -11,7 +11,13 @@ public static class FinalizationRegistryCtor
         var proto = realm.FinalizationRegistryPrototype;
 
         var ctor = new JsNativeFunction(realm, "FinalizationRegistry", length: 1,
-            (_, args) => JsValue.Object(Construct(realm, runtime, args)),
+            (newTarget, args) =>
+            {
+                if (!IntrinsicHelpers.IsConstructInvocation(newTarget))
+                    throw new JsThrow(realm.NewTypeError("Constructor FinalizationRegistry requires 'new'"));
+                var instProto = IntrinsicHelpers.NewTargetPrototype(realm.ActiveVm, newTarget, proto);
+                return JsValue.Object(Construct(realm, runtime, instProto, args));
+            },
             isConstructor: true);
         ctor.DefineOwnProperty("prototype",
             PropertyDescriptor.Data(JsValue.Object(proto), writable: false, enumerable: false, configurable: false));
@@ -59,12 +65,13 @@ public static class FinalizationRegistryCtor
             PropertyDescriptor.Data(JsValue.Object(ctor), writable: true, enumerable: false, configurable: true));
     }
 
-    private static JsFinalizationRegistry Construct(JsRealm realm, JsRuntime? runtime, JsValue[] args)
+    private static JsFinalizationRegistry Construct(JsRealm realm, JsRuntime? runtime, JsObject instProto, JsValue[] args)
     {
         // §26.2.1.1: cleanupCallback must be callable.
         if (args.Length == 0 || !AbstractOperations.IsCallable(args[0]))
             throw new JsThrow(realm.NewTypeError("FinalizationRegistry: cleanupCallback must be callable"));
         var fr = new JsFinalizationRegistry(realm, args[0]);
+        if (!ReferenceEquals(instProto, realm.FinalizationRegistryPrototype)) fr.SetPrototypeOf(instProto);
         fr.JsRuntimeHandle = runtime;
         realm.FinalizationRegistries.Add(new WeakReference<JsFinalizationRegistry>(fr));
         return fr;

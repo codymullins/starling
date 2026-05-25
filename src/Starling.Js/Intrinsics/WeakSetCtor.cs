@@ -11,7 +11,13 @@ public static class WeakSetCtor
         var proto = realm.WeakSetPrototype;
 
         var ctor = new JsNativeFunction(realm, "WeakSet", length: 0,
-            (_, args) => JsValue.Object(Construct(realm, args)),
+            (newTarget, args) =>
+            {
+                if (!IntrinsicHelpers.IsConstructInvocation(newTarget))
+                    throw new JsThrow(realm.NewTypeError("Constructor WeakSet requires 'new'"));
+                var instProto = IntrinsicHelpers.NewTargetPrototype(realm.ActiveVm, newTarget, proto);
+                return JsValue.Object(Construct(realm, instProto, args));
+            },
             isConstructor: true);
         ctor.DefineOwnProperty("prototype",
             PropertyDescriptor.Data(JsValue.Object(proto), writable: false, enumerable: false, configurable: false));
@@ -49,9 +55,10 @@ public static class WeakSetCtor
             PropertyDescriptor.Data(JsValue.Object(ctor), writable: true, enumerable: false, configurable: true));
     }
 
-    private static JsWeakSet Construct(JsRealm realm, JsValue[] args)
+    private static JsWeakSet Construct(JsRealm realm, JsObject instProto, JsValue[] args)
     {
         var s = new JsWeakSet(realm);
+        if (!ReferenceEquals(instProto, realm.WeakSetPrototype)) s.SetPrototypeOf(instProto);
         if (args.Length == 0 || args[0].IsNullish) return s;
 
         var iterable = args[0];

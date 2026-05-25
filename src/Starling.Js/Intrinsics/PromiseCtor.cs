@@ -54,13 +54,20 @@ public static class PromiseCtor
         // executor runs synchronously, receiving the (resolve, reject)
         // pair built from this promise's capability. Any thrown value
         // becomes the rejection reason.
-        var ctor = new JsNativeFunction("Promise", (thisV, args) =>
+        var ctor = new JsNativeFunction("Promise", (newTarget, args) =>
         {
+            // §27.2.3.1 step 1: Promise requires `new` (or a derived super()).
+            if (!IntrinsicHelpers.IsConstructInvocation(newTarget))
+                throw new JsThrow(realm.NewTypeError("Constructor Promise requires 'new'"));
             if (args.Length == 0 || !AbstractOperations.IsCallable(args[0]))
                 throw new JsThrow(realm.NewTypeError("Promise resolver is not a function"));
             var executor = args[0];
 
-            var promise = new JsPromise(realm.PromisePrototype);
+            // §27.2.3.1 step 3: OrdinaryCreateFromConstructor — prototype from
+            // new.target so `class P extends Promise {}` produces a P-prototyped
+            // promise carrying the [[PromiseState]] slots.
+            var instProto = IntrinsicHelpers.NewTargetPrototype(realm.ActiveVm, newTarget, proto);
+            var promise = new JsPromise(instProto);
             var (resolve, reject) = CreateResolvingFunctions(realm, promise);
             try
             {

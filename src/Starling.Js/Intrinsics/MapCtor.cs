@@ -14,9 +14,16 @@ public static class MapCtor
         var proto = realm.MapPrototype;
         var iterProto = realm.MapIteratorPrototype;
 
-        // §24.1.1.1 Map([iterable]) — constructor.
+        // §24.1.1.1 Map([iterable]) — constructor. §24.1.1.1 step 1: Map must be
+        // invoked with `new` (or a derived super()); a plain call is a TypeError.
         var ctor = new JsNativeFunction(realm, "Map", length: 0,
-            (_, args) => JsValue.Object(Construct(realm, args)),
+            (newTarget, args) =>
+            {
+                if (!IntrinsicHelpers.IsConstructInvocation(newTarget))
+                    throw new JsThrow(realm.NewTypeError("Constructor Map requires 'new'"));
+                var instProto = IntrinsicHelpers.NewTargetPrototype(realm.ActiveVm, newTarget, proto);
+                return JsValue.Object(Construct(realm, instProto, args));
+            },
             isConstructor: true);
         ctor.DefineOwnProperty("prototype",
             PropertyDescriptor.Data(JsValue.Object(proto), writable: false, enumerable: false, configurable: false));
@@ -92,9 +99,10 @@ public static class MapCtor
             PropertyDescriptor.Data(JsValue.Object(ctor), writable: true, enumerable: false, configurable: true));
     }
 
-    private static JsMap Construct(JsRealm realm, JsValue[] args)
+    private static JsMap Construct(JsRealm realm, JsObject instProto, JsValue[] args)
     {
         var map = new JsMap(realm);
+        if (!ReferenceEquals(instProto, realm.MapPrototype)) map.SetPrototypeOf(instProto);
         if (args.Length == 0 || args[0].IsNullish) return map;
 
         var iterable = args[0];

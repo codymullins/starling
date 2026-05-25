@@ -11,7 +11,13 @@ public static class WeakRefCtor
         var proto = realm.WeakRefPrototype;
 
         var ctor = new JsNativeFunction(realm, "WeakRef", length: 1,
-            (_, args) => JsValue.Object(Construct(realm, args)),
+            (newTarget, args) =>
+            {
+                if (!IntrinsicHelpers.IsConstructInvocation(newTarget))
+                    throw new JsThrow(realm.NewTypeError("Constructor WeakRef requires 'new'"));
+                var instProto = IntrinsicHelpers.NewTargetPrototype(realm.ActiveVm, newTarget, proto);
+                return JsValue.Object(Construct(realm, instProto, args));
+            },
             isConstructor: true);
         ctor.DefineOwnProperty("prototype",
             PropertyDescriptor.Data(JsValue.Object(proto), writable: false, enumerable: false, configurable: false));
@@ -38,7 +44,7 @@ public static class WeakRefCtor
             PropertyDescriptor.Data(JsValue.Object(ctor), writable: true, enumerable: false, configurable: true));
     }
 
-    private static JsWeakRef Construct(JsRealm realm, JsValue[] args)
+    private static JsWeakRef Construct(JsRealm realm, JsObject instProto, JsValue[] args)
     {
         // §26.1.1.1: target must be an Object (not null, not a primitive,
         // not undefined).
@@ -47,7 +53,9 @@ public static class WeakRefCtor
         var target = args[0].AsObject;
         // Pin in the kept-alive set on construction per §26.1.1.1 step 4.
         realm.KeptAlive.Add(target);
-        return new JsWeakRef(realm, target);
+        var wr = new JsWeakRef(realm, target);
+        if (!ReferenceEquals(instProto, realm.WeakRefPrototype)) wr.SetPrototypeOf(instProto);
+        return wr;
     }
 
     private static JsWeakRef ThisWeakRef(JsRealm realm, JsValue thisV)

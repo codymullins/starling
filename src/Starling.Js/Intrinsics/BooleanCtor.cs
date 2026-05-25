@@ -11,11 +11,19 @@ public static class BooleanCtor
         var proto = realm.BooleanPrototype;
 
         JsNativeFunction? ctor = null;
-        ctor = new JsNativeFunction(realm, "Boolean", length: 1, (thisV, args) =>
+        ctor = new JsNativeFunction(realm, "Boolean", length: 1, (newTarget, args) =>
         {
             var b = JsValue.ToBoolean(args.Length > 0 ? args[0] : JsValue.Undefined);
-            if (thisV.IsObject && ReferenceEquals(thisV.AsObject, ctor))
-                return JsValue.Object(realm.BoxBoolean(JsValue.Boolean(b)));
+            // §21.3.1.1: called as a function → return the primitive; constructed
+            // (new / derived super()) → return a wrapper whose [[Prototype]] is
+            // new.target.prototype (so `class B extends Boolean {}` works).
+            if (IntrinsicHelpers.IsConstructInvocation(newTarget))
+            {
+                var box = realm.BoxBoolean(JsValue.Boolean(b));
+                var instProto = IntrinsicHelpers.NewTargetPrototype(realm.ActiveVm, newTarget, proto);
+                if (!ReferenceEquals(instProto, proto)) box.SetPrototypeOf(instProto);
+                return JsValue.Object(box);
+            }
             return JsValue.Boolean(b);
         }, isConstructor: true);
         DefineData(ctor, "prototype", JsValue.Object(proto), false, false, false);

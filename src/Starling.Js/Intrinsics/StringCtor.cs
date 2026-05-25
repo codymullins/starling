@@ -18,7 +18,7 @@ public static class StringCtor
         ArgumentNullException.ThrowIfNull(realm);
         var stringProto = realm.StringPrototype;
 
-        var ctor = new JsNativeFunction(realm, "String", length: 1, (thisV, args) =>
+        var ctor = new JsNativeFunction(realm, "String", length: 1, (newTarget, args) =>
         {
             // §22.1.1.1 String(value): no argument returns the empty string;
             // otherwise route through §7.1.17 ToString. Use the AO variant so
@@ -26,15 +26,22 @@ public static class StringCtor
             // invoked instead of the flat "[object Object]" fallback. Note:
             // String(symbol) is the one allowed Symbol→string path, so handle
             // it before ToString (which rejects Symbols per step 2).
+            // §22.1.1.1 step 4: when called as a function, return the primitive.
+            var constructed = IntrinsicHelpers.IsConstructInvocation(newTarget);
             string text;
             if (args.Length == 0)
                 text = string.Empty;
-            else if (args[0].IsSymbol)
+            else if (!constructed && args[0].IsSymbol)
                 text = args[0].AsSymbol.DescriptiveString;
             else
                 text = AbstractOperations.ToStringJs(realm.ActiveVm, args[0]);
-            if (thisV.IsObject && thisV.AsObject is JsNativeFunction native && native.Name == "String")
-                return JsValue.Object(CreateStringObject(realm, text));
+            if (constructed)
+            {
+                // §22.1.1.1 step 5: StringCreate with OrdinaryCreateFromConstructor —
+                // prototype comes from new.target so `class S extends String {}` works.
+                var instProto = IntrinsicHelpers.NewTargetPrototype(realm.ActiveVm, newTarget, stringProto);
+                return JsValue.Object(CreateStringObject(realm, text, instProto));
+            }
             return JsValue.String(text);
         }, isConstructor: true);
         ctor.DefineOwnProperty("prototype",
@@ -95,9 +102,9 @@ public static class StringCtor
             PropertyDescriptor.Data(JsValue.Object(ctor), writable: true, enumerable: false, configurable: true));
     }
 
-    private static JsObject CreateStringObject(JsRealm realm, string text)
+    private static JsObject CreateStringObject(JsRealm realm, string text, JsObject? proto = null)
     {
-        var obj = realm.NewObjectWithProto(realm.StringPrototype);
+        var obj = realm.NewObjectWithProto(proto ?? realm.StringPrototype);
         DefineStringData(obj, text);
         return obj;
     }

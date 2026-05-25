@@ -29,11 +29,15 @@ public static class TypedArrayCtors
         var proto = new JsObject(realm.TypedArrayPrototype);
 
         JsNativeFunction? ctor = null;
-        ctor = new JsNativeFunction(name, (thisV, args) =>
+        ctor = new JsNativeFunction(name, (newTarget, args) =>
         {
-            if (!thisV.IsObject || !ReferenceEquals(thisV.AsObject, ctor))
+            // §23.2.5.1 step 1: a TypedArray constructor requires `new` (or a
+            // derived super()). Resolve the instance prototype from new.target
+            // so `class X extends Uint8Array {}` yields an X-prototyped view.
+            if (!IntrinsicHelpers.IsConstructInvocation(newTarget))
                 throw new JsThrow(realm.NewTypeError(name + " constructor requires 'new'"));
-            return JsValue.Object(Construct(realm, proto, kind, args));
+            var instProto = IntrinsicHelpers.NewTargetPrototype(realm.ActiveVm, newTarget, proto);
+            return JsValue.Object(Construct(realm, instProto, kind, args));
         }, isConstructor: true);
         ctor.SetPrototypeOf(realm.FunctionPrototype);
         ArrayBufferCtor.DefineData(ctor, "prototype", JsValue.Object(proto), false, false, false);

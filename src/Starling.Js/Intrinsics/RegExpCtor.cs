@@ -16,7 +16,10 @@ public static class RegExpCtor
         System.ArgumentNullException.ThrowIfNull(realm);
         var proto = realm.RegExpPrototype;
 
-        var ctor = new JsNativeFunction(realm, "RegExp", length: 2, (thisV, args) => Construct(realm, args), isConstructor: true);
+        var ctor = new JsNativeFunction(realm, "RegExp", length: 2,
+            (newTarget, args) => Construct(realm,
+                IntrinsicHelpers.NewTargetPrototype(realm.ActiveVm, newTarget, proto), args),
+            isConstructor: true);
         ctor.DefineOwnProperty("prototype",
             PropertyDescriptor.Data(JsValue.Object(proto), writable: false, enumerable: false, configurable: false));
 
@@ -72,7 +75,7 @@ public static class RegExpCtor
     // ------------------------------------------------------------------
     //                       Constructor
     // ------------------------------------------------------------------
-    private static JsValue Construct(JsRealm realm, JsValue[] args)
+    private static JsValue Construct(JsRealm realm, JsObject instProto, JsValue[] args)
     {
         var patternArg = args.Length > 0 ? args[0] : JsValue.Undefined;
         var flagsArg = args.Length > 1 ? args[1] : JsValue.Undefined;
@@ -106,7 +109,9 @@ public static class RegExpCtor
         {
             throw new JsThrow(realm.NewSyntaxError($"Invalid regular expression: /{source}/: {ex.Message}"));
         }
-        return JsValue.Object(new JsRegExp(realm, compiled));
+        var re = new JsRegExp(realm, compiled);
+        if (!ReferenceEquals(instProto, realm.RegExpPrototype)) re.SetPrototypeOf(instProto);
+        return JsValue.Object(re);
     }
 
     // ------------------------------------------------------------------

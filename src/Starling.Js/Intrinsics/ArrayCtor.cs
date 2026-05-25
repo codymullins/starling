@@ -24,9 +24,18 @@ public static class ArrayCtor
         ArgumentNullException.ThrowIfNull(realm);
         var proto = realm.ArrayPrototype;
 
-        // -------- Constructor (callable + constructible). §23.1.1.1.
+        // -------- Constructor (callable + constructible). §23.1.1.1. Array may
+        // be called as a function or constructed; when derived via
+        // `class X extends Array {}`, super() threads X as new.target so the
+        // result is X-prototyped (a real exotic Array with the right chain).
         var ctor = new JsNativeFunction(realm, "Array", length: 1,
-            (thisV, args) => JsValue.Object(ConstructArray(realm, args)),
+            (newTarget, args) =>
+            {
+                var arr = ConstructArray(realm, args);
+                var instProto = IntrinsicHelpers.NewTargetPrototype(realm.ActiveVm, newTarget, proto);
+                if (!ReferenceEquals(instProto, proto)) arr.SetPrototypeOf(instProto);
+                return JsValue.Object(arr);
+            },
             isConstructor: true);
         ctor.DefineOwnProperty("prototype",
             PropertyDescriptor.Data(JsValue.Object(proto), writable: false, enumerable: false, configurable: false));

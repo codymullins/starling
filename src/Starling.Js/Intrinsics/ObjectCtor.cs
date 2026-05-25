@@ -31,8 +31,20 @@ public static class ObjectCtor
 
         // ----------------------------------------------------------- Constructor
         // §20.1.1 The Object Constructor — called as Object(v) or new Object(v).
-        var ctor = new JsNativeFunction("Object", (thisV, args) =>
+        JsNativeFunction? ctor = null;
+        ctor = new JsNativeFunction("Object", (newTarget, args) =>
         {
+            // §20.1.1.1 step 1: when constructed with a new.target that is NOT
+            // the Object constructor itself (i.e. a subclass via super()),
+            // OrdinaryCreateFromConstructor an object prototyped from new.target.
+            // `class S extends Object {}; new S()` then yields an S-prototyped
+            // instance regardless of any argument.
+            if (newTarget.IsObject && AbstractOperations.IsConstructor(newTarget)
+                && !ReferenceEquals(newTarget.AsObject, ctor))
+            {
+                var instProto = IntrinsicHelpers.NewTargetPrototype(realm.ActiveVm, newTarget, objectProto);
+                return JsValue.Object(realm.NewObjectWithProto(instProto));
+            }
             var value = args.Length > 0 ? args[0] : JsValue.Undefined;
             // When `value` is undefined or null → fresh ordinary object.
             if (value.IsNullish) return JsValue.Object(realm.NewOrdinaryObject());

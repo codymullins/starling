@@ -43,8 +43,20 @@ public static class FunctionCtor
         // the last argument is the body, the rest are comma-joined into the
         // parameter list. We synthesize `(function anonymous(<params>){<body>})`,
         // compile it in global (eval) scope, and return the resulting function.
-        var ctor = new JsNativeFunction("Function", (thisV, args) => BuildDynamicFunction(realm, args),
-            isConstructor: true);
+        var ctor = new JsNativeFunction("Function", (newTarget, args) =>
+        {
+            var fn = BuildDynamicFunction(realm, args);
+            // §20.2.1.1 CreateDynamicFunction uses OrdinaryCreateFromConstructor
+            // for the new function's [[Prototype]]. When subclassed
+            // (`class S extends Function {}`), super()'s new.target is S, so the
+            // produced function is re-parented to S.prototype for instanceof.
+            if (fn.IsObject)
+            {
+                var instProto = IntrinsicHelpers.NewTargetPrototype(realm.ActiveVm, newTarget, funcProto);
+                if (!ReferenceEquals(instProto, funcProto)) fn.AsObject.SetPrototypeOf(instProto);
+            }
+            return fn;
+        }, isConstructor: true);
         // The constructor inherits from its own prototype object.
         ctor.SetPrototypeOf(funcProto);
         ctor.DefineOwnProperty("prototype",

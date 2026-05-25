@@ -26,12 +26,12 @@ public static class DateCtor
         var proto = realm.DatePrototype;
 
         JsNativeFunction? ctor = null;
-        ctor = new JsNativeFunction(realm, "Date", length: 7, (thisV, args) =>
+        ctor = new JsNativeFunction(realm, "Date", length: 7, (newTarget, args) =>
         {
             // §21.4.1.1 — Called without new, return the current date as a
             // string regardless of args (spec oddity that real bundles use to
             // sniff host locale formatting; we return a stable UTC string).
-            var calledAsConstructor = thisV.IsObject && ReferenceEquals(thisV.AsObject, ctor);
+            var calledAsConstructor = IntrinsicHelpers.IsConstructInvocation(newTarget);
             if (!calledAsConstructor)
                 return JsValue.String(FormatToString(NowMs()));
 
@@ -51,7 +51,12 @@ public static class DateCtor
             {
                 ms = MakeLocalMs(args);
             }
-            return JsValue.Object(new JsDate(realm, ms));
+            // §21.4.1.1 step 14: OrdinaryCreateFromConstructor — prototype from
+            // new.target so `class D extends Date {}` produces a D-prototyped date.
+            var date = new JsDate(realm, ms);
+            var instProto = IntrinsicHelpers.NewTargetPrototype(realm.ActiveVm, newTarget, proto);
+            if (!ReferenceEquals(instProto, proto)) date.SetPrototypeOf(instProto);
+            return JsValue.Object(date);
         }, isConstructor: true);
 
         ctor.DefineOwnProperty("prototype",

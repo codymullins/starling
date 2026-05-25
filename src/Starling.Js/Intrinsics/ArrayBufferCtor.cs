@@ -12,12 +12,15 @@ public static class ArrayBufferCtor
         var proto = realm.ArrayBufferPrototype;
 
         JsNativeFunction? ctor = null;
-        ctor = new JsNativeFunction("ArrayBuffer", (thisV, args) =>
+        ctor = new JsNativeFunction("ArrayBuffer", (newTarget, args) =>
         {
-            if (!thisV.IsObject || !ReferenceEquals(thisV.AsObject, ctor))
+            // §25.1.4.1 step 1: requires `new`. OrdinaryCreateFromConstructor
+            // picks the prototype from new.target for `class B extends ArrayBuffer {}`.
+            if (!IntrinsicHelpers.IsConstructInvocation(newTarget))
                 throw new JsThrow(realm.NewTypeError("ArrayBuffer constructor requires 'new'"));
             var length = ToIndex(realm, args.Length > 0 ? args[0] : JsValue.Undefined);
-            return JsValue.Object(new JsArrayBuffer(proto, length));
+            var instProto = IntrinsicHelpers.NewTargetPrototype(realm.ActiveVm, newTarget, proto);
+            return JsValue.Object(new JsArrayBuffer(instProto, length));
         }, isConstructor: true);
         ctor.SetPrototypeOf(realm.FunctionPrototype);
         DefineData(ctor, "prototype", JsValue.Object(proto), false, false, false);

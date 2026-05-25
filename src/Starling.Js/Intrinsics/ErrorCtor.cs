@@ -57,9 +57,13 @@ public static class ErrorCtor
     private static JsNativeFunction InstallError(JsRealm realm)
     {
         var proto = realm.ErrorPrototype;
-        var ctor = new JsNativeFunction("Error", (_, args) =>
+        var ctor = new JsNativeFunction("Error", (newTarget, args) =>
         {
-            var instance = new JsObject(proto);
+            // §20.5.1.1 / OrdinaryCreateFromConstructor: when constructed via a
+            // derived class (`class E extends Error {}`), super() threads E as
+            // new.target so the instance's [[Prototype]] is E.prototype.
+            var instProto = IntrinsicHelpers.NewTargetPrototype(realm.ActiveVm, newTarget, proto);
+            var instance = new JsObject(instProto);
             ApplyMessageAndCause(instance, args);
             return JsValue.Object(instance);
         }, isConstructor: true);
@@ -79,9 +83,10 @@ public static class ErrorCtor
     /// `class Foo extends Error` semantics.</summary>
     private static void InstallSubclass(JsRealm realm, string name, JsObject proto, JsNativeFunction parentCtor)
     {
-        var ctor = new JsNativeFunction(name, (_, args) =>
+        var ctor = new JsNativeFunction(name, (newTarget, args) =>
         {
-            var instance = new JsObject(proto);
+            var instProto = IntrinsicHelpers.NewTargetPrototype(realm.ActiveVm, newTarget, proto);
+            var instance = new JsObject(instProto);
             ApplyMessageAndCause(instance, args);
             return JsValue.Object(instance);
         }, isConstructor: true);
@@ -99,13 +104,14 @@ public static class ErrorCtor
     private static void InstallAggregateError(JsRealm realm, JsNativeFunction parentCtor)
     {
         var proto = realm.AggregateErrorPrototype;
-        var ctor = new JsNativeFunction("AggregateError", (_, args) =>
+        var ctor = new JsNativeFunction("AggregateError", (newTarget, args) =>
         {
             var errorsArg = args.Length > 0 ? args[0] : JsValue.Undefined;
             var errorsValue = CopyErrorsArrayLike(realm, errorsArg);
 
             // §20.5.7.1: message + options come at args[1] / args[2], not [0] / [1].
-            var instance = new JsObject(proto);
+            var instProto = IntrinsicHelpers.NewTargetPrototype(realm.ActiveVm, newTarget, proto);
+            var instance = new JsObject(instProto);
             if (args.Length > 1 && !args[1].IsUndefined)
             {
                 instance.DefineOwnProperty("message",

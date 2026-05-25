@@ -12,7 +12,13 @@ public static class WeakMapCtor
         var proto = realm.WeakMapPrototype;
 
         var ctor = new JsNativeFunction(realm, "WeakMap", length: 0,
-            (_, args) => JsValue.Object(Construct(realm, args)),
+            (newTarget, args) =>
+            {
+                if (!IntrinsicHelpers.IsConstructInvocation(newTarget))
+                    throw new JsThrow(realm.NewTypeError("Constructor WeakMap requires 'new'"));
+                var instProto = IntrinsicHelpers.NewTargetPrototype(realm.ActiveVm, newTarget, proto);
+                return JsValue.Object(Construct(realm, instProto, args));
+            },
             isConstructor: true);
         ctor.DefineOwnProperty("prototype",
             PropertyDescriptor.Data(JsValue.Object(proto), writable: false, enumerable: false, configurable: false));
@@ -57,9 +63,10 @@ public static class WeakMapCtor
             PropertyDescriptor.Data(JsValue.Object(ctor), writable: true, enumerable: false, configurable: true));
     }
 
-    private static JsWeakMap Construct(JsRealm realm, JsValue[] args)
+    private static JsWeakMap Construct(JsRealm realm, JsObject instProto, JsValue[] args)
     {
         var m = new JsWeakMap(realm);
+        if (!ReferenceEquals(instProto, realm.WeakMapPrototype)) m.SetPrototypeOf(instProto);
         if (args.Length == 0 || args[0].IsNullish) return m;
 
         var iterable = args[0];

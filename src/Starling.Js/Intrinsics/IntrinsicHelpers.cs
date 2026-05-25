@@ -39,4 +39,42 @@ internal static class IntrinsicHelpers
         target.DefineOwnProperty(name,
             PropertyDescriptor.Data(value, writable: false, enumerable: false, configurable: false));
     }
+
+    // ====================================================================
+    //  Subclassing support — new.target threading for native constructors
+    // ====================================================================
+    //
+    // A native constructor body is `Func<JsValue thisV, JsValue[] args>`. The
+    // VM's calling convention puts new.target in the `thisV` slot when the
+    // builtin is invoked through [[Construct]]: `AbstractOperations.Construct`
+    // calls `nat.Body(JsValue.Object(newTarget), args)`. So:
+    //   * `new X()`            → thisV is the ctor object X (its own new.target).
+    //   * derived `super(...)` → thisV is the DERIVED class constructor.
+    //   * plain `X()` call     → thisV is undefined / the receiver (NOT a ctor).
+    // A construct invocation is therefore detected by `thisV` being a
+    // constructor object; the same object is the new.target whose `.prototype`
+    // OrdinaryCreateFromConstructor uses for the instance's [[Prototype]].
+
+    /// <summary>True iff a native constructor body was reached as a
+    /// [[Construct]] (`new`/derived `super()`) rather than a plain call — i.e.
+    /// the first arg (new.target) is a constructor object.</summary>
+    public static bool IsConstructInvocation(JsValue thisV)
+        => thisV.IsObject && AbstractOperations.IsConstructor(thisV);
+
+    /// <summary>§10.1.13 OrdinaryCreateFromConstructor prototype resolution for a
+    /// native constructor. Given the new.target carried in <paramref name="thisV"/>
+    /// (see notes above), returns <c>newTarget.prototype</c> when it is an object,
+    /// otherwise <paramref name="defaultProto"/>. When not a construct invocation
+    /// (plain call) the default is returned. This is what lets
+    /// `class X extends Builtin {}` produce instances whose [[Prototype]] is
+    /// <c>X.prototype</c> while still carrying the builtin's internal slots.</summary>
+    public static JsObject NewTargetPrototype(JsVm? vm, JsValue thisV, JsObject defaultProto)
+    {
+        if (thisV.IsObject && AbstractOperations.IsConstructor(thisV))
+        {
+            var proto = AbstractOperations.Get(vm, thisV.AsObject, "prototype");
+            if (proto.IsObject) return proto.AsObject;
+        }
+        return defaultProto;
+    }
 }
