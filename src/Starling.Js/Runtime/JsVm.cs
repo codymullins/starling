@@ -1121,6 +1121,18 @@ public sealed class JsVm
                 // ----- Throw -----
                 case Opcode.Throw: throw new JsThrow(Pop());
 
+                case Opcode.ThrowConstAssignment:
+                {
+                    // §16.2.1.6.2 — an assignment to an immutable binding (a
+                    // module's imported binding) is a runtime TypeError. Discard
+                    // the would-be assigned value, then throw.
+                    var nameIdx = ReadU16();
+                    var name = (string)constants[nameIdx]!;
+                    Pop();
+                    throw new JsThrow(_runtime.Realm.NewTypeError(
+                        $"Assignment to constant variable '{name}'."));
+                }
+
                 // ----- Try-frame management (gap:try-catch) -----
                 case Opcode.EnterTry:
                 {

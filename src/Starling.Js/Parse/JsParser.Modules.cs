@@ -145,6 +145,11 @@ public sealed partial class JsParser
             }
             else if (imported is Identifier id)
             {
+                // `import { x }` binds local `x` — its BindingIdentifier must
+                // satisfy the strict (module) binding-name rules just like the
+                // `as`-target above (so `import { eval }` / `import { await }`
+                // are early errors).
+                CheckBindingIdentifier(id.Name, id.Start);
                 local = new Identifier(id.Name, id.Start, id.End);
             }
             else
@@ -164,6 +169,13 @@ public sealed partial class JsParser
     {
         var start = _current.Start;
         Advance(); // export
+
+        // §16.2.3 — the `default` keyword may not contain a UnicodeEscapeSequence
+        // (`export default …` is a SyntaxError). The lexer keeps the keyword
+        // kind but tags the escape.
+        if (Check(JsTokenKind.Default) && _current.ContainsEscape)
+            throw new JsParseException(
+                "the 'default' keyword may not contain an escape sequence", _current.Start);
 
         if (Match(JsTokenKind.Default))
             return ParseExportDefaultDeclaration(start);
@@ -215,7 +227,10 @@ public sealed partial class JsParser
         }
         else
         {
-            var expr = ParseExpressionNoEof();
+            // §16.2.3.1 — `export default AssignmentExpression ;`. It is an
+            // AssignmentExpression, NOT an Expression, so a top-level comma
+            // sequence (`export default a, b`) is a SyntaxError.
+            var expr = ParseAssignment();
             ConsumeSemicolonOrAsi();
             return new ExportDefaultDeclaration(expr, start, expr.End);
         }
@@ -266,6 +281,9 @@ public sealed partial class JsParser
     private Identifier ParseImportedBinding(string message)
     {
         var tok = Expect(JsTokenKind.Identifier, message);
+        // §16.2.2 ImportedBinding is a BindingIdentifier in strict (module) code:
+        // `eval`/`arguments`/reserved words (incl. `await`) are SyntaxErrors.
+        CheckModuleBindingName(tok);
         return new Identifier(tok.Lexeme, tok.Start, tok.End);
     }
 
@@ -294,7 +312,11 @@ public sealed partial class JsParser
 
     private bool MatchContextualIdentifier(string lexeme)
     {
-        if (_current.Kind != JsTokenKind.Identifier || _current.Lexeme != lexeme) return false;
+        // §16.2.2 / §16.2.3 — the contextual keywords `as` and `from` may not
+        // contain a UnicodeEscapeSequence (an escaped `from` / `as` is
+        // not the keyword), so reject an escaped spelling here.
+        if (_current.Kind != JsTokenKind.Identifier || _current.Lexeme != lexeme
+            || _current.ContainsEscape) return false;
         Advance();
         return true;
     }

@@ -161,16 +161,19 @@ public class AsyncModuleCycleTests
     {
         // Trivial cycle: a module imports itself and uses top-level await. It must
         // terminate (no infinite recursion) and settle, binding the awaited value.
+        // The self-import aliases the export to a DIFFERENT local name (`selfX`):
+        // importing under the same name as a local declaration would be a
+        // duplicate-LexicallyDeclaredNames SyntaxError (§16.2.1.6.2).
         var modules = new Dictionary<string, string>
         {
             ["self"] = @"
-                import { x } from 'self';
+                import { x as selfX } from 'self';
                 report('self:start');
                 export const x = await Promise.resolve('X');
-                report('self:done x=' + x);",
+                report('self:done x=' + x + ' selfX=' + selfX);",
         };
         var log = RunGraphLog(modules, "self");
-        log.Should().Equal("self:start", "self:done x=X");
+        log.Should().Equal("self:start", "self:done x=X selfX=X");
     }
 
     [TestMethod]
@@ -178,8 +181,10 @@ public class AsyncModuleCycleTests
     {
         var modules = new Dictionary<string, string>
         {
+            // Self-import aliased to a distinct local name (see note above): the
+            // same name would be a duplicate-lexical-name SyntaxError.
             ["self"] = @"
-                import { x } from 'self';
+                import { x as selfX } from 'self';
                 export const x = await Promise.resolve(99);",
             ["main"] = "import { x } from 'self'; report(x);",
         };
@@ -245,11 +250,16 @@ public class AsyncModuleCycleTests
     // -----------------------------------------------------------------------
 
     [TestMethod]
-    public void Regression_synchronous_cycle_keeps_partial_binding_semantics()
+    public void Synchronous_cycle_const_back_edge_read_is_a_tdz_reference_error()
     {
-        // A pure synchronous cycle is spec-correct with partial-binding reads on
-        // the back-edge. Bodies still run in DFS post-order (deepest member
-        // first), so b observes a's binding before a's body has set it.
+        // A pure synchronous cycle runs bodies in DFS post-order (deepest member
+        // first), so b runs before a. b reads `aVal`, a `const` exported by a that
+        // a has not yet initialized — i.e. a read of an imported binding still in
+        // its Temporal Dead Zone. Per §16.2.1.6.2 (imported bindings share the
+        // source's lexical binding) this is a ReferenceError, NOT a partial
+        // `undefined` read. (Previously the engine seeded module cells with
+        // `undefined` and observed the partial binding; TDZ seeding now matches
+        // the spec — Test262 module-code/instn-* cover the same rule.)
         var modules = new Dictionary<string, string>
         {
             ["a"] = @"
@@ -267,14 +277,9 @@ public class AsyncModuleCycleTests
                 import { bVal } from 'b';
                 report('main:' + aVal + ',' + bVal);",
         };
-        var log = RunGraphLog(modules, "main");
-
-        // Deepest-first: b runs first and reads a's not-yet-initialised binding
-        // (undefined); a then reads b's now-set binding; main sees both finals.
-        log.Should().Equal(
-            "b:start aVal=undefined", "b:done",
-            "a:start bVal=B", "a:done",
-            "main:A,B");
+        var act = () => RunGraphLog(modules, "main");
+        act.Should().Throw<JsThrow>()
+            .Which.Value.AsObject.Get("name").AsString.Should().Be("ReferenceError");
     }
 
     [TestMethod]

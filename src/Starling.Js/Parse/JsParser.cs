@@ -102,6 +102,31 @@ public sealed partial class JsParser
     /// nested function scopes parsed inside the block.</summary>
     private bool _inStaticBlock;
 
+    /// <summary>True for the whole parse when the goal symbol is Module
+    /// (<see cref="ParseModule"/>). Persistent (never saved/restored) so a nested
+    /// non-async function inside a module still knows it is module code — where
+    /// <c>await</c> is reserved and may never be the AwaitExpression keyword
+    /// outside an async context, so <c>await UnaryExpression</c> in a non-async
+    /// nested function is an early SyntaxError (§16.2.1.6.2), not the liberal
+    /// "accept and defer to runtime" form used for classic scripts.</summary>
+    private bool _module;
+
+    /// <summary>True at the Module goal's <em>own</em> top level — i.e. the
+    /// implicit <c>[+Await]</c> context of §16.2.1.6.2 where <c>await</c> is the
+    /// AwaitExpression keyword. Distinct from <see cref="_inAsync"/> (which is the
+    /// async-function context) so the two compose: await is the keyword when
+    /// EITHER holds (<see cref="AwaitIsKeyword"/>). Reset to false at every
+    /// function/arrow boundary (a non-async arrow/function at module top level is
+    /// <c>[~Await]</c>: its <c>ConciseBody</c>/<c>FunctionBody</c> is not the
+    /// module's await context), and restored afterwards.</summary>
+    private bool _moduleTopAwait;
+
+    /// <summary>§13.3.10.1 / §16.2.1.6.2 — <c>await</c> is the AwaitExpression
+    /// keyword (never an identifier) when inside an async function context
+    /// (<see cref="_inAsync"/>) OR at the Module goal's top level
+    /// (<see cref="_moduleTopAwait"/>).</summary>
+    private bool AwaitIsKeyword => _inAsync || _moduleTopAwait;
+
     public JsParser(string source)
         : this(new JsLexer(source, ThrowingLexErrorSink.Instance)) { }
 
@@ -421,13 +446,18 @@ public sealed partial class JsParser
     {
         var savedStrict = _strict;
         var (savedAsync, savedGen) = (_inAsync, _inGenerator);
+        var savedModuleAwait = _moduleTopAwait;
         try
         {
             // An async arrow body is an async context; a plain arrow inherits the
             // enclosing async-ness (so `await` works in an arrow nested in an
             // async fn). Arrows are never generators, but the body inherits the
             // enclosing generator context per §15.3 (yield refers outward).
+            // An arrow body is never the Module's [+Await] top level (its
+            // ConciseBody is [~Await] unless the arrow itself is async), so a
+            // non-async arrow at module top level does NOT inherit module await.
             _inAsync = async || _inAsync;
+            _moduleTopAwait = false;
             if (Check(JsTokenKind.LBrace))
             {
                 var (block, strict) = ParseFunctionBody();
@@ -457,7 +487,7 @@ public sealed partial class JsParser
             return new ArrowFunctionExpression(@params, expr, IsExpression: true,
                 Async: async, start, expr.End, Strict: _strict);
         }
-        finally { _strict = savedStrict; (_inAsync, _inGenerator) = (savedAsync, savedGen); }
+        finally { _strict = savedStrict; (_inAsync, _inGenerator) = (savedAsync, savedGen); _moduleTopAwait = savedModuleAwait; }
     }
 
     /// <summary>Continue ParseAssignment after consuming an unexpected lead
@@ -766,7 +796,7 @@ public sealed partial class JsParser
                         "optional chain is not a valid assignment target", arg.Start);
                 return new UpdateExpression(t.Lexeme, arg, Prefix: true, t.Start, arg.End);
             }
-            case JsTokenKind.Identifier when _current.Lexeme == "await":
+            case JsTokenKind.Identifier when _current.Lexeme == "await" && !_current.ContainsEscape:
             {
                 // B1b-2c — await expression. Treat as a unary prefix in any
                 // context; the runtime errors if used outside an async fn.
@@ -774,12 +804,15 @@ public sealed partial class JsParser
                 // Guard against "await" used as a plain identifier (e.g. as
                 // a property name or assignment target) — those flow through
                 // ParsePrimary which advances the token first.
-                // §13.3.10.1 / §15.8 — but INSIDE an async context `await` is
-                // always the keyword and may never be used as an identifier
-                // reference / assignment target, so the fall-through is only
-                // permitted in non-async code.
+                // §13.3.10.1 / §16.2.1.6.2 — but in an await context (async
+                // function OR Module top level) `await` is always the keyword and
+                // may never be used as an identifier reference / assignment target,
+                // so the fall-through is only permitted outside an await context.
+                // An escaped `await` is never the keyword (handled by the
+                // ContainsEscape guard above → falls through to ParsePrimary,
+                // which yields a SyntaxError in await contexts).
                 var next = _lex.Peek().Kind;
-                if (!_inAsync && (next == JsTokenKind.Eq || next == JsTokenKind.Comma
+                if (!AwaitIsKeyword && (next == JsTokenKind.Eq || next == JsTokenKind.Comma
                     || next == JsTokenKind.Semicolon || next == JsTokenKind.RParen
                     || next == JsTokenKind.RBrace || next == JsTokenKind.RBracket
                     || next == JsTokenKind.Dot || next == JsTokenKind.Arrow
@@ -798,6 +831,15 @@ public sealed partial class JsParser
                 if (_inStaticBlock)
                     throw new JsParseException(
                         "an AwaitExpression may not appear in a class static block", _current.Start);
+                // §16.2.1.6.2 — in module code, `await` is always reserved: an
+                // `await UnaryExpression` outside an await context (i.e. in a
+                // non-async function nested in the module) is an early SyntaxError,
+                // not the liberal "accept and defer to runtime" form classic
+                // scripts use.
+                if (_module && !AwaitIsKeyword)
+                    throw new JsParseException(
+                        "'await' is only valid in async functions and at the top level of a module",
+                        _current.Start);
                 var t = Advance();
                 var arg = ParseUnary();
                 return new AwaitExpression(arg, t.Start, arg.End);
@@ -1111,6 +1153,15 @@ public sealed partial class JsParser
                 Advance();
                 return new ThisExpression(t.Start, t.End);
             case JsTokenKind.Identifier:
+                // §16.2.1.6.2 / §13.3.10.1 — `await` is reserved in module code
+                // and in any async context: it may not be an IdentifierReference
+                // there (e.g. `new await`, `void await`). The AwaitExpression form
+                // is handled in ParseUnary; reaching here with `await` means it is
+                // being used as a bare reference, which is illegal.
+                if (t.Lexeme == "await" && (_module || AwaitIsKeyword))
+                    throw new JsParseException(
+                        "'await' may not be used as an identifier reference in a module or async context",
+                        t.Start);
                 Advance();
                 return new Identifier(t.Lexeme, t.Start, t.End);
             case JsTokenKind.Yield:
@@ -1573,12 +1624,15 @@ public sealed partial class JsParser
     {
         var savedStrict = _strict;
         var (savedAsync, savedGen) = (_inAsync, _inGenerator);
+        var savedModuleAwait = _moduleTopAwait;
         try
         {
             // §15 — the method's own async/generator modifiers establish the
-            // await/yield context for its parameter list and body.
+            // await/yield context for its parameter list and body. A method body
+            // is never the Module's [+Await] top level.
             _inAsync = isAsync;
             _inGenerator = isGenerator;
+            _moduleTopAwait = false;
             Expect(JsTokenKind.LParen, "expected '(' for method parameters");
             var parameters = ParseParameterList();
             Expect(JsTokenKind.RParen, "expected ')' after method parameters");
@@ -1591,7 +1645,7 @@ public sealed partial class JsParser
             CheckParamsVsLexicalBody(parameters, body);
             return (parameters, body, body.End, strict);
         }
-        finally { _strict = savedStrict; (_inAsync, _inGenerator) = (savedAsync, savedGen); }
+        finally { _strict = savedStrict; (_inAsync, _inGenerator) = (savedAsync, savedGen); _moduleTopAwait = savedModuleAwait; }
     }
 
     /// <summary>

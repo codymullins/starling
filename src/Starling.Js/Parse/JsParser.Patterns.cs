@@ -23,11 +23,12 @@ public sealed partial class JsParser
             var y = Advance();
             return new Identifier(y.Lexeme, y.Start, y.End);
         }
-        // §13.3.10.1 / §15.8 — inside an async context, `await` is the
-        // AwaitExpression keyword and may NOT be a BindingIdentifier.
-        if (_inAsync && Check(JsTokenKind.Identifier) && _current.Lexeme == "await")
+        // §13.3.10.1 / §16.2.1.6.2 — in an await context (async function OR
+        // Module top level), `await` is the AwaitExpression keyword and may NOT
+        // be a BindingIdentifier.
+        if (AwaitIsKeyword && Check(JsTokenKind.Identifier) && _current.Lexeme == "await")
             throw new JsParseException(
-                "'await' may not be used as a binding identifier in an async context", _current.Start);
+                "'await' may not be used as a binding identifier in an await context", _current.Start);
         var id = Expect(JsTokenKind.Identifier, "expected binding name or pattern");
         return new Identifier(id.Lexeme, id.Start, id.End);
     }

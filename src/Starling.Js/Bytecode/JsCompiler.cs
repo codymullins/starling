@@ -253,9 +253,26 @@ public sealed partial class JsCompiler
     /// compiler chain the same way <see cref="TryResolveUpvalue"/> does.</summary>
     private bool IsLexicalUpvalue(string name)
     {
+        // Module top-level lexical bindings (let/const/class/import) are reserved
+        // directly in this compiler's upvalue table (not via a parent scope), so
+        // consult the module lexical set first for the TDZ-checked opcodes.
+        if (_moduleLexicalBindings is not null && _moduleLexicalBindings.Contains(name))
+            return true;
         if (_parent is null) return false;
         if (_parent.IsLexicalLocalForChild(name, out var found)) return found;
         return _parent.IsLexicalUpvalue(name);
+    }
+
+    /// <summary>§16.2.1.6.2 — is <paramref name="name"/> an immutable module
+    /// binding (an imported binding)? Consulted before emitting a store so an
+    /// assignment to an import becomes a runtime TypeError. Walks the parent
+    /// compiler chain so a write from a function nested in the module (the common
+    /// <c>assert.throws(() =&gt; { B = 1; })</c> shape) is still caught.</summary>
+    private bool IsImmutableUpvalue(string name)
+    {
+        if (_moduleImmutableBindings is not null && _moduleImmutableBindings.Contains(name))
+            return true;
+        return _parent is not null && _parent.IsImmutableUpvalue(name);
     }
 
     /// <summary>TDZ helper for <see cref="IsLexicalUpvalue"/>: report whether
@@ -2249,6 +2266,13 @@ public sealed partial class JsCompiler
         }
         else if (TryResolveUpvalue(name, out var upIdx))
         {
+            // §16.2.1.6.2 — assignment to an immutable binding (import / const)
+            // throws, except the binding's own initializer (_inLexicalDeclInit).
+            if (IsImmutableUpvalue(name) && !_inLexicalDeclInit)
+            {
+                _b.EmitU16(Opcode.ThrowConstAssignment, _b.AddConstant(name));
+                return;
+            }
             _b.EmitUpvalue(needsTdzCheck && IsLexicalUpvalue(name)
                 ? Opcode.StoreUpvalueChecked : Opcode.StoreUpvalue, upIdx);
         }
@@ -2424,7 +2448,11 @@ public sealed partial class JsCompiler
                 _b.EmitU16(Opcode.LoadConst, _b.AddConstant(1.0));
                 _b.Emit(up.Op == "++" ? Opcode.Add : Opcode.Sub);
                 if (up.Prefix) _b.Emit(Opcode.Dup);
-                _b.EmitUpvalue(Opcode.StoreUpvalue, upIdx);
+                // §16.2.1.6.2 — `import++`/`--` writes to an immutable binding.
+                if (IsImmutableUpvalue(id.Name))
+                    _b.EmitU16(Opcode.ThrowConstAssignment, _b.AddConstant(id.Name));
+                else
+                    _b.EmitUpvalue(Opcode.StoreUpvalue, upIdx);
                 return;
             }
             // gap:script-top-var-not-global — `x++` where `x` is a global
@@ -2804,7 +2832,12 @@ public sealed partial class JsCompiler
                 _b.Emit(Opcode.Pop);
                 EmitExpression(a.Value);
                 _b.Emit(Opcode.Dup);
-                _b.EmitUpvalue(Opcode.StoreUpvalue, upIdx); // [rhs]
+                // §16.2.1.6.2 — `import ||= …` etc. writes to an immutable binding
+                // (only on the assign path; the short-circuit path skips it).
+                if (IsImmutableUpvalue(id.Name))
+                    _b.EmitU16(Opcode.ThrowConstAssignment, _b.AddConstant(id.Name));
+                else
+                    _b.EmitUpvalue(Opcode.StoreUpvalue, upIdx); // [rhs]
                 _b.PatchJump(j);
                 return;
             }
@@ -3636,6 +3669,15 @@ public sealed partial class JsCompiler
         }
         else if (TryResolveUpvalue(name, out var upIdx))
         {
+            // §16.2.1.6.2 — an assignment to an immutable binding (an import, or a
+            // module `const`) is a runtime TypeError. The binding's own
+            // initializer is exempt (a `const`/destructuring init runs with
+            // _inLexicalDeclInit set); any other store is a user assignment.
+            if (IsImmutableUpvalue(name) && !_inLexicalDeclInit)
+            {
+                _b.EmitU16(Opcode.ThrowConstAssignment, _b.AddConstant(name));
+                return;
+            }
             _b.EmitUpvalue(
                 IsLexicalUpvalue(name) && !_inLexicalDeclInit
                     ? Opcode.StoreUpvalueChecked : Opcode.StoreUpvalue, upIdx);
