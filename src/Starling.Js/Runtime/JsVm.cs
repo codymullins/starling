@@ -1875,7 +1875,13 @@ public sealed class JsVm
                     var idx = ReadU16();
                     var name = (string)constants[idx]!;
                     var receiver = Pop();
-                    if (!receiver.IsObject || !receiver.AsObject.Has(name))
+                    // §13.3.4.2 PrivateGet → §7.3.x PrivateElementFind: a TypeError
+                    // unless the receiver ITSELF carries the brand. The brand is a
+                    // per-object set (never prototype-walked), so a wrong receiver —
+                    // a subclass constructor for a static private member, a Proxy
+                    // wrapping an instance, or any object before its brand is
+                    // installed (derived class, pre-super()) — throws here.
+                    if (!receiver.IsObject || !receiver.AsObject.HasPrivateBrand(name))
                     {
                         throw new JsThrow(_runtime.Realm.NewTypeError(
                             "Cannot read private member from an object whose class did not declare it"));
@@ -1907,7 +1913,10 @@ public sealed class JsVm
                     var name = (string)constants[idx]!;
                     var value = Pop();
                     var receiver = Pop();
-                    if (!receiver.IsObject || !receiver.AsObject.Has(name))
+                    // §13.3.4.3 PrivateSet → PrivateElementFind: a TypeError unless
+                    // the receiver ITSELF carries the brand (per-object set, never
+                    // prototype-walked) — see PrivateGet above.
+                    if (!receiver.IsObject || !receiver.AsObject.HasPrivateBrand(name))
                     {
                         throw new JsThrow(_runtime.Realm.NewTypeError(
                             "Cannot write private member from an object whose class did not declare it"));
@@ -1952,6 +1961,11 @@ public sealed class JsVm
                             "Cannot initialize the same private member twice on the same object"));
                     receiver.AsObject.DefineOwnProperty(name,
                         PropertyDescriptor.Data(value, writable: true, enumerable: false, configurable: false));
+                    // §7.3.28 PrivateFieldAdd installs the private element onto
+                    // the receiver's [[PrivateElements]] — i.e. the brand. The
+                    // brand check (PrivateGet/PrivateSet/PrivateIn/call) consults
+                    // this per-object set, not the prototype chain.
+                    receiver.AsObject.AddPrivateBrand(name);
                     break;
                 }
                 case Opcode.PrivateIn:
@@ -1964,11 +1978,11 @@ public sealed class JsVm
                     if (!operand.IsObject)
                         throw new JsThrow(_runtime.Realm.NewTypeError(
                             "Cannot use 'in' operator to search for a private name in a non-object"));
-                    // The brand check is true only when the object carries the
-                    // private element. A private field lives as an own property on
-                    // the instance; a private method/accessor is installed on the
-                    // class prototype, so consult the chain.
-                    Push(JsValue.Boolean(FindPrivateDescriptor(operand.AsObject, name).Desc is not null));
+                    // §13.10.1 / §7.3.x — `#x in obj` is true iff obj ITSELF carries
+                    // the brand for #x (per-object set, never prototype-walked). A
+                    // subclass constructor or a Proxy wrapping an instance does not
+                    // carry the brand, so this yields false rather than true.
+                    Push(JsValue.Boolean(operand.AsObject.HasPrivateBrand(name)));
                     break;
                 }
                 case Opcode.LoadCallerArgs:
@@ -1980,6 +1994,18 @@ public sealed class JsVm
                 }
                 case Opcode.RunFieldInits:
                 {
+                    // §10.2.1.3 InitializeInstanceElements — for a derived class
+                    // this runs only after super() returns, so the instance's
+                    // private brands appear at exactly the spec-correct moment;
+                    // private access before this point throws a TypeError.
+                    // Install instance private method/accessor brands first: their
+                    // bodies live on the shared prototype, but each instance must
+                    // carry the brand in its own [[PrivateElements]] set.
+                    if (currentFunction?.InstancePrivateBrands is { } brands && thisV.IsObject)
+                    {
+                        var brandObj = thisV.AsObject;
+                        foreach (var b in brands) brandObj.AddPrivateBrand(b);
+                    }
                     var inits = currentFunction?.InstanceFieldInitializers;
                     if (inits is not null)
                     {
@@ -2701,7 +2727,11 @@ public sealed class JsVm
 
         ctorInstance.HomeObject = protoObj;
 
-        // Install methods.
+        // Install methods. Private instance methods/accessors live on the shared
+        // prototype, but each instance must carry their brand in its own
+        // [[PrivateElements]] set (collected here, applied at construction).
+        // Static private members brand the constructor object directly.
+        List<string>? instancePrivateBrands = null;
         for (var i = 0; i < template.Methods.Count; i++)
         {
             var m = template.Methods[i];
@@ -2719,8 +2749,23 @@ public sealed class JsVm
             {
                 var keyForInstall = m.MangledPrivateKey ?? m.StaticKey!;
                 InstallMethodOrAccessor(owner, keyForInstall, m.Kind, fnInstance);
+                if (m.MangledPrivateKey is { } mangledMethod)
+                {
+                    if (m.IsStatic)
+                    {
+                        // §15.7.10 — only the constructor object carries the brand
+                        // for a static private method/accessor.
+                        ctorInstance.AddPrivateBrand(mangledMethod);
+                    }
+                    else
+                    {
+                        (instancePrivateBrands ??= new List<string>()).Add(mangledMethod);
+                    }
+                }
             }
         }
+        if (instancePrivateBrands is not null)
+            ctorInstance.InstancePrivateBrands = instancePrivateBrands;
 
         // §15.7.14 — for a class *declaration*, bind the class name to the
         // constructor BEFORE static elements run, so `static { … C … }` blocks
@@ -2771,6 +2816,9 @@ public sealed class JsVm
                     {
                         ctorInstance.DefineOwnProperty(key,
                             PropertyDescriptor.Data(JsValue.Undefined, writable: true, enumerable: false, configurable: false));
+                        // §15.7.10 — only the constructor object carries the brand
+                        // for a static private field.
+                        ctorInstance.AddPrivateBrand(key);
                     }
                     else
                     {

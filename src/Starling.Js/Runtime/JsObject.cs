@@ -36,6 +36,33 @@ public class JsObject
     /// relies on instead of poking the poisoned <c>callee</c> accessor).</summary>
     public bool IsArgumentsExotic { get; internal set; }
 
+    /// <summary>Models the spec's per-object [[PrivateElements]] brand set: the
+    /// set of mangled private-name keys this object <em>itself</em> carries.
+    /// A private field adds its mangled key when defined; instance private
+    /// methods/accessors add their brands when the instance is initialized
+    /// (post-<c>super()</c> for derived classes); static private members brand
+    /// the constructor object only. The brand check for <c>obj.#x</c> /
+    /// <c>obj.#x = v</c> / <c>obj.#m()</c> / <c>#x in obj</c> consults THIS set
+    /// directly (never walking the prototype chain), so a subclass constructor
+    /// or a Proxy — which do not carry the brand — correctly throw a TypeError
+    /// per §13.3.4 PrivateGet/PrivateSet/PrivateElementFind. Null until the
+    /// first brand is added, to keep ordinary objects allocation-free.</summary>
+    private HashSet<string>? _privateBrands;
+
+    /// <summary>True iff this object itself carries the brand for the given
+    /// mangled private-name key (see <see cref="_privateBrands"/>). Does NOT
+    /// walk the prototype chain — a derived/other-receiver constructor or a
+    /// Proxy lacks the brand and must throw a TypeError on private access.</summary>
+    public bool HasPrivateBrand(string mangledName)
+        => _privateBrands is not null && _privateBrands.Contains(mangledName);
+
+    /// <summary>Install the brand for a mangled private-name key on this object
+    /// (idempotent). Called when a private field is defined and when an
+    /// instance is initialized with private methods/accessors, or to brand a
+    /// constructor with its static private members.</summary>
+    public void AddPrivateBrand(string mangledName)
+        => (_privateBrands ??= new HashSet<string>(StringComparer.Ordinal)).Add(mangledName);
+
     public JsObject() { }
 
     public JsObject(JsObject? prototype) { Prototype = prototype; }

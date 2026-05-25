@@ -59,6 +59,15 @@ public sealed class JsFunction : JsObject
     /// B1b-2a).</summary>
     public IReadOnlyList<InstanceFieldInit>? InstanceFieldInitializers { get; set; }
 
+    /// <summary>Mangled private-name keys for this class's <em>instance</em>
+    /// private methods/accessors. These live on the prototype object (shared),
+    /// but each instance must still carry the brand for them in its own
+    /// [[PrivateElements]] set so a wrong receiver throws a TypeError. The
+    /// brands are installed onto the new instance when its field initializers
+    /// run (post-<c>super()</c> for a derived class) — see
+    /// <see cref="Bytecode.Opcode.RunFieldInits"/>.</summary>
+    public IReadOnlyList<string>? InstancePrivateBrands { get; set; }
+
     /// <summary>B1b-2c — function kind. Normal functions run synchronously
     /// and return their body's value. Async functions return a Promise;
     /// generator functions return a Generator object; async generators

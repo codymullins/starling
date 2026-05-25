@@ -212,7 +212,171 @@ public class JsClassTests
         ").AsNumber.Should().Be(11);
     }
 
+    // -------------------------------------------- Private-member brand checks
+    // wp:M3-66 — accessing a private member the receiver does not carry is a
+    // TypeError (§13.3.4 PrivateGet/PrivateSet/PrivateElementFind); the brand is
+    // installed when instance elements initialize (post-super() for a derived
+    // class), so access before that throws too. The success cases confirm valid
+    // private read/write/call is not regressed.
+
+    [TestMethod]
+    public void Valid_private_field_read_write_and_method_call_work()
+    {
+        Eval(@"
+            class C {
+                #x = 1;
+                #m() { return this.#x; }
+                read() { return this.#x; }
+                bump() { this.#x = this.#x + 1; return this.#x; }
+                callM() { return this.#m(); }
+            }
+            var c = new C();
+            '' + c.read() + c.bump() + c.callM();
+        ").AsString.Should().Be("122");
+    }
+
+    [TestMethod]
+    public void Private_field_read_on_wrong_receiver_throws_type_error()
+    {
+        ExpectTypeError(@"
+            class C { #x = 1; read(o) { return o.#x; } }
+            new C().read({});
+        ");
+    }
+
+    [TestMethod]
+    public void Private_field_write_on_wrong_receiver_throws_type_error()
+    {
+        ExpectTypeError(@"
+            class C { #x = 1; write(o) { o.#x = 5; } }
+            new C().write({});
+        ");
+    }
+
+    [TestMethod]
+    public void Private_method_call_on_wrong_receiver_throws_type_error()
+    {
+        ExpectTypeError(@"
+            class C { #m() { return 1; } call(o) { return o.#m(); } }
+            new C().call({});
+        ");
+    }
+
+    [TestMethod]
+    public void Private_in_on_wrong_receiver_is_false_not_true()
+    {
+        Eval(@"
+            class C { #x = 1; has(o) { return #x in o; } }
+            var c = new C();
+            (c.has(c)) && !(c.has({}));
+        ").AsBool.Should().BeTrue();
+    }
+
+    [TestMethod]
+    public void Static_private_method_on_subclass_receiver_throws_type_error()
+    {
+        // §15.7.10 — only the class constructor itself carries a static private
+        // member's brand; a subclass constructor receiver must throw.
+        ExpectTypeError(@"
+            class C { static f() { return this.#g(); } static #g() { return 42; } }
+            class D extends C {}
+            D.f();
+        ");
+    }
+
+    [TestMethod]
+    public void Static_private_method_on_own_constructor_works()
+    {
+        Eval(@"
+            class C { static f() { return this.#g(); } static #g() { return 42; } }
+            C.f();
+        ").AsNumber.Should().Be(42);
+    }
+
+    [TestMethod]
+    public void Static_private_field_on_subclass_receiver_throws_type_error()
+    {
+        ExpectTypeError(@"
+            class C { static #v = 7; static read() { return this.#v; } }
+            class D extends C {}
+            D.read();
+        ");
+    }
+
+    [TestMethod]
+    public void Private_method_call_before_super_returns_throws_type_error()
+    {
+        // The base constructor calls this.f(), which reaches D.prototype.f and
+        // calls this.#m() — but D's private method brand is not installed until
+        // super() returns, so this throws (prod-private-method-before-super).
+        ExpectTypeError(@"
+            var C = class { constructor() { this.f(); } };
+            class D extends C { f() { this.#m(); } #m() { return 42; } }
+            new D();
+        ");
+    }
+
+    [TestMethod]
+    public void Private_field_access_before_super_returns_throws_type_error()
+    {
+        ExpectTypeError(@"
+            var C = class { constructor() { this.f(); } };
+            class D extends C { #x = 1; f() { return this.#x; } }
+            new D();
+        ");
+    }
+
+    [TestMethod]
+    public void Private_field_access_through_proxy_throws_type_error()
+    {
+        // Private access is never trapped; the proxy object is not a brand
+        // carrier, so reading #x with the proxy as receiver throws.
+        ExpectTypeError(@"
+            class C { #x = 1; x() { return this.#x; } }
+            var c = new C();
+            var p = new Proxy(c, {});
+            p.x();
+        ");
+    }
+
+    [TestMethod]
+    public void Static_private_method_through_proxy_throws_type_error()
+    {
+        ExpectTypeError(@"
+            class C { static #m() { return 1; } static x() { return this.#m(); } }
+            var P = new Proxy(C, {});
+            P.x();
+        ");
+    }
+
+    [TestMethod]
+    public void Private_method_call_through_proxy_throws_type_error_but_direct_works()
+    {
+        Eval(@"
+            class C { #m() { return 1; } x() { return this.#m(); } }
+            var c = new C();
+            c.x();
+        ").AsNumber.Should().Be(1);
+
+        ExpectTypeError(@"
+            class C { #m() { return 1; } x() { return this.#m(); } }
+            var c = new C();
+            new Proxy(c, {}).x();
+        ");
+    }
+
     // ----------------------------------------------------- Helpers
+
+    private static void ExpectTypeError(string src)
+    {
+        JsThrow? caught = null;
+        try { Eval(src); }
+        catch (JsThrow t) { caught = t; }
+        caught.Should().NotBeNull("the snippet should throw a TypeError");
+        caught!.Value.IsObject.Should().BeTrue();
+        // The thrown error's constructor name should be "TypeError".
+        caught.Value.AsObject.Get("name").AsString.Should().Be("TypeError");
+    }
 
     private static JsValue Eval(string src)
     {
