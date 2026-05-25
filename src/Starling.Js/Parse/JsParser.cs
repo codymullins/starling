@@ -1194,7 +1194,7 @@ public sealed partial class JsParser
             var mname = mkey is Identifier mki ? mki : null;
             var mfn = MakeFnExpression(mname, mparams, mbody, start, mend, mGenerator, mAsync, mstrict);
             return new ObjectProperty(mkey, mfn,
-                Shorthand: false, Computed: mcomputed, start, mend);
+                Shorthand: false, Computed: mcomputed, start, mend, IsMethod: true);
         }
 
         // wp:M3-26 — accessor (getter/setter) shorthand: `{ get x(){…} }`,
@@ -1223,7 +1223,7 @@ public sealed partial class JsParser
                     throw new JsParseException("setter must have exactly one parameter", start);
                 var fn = MakeFnExpression(name: null, parameters, body, start, endPos, strict: astrict);
                 return new ObjectProperty(akey, fn,
-                    Shorthand: false, Computed: acomputed, start, endPos, kind);
+                    Shorthand: false, Computed: acomputed, start, endPos, kind, IsMethod: true);
             }
         }
 
@@ -1241,7 +1241,7 @@ public sealed partial class JsParser
             var methodName = key is Identifier ki ? ki : null;
             var method = MakeFnExpression(methodName, parameters, body, start, endPos, strict: mstrict);
             return new ObjectProperty(key, method,
-                Shorthand: false, Computed: computed, start, endPos);
+                Shorthand: false, Computed: computed, start, endPos, IsMethod: true);
         }
 
         if (Match(JsTokenKind.Colon))

@@ -77,7 +77,14 @@ public sealed record ObjectProperty(
     // wp:M3-26 — accessor (getter/setter) shorthand in object literals
     // (ECMA-262 §13.2.5). MethodKind.Method = data/method property (default,
     // back-compat); Get/Set = accessor whose Value is the accessor function.
-    MethodKind Kind = MethodKind.Method)
+    MethodKind Kind = MethodKind.Method,
+    // wp:M3-64 — true when this property is a MethodDefinition (a concise
+    // method `{ foo() {} }`, getter, or setter) rather than a data property
+    // whose value happens to be a function (`{ foo: function(){} }`). Only
+    // MethodDefinitions get a [[HomeObject]] (the object being constructed)
+    // so `super.x` inside them resolves against the object's prototype
+    // (§13.2.5 / §15.4.4 MethodDefinitionEvaluation, MakeMethod).
+    bool IsMethod = false)
     : AstNode(Start, End);
 
 // -----------------------------------------------------------------------

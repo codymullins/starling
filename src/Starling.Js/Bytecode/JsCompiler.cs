@@ -3105,6 +3105,10 @@ public sealed partial class JsCompiler
         // from this scope.
         var sub = new JsCompiler(parent: this);
         sub._b.IsStrict = fe.Strict;
+        // wp:M3-64 — an arrow body inherits super/[[HomeObject]] lexically; mark
+        // the chunk so the VM stamps the enclosing frame's home object onto the
+        // arrow closure at creation time.
+        sub._b.IsArrow = isArrow;
         // §14.11 / §10.2.1 — a function created lexically inside a `with` carries
         // the enclosing object Environment Records on its scope chain, so its
         // body resolves free identifiers with the with-objects consulted first.
@@ -3231,6 +3235,9 @@ public sealed partial class JsCompiler
                 {
                     EmitComputedKey(prop.Key);  // [obj, key]
                     EmitExpression(prop.Value); // [obj, key, fn]
+                    // wp:M3-64 — §13.2.5 MakeMethod: object-literal accessors get
+                    // a [[HomeObject]] = the object so `super.x` resolves.
+                    _b.Emit(Opcode.SetHomeObjectComputed); // [obj, key, fn]
                     _b.Emit(prop.Kind == MethodKind.Get
                         ? Opcode.DefineGetterComputed : Opcode.DefineSetterComputed); // [obj]
                 }
@@ -3246,6 +3253,8 @@ public sealed partial class JsCompiler
                             $"accessor key kind '{prop.Key.GetType().Name}'"),
                     };
                     EmitExpression(prop.Value); // [obj, fn]
+                    // wp:M3-64 — stamp [[HomeObject]] for the accessor.
+                    _b.Emit(Opcode.SetHomeObject); // [obj, fn]
                     _b.EmitU16(prop.Kind == MethodKind.Get
                         ? Opcode.DefineGetter : Opcode.DefineSetter, accIdx); // [obj]
                 }
@@ -3259,6 +3268,10 @@ public sealed partial class JsCompiler
             {
                 EmitComputedKey(prop.Key);           // [obj, key]
                 EmitExpression(prop.Value);          // [obj, key, value]
+                // wp:M3-64 — §13.2.5 MakeMethod: a concise method (`{ [k]() {} }`)
+                // gets a [[HomeObject]] = the object so `super.x` resolves; a plain
+                // data property (`{ [k]: fn }`) does NOT.
+                if (prop.IsMethod) _b.Emit(Opcode.SetHomeObjectComputed); // [obj, key, value]
                 _b.Emit(Opcode.DefineDataComputed);  // [obj]
             }
             else
@@ -3274,6 +3287,9 @@ public sealed partial class JsCompiler
                 var nameIdx = _b.AddConstant(propName);
                 // §named-evaluation — `{ x: function(){} }` names the function "x".
                 EmitNamedEvaluation(prop.Value, propName);       // [obj, value]
+                // wp:M3-64 — stamp [[HomeObject]] only for concise methods
+                // (`{ foo() {} }`), not data properties (`{ foo: fn }`).
+                if (prop.IsMethod) _b.Emit(Opcode.SetHomeObject); // [obj, value]
                 _b.EmitU16(Opcode.DefineDataProperty, nameIdx);  // [obj]
             }
         }
