@@ -165,9 +165,15 @@ hand-rolled CSS `[Spec]` stub backlog where WPT now covers it.
   - Integrated `js-262` private brand-checks (`1a716a1` + cherry-pick), alongside
     the earlier super + regexp fixes.
 
-**Session result: 754→1289 passing subtests (+535, +71%), 14.54%→24.42%.** Cheap
+  - UIEvent/MouseEvent/KeyboardEvent/FocusEvent constructors + `click()`
+    (`c249b4a`): pass 1289→1334, 24.42%→25.27%.
+  - `Node.moveBefore` (atomic move): pass 1334→1339, →**25.51%**.
+
+**Session result: 754→1339 passing subtests (+585, +78%), 14.54%→25.51%.** Cheap
 mechanical wins are now exhausted — every remaining high-impact cluster is a
-large *absent subsystem* or the semantic tail. Confirmed by exploration:
+large *absent subsystem* or the semantic tail. Confirmed by exploration (no host
+Range model; no CSSOM stylesheet object model; no per-element interface
+hierarchy):
 
 | Remaining cluster | Subtests | Why it's big |
 |---|--:|---|

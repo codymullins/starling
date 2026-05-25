@@ -185,6 +185,100 @@ public static class EventTargetBinding
             PropertyDescriptor.Data(JsValue.Object(customEvCtor), writable: true, enumerable: false, configurable: true));
         realm.GlobalObject.DefineOwnProperty("CustomEvent",
             PropertyDescriptor.Data(JsValue.Object(customEvCtor), writable: true, enumerable: false, configurable: true));
+
+        // ----- UIEvent / MouseEvent / KeyboardEvent / FocusEvent (UIEvents).
+        // Prototypes chain through Event.prototype; constructors read the init
+        // dictionary into the host subtype. Stored on the realm so createEvent()
+        // can return the correct prototype too.
+        var uiEvProto = new JsObject(evProto);
+        realm.UiEventPrototype = uiEvProto;
+        DefineAccessor(realm, uiEvProto, "detail", (t, _) => TryGetHostEvent(t, out var e) && e is UiEvent u ? JsValue.Number(u.Detail) : JsValue.Number(0));
+        DefineAccessor(realm, uiEvProto, "view", (_, _) => JsValue.Null);
+        DefineSubtypeCtor(realm, uiEvProto, "UIEvent", (type, init) =>
+            new UiEvent(type, ReadInit(init)) { Detail = (int)NumOf(init, "detail") });
+
+        var mouseEvProto = new JsObject(uiEvProto);
+        realm.MouseEventPrototype = mouseEvProto;
+        DefineAccessor(realm, mouseEvProto, "clientX", (t, _) => MouseNum(t, m => m.ClientX));
+        DefineAccessor(realm, mouseEvProto, "clientY", (t, _) => MouseNum(t, m => m.ClientY));
+        DefineAccessor(realm, mouseEvProto, "x", (t, _) => MouseNum(t, m => m.ClientX));
+        DefineAccessor(realm, mouseEvProto, "y", (t, _) => MouseNum(t, m => m.ClientY));
+        DefineAccessor(realm, mouseEvProto, "screenX", (t, _) => MouseNum(t, m => m.ScreenX));
+        DefineAccessor(realm, mouseEvProto, "screenY", (t, _) => MouseNum(t, m => m.ScreenY));
+        DefineAccessor(realm, mouseEvProto, "pageX", (t, _) => MouseNum(t, m => m.ClientX));
+        DefineAccessor(realm, mouseEvProto, "pageY", (t, _) => MouseNum(t, m => m.ClientY));
+        DefineAccessor(realm, mouseEvProto, "button", (t, _) => MouseNum(t, m => m.Button));
+        DefineAccessor(realm, mouseEvProto, "buttons", (t, _) => JsValue.Number(0));
+        DefineAccessor(realm, mouseEvProto, "ctrlKey", (t, _) => MouseBool(t, m => m.CtrlKey));
+        DefineAccessor(realm, mouseEvProto, "shiftKey", (t, _) => MouseBool(t, m => m.ShiftKey));
+        DefineAccessor(realm, mouseEvProto, "altKey", (t, _) => MouseBool(t, m => m.AltKey));
+        DefineAccessor(realm, mouseEvProto, "metaKey", (t, _) => MouseBool(t, m => m.MetaKey));
+        DefineAccessor(realm, mouseEvProto, "relatedTarget", (t, _) =>
+            TryGetHostEvent(t, out var e) && e is MouseEvent m && m.RelatedTarget is { } rt ? JsValue.Object(DomWrappers.Wrap(realm, rt)) : JsValue.Null);
+        DefineSubtypeCtor(realm, mouseEvProto, "MouseEvent", (type, init) => new MouseEvent(type, ReadInit(init))
+        {
+            ClientX = NumOf(init, "clientX"), ClientY = NumOf(init, "clientY"),
+            ScreenX = NumOf(init, "screenX"), ScreenY = NumOf(init, "screenY"),
+            Button = (short)NumOf(init, "button"), Detail = (int)NumOf(init, "detail"),
+            CtrlKey = BoolOf(init, "ctrlKey"), ShiftKey = BoolOf(init, "shiftKey"),
+            AltKey = BoolOf(init, "altKey"), MetaKey = BoolOf(init, "metaKey"),
+            RelatedTarget = init.IsObject ? ResolveHost(init.AsObject.Get("relatedTarget")) : null,
+        });
+
+        var kbdEvProto = new JsObject(uiEvProto);
+        realm.KeyboardEventPrototype = kbdEvProto;
+        DefineAccessor(realm, kbdEvProto, "key", (t, _) => KbdStr(t, k => k.Key));
+        DefineAccessor(realm, kbdEvProto, "code", (t, _) => KbdStr(t, k => k.Code));
+        DefineAccessor(realm, kbdEvProto, "repeat", (t, _) => TryGetHostEvent(t, out var e) && e is KeyboardEvent k ? JsValue.Boolean(k.Repeat) : JsValue.False);
+        DefineAccessor(realm, kbdEvProto, "location", (_, _) => JsValue.Number(0));
+        DefineAccessor(realm, kbdEvProto, "ctrlKey", (t, _) => KbdBool(t, k => k.CtrlKey));
+        DefineAccessor(realm, kbdEvProto, "shiftKey", (t, _) => KbdBool(t, k => k.ShiftKey));
+        DefineAccessor(realm, kbdEvProto, "altKey", (t, _) => KbdBool(t, k => k.AltKey));
+        DefineAccessor(realm, kbdEvProto, "metaKey", (t, _) => KbdBool(t, k => k.MetaKey));
+        DefineSubtypeCtor(realm, kbdEvProto, "KeyboardEvent", (type, init) => new KeyboardEvent(type, ReadInit(init))
+        {
+            Key = StrOf(init, "key"), Code = StrOf(init, "code"), Repeat = BoolOf(init, "repeat"),
+            CtrlKey = BoolOf(init, "ctrlKey"), ShiftKey = BoolOf(init, "shiftKey"),
+            AltKey = BoolOf(init, "altKey"), MetaKey = BoolOf(init, "metaKey"),
+            Detail = (int)NumOf(init, "detail"),
+        });
+
+        var focusEvProto = new JsObject(uiEvProto);
+        realm.FocusEventPrototype = focusEvProto;
+        DefineAccessor(realm, focusEvProto, "relatedTarget", (t, _) =>
+            TryGetHostEvent(t, out var e) && e is FocusEvent f && f.RelatedTarget is { } rt ? JsValue.Object(DomWrappers.Wrap(realm, rt)) : JsValue.Null);
+        DefineSubtypeCtor(realm, focusEvProto, "FocusEvent", (type, init) => new FocusEvent(type, ReadInit(init))
+        {
+            Detail = (int)NumOf(init, "detail"),
+            RelatedTarget = init.IsObject ? ResolveHost(init.AsObject.Get("relatedTarget")) : null,
+        });
+    }
+
+    // ----- helpers for the UIEvents subtype constructors -----
+    private static EventInit ReadInit(JsValue v) => v.IsObject
+        ? new EventInit(JsValue.ToBoolean(v.AsObject.Get("bubbles")),
+                        JsValue.ToBoolean(v.AsObject.Get("cancelable")),
+                        JsValue.ToBoolean(v.AsObject.Get("composed")))
+        : default;
+    private static double NumOf(JsValue v, string k) => v.IsObject && !v.AsObject.Get(k).IsUndefined ? JsValue.ToNumber(v.AsObject.Get(k)) : 0;
+    private static bool BoolOf(JsValue v, string k) => v.IsObject && JsValue.ToBoolean(v.AsObject.Get(k));
+    private static string StrOf(JsValue v, string k) => v.IsObject && v.AsObject.Get(k).IsString ? v.AsObject.Get(k).AsString : "";
+    private static JsValue MouseNum(JsValue t, Func<MouseEvent, double> f) => TryGetHostEvent(t, out var e) && e is MouseEvent m ? JsValue.Number(f(m)) : JsValue.Number(0);
+    private static JsValue MouseBool(JsValue t, Func<MouseEvent, bool> f) => TryGetHostEvent(t, out var e) && e is MouseEvent m ? JsValue.Boolean(f(m)) : JsValue.False;
+    private static JsValue KbdStr(JsValue t, Func<KeyboardEvent, string> f) => TryGetHostEvent(t, out var e) && e is KeyboardEvent k ? JsValue.String(f(k)) : JsValue.String("");
+    private static JsValue KbdBool(JsValue t, Func<KeyboardEvent, bool> f) => TryGetHostEvent(t, out var e) && e is KeyboardEvent k ? JsValue.Boolean(f(k)) : JsValue.False;
+
+    private static void DefineSubtypeCtor(JsRealm realm, JsObject proto, string name, Func<string, JsValue, Event> build)
+    {
+        var ctor = new JsNativeFunction(realm, name, 1, (_, args) =>
+        {
+            if (args.Length == 0 || args[0].IsUndefined)
+                throw new JsThrow(realm.NewTypeError($"{name} constructor requires a type"));
+            return JsValue.Object(new JsEventWrapper(proto, build(JsValue.ToStringValue(args[0]), args.Length > 1 ? args[1] : JsValue.Undefined)));
+        }, isConstructor: true);
+        ctor.DefineOwnProperty("prototype", PropertyDescriptor.Data(JsValue.Object(proto), writable: false, enumerable: false, configurable: false));
+        proto.DefineOwnProperty("constructor", PropertyDescriptor.Data(JsValue.Object(ctor), writable: true, enumerable: false, configurable: true));
+        realm.GlobalObject.DefineOwnProperty(name, PropertyDescriptor.Data(JsValue.Object(ctor), writable: true, enumerable: false, configurable: true));
     }
 
     /// <summary>Legacy <c>document.createEvent(interface)</c> (DOM §2.9). Returns
@@ -222,7 +316,17 @@ public static class EventTargetBinding
     }
 
     private static JsValue WrapUninitEvent(JsRealm realm, Event host)
-        => JsValue.Object(new JsEventWrapper(realm.EventPrototype!, host));
+    {
+        var proto = host switch
+        {
+            MouseEvent => realm.MouseEventPrototype,
+            KeyboardEvent => realm.KeyboardEventPrototype,
+            FocusEvent => realm.FocusEventPrototype,
+            UiEvent => realm.UiEventPrototype,
+            _ => realm.EventPrototype,
+        } ?? realm.EventPrototype!;
+        return JsValue.Object(new JsEventWrapper(proto, host));
+    }
 
     /// <summary>Associate an existing host <see cref="EventTarget"/> with a JS
     /// wrapper object so JS-side listener registrations route to the same
@@ -285,6 +389,15 @@ public static class EventTargetBinding
         byListener.Remove(listenerObj);
         host.RemoveEventListener(type, wrapper, new RemoveEventListenerOptions(capture));
         return JsValue.Undefined;
+    }
+
+    /// <summary>Dispatch a host-built event on the EventTarget backing a JS
+    /// wrapper (e.g. HTMLElement.click()'s synthetic MouseEvent). Runs the same
+    /// host listeners — including JS-bridged ones — as dispatchEvent.</summary>
+    public static bool DispatchHostEvent(JsValue target, Event ev)
+    {
+        var host = ResolveHost(target);
+        return host is not null && host.DispatchEvent(ev);
     }
 
     private static JsValue DispatchEvent(JsRealm realm, JsValue thisV, JsValue[] args)
