@@ -2,8 +2,10 @@
 id: "wp:M3-68-js262-unresolved-read-referenceerror"
 parent: "wp:M3-02e-js-test262"
 milestone: "M3"
-status: "in_progress"
+status: "complete"
 phase: "3"
+integrated: "main fa8bbce (also js262-phase0-2; pushed origin/js-262)"
+impact: "language 85.47% -> 90.89% (+5.42pp, +2330 tests). ReferenceError-not-thrown 2196->130. ZERO category regressions (all improved). Browser page realm kept lenient (ThrowOnUnresolvedGlobalRead=false) so rendering is protected; test262/default strict."
 subsystem: "Starling.Js"
 depends_on: []
 blocks: []
