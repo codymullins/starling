@@ -538,6 +538,15 @@ public static class NodeBindings
             var match = QuerySelectorEngine.Closest(e, JsValue.ToStringValue(args[0]), realm);
             return match is null ? JsValue.Null : JsValue.Object(DomWrappers.Wrap(realm, match));
         }, length: 1);
+        // HTMLElement.click() — fire a synthetic click MouseEvent (HTML §click()).
+        EventTargetBinding.DefineMethod(realm, elProto, "click", (thisV, _) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is not null)
+                EventTargetBinding.DispatchHostEvent(thisV,
+                    new Starling.Dom.Events.MouseEvent("click",
+                        new Starling.Dom.Events.EventInit(Bubbles: true, Cancelable: true, Composed: true)));
+            return JsValue.Undefined;
+        }, length: 0);
         EventTargetBinding.DefineMethod(realm, elProto, "getElementsByTagName", (thisV, args) =>
         {
             if (DomWrappers.UnwrapElement(thisV) is not { } e || args.Length == 0) return MakeArray(realm, Array.Empty<JsValue>());
