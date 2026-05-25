@@ -347,6 +347,111 @@ public class AsyncGeneratorTests
         runtime.GetGlobal("r").AsString.Should().Be("1,99");
     }
 
+    [TestMethod]
+    public void Yield_rejected_promise_rejects_the_next_request()
+    {
+        // wp:M3-62b — §27.6.3.8 AsyncGeneratorYield: a plain `yield x` must
+        // Await(x). When x is a promise that rejects, the consumer's next()
+        // promise must REJECT with that reason (not resolve), and the
+        // generator becomes done.
+        var (runtime, _) = Eval(@"
+            var error = 'boom';
+            async function* g() {
+                yield Promise.reject(error);
+                yield 'unreachable';
+            }
+            var it = g();
+            it.next().then(
+                function() { globalThis.r1 = 'resolved' },
+                function(e) { globalThis.r1 = 'rejected:' + e });
+            it.next().then(function(r) { globalThis.r2 = r.value + ':' + r.done });
+        ");
+        runtime.GetGlobal("r1").AsString.Should().Be("rejected:boom");
+        // The generator is closed after the rejection propagated out.
+        runtime.GetGlobal("r2").AsString.Should().Be("undefined:true");
+    }
+
+    [TestMethod]
+    public void Yield_resolved_promise_resolves_value_done_false()
+    {
+        // The await-on-yield must NOT change the success path: a fulfilled
+        // promise still produces {value: fulfilledValue, done:false}.
+        var (runtime, _) = Eval(@"
+            async function* g() {
+                yield Promise.resolve(42);
+            }
+            var it = g();
+            it.next().then(function(r) { globalThis.r = r.value + ':' + r.done });
+        ");
+        runtime.GetGlobal("r").AsString.Should().Be("42:false");
+    }
+
+    [TestMethod]
+    public void Yield_mixed_resolve_and_reject_settle_in_order()
+    {
+        // A sequence of yields with mixed fulfilled/rejected operands settles
+        // the queued requests strictly in FIFO order: resolve, reject (which
+        // closes the generator), then done.
+        var (runtime, _) = Eval(@"
+            async function* g() {
+                yield Promise.resolve('a');
+                yield Promise.reject('b');
+                yield Promise.resolve('c');
+            }
+            var it = g();
+            globalThis.log = '';
+            it.next().then(
+                function(r) { globalThis.log += 'ok(' + r.value + ');' },
+                function(e) { globalThis.log += 'err(' + e + ');' });
+            it.next().then(
+                function(r) { globalThis.log += 'ok(' + r.value + ');' },
+                function(e) { globalThis.log += 'err(' + e + ');' });
+            it.next().then(
+                function(r) { globalThis.log += 'ok(' + r.value + ':' + r.done + ');' },
+                function(e) { globalThis.log += 'err(' + e + ');' });
+        ");
+        runtime.GetGlobal("log").AsString.Should().Be("ok(a);err(b);ok(undefined:true);");
+    }
+
+    [TestMethod]
+    public void Yield_rejected_promise_is_catchable_in_body()
+    {
+        // The awaited rejection is injected as a throw at the yield point, so
+        // a surrounding try/catch in the body catches it and the generator can
+        // recover instead of rejecting the request.
+        var (runtime, _) = Eval(@"
+            async function* g() {
+                try { yield Promise.reject('boom'); }
+                catch (e) { yield 'caught:' + e; }
+            }
+            var it = g();
+            it.next().then(
+                function(r) { globalThis.r = r.value },
+                function(e) { globalThis.r = 'rejected:' + e });
+        ");
+        runtime.GetGlobal("r").AsString.Should().Be("caught:boom");
+    }
+
+    [TestMethod]
+    public void Yield_as_operand_of_yield_awaits_each_value()
+    {
+        // wp:M3-62b — `yield yield 1` (test262 expression-yield-as-operand):
+        // the inner yield delivers {value:1,done:false}; once resumed it
+        // evaluates to undefined, which the outer yield Awaits and delivers as
+        // {value:undefined,done:false}. Awaiting the operand must not corrupt
+        // the {value,done} results.
+        var (runtime, _) = Eval(@"
+            async function* g() { yield yield 1; }
+            var it = g();
+            it.next().then(function(r) { globalThis.r1 = r.value + ':' + r.done });
+            it.next().then(function(r) { globalThis.r2 = r.value + ':' + r.done });
+            it.next().then(function(r) { globalThis.r3 = r.value + ':' + r.done });
+        ");
+        runtime.GetGlobal("r1").AsString.Should().Be("1:false");
+        runtime.GetGlobal("r2").AsString.Should().Be("undefined:false");
+        runtime.GetGlobal("r3").AsString.Should().Be("undefined:true");
+    }
+
     private static (JsRuntime runtime, JsValue result) Eval(string src)
     {
         var program = new JsParser(src).ParseProgram();

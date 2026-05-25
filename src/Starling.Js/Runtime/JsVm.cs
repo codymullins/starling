@@ -1983,6 +1983,19 @@ public sealed class JsVm
                         // up the .then, then calls Resume.
                         toYield = yielded;
                     }
+                    else if (currentFunction?.Kind == JsFunctionKind.AsyncGenerator)
+                    {
+                        // §27.6.3.8 AsyncGeneratorYield step 1: a plain `yield x`
+                        // inside an async generator must `Await(x)` before the
+                        // result is delivered to the pending request. If the
+                        // operand is a promise that rejects, AwaitOnWorker
+                        // injects the rejection as a throw at this suspension
+                        // point, so the body unwinds and the driver rejects the
+                        // consumer's next() promise (rather than resolving it).
+                        // On fulfilment we yield the awaited value, preserving
+                        // the {value, done:false} result.
+                        toYield = AwaitOnWorker(suspension, yielded);
+                    }
                     // Record whether this suspension is a yield (0) or an
                     // await (1). The async-generator driver inspects this to
                     // distinguish a real `yield` (which settles the pending
