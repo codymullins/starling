@@ -140,9 +140,26 @@ hand-rolled CSS `[Spec]` stub backlog where WPT now covers it.
     it's `assert_throws_dom` misrouting because `DOMException` is undefined
     (testharness.js:2303). `instanceof RHS not an object` (43) = missing interface
     objects. Both fold into the DOMException/interface-objects cluster.
-- _Next Phase-2 clusters (impact order): DOMException type + createElement(NS) name
-  validation (createElement(NS) family is biggest but needs an `Element`-ctor change
-  for prefix/localName + iframe for 2/3 of cases); CSSOM stylesheet rules
-  (`styleSheets[].cssRules[].style.setProperty`, 101); DOMImplementation
-  (`createDocument`/`createDocumentType`/`createHTMLDocument`); Ranges
-  (`createRange`). Then Phase 3 (assert_equals 1249, semantic)._
+  - DOMImplementation (`59addae`): `createDocumentType` + `createDocument` on
+    `document.implementation`. pass 1005→1033 (+28), 18.89%→**19.55%**.
+  - Integrated remote `js-262` (cherry-pick `f905313`+`7e7b1f0`): `super` property
+    access in object-literal methods/arrows. Merged-tree re-verified (Js.Tests
+    1575 pass; only the pre-existing `Captured_lexical` fails).
+
+**Session result so far: 754→1033 passing subtests, 14.54%→19.55%.** Cheap
+mechanical wins are now exhausted — every remaining high-impact cluster is a
+large *absent subsystem* or the semantic tail. Confirmed by exploration:
+
+| Remaining cluster | Subtests | Why it's big |
+|---|--:|---|
+| `assert_equals` (Phase 3) | 1349 | semantic; correctness of existing APIs, per-area |
+| CSSOM stylesheets (`setProperty` 101 + `slice` 87 + more) | ~190 | `document.styleSheets`/`CSSStyleSheet`/`cssRules`/`CSSStyleRule.selectorText` are entirely absent; needs CSS-parser→CSSOM bridge + selector serialization (the `selectorText` setter round-trip is the actual An+B test) |
+| DOMException + per-method validation (`assert_throws_dom` 225 + `call` 120) | ~345 | no `DOMException` type; real gains need each thrower (createElement name validation, hierarchy checks) to throw it |
+| Ranges (`createRange` 54 + `createValueRange` 61) | ~115 | no Range model |
+| createElement(NS) family | ~200 (HTML-doc cases) | needs `Element`-ctor change (prefix/localName, case) the HTML parser depends on; XML/XHTML cases also need iframe `contentDocument` |
+| genuine `timeout` 181 / `harness-error` 107 / `no-result` 51 | ~340 | per-test investigation |
+
+Recommended sequencing for the next sessions (each is a focused WP, ideally its
+own agent): **CSSOM stylesheet subsystem** (biggest weak area, css/css-syntax) →
+**DOMException + createElement(NS) validation** (paired) → **Ranges** → then
+Phase 3 `assert_equals` per area. Re-baseline + ratchet after each.
