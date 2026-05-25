@@ -225,6 +225,18 @@ public static class NodeBindings
             return JsValue.Undefined;
         }, length: 1);
 
+        // Node.moveBefore(node, child) — atomic move within this parent (DOM
+        // moveBefore proposal). Modeled as remove-then-insert; returns undefined.
+        EventTargetBinding.DefineMethod(realm, nodeProto, "moveBefore", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapNode(thisV) is { } parent && args.Length > 0 && DomWrappers.UnwrapNode(args[0]) is { } node)
+            {
+                var refNode = args.Length > 1 ? DomWrappers.UnwrapNode(args[1]) : null;
+                node.RemoveFromParent();
+                parent.InsertBefore(node, refNode);
+            }
+            return JsValue.Undefined;
+        }, length: 2);
         EventTargetBinding.DefineMethod(realm, nodeProto, "lookupNamespaceURI", (thisV, args) =>
         {
             if (DomWrappers.UnwrapNode(thisV) is not { } n) return JsValue.Null;
