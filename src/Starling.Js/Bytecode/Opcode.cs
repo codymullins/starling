@@ -542,6 +542,45 @@ public enum Opcode : byte
     /// fallback (push true).</summary>
     WithDeleteOrMiss,
 
+    /// <summary>§13.15.2 — with-aware read half of a compound assignment
+    /// (<c>x op= y</c> inside a <c>with</c> body). Operand layout
+    /// <c>[u16 nameIdx][u16 baseSlot][i32 missOffset]</c>. Resolves the LHS
+    /// Reference's base EXACTLY ONCE: walk the frame's with-stack
+    /// innermost-first; if an object Environment Record HasBinding(name) it is
+    /// the Reference base. On a hit, stash that base object into
+    /// <c>locals[baseSlot]</c>, push <c>Get(base, name)</c> (the current value),
+    /// and jump by missOffset (past the statically-compiled fallback load). On a
+    /// miss, stash <c>undefined</c> into <c>locals[baseSlot]</c> (marking "no
+    /// with-base — use the static binding") and fall through to the fallback
+    /// load. The captured base is reused by <see cref="WithCompoundStore"/> so
+    /// the write lands on the SAME object even if the getter run during the read
+    /// deleted the binding.</summary>
+    WithCompoundLoad,
+    /// <summary>§13.15.2 — with-aware write half of a compound assignment, paired
+    /// with <see cref="WithCompoundLoad"/>. Operand layout
+    /// <c>[u16 nameIdx][u16 baseSlot][i32 missOffset]</c>. Stack on entry holds
+    /// the new value (a Dup'd copy on top, with the result copy beneath). Reads
+    /// the base captured in <c>locals[baseSlot]</c>: if it is an object, pop the
+    /// top value, <c>Set(base, name, value)</c> on that SAME object (the once-
+    /// resolved Reference base, §13.15.2 PutValue(lref, v)), and jump by
+    /// missOffset (past the static store fallback). If it is <c>undefined</c> (no
+    /// with-base), fall through to the static store, which consumes the top
+    /// value. Either way one value (the result) remains on the stack.</summary>
+    WithCompoundStore,
+
+    /// <summary>§13.15.2 / §13.3.3 — resolve a computed member's property key
+    /// ONCE for a compound assignment <c>base[key] op= v</c>. Stack on entry:
+    /// <c>[base, rawKey]</c>. Pops <c>rawKey</c>, then (in spec order) requires
+    /// <c>base</c> to be coercible — a <c>null</c>/<c>undefined</c> base throws a
+    /// TypeError BEFORE the key is coerced — and finally runs §7.1.19
+    /// ToPropertyKey on <c>rawKey</c> (which may invoke a user <c>toString</c> /
+    /// <c>@@toPrimitive</c> exactly once) and pushes the resolved key as a
+    /// String/Symbol value: <c>[base, key]</c>. The following Dup2 + LoadComputed
+    /// + StoreComputed then re-run ToPropertyKey on this already-primitive key,
+    /// which is side-effect-free, so the user key coercion happens just once
+    /// across the read and the write (§13.3.3 evaluates the key reference once).</summary>
+    ResolveComputedKey,
+
     /// <summary>wp:M3-64 — §13.2.5 MakeMethod for object-literal methods. Stack
     /// on entry: [obj, fn]. Stamps <c>fn.[[HomeObject]] = obj</c> so a
     /// <c>super.x</c> inside the concise method / getter / setter resolves

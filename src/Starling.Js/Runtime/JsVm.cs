@@ -900,7 +900,7 @@ public sealed class JsVm
                 }
                 case Opcode.Sub:
                 {
-                    var b = Pop(); var a = Pop();
+                    var b = Pop(); var a = Pop(); a = ToNumericOperand(a); b = ToNumericOperand(b);
                     if (a.IsBigInt || b.IsBigInt)
                     {
                         if (!(a.IsBigInt && b.IsBigInt)) throw BigIntOps.MixedTypeError(_runtime.Realm, "-");
@@ -912,7 +912,7 @@ public sealed class JsVm
                 }
                 case Opcode.Mul:
                 {
-                    var b = Pop(); var a = Pop();
+                    var b = Pop(); var a = Pop(); a = ToNumericOperand(a); b = ToNumericOperand(b);
                     if (a.IsBigInt || b.IsBigInt)
                     {
                         if (!(a.IsBigInt && b.IsBigInt)) throw BigIntOps.MixedTypeError(_runtime.Realm, "*");
@@ -924,7 +924,7 @@ public sealed class JsVm
                 }
                 case Opcode.Div:
                 {
-                    var b = Pop(); var a = Pop();
+                    var b = Pop(); var a = Pop(); a = ToNumericOperand(a); b = ToNumericOperand(b);
                     if (a.IsBigInt || b.IsBigInt)
                     {
                         if (!(a.IsBigInt && b.IsBigInt)) throw BigIntOps.MixedTypeError(_runtime.Realm, "/");
@@ -936,7 +936,7 @@ public sealed class JsVm
                 }
                 case Opcode.Mod:
                 {
-                    var b = Pop(); var a = Pop();
+                    var b = Pop(); var a = Pop(); a = ToNumericOperand(a); b = ToNumericOperand(b);
                     if (a.IsBigInt || b.IsBigInt)
                     {
                         if (!(a.IsBigInt && b.IsBigInt)) throw BigIntOps.MixedTypeError(_runtime.Realm, "%");
@@ -954,7 +954,7 @@ public sealed class JsVm
                 }
                 case Opcode.Pow:
                 {
-                    var b = Pop(); var a = Pop();
+                    var b = Pop(); var a = Pop(); a = ToNumericOperand(a); b = ToNumericOperand(b);
                     if (a.IsBigInt || b.IsBigInt)
                     {
                         if (!(a.IsBigInt && b.IsBigInt)) throw BigIntOps.MixedTypeError(_runtime.Realm, "**");
@@ -966,14 +966,14 @@ public sealed class JsVm
                 }
                 case Opcode.Neg:
                 {
-                    var v = Pop();
+                    var v = ToNumericOperand(Pop());
                     if (v.IsBigInt) { Push(BigIntOps.Negate(v.AsBigInt)); break; }
                     Push(JsValue.Number(-JsValue.ToNumber(v)));
                     break;
                 }
                 case Opcode.UnaryPlus:
                 {
-                    var v = Pop();
+                    var v = ToNumericOperand(Pop());
                     // §13.5.4: unary + on a BigInt throws TypeError.
                     if (v.IsBigInt)
                         throw new JsThrow(_runtime.Realm.NewTypeError("Cannot convert a BigInt value to a number"));
@@ -984,7 +984,7 @@ public sealed class JsVm
                 // ----- Bitwise (Number → Int32, or BigInt-only) -----
                 case Opcode.BitOr:
                 {
-                    var b = Pop(); var a = Pop();
+                    var b = Pop(); var a = Pop(); a = ToNumericOperand(a); b = ToNumericOperand(b);
                     if (a.IsBigInt || b.IsBigInt)
                     {
                         if (!(a.IsBigInt && b.IsBigInt)) throw BigIntOps.MixedTypeError(_runtime.Realm, "|");
@@ -995,7 +995,7 @@ public sealed class JsVm
                 }
                 case Opcode.BitAnd:
                 {
-                    var b = Pop(); var a = Pop();
+                    var b = Pop(); var a = Pop(); a = ToNumericOperand(a); b = ToNumericOperand(b);
                     if (a.IsBigInt || b.IsBigInt)
                     {
                         if (!(a.IsBigInt && b.IsBigInt)) throw BigIntOps.MixedTypeError(_runtime.Realm, "&");
@@ -1006,7 +1006,7 @@ public sealed class JsVm
                 }
                 case Opcode.BitXor:
                 {
-                    var b = Pop(); var a = Pop();
+                    var b = Pop(); var a = Pop(); a = ToNumericOperand(a); b = ToNumericOperand(b);
                     if (a.IsBigInt || b.IsBigInt)
                     {
                         if (!(a.IsBigInt && b.IsBigInt)) throw BigIntOps.MixedTypeError(_runtime.Realm, "^");
@@ -1017,13 +1017,13 @@ public sealed class JsVm
                 }
                 case Opcode.BitNot:
                 {
-                    var v = Pop();
+                    var v = ToNumericOperand(Pop());
                     if (v.IsBigInt) { Push(BigIntOps.BitwiseNot(v.AsBigInt)); break; }
                     Push(JsValue.Number(~ToInt32(v))); break;
                 }
                 case Opcode.Shl:
                 {
-                    var b = Pop(); var a = Pop();
+                    var b = Pop(); var a = Pop(); a = ToNumericOperand(a); b = ToNumericOperand(b);
                     if (a.IsBigInt || b.IsBigInt)
                     {
                         if (!(a.IsBigInt && b.IsBigInt)) throw BigIntOps.MixedTypeError(_runtime.Realm, "<<");
@@ -1034,7 +1034,7 @@ public sealed class JsVm
                 }
                 case Opcode.Shr:
                 {
-                    var b = Pop(); var a = Pop();
+                    var b = Pop(); var a = Pop(); a = ToNumericOperand(a); b = ToNumericOperand(b);
                     if (a.IsBigInt || b.IsBigInt)
                     {
                         if (!(a.IsBigInt && b.IsBigInt)) throw BigIntOps.MixedTypeError(_runtime.Realm, ">>");
@@ -1045,7 +1045,7 @@ public sealed class JsVm
                 }
                 case Opcode.Ushr:
                 {
-                    var b = Pop(); var a = Pop();
+                    var b = Pop(); var a = Pop(); a = ToNumericOperand(a); b = ToNumericOperand(b);
                     // §13.10.4 — BigInts have no unsigned right shift; throw TypeError.
                     if (a.IsBigInt || b.IsBigInt)
                         throw new JsThrow(_runtime.Realm.NewTypeError("BigInts have no unsigned right shift, use >> instead"));
@@ -1127,6 +1127,23 @@ public sealed class JsVm
                     if (obj.IsObject) Push(AbstractOperations.Get(this, obj.AsObject, propertyKey));
                     else if (!obj.IsNullish) Push(AbstractOperations.Get(this, AbstractOperations.ToObject(_runtime.Realm, obj), propertyKey, obj));
                     else Push(JsValue.Undefined);
+                    break;
+                }
+                case Opcode.ResolveComputedKey:
+                {
+                    // §13.15.2 / §13.3.3 — resolve a compound-assignment computed
+                    // key once. Spec order: the base's coercibility is checked
+                    // BEFORE ToPropertyKey, so `null[obj] *= …` throws TypeError
+                    // without ever invoking the key's toString.
+                    var rawKey = Pop();
+                    var baseV = Peek();
+                    if (baseV.IsNullish)
+                        throw new JsThrow(_runtime.Realm.NewTypeError(
+                            "Cannot read properties of " + (baseV.IsNull ? "null" : "undefined")
+                            + " (reading a computed property)"));
+                    var resolved = AbstractOperations.ToPropertyKey(this, rawKey);
+                    Push(resolved.IsSymbol ? JsValue.Symbol(resolved.AsSymbol)
+                                           : JsValue.String(resolved.AsString));
                     break;
                 }
                 case Opcode.StoreComputed:
@@ -2143,6 +2160,53 @@ public sealed class JsVm
                     }
                     break;
                 }
+                case Opcode.WithCompoundLoad:
+                {
+                    // §13.15.2 — resolve the compound-assignment LHS Reference base
+                    // ONCE. On a with-binding hit, stash the base object so the
+                    // paired WithCompoundStore writes to the SAME object even if
+                    // the getter deletes the binding mid-evaluation.
+                    var name = (string)constants[ReadU16()]!;
+                    var baseSlot = ReadU16();
+                    var miss = ReadI32();
+                    var obj = FindWithBinding(name);
+                    if (obj is not null)
+                    {
+                        locals[baseSlot] = JsValue.Object(obj);
+                        _lastLoadName = name;
+                        Push(AbstractOperations.Get(this, obj, name, JsValue.Object(obj)));
+                        ip += miss;
+                    }
+                    else
+                    {
+                        // No with-base: mark the slot and fall through to the
+                        // statically-compiled fallback load.
+                        locals[baseSlot] = JsValue.Undefined;
+                    }
+                    break;
+                }
+                case Opcode.WithCompoundStore:
+                {
+                    var name = (string)constants[ReadU16()]!;
+                    var baseSlot = ReadU16();
+                    var miss = ReadI32();
+                    var captured = locals[baseSlot];
+                    if (captured.Kind == JsValueKind.Object)
+                    {
+                        // Write through the once-resolved Reference base. The
+                        // result copy (Dup'd by the compiler) stays beneath.
+                        var value = Pop();
+                        var baseObj = captured.AsObject;
+                        var ok = AbstractOperations.Set(this, baseObj, name, value, captured);
+                        if (!ok && frameStrict)
+                            throw new JsThrow(_runtime.Realm.NewTypeError(
+                                "Cannot assign to read-only property '" + name + "'"));
+                        ip += miss;
+                    }
+                    // miss (captured is undefined): leave the value on the stack
+                    // for the static store fallback.
+                    break;
+                }
                 case Opcode.CallSuperCtor:
                 {
                     var argsArr = Pop();
@@ -3011,6 +3075,22 @@ public sealed class JsVm
         var i = (long)Math.Truncate(d);
         return (int)(i & 0xFFFFFFFF);
     }
+
+    /// <summary>§13.6 ApplyStringOrNumericBinaryOperator step 1 (and ToNumeric
+    /// §7.1.22 step 1): coerce an operand of a numeric/bitwise binary operator to
+    /// its primitive via ToPrimitive(number) so an object operand (e.g.
+    /// <c>new Number(7)</c>, <c>new String("2")</c>, <c>new Boolean(true)</c>)
+    /// converts through its <c>valueOf</c>/<c>toString</c> rather than yielding
+    /// NaN. Primitives are returned unchanged so the existing fast paths
+    /// (<see cref="JsValue.ToNumber"/>, <see cref="ToInt32"/>, the BigInt
+    /// branches) are untouched. The static <see cref="JsValue.ToNumber"/> cannot
+    /// do this itself — it has no VM/realm to dispatch the user method. Used by
+    /// the arithmetic (<c>- * / % **</c>) and bitwise (<c>| &amp; ^ &lt;&lt;
+    /// &gt;&gt; &gt;&gt;&gt;</c>) ops, which compound assignment reuses, so an
+    /// object operand coerces identically whether written as <c>a * b</c> or
+    /// <c>a *= b</c>. (<c>+</c> already runs ToPrimitive in <see cref="JsAdd"/>.)</summary>
+    private JsValue ToNumericOperand(JsValue v)
+        => v.IsObject ? AbstractOperations.ToPrimitive(this, v, "number") : v;
 
 
     /// <summary>B1b-2a — build a class constructor at <c>BuildClass</c>-opcode
