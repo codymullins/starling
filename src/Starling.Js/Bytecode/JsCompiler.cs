@@ -152,6 +152,18 @@ public sealed partial class JsCompiler
     /// <c>with</c>; that nesting is handled by the parent's upvalue capture).</summary>
     private int _withDepth;
 
+    /// <summary>wp:M3-72 — when this is the top-level compiler for direct-eval
+    /// source, the set of binding names visible in the calling function's
+    /// variable environment. A free identifier in the eval'd code that would
+    /// otherwise fall through to a global load/store and whose name is in this
+    /// set instead routes through the caller-scope-aware opcodes
+    /// (<see cref="Opcode.LoadEvalScope"/> / <see cref="Opcode.StoreEvalScope"/>)
+    /// so it resolves to the caller's live binding. Null for ordinary
+    /// script/module/function compilation (no direct-eval caller scope). Nested
+    /// function bodies inside the eval'd code inherit it so their own free
+    /// identifiers can also reach the caller's environment.</summary>
+    private IReadOnlySet<string>? _callerScopeNames;
+
     public JsCompiler() : this(parent: null) { }
 
     private JsCompiler(JsCompiler? parent)
@@ -165,6 +177,11 @@ public sealed partial class JsCompiler
         // (path-less) chunk name. The top-level entry-points overwrite this
         // with the real script/module URL before emission.
         if (parent is not null) _b.SourcePath = parent._b.SourcePath;
+        // wp:M3-72 — a nested function inside direct-eval'd code can still
+        // reference the original caller's bindings (they are captured as
+        // upvalues through the eval top-level chunk where they resolve to the
+        // caller scope), so inherit the caller-scope name set down the chain.
+        if (parent is not null) _callerScopeNames = parent._callerScopeNames;
     }
 
     /// <summary>§14.11 / §10.2.1 — configure this (child) compiler to inherit the
@@ -329,6 +346,26 @@ public sealed partial class JsCompiler
         var c = new JsCompiler();
         c._b.IsStrict = program.Strict;
         c._b.SourcePath = name; // wp:M3-63 — referrer for dynamic import()
+        c.RunCaptureAnalysisForScript(program.Body);
+        c.EmitProgram(program, keepLastExpression: true);
+        return c._b.Build(name);
+    }
+
+    /// <summary>wp:M3-72 — compile direct-eval source. Identical to
+    /// <see cref="CompileForEval"/> except that free identifiers whose name is in
+    /// <paramref name="callerScopeNames"/> (the calling function's in-scope
+    /// binding names) route through the caller-scope-aware load/store opcodes so
+    /// they resolve to the caller's live binding (§19.2.1.1 PerformEval running
+    /// the code in the caller's variable environment) instead of the global
+    /// object. The eval body's OWN top-level var/lexical declarations still bind
+    /// as usual (on the global object for non-strict eval — Starling's existing
+    /// script-top behaviour — which the EvalDeclarationInstantiation conflict
+    /// check in the caller guards against colliding with caller lexicals).</summary>
+    public static Chunk CompileForDirectEval(Program program, string? name, IReadOnlySet<string> callerScopeNames)
+    {
+        var c = new JsCompiler { _callerScopeNames = callerScopeNames };
+        c._b.IsStrict = program.Strict;
+        c._b.SourcePath = name;
         c.RunCaptureAnalysisForScript(program.Body);
         c.EmitProgram(program, keepLastExpression: true);
         return c._b.Build(name);
@@ -2276,6 +2313,9 @@ public sealed partial class JsCompiler
             _b.EmitUpvalue(needsTdzCheck && IsLexicalUpvalue(name)
                 ? Opcode.StoreUpvalueChecked : Opcode.StoreUpvalue, upIdx);
         }
+        else if (_callerScopeNames is { } cs && cs.Contains(name))
+            // wp:M3-72 — direct-eval write to a caller binding (live store).
+            _b.EmitU16(Opcode.StoreEvalScope, _b.AddConstant(name));
         else
             _b.EmitU16(Opcode.StoreGlobal, _b.AddConstant(name));
     }
@@ -2304,6 +2344,15 @@ public sealed partial class JsCompiler
             // lexical binding from an enclosing scope checks the sentinel.
             _b.EmitUpvalue(IsLexicalUpvalue(name)
                 ? Opcode.LoadUpvalueChecked : Opcode.LoadUpvalue, upIdx);
+            return;
+        }
+        if (_callerScopeNames is { } cs && cs.Contains(name))
+        {
+            // wp:M3-72 — direct-eval read of a caller binding (live read; throws
+            // ReferenceError for a TDZ-uninitialized caller lexical). On a miss
+            // (the caller binding was deleted, which cannot happen for true
+            // locals) the opcode falls back to a checked global load.
+            _b.EmitU16(Opcode.LoadEvalScope, _b.AddConstant(name));
             return;
         }
         // §6.2.5.5 GetValue — a free identifier that resolves to no binding
@@ -3121,10 +3170,15 @@ public sealed partial class JsCompiler
             && !TryResolveUpvalue(directEvalId, out _)
             && !ShouldRouteWith(directEvalId))
         {
+            // wp:M3-72 — snapshot the calling function's variable environment so
+            // the VM can build the caller scope the eval'd code reads/writes and
+            // run the §19.2.1.3 EvalDeclarationInstantiation early-error checks.
+            var descIdx = _b.AddConstant(BuildEvalScopeDescriptor());
             EmitExpression(call.Callee);                  // [callee]
             foreach (var arg in call.Arguments) EmitExpression(arg);
             RecordPos(call);
-            _b.Emit(Opcode.DirectEval, (byte)call.Arguments.Count);
+            _b.EmitU16(Opcode.DirectEval, descIdx);
+            _b.EmitU8Raw(call.Arguments.Count);
             return;
         }
 
@@ -3154,6 +3208,42 @@ public sealed partial class JsCompiler
         }
         name = string.Empty;
         return false;
+    }
+
+    /// <summary>wp:M3-72 — snapshot the calling function's currently-visible
+    /// bindings (this function's open lexical scopes' locals, plus any names it
+    /// has captured as upvalues from enclosing functions) into an
+    /// <see cref="EvalScopeDescriptor"/>. The VM pairs each binding with the live
+    /// frame storage at run time to build the EvalScope a direct eval reads.
+    /// Innermost scope first so name shadowing resolves correctly.</summary>
+    private EvalScopeDescriptor BuildEvalScopeDescriptor()
+    {
+        var bindings = new List<EvalScopeDescriptor.Binding>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        // This function's own locals, innermost scope outward.
+        for (var i = _scopes.Count - 1; i >= 0; i--)
+        {
+            foreach (var kv in _scopes[i])
+            {
+                if (!seen.Add(kv.Key)) continue;
+                var slot = kv.Value;
+                var captured = _b.IsCaptured(slot);
+                var lexical = _lexicalScopes[i].Contains(kv.Key);
+                bindings.Add(new EvalScopeDescriptor.Binding(
+                    kv.Key,
+                    captured ? EvalScopeDescriptor.Kind.LocalCell : EvalScopeDescriptor.Kind.LocalSlot,
+                    slot, lexical));
+            }
+        }
+        // Names already captured from enclosing scopes (upvalues) — these live as
+        // Cells in this frame's upvalue table.
+        foreach (var kv in _upvalueByName)
+        {
+            if (!seen.Add(kv.Key)) continue;
+            bindings.Add(new EvalScopeDescriptor.Binding(
+                kv.Key, EvalScopeDescriptor.Kind.Upvalue, kv.Value, IsLexicalUpvalue(kv.Key)));
+        }
+        return new EvalScopeDescriptor(bindings);
     }
 
     /// <summary>Materialise a possibly-spread argument list as a dense

@@ -291,6 +291,55 @@ public sealed partial class JsParser
         }
     }
 
+    /// <summary>wp:M3-72 — §19.2.1.3 EvalDeclarationInstantiation step 5/8: the
+    /// VarDeclaredNames of an eval body — all <c>var</c> binding names plus all
+    /// top-level (var-scoped) function-declaration names, gathered transitively
+    /// without crossing nested function/class boundaries. A direct eval may not
+    /// hoist any of these over a like-named lexical binding in the caller's
+    /// environment chain.</summary>
+    internal static IReadOnlyCollection<string> EvalVarDeclaredNames(Program program)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var stmt in program.Body)
+        {
+            switch (stmt)
+            {
+                case FunctionDeclaration fd:
+                    names.Add(fd.Name.Name);
+                    break;
+                case LabeledStatement lab when Unlabel(lab) is FunctionDeclaration lfd:
+                    names.Add(lfd.Name.Name);
+                    break;
+            }
+        }
+        foreach (var stmt in program.Body)
+            CollectVarNames(stmt, names);
+        return names;
+    }
+
+    /// <summary>wp:M3-72 — the top-level lexically-declared names of an eval body
+    /// (<c>let</c>/<c>const</c>/<c>class</c>). Used by the
+    /// EvalDeclarationInstantiation collision check (a caller var hoisting into
+    /// the eval's own var-env is unaffected, but the eval's own lexical names are
+    /// the new lexical environment its body sees).</summary>
+    internal static IReadOnlyCollection<string> EvalLexicallyDeclaredNames(Program program)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var stmt in program.Body)
+        {
+            switch (stmt)
+            {
+                case VariableDeclaration vd when vd.Kind is "let" or "const":
+                    foreach (var n in BoundNamesOf(vd)) names.Add(n.Name);
+                    break;
+                case ClassDeclaration cd:
+                    names.Add(cd.Name.Name);
+                    break;
+            }
+        }
+        return names;
+    }
+
     /// <summary>BoundNames of a VariableDeclaration — flattens destructuring
     /// patterns into their constituent identifier bindings.</summary>
     private static List<(string Name, JsPosition Pos)> BoundNamesOf(VariableDeclaration vd)
