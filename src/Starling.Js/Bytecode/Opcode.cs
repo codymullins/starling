@@ -485,5 +485,20 @@ public enum Opcode : byte
     /// fallback (push true).</summary>
     WithDeleteOrMiss,
 
+    /// <summary>wp:M3-64 — §13.2.5 MakeMethod for object-literal methods. Stack
+    /// on entry: [obj, fn]. Stamps <c>fn.[[HomeObject]] = obj</c> so a
+    /// <c>super.x</c> inside the concise method / getter / setter resolves
+    /// against <c>Object.getPrototypeOf(obj)</c>. Leaves the stack unchanged
+    /// ([obj, fn]) for the following Define{Data,Getter,Setter}* opcode.
+    /// No-op when the value on top is not a JsFunction (e.g. a bound/native).</summary>
+    SetHomeObject,
+
+    /// <summary>wp:M3-64 — like <see cref="SetHomeObject"/> but for a computed
+    /// key still on the stack. Stack on entry: [obj, key, fn]. Stamps
+    /// <c>fn.[[HomeObject]] = obj</c> and leaves the stack unchanged so the
+    /// following DefineGetterComputed / DefineSetterComputed / DefineDataComputed
+    /// can consume [obj, key, fn].</summary>
+    SetHomeObjectComputed,
+
     Halt,           // end-of-program sentinel
 }

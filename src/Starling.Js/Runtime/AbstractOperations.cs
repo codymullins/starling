@@ -237,16 +237,30 @@ public static class AbstractOperations
                 return true;
             }
             if (!d.Writable) return false;
-            // Fall through to write on the receiver's own slot.
+            // §10.1.9.2 OrdinarySetWithOwnDescriptor: a writable data property
+            // is updated on the *receiver*, not on the object that owns the
+            // inherited descriptor. When the receiver differs from `obj` (super
+            // writes, Reflect.set, Proxy) the value lands on the receiver's own
+            // slot; otherwise this is the ordinary same-object write.
             break;
         }
-        if (obj.HasOwn(key))
+        // §10.1.9.2 steps 3-4 — the value is created/updated on the *receiver*.
+        // For the common case (receiver === obj) this is identical to the old
+        // behavior; for super[...] = v / Reflect.set the property is created on
+        // the receiver rather than the prototype that was walked.
+        var target = receiver.IsObject ? receiver.AsObject : obj;
+        if (target.HasOwn(key))
         {
-            obj.Set(key, value);
+            var existing = target.GetOwnPropertyDescriptor(key);
+            // A receiver own accessor / non-writable data property blocks the
+            // create-data path per §10.1.9.2 (CreateDataProperty would fail).
+            if (existing is { IsAccessor: true }) return false;
+            if (existing is { Writable: false }) return false;
+            target.Set(key, value);
             return true;
         }
-        if (!obj.Extensible) return false;
-        return obj.DefineOwnProperty(key, PropertyDescriptor.Data(value));
+        if (!target.Extensible) return false;
+        return target.DefineOwnProperty(key, PropertyDescriptor.Data(value));
     }
 
     /// <summary>§7.3.14 Call — dispatch to native or JS callables. For JS

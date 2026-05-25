@@ -55,6 +55,13 @@ public sealed class Chunk
     /// (stored on <see cref="Starling.Js.Runtime.JsFunction.CapturedWith"/>)
     /// and the VM must seed the callee frame's with-stack from it.</summary>
     public bool CapturesWith { get; init; }
+    /// <summary>wp:M3-64 — true when this chunk is an arrow-function body. Arrows
+    /// inherit <c>super</c> / <c>[[HomeObject]]</c> lexically (§14.2 / §13.2.5
+    /// note): they are never made into methods themselves, so the VM stamps the
+    /// enclosing frame's <see cref="Starling.Js.Runtime.JsFunction.HomeObject"/>
+    /// onto an arrow closure when it is created, letting <c>super.x</c> inside the
+    /// arrow resolve against the enclosing method's home object.</summary>
+    public bool IsArrow { get; init; }
     /// <summary>gap:closure-write-back — the set of local-slot indices in
     /// this chunk that the compiler promoted to <c>Cell</c> storage because
     /// at least one nested function references the binding. Empty for
@@ -349,6 +356,12 @@ public sealed class ChunkBuilder
 
     public bool CapturesWith { get; set; }
 
+    /// <summary>wp:M3-64 — set true while building an arrow-function body so the
+    /// produced <see cref="Chunk.IsArrow"/> is stamped. The VM uses it to copy
+    /// the enclosing frame's [[HomeObject]] onto the arrow closure for lexical
+    /// <c>super</c>.</summary>
+    public bool IsArrow { get; set; }
+
     /// <summary>wp:M3-63 — the source path/URL of the script or module being
     /// compiled. Set on the top-level compiler's builder from the compile
     /// entry-point's <c>name</c> (the script/module URL) and inherited by every
@@ -359,5 +372,5 @@ public sealed class ChunkBuilder
     public Chunk Build(string? name = null)
         => new(_code.ToArray(), _constants.ToArray(), LocalCount, name, _capturedSlots,
             _positions is null ? null : _positions.ToArray())
-        { IsStrict = IsStrict, HasPrologue = HasPrologue, CapturesWith = CapturesWith, SourcePath = SourcePath };
+        { IsStrict = IsStrict, HasPrologue = HasPrologue, CapturesWith = CapturesWith, SourcePath = SourcePath, IsArrow = IsArrow };
 }

@@ -892,6 +892,34 @@ public sealed class JsVm
                     Push(obj);
                     break;
                 }
+                // wp:M3-64 — §13.2.5 MakeMethod. Stack: [obj, fn]. Stamp the
+                // method's [[HomeObject]] = the object literal being built so
+                // `super.x` inside it resolves against the object's prototype.
+                // Peek (do not pop) so the stack stays [obj, fn] for the Define
+                // opcode that follows.
+                case Opcode.SetHomeObject:
+                {
+                    var fnVal = stack[sp - 1];
+                    var objVal = stack[sp - 2];
+                    if (fnVal.IsObject && fnVal.AsObject is JsFunction methodFn
+                        && objVal.IsObject)
+                    {
+                        methodFn.HomeObject = objVal.AsObject;
+                    }
+                    break;
+                }
+                // wp:M3-64 — computed-key variant: stack is [obj, key, fn].
+                case Opcode.SetHomeObjectComputed:
+                {
+                    var fnVal = stack[sp - 1];
+                    var objVal = stack[sp - 3];
+                    if (fnVal.IsObject && fnVal.AsObject is JsFunction methodFn
+                        && objVal.IsObject)
+                    {
+                        methodFn.HomeObject = objVal.AsObject;
+                    }
+                    break;
+                }
 
                 // ----- Calls -----
                 // §10.2.1: plain Call binds this=Undefined (strict default);
@@ -938,6 +966,11 @@ public sealed class JsVm
                     // function body resolves free identifiers against them.
                     if (template.Body.CapturesWith && withStack is { Count: > 0 })
                         fn.CapturedWith = withStack.ToArray();
+                    // wp:M3-64 — §14.2 / §13.2.5: an arrow inherits the enclosing
+                    // method's [[HomeObject]] lexically so `super.x` inside it
+                    // resolves against the enclosing method's home object.
+                    if (template.Body.IsArrow && currentFunction?.HomeObject is { } h1)
+                        fn.HomeObject = h1;
                     Push(JsValue.Object(fn));
                     break;
                 }
@@ -962,6 +995,10 @@ public sealed class JsVm
                     // against the enclosing object Environment Records.
                     if (template.Body.CapturesWith && withStack is { Count: > 0 })
                         closure.CapturedWith = withStack.ToArray();
+                    // wp:M3-64 — an arrow closure inherits the enclosing method's
+                    // [[HomeObject]] lexically for `super.x` (see LoadFunction).
+                    if (template.Body.IsArrow && currentFunction?.HomeObject is { } h2)
+                        closure.HomeObject = h2;
                     Push(JsValue.Object(closure));
                     break;
                 }
@@ -1567,7 +1604,7 @@ public sealed class JsVm
                 {
                     if (currentFunction?.HomeObject is null)
                         throw new JsThrow(_runtime.Realm.NewSyntaxError(
-                            "'super' is only allowed inside class methods"));
+                            "'super' keyword unexpected here"));
                     Push(JsValue.Object(currentFunction.HomeObject));
                     break;
                 }
@@ -1770,7 +1807,7 @@ public sealed class JsVm
                     var idx = ReadU16();
                     var name = (string)constants[idx]!;
                     if (currentFunction?.HomeObject is null)
-                        throw new JsThrow(_runtime.Realm.NewSyntaxError("'super' is only allowed inside class methods"));
+                        throw new JsThrow(_runtime.Realm.NewSyntaxError("'super' keyword unexpected here"));
                     var superProto = currentFunction.HomeObject.Prototype;
                     if (superProto is null)
                     {
@@ -1786,10 +1823,15 @@ public sealed class JsVm
                     var name = (string)constants[idx]!;
                     var value = Pop();
                     if (currentFunction?.HomeObject is null)
-                        throw new JsThrow(_runtime.Realm.NewSyntaxError("'super' is only allowed inside class methods"));
-                    // Spec: super.x = v writes to <c>this</c>, not the prototype.
-                    if (thisV.IsObject)
-                        AbstractOperations.Set(this, thisV.AsObject, name, value);
+                        throw new JsThrow(_runtime.Realm.NewSyntaxError("'super' keyword unexpected here"));
+                    // §13.3.4 / §9.1.1.4 PutValue with a Super Reference: the
+                    // [[Set]] runs against the super base (GetPrototypeOf([[HomeObject]]))
+                    // with the receiver = `this`. So a setter found on the super
+                    // base runs with this=receiver; otherwise OrdinarySet creates
+                    // the own data property on the receiver, not the prototype.
+                    var superBase = currentFunction.HomeObject.Prototype;
+                    if (superBase is not null)
+                        AbstractOperations.Set(this, superBase, name, value, thisV);
                     Push(value);
                     break;
                 }
@@ -1800,7 +1842,7 @@ public sealed class JsVm
                     // (§13.3.7.2 GetSuperBase + §13.3.4 MakeSuperPropertyReference).
                     var key = Pop();
                     if (currentFunction?.HomeObject is null)
-                        throw new JsThrow(_runtime.Realm.NewSyntaxError("'super' is only allowed inside class methods"));
+                        throw new JsThrow(_runtime.Realm.NewSyntaxError("'super' keyword unexpected here"));
                     var propertyKey = AbstractOperations.ToPropertyKey(this, key);
                     var superProto = currentFunction.HomeObject.Prototype;
                     if (superProto is null)
@@ -1814,15 +1856,17 @@ public sealed class JsVm
                 case Opcode.StoreSuperComputed:
                 {
                     // wp:M3-04h — super[expr] = v. Mirrors StoreSuperProperty:
-                    // per spec the write targets the receiver `this`, not the
-                    // prototype. Key is coerced via ToPropertyKey.
+                    // §13.3.4 PutValue with a Super Reference runs [[Set]] against
+                    // the super base with the receiver = `this`. Key is coerced
+                    // via ToPropertyKey.
                     var value = Pop();
                     var key = Pop();
                     if (currentFunction?.HomeObject is null)
-                        throw new JsThrow(_runtime.Realm.NewSyntaxError("'super' is only allowed inside class methods"));
+                        throw new JsThrow(_runtime.Realm.NewSyntaxError("'super' keyword unexpected here"));
                     var propertyKey = AbstractOperations.ToPropertyKey(this, key);
-                    if (thisV.IsObject)
-                        AbstractOperations.Set(this, thisV.AsObject, propertyKey, value);
+                    var superBase = currentFunction.HomeObject.Prototype;
+                    if (superBase is not null)
+                        AbstractOperations.Set(this, superBase, propertyKey, value, thisV);
                     Push(value);
                     break;
                 }
