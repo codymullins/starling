@@ -57,6 +57,7 @@ public sealed partial class JsCompiler
         var root = new JsCompiler();
         var c = new JsCompiler(parent: root) { _moduleBindingUpvalues = new(StringComparer.Ordinal) };
         c._b.IsStrict = true; // §11.2.2 — module code is always strict
+        c._b.SourcePath = name; // wp:M3-63 — referrer for dynamic import() + import.meta.url
         return c.EmitModule(program, name);
     }
 

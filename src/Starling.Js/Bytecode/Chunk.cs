@@ -23,6 +23,18 @@ public sealed class Chunk
     public IReadOnlyList<object?> Constants { get; }
     public int LocalCount { get; }
     public string? Name { get; }
+    /// <summary>wp:M3-63 — the source path/URL of the script or module this
+    /// chunk lexically belongs to. Unlike <see cref="Name"/> (which is the
+    /// running function's own name, e.g. <c>"foo"</c> for a nested function),
+    /// this is the SAME value for the top-level chunk and every nested function
+    /// chunk compiled within it. It is the referrer used to resolve dynamic
+    /// <c>import()</c> relative specifiers and to back <c>import.meta.url</c>, so
+    /// a relative import inside a nested async / arrow / generator function
+    /// resolves against the active script/module (matching real engines, where
+    /// the referrer is the active script/module record — not the running
+    /// function). Falls back to <see cref="Name"/> when unset (e.g. the
+    /// top-level script chunk whose <see cref="Name"/> already is the path).</summary>
+    public string? SourcePath { get; init; }
     /// <summary>ES strict mode — true when the code in this chunk runs as strict
     /// mode code (§11.2.2). Read by the VM to select strict semantics for
     /// this-binding (§10.2.1.2), assignment to undeclared globals (§9.1.1.4.16),
@@ -337,8 +349,15 @@ public sealed class ChunkBuilder
 
     public bool CapturesWith { get; set; }
 
+    /// <summary>wp:M3-63 — the source path/URL of the script or module being
+    /// compiled. Set on the top-level compiler's builder from the compile
+    /// entry-point's <c>name</c> (the script/module URL) and inherited by every
+    /// nested function's builder, so the stamped <see cref="Chunk.SourcePath"/>
+    /// is identical across the whole compilation unit.</summary>
+    public string? SourcePath { get; set; }
+
     public Chunk Build(string? name = null)
         => new(_code.ToArray(), _constants.ToArray(), LocalCount, name, _capturedSlots,
             _positions is null ? null : _positions.ToArray())
-        { IsStrict = IsStrict, HasPrologue = HasPrologue, CapturesWith = CapturesWith };
+        { IsStrict = IsStrict, HasPrologue = HasPrologue, CapturesWith = CapturesWith, SourcePath = SourcePath };
 }

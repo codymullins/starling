@@ -91,6 +91,188 @@ public class DynamicImportTests
         return captured;
     }
 
+    /// <summary>wp:M3-63 — a referrer-aware host that resolves a relative
+    /// specifier (<c>./x</c> / <c>../x</c>) against the importing referrer's
+    /// directory (POSIX-style), mirroring what <c>FsModuleHost</c> does on disk.
+    /// This is the resolution the engine relies on: a relative <c>import()</c>
+    /// must be handed the ACTIVE SCRIPT/MODULE path as its referrer, so it lands
+    /// in the right directory. The flat <see cref="MapHost"/> can't catch the
+    /// bug (it ignores the referrer); this host requires the correct referrer.</summary>
+    private sealed class DirHost(Dictionary<string, string> modules) : IModuleHost
+    {
+        public string? Resolve(string specifier, string? referrer)
+        {
+            // Bare specifiers resolve by identity (the entry module's URL).
+            if (!specifier.StartsWith("./", StringComparison.Ordinal)
+                && !specifier.StartsWith("../", StringComparison.Ordinal))
+                return modules.ContainsKey(specifier) ? specifier : null;
+
+            // Relative specifier: join against the referrer's directory.
+            var baseDir = referrer is null ? "" : DirOf(referrer);
+            var resolved = NormalizeJoin(baseDir, specifier);
+            return modules.ContainsKey(resolved) ? resolved : null;
+        }
+
+        public string? FetchSource(string resolvedUrl) =>
+            modules.TryGetValue(resolvedUrl, out var src) ? src : null;
+
+        private static string DirOf(string url)
+        {
+            var slash = url.LastIndexOf('/');
+            return slash < 0 ? "" : url[..slash];
+        }
+
+        private static string NormalizeJoin(string baseDir, string rel)
+        {
+            var absolute = baseDir.StartsWith('/');
+            var segments = new List<string>();
+            if (baseDir.Length > 0)
+                segments.AddRange(baseDir.Split('/', StringSplitOptions.RemoveEmptyEntries));
+            foreach (var part in rel.Split('/', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (part == ".") continue;
+                if (part == "..")
+                {
+                    if (segments.Count > 0) segments.RemoveAt(segments.Count - 1);
+                    continue;
+                }
+                segments.Add(part);
+            }
+            var joined = string.Join('/', segments);
+            return absolute ? "/" + joined : joined;
+        }
+    }
+
+    /// <summary>wp:M3-63 — run a classic script compiled WITH a source path (so
+    /// its top-level chunk + every nested function chunk carry that path as
+    /// their referrer). Returns the value passed to <c>report(...)</c>.</summary>
+    private static JsValue RunClassicScriptAtPath(
+        string scriptPath, string source, Dictionary<string, string> modules)
+    {
+        JsValue captured = JsValue.Undefined;
+        var runtime = new JsRuntime();
+        runtime.RegisterGlobal("report", args =>
+        {
+            captured = args.Length > 0 ? args[0] : JsValue.Undefined;
+            return JsValue.Undefined;
+        });
+        _ = new ModuleLoader(runtime, new DirHost(modules));
+        var program = new JsParser(source).ParseProgram();
+        var chunk = JsCompiler.Compile(program, scriptPath);
+        runtime.WithActiveVm(() => new JsVm(runtime).Run(chunk));
+        return captured;
+    }
+
+    // -----------------------------------------------------------------------
+    // wp:M3-63 — a relative import() resolves against the active script/module
+    // path regardless of which (possibly nested) function it appears in.
+    // -----------------------------------------------------------------------
+
+    [TestMethod]
+    public void Relative_import_at_top_level_resolves_against_script_path()
+    {
+        var modules = new Dictionary<string, string>
+        {
+            ["/proj/pkg/dep.js"] = "export const v = 'top';",
+        };
+        var source = @"
+            import('./dep.js').then(function(ns) { report(ns.v); });";
+        RunClassicScriptAtPath("/proj/pkg/main.js", source, modules)
+            .AsString.Should().Be("top");
+    }
+
+    [TestMethod]
+    public void Relative_import_inside_async_function_resolves_against_script_path()
+    {
+        // The bug: `await import('./dep.js')` inside an async function compiled
+        // to its OWN chunk whose Name was the function name (not the script
+        // path), so the relative specifier resolved against the wrong dir.
+        var modules = new Dictionary<string, string>
+        {
+            ["/proj/pkg/dep.js"] = "export const v = 'async';",
+        };
+        var source = @"
+            async function load() {
+                const ns = await import('./dep.js');
+                report(ns.v);
+            }
+            load();";
+        RunClassicScriptAtPath("/proj/pkg/main.js", source, modules)
+            .AsString.Should().Be("async");
+    }
+
+    [TestMethod]
+    public void Relative_import_inside_nested_arrow_resolves_against_script_path()
+    {
+        // Same active-referrer rule through a nested arrow (its own chunk too).
+        var modules = new Dictionary<string, string>
+        {
+            ["/proj/pkg/dep.js"] = "export const v = 'arrow';",
+        };
+        var source = @"
+            const go = () => {
+                const inner = () => import('./dep.js').then(function(ns){ report(ns.v); });
+                inner();
+            };
+            go();";
+        RunClassicScriptAtPath("/proj/pkg/main.js", source, modules)
+            .AsString.Should().Be("arrow");
+    }
+
+    [TestMethod]
+    public void Relative_import_from_all_nesting_levels_resolves_identically()
+    {
+        // Top-level, async function, and nested arrow must ALL resolve the same
+        // relative specifier to the SAME script-relative module.
+        var modules = new Dictionary<string, string>
+        {
+            ["/a/b/dep.js"] = "export const v = 'same';",
+        };
+
+        var topSrc = "import('./dep.js').then(function(ns){ report(ns.v); });";
+        var asyncSrc = @"
+            async function f(){ const ns = await import('./dep.js'); report(ns.v); }
+            f();";
+        var arrowSrc = "(() => import('./dep.js').then(function(ns){ report(ns.v); }))();";
+
+        RunClassicScriptAtPath("/a/b/main.js", topSrc, modules).AsString.Should().Be("same");
+        RunClassicScriptAtPath("/a/b/main.js", asyncSrc, modules).AsString.Should().Be("same");
+        RunClassicScriptAtPath("/a/b/main.js", arrowSrc, modules).AsString.Should().Be("same");
+    }
+
+    [TestMethod]
+    public void Relative_import_in_module_nested_function_uses_module_referrer()
+    {
+        // A static module graph: the entry module does the relative import from
+        // inside a nested async function. The referrer must be the module URL,
+        // so '../lib/dep.js' resolves to the sibling-dir module.
+        var modules = new Dictionary<string, string>
+        {
+            ["/src/app/main.js"] = @"
+                async function load(){ const ns = await import('../lib/dep.js'); report(ns.v); }
+                load();",
+            ["/src/lib/dep.js"] = "export const v = 'mod-nested';",
+        };
+        RunGraphDir(modules, "/src/app/main.js").AsString.Should().Be("mod-nested");
+    }
+
+    /// <summary>wp:M3-63 — like <see cref="RunGraph"/> but with the
+    /// referrer-aware <see cref="DirHost"/> so relative specifiers resolve
+    /// against the importing module's directory.</summary>
+    private static JsValue RunGraphDir(Dictionary<string, string> modules, string entry)
+    {
+        JsValue captured = JsValue.Undefined;
+        var runtime = new JsRuntime();
+        runtime.RegisterGlobal("report", args =>
+        {
+            captured = args.Length > 0 ? args[0] : JsValue.Undefined;
+            return JsValue.Undefined;
+        });
+        var loader = new ModuleLoader(runtime, new DirHost(modules));
+        runtime.WithActiveVm(() => loader.LoadAndEvaluate(entry));
+        return captured;
+    }
+
     // -----------------------------------------------------------------------
     // import() — namespace resolution
     // -----------------------------------------------------------------------

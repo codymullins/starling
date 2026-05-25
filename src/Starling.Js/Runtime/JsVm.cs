@@ -1583,20 +1583,29 @@ public sealed class JsVm
                     // push the resulting Promise. Every load/eval failure is a
                     // rejection inside ImportDynamic — the only synchronous throw
                     // is when no loader is wired into the realm.
+                    // wp:M3-63 — the referrer is the ACTIVE script/module's source
+                    // path (SourcePath), which is identical across all nested
+                    // functions, NOT the running function's own chunk Name (which
+                    // for a nested async/arrow/generator is its function name, not
+                    // the script path — so a relative specifier would otherwise
+                    // resolve against the cwd). Fall back to Name for the
+                    // top-level chunk whose Name already is the path.
                     var spec = Pop();
                     var loader = _runtime.Realm.ModuleLoader
                         ?? throw new JsThrow(_runtime.Realm.NewTypeError(
                             "dynamic import() is not supported in this context (no module loader)"));
-                    Push(JsValue.Object(loader.ImportDynamic(spec, chunk.Name)));
+                    Push(JsValue.Object(loader.ImportDynamic(spec, chunk.SourcePath ?? chunk.Name)));
                     break;
                 }
                 case Opcode.LoadImportMeta:
                 {
-                    // wp:M3-03c — §13.3.12 import.meta. The chunk name is the
-                    // running module's resolved URL; ask the loader for that
-                    // module's lazily-built meta object.
+                    // wp:M3-03c — §13.3.12 import.meta. The active module's
+                    // resolved URL is its SourcePath (identical across nested
+                    // functions); ask the loader for that module's lazily-built
+                    // meta object. wp:M3-63 — use SourcePath so import.meta.url
+                    // stays consistent inside nested functions; fall back to Name.
                     var loader = _runtime.Realm.ModuleLoader;
-                    var meta = loader?.ResolveMetaForUrl(chunk.Name);
+                    var meta = loader?.ResolveMetaForUrl(chunk.SourcePath ?? chunk.Name);
                     if (meta is null)
                         throw new JsThrow(_runtime.Realm.NewSyntaxError(
                             "import.meta is only valid inside a module"));

@@ -157,6 +157,14 @@ public sealed partial class JsCompiler
     private JsCompiler(JsCompiler? parent)
     {
         _parent = parent;
+        // wp:M3-63 — inherit the enclosing script/module source path so every
+        // nested function chunk (arrow / async / generator / method / ctor /
+        // field-init / static-block) carries the SAME SourcePath as the
+        // top-level chunk. Dynamic import() and import.meta.url then resolve
+        // relative to the active script/module, not the running function's own
+        // (path-less) chunk name. The top-level entry-points overwrite this
+        // with the real script/module URL before emission.
+        if (parent is not null) _b.SourcePath = parent._b.SourcePath;
     }
 
     /// <summary>§14.11 / §10.2.1 — configure this (child) compiler to inherit the
@@ -288,6 +296,7 @@ public sealed partial class JsCompiler
     {
         var c = new JsCompiler();
         c._b.IsStrict = program.Strict;
+        c._b.SourcePath = name; // wp:M3-63 — referrer for dynamic import()
         c.RunCaptureAnalysisForScript(program.Body);
         c.EmitProgram(program, keepLastExpression: false);
         return c._b.Build(name);
@@ -302,6 +311,7 @@ public sealed partial class JsCompiler
     {
         var c = new JsCompiler();
         c._b.IsStrict = program.Strict;
+        c._b.SourcePath = name; // wp:M3-63 — referrer for dynamic import()
         c.RunCaptureAnalysisForScript(program.Body);
         c.EmitProgram(program, keepLastExpression: true);
         return c._b.Build(name);
