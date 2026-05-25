@@ -146,7 +146,14 @@ hand-rolled CSS `[Spec]` stub backlog where WPT now covers it.
     access in object-literal methods/arrows. Merged-tree re-verified (Js.Tests
     1575 pass; only the pre-existing `Captured_lexical` fails).
 
-**Session result so far: 754→1033 passing subtests, 14.54%→19.55%.** Cheap
+  - DOMException + validation (`4706ac9`): JS-visible `DOMException` (§4.4) +
+    `createElement`/`createElementNS` name validation (InvalidCharacterError /
+    NamespaceError). Fixed assert_throws_dom arg-routing (the `call` bucket) and
+    converted invalid-name throw tests. pass 1033→1150 (+117), 19.55%→**21.76%**.
+  - Integrated `js-262` RegExp early-errors (`a0e9c63` + cherry-pick). Merged tree
+    re-verified (Js.Tests 1629 pass; only pre-existing `Captured_lexical` fails).
+
+**Session result so far: 754→1150 passing subtests (+396), 14.54%→21.76%.** Cheap
 mechanical wins are now exhausted — every remaining high-impact cluster is a
 large *absent subsystem* or the semantic tail. Confirmed by exploration:
 
