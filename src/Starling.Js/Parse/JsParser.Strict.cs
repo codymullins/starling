@@ -82,6 +82,12 @@ public sealed partial class JsParser
         if (IsStrictReservedWord(name.Name))
             throw new JsParseException(
                 $"'{name.Name}' is a reserved word and may not be used as a class name", name.Start);
+        // §15.7.1 — in an async context (e.g. a class static initialization
+        // block) `await` is the AwaitExpression keyword and may not be a class
+        // BindingIdentifier (`static { class await {} }`).
+        if (_inAsync && name.Name == "await")
+            throw new JsParseException(
+                "'await' may not be used as a class name in an async context", name.Start);
     }
 
     /// <summary>§13.3.1.1 / §14.3.1 — recursively check every BindingIdentifier
@@ -155,10 +161,13 @@ public sealed partial class JsParser
     /// parameter names when <paramref name="strict"/> OR the list is
     /// non-simple (any default/rest/destructuring element). A simple sloppy
     /// parameter list still permits duplicates (§B.3.1 legacy).</summary>
-    private void ValidateParameters(IReadOnlyList<Expression> @params, bool strict)
+    private void ValidateParameters(IReadOnlyList<Expression> @params, bool strict,
+        bool forceDuplicateCheck = false)
     {
         var simple = AreSimpleParams(@params);
-        var forbidDuplicates = strict || !simple;
+        // §15.3.1 — ArrowFormalParameters always forbid duplicate bindings, even
+        // a simple sloppy list (no Annex B legacy exception for arrows).
+        var forbidDuplicates = strict || !simple || forceDuplicateCheck;
         HashSet<string>? seen = forbidDuplicates ? new HashSet<string>(StringComparer.Ordinal) : null;
         foreach (var p in @params)
             ValidateParameterElement(p, strict, forbidDuplicates, seen);
@@ -245,6 +254,14 @@ public sealed partial class JsParser
         _disallowInDepth = 0;
         var savedPrologueUseStrict = _prologueHadUseStrict;
         _prologueHadUseStrict = false;
+        // The body is no longer formal parameters (a function nested in a param
+        // default value has its own body, where yield/await are unrestricted).
+        var savedInParams = _inFormalParameters;
+        _inFormalParameters = false;
+        // A nested function/method body establishes its own await rules, so the
+        // enclosing static-block `await` reservation does not apply inside it.
+        var savedInStatic = _inStaticBlock;
+        _inStaticBlock = false;
         // An ordinary function body provides a `new.target` binding (§13.3.12).
         _functionDepth++;
         try
@@ -266,6 +283,8 @@ public sealed partial class JsParser
             _disallowInDepth = savedNoIn;
             _functionDepth--;
             _prologueHadUseStrict = savedPrologueUseStrict;
+            _inFormalParameters = savedInParams;
+            _inStaticBlock = savedInStatic;
         }
     }
 

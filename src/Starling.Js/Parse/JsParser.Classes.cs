@@ -148,20 +148,25 @@ public sealed partial class JsParser
     /// computed keys are checked at runtime, not statically.</summary>
     private static void CheckClassElementName(Expression key, bool computed, bool isStatic, bool isField, MethodKind kind, JsPosition pos)
     {
-        _ = isField; _ = kind;
+        _ = kind;
         if (key is PrivateNameExpression { Name: "#constructor" })
             throw new JsParseException(
                 "'#constructor' is a reserved class private name", pos);
-        // A computed `static ['prototype']` is allowed syntactically — the
-        // duplicate is detected at runtime (a TypeError), not at parse time.
-        if (computed || !isStatic) return;
+        // A computed key is checked at runtime, not statically.
+        if (computed) return;
         var name = key switch
         {
             Identifier id => id.Name,
             StringLiteral sl => sl.Value,
             _ => null,
         };
-        if (name == "prototype")
+        // §15.7.1 — a class FieldDefinition may not be named "constructor"
+        // (whether static or not, identifier or string key). A static field may
+        // additionally not be named "prototype".
+        if (isField && name == "constructor")
+            throw new JsParseException(
+                "a class field may not be named 'constructor'", pos);
+        if (isStatic && name == "prototype")
             throw new JsParseException(
                 "a static class element may not be named 'prototype'", pos);
     }
@@ -230,8 +235,31 @@ public sealed partial class JsParser
                 // Static initialization block: `static { ... }`
                 if (Check(JsTokenKind.LBrace))
                 {
-                    var block = ParseBlock();
-                    staticBlocks.Add(block);
+                    // §15.7.1 — a ClassStaticBlockBody is evaluated with Await
+                    // enabled, so `await` may not be used as a BindingIdentifier
+                    // or IdentifierReference inside it; it also defines its own
+                    // (non-generator) scope, and a `return` inside it is a
+                    // SyntaxError (it is not a function body). Save/restore the
+                    // surrounding context; reset _functionDepth so `return` is
+                    // rejected even inside an enclosing function.
+                    var (sbAsync, sbGen) = (_inAsync, _inGenerator);
+                    var sbDepth = _functionDepth;
+                    var sbStatic = _inStaticBlock;
+                    _inAsync = true;
+                    _inGenerator = false;
+                    _functionDepth = 0;
+                    _inStaticBlock = true;
+                    try
+                    {
+                        var block = ParseBlock();
+                        staticBlocks.Add(block);
+                    }
+                    finally
+                    {
+                        (_inAsync, _inGenerator) = (sbAsync, sbGen);
+                        _functionDepth = sbDepth;
+                        _inStaticBlock = sbStatic;
+                    }
                     return;
                 }
             }
@@ -349,6 +377,10 @@ public sealed partial class JsParser
             Expect(JsTokenKind.LParen, "expected '(' in method definition");
             parameters = ParseParameterList();
             Expect(JsTokenKind.RParen, "expected ')' after method parameters");
+            // §15.4.1 — accessor arity: a getter takes no parameters; a setter
+            // takes exactly one non-rest parameter (no default, no rest, no
+            // destructuring rest).
+            CheckAccessorParams(methodKind, parameters, memberStart);
             // Class bodies are always strict (§15.7), so _strict is already
             // true here; ParseFunctionBody preserves it (no prologue can clear
             // it). Validate params under strict semantics.
@@ -376,6 +408,27 @@ public sealed partial class JsParser
         else
         {
             methods.Add(method);
+        }
+    }
+
+    /// <summary>§15.4.1 — validate accessor arity. A getter
+    /// (<c>MethodKind.Get</c>) must declare no parameters; a setter
+    /// (<c>MethodKind.Set</c>) must declare exactly one parameter that is a
+    /// single non-rest BindingElement (<c>PropertySetParameterList</c> is one
+    /// <c>FormalParameter</c>, so no rest element).</summary>
+    private void CheckAccessorParams(MethodKind kind, IReadOnlyList<Expression> @params, JsPosition pos)
+    {
+        if (kind == MethodKind.Get)
+        {
+            if (@params.Count != 0)
+                throw new JsParseException("a getter must have no parameters", pos);
+        }
+        else if (kind == MethodKind.Set)
+        {
+            if (@params.Count != 1)
+                throw new JsParseException("a setter must have exactly one parameter", pos);
+            if (@params[0] is SpreadElement)
+                throw new JsParseException("a setter parameter may not be a rest element", pos);
         }
     }
 

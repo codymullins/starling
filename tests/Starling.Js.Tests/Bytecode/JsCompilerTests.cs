@@ -236,13 +236,22 @@ public class JsCompilerTests
     }
 
     [TestMethod]
-    public void Return_at_top_level_compiles()
+    public void Return_at_top_level_is_a_syntax_error()
     {
-        var d = Disassembler.Disassemble(Compile("return;"));
-        d.Should().Contain("ReturnUndefined");
+        // §13.10.1 — a ReturnStatement outside any function body is an early
+        // SyntaxError at script/module top level.
+        Action top = () => Compile("return;");
+        top.Should().Throw<JsParseException>();
 
-        var d2 = Disassembler.Disassemble(Compile("return 42;"));
-        d2.Should().Contain("LoadConst").And.Contain("Return");
+        Action topVal = () => Compile("return 42;");
+        topVal.Should().Throw<JsParseException>();
+
+        // The same statements inside a function body compile fine.
+        Action inFn = () => Compile("function f() { return; }");
+        inFn.Should().NotThrow();
+
+        Action inFnVal = () => Compile("function f() { return 42; }");
+        inFnVal.Should().NotThrow();
     }
 
     [TestMethod]
