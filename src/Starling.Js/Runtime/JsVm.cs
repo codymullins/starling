@@ -88,17 +88,39 @@ public sealed class JsVm
             upvalues: Array.Empty<JsValue>(), drainMicrotasks: false,
             currentFunction: null, newTarget: null);
 
-    /// <summary>wp:M3-71 — §19.2.1.1 PerformEval (direct path). Parse + compile
+    /// <summary>wp:M3-72 — run direct-eval'd code with <paramref name="evalScope"/>
+    /// (the calling frame's live variable environment) installed so the eval
+    /// body's caller-scope-aware opcodes resolve free identifiers to the
+    /// caller's live bindings. <c>this</c> / <c>new.target</c> / the
+    /// caller-as-currentFunction (for <c>super</c>) are inherited so the eval'd
+    /// code's this / new.target / super resolve as in §19.2.1.1. Does not drain
+    /// microtasks (the outermost frame owns the drain).</summary>
+    internal JsValue RunDirectEval(Chunk chunk, EvalScope evalScope, JsFunction? caller,
+        JsValue callerThis, JsObject? callerNewTarget) =>
+        Run(chunk, args: Array.Empty<JsValue>(),
+            thisValue: callerThis,
+            upvalues: Array.Empty<JsValue>(), drainMicrotasks: false,
+            currentFunction: caller, newTarget: callerNewTarget,
+            suspension: null, evalScope: evalScope);
+
+    /// <summary>wp:M3-71/72 — §19.2.1.1 PerformEval (direct path). Parse + compile
     /// <paramref name="args"/>[0] inheriting the CALLER's lexical context, then
     /// run the resulting chunk on the caller's function so a SuperProperty
     /// resolves via <paramref name="caller"/>'s <c>[[HomeObject]]</c>,
     /// <c>new.target</c> sees <paramref name="callerNewTarget"/>, and <c>this</c>
     /// is <paramref name="callerThis"/>. A non-string argument is returned unchanged
-    /// (§19.2.1 step 2). DEFERRED: caller variable-scope access
-    /// (EvalDeclarationInstantiation) — the eval'd code cannot read/declare the
-    /// caller's let/const/var locals by name; it resolves free names globally.</summary>
-    private JsValue PerformDirectEval(JsValue[] args, JsFunction? caller,
-        JsValue callerThis, JsObject? callerNewTarget, bool callerStrict)
+    /// (§19.2.1 step 2).
+    /// <para>wp:M3-72 — <paramref name="callerScope"/> is the caller frame's live
+    /// variable environment (built from the call site's
+    /// <see cref="Bytecode.EvalScopeDescriptor"/> + the live locals/upvalues). The
+    /// eval body's free identifiers that name a caller binding read/write that
+    /// live binding, and the §19.2.1.3 EvalDeclarationInstantiation early-error
+    /// checks run against the caller's lexical bindings. DEFERRED: injecting the
+    /// eval body's OWN new var/function bindings into the caller's
+    /// var-environment so they persist after eval returns (its own top-level
+    /// var/function still bind globally, as for indirect eval).</para></summary>
+    private JsValue PerformDirectEval(JsValue[] args, EvalScope callerScope,
+        JsFunction? caller, JsValue callerThis, JsObject? callerNewTarget, bool callerStrict)
     {
         var x = args.Length > 0 ? args[0] : JsValue.Undefined;
         if (!x.IsString) return x;
@@ -120,20 +142,37 @@ public sealed class JsVm
                 CallerStrict: callerStrict, InFunction: inFunction,
                 InMethod: inMethod, InDerivedConstructor: inDerivedCtor);
             var program = new Parse.JsParser(x.AsString).ParseProgram(ctx);
-            chunk = JsCompiler.CompileForEval(program, "<eval>");
+            var evalIsStrict = callerStrict || program.Strict;
+
+            // §19.2.1.3 EvalDeclarationInstantiation — a NON-strict direct eval
+            // hoists its top-level var/function names into the caller's variable
+            // environment, and must not hoist over a like-named LEXICAL binding
+            // (let/const/class) anywhere in the caller's environment chain. A
+            // strict direct eval gets its own fresh variable environment, so no
+            // collision is possible. The caller-scope entries carry the caller's
+            // lexical names flagged IsLexical.
+            if (!evalIsStrict)
+            {
+                foreach (var vn in Parse.JsParser.EvalVarDeclaredNames(program))
+                {
+                    if (callerScope.TryGet(vn, out var entry) && entry.IsLexical)
+                        throw new JsThrow(_runtime.Realm.NewSyntaxError(
+                            "Identifier '" + vn + "' has already been declared"));
+                }
+            }
+
+            var callerNames = new HashSet<string>(callerScope.Names, StringComparer.Ordinal);
+            chunk = JsCompiler.CompileForDirectEval(program, "<eval>", callerNames);
         }
         catch (Parse.JsParseException ex)
         {
             throw new JsThrow(_runtime.Realm.NewSyntaxError(ex.Message));
         }
 
-        // Run on the caller's function so currentFunction.HomeObject / this /
-        // new.target are visible to the eval'd code's super / this / new.target
-        // opcodes. No upvalues are threaded (variable-scope access is deferred).
-        return Run(chunk, args: Array.Empty<JsValue>(),
-            thisValue: callerThis, upvalues: Array.Empty<JsValue>(),
-            drainMicrotasks: false, currentFunction: caller,
-            newTarget: callerNewTarget);
+        // Run on the caller's function (so super / this / new.target resolve)
+        // with the caller scope installed so free identifiers reach the caller's
+        // live bindings.
+        return RunDirectEval(chunk, callerScope, caller, callerThis, callerNewTarget);
     }
 
     /// <summary>Invoke a JS function with an explicit <c>this</c> and args.
@@ -223,6 +262,50 @@ public sealed class JsVm
     private static bool IsCallableValue(JsValue v)
         => v.IsObject && v.AsObject is JsNativeFunction or JsFunction or JsBoundFunction or JsProxy;
 
+    /// <summary>wp:M3-72 — build the runtime <see cref="EvalScope"/> for a direct
+    /// eval from the compile-time <see cref="Bytecode.EvalScopeDescriptor"/> and
+    /// the caller frame's live storage (its <paramref name="locals"/> array and
+    /// <paramref name="upvalues"/> cell table). Plain locals are referenced by
+    /// (array, slot) so writes are observed by the caller after eval returns;
+    /// captured locals/upvalues share the same <see cref="Cell"/> instance.</summary>
+    private static EvalScope BuildEvalScope(Bytecode.EvalScopeDescriptor descriptor,
+        JsValue[] locals, IReadOnlyList<JsValue> upvalues)
+    {
+        var entries = new List<EvalScope.Entry>(descriptor.Bindings.Count);
+        foreach (var b in descriptor.Bindings)
+        {
+            switch (b.Kind)
+            {
+                case Bytecode.EvalScopeDescriptor.Kind.LocalSlot:
+                    entries.Add(new EvalScope.Entry
+                    {
+                        Name = b.Name, Locals = locals, Slot = b.Index, IsLexical = b.IsLexical,
+                    });
+                    break;
+                case Bytecode.EvalScopeDescriptor.Kind.LocalCell:
+                {
+                    // A captured local holds a Cell in its slot; share it so
+                    // writes from the eval'd code are live for the caller and
+                    // any other closures over the same binding.
+                    var slotVal = locals[b.Index];
+                    if (slotVal.IsObject && slotVal.AsObject is Cell cell)
+                        entries.Add(new EvalScope.Entry { Name = b.Name, Cell = cell, IsLexical = b.IsLexical });
+                    else
+                        entries.Add(new EvalScope.Entry { Name = b.Name, Locals = locals, Slot = b.Index, IsLexical = b.IsLexical });
+                    break;
+                }
+                case Bytecode.EvalScopeDescriptor.Kind.Upvalue:
+                {
+                    if (b.Index < upvalues.Count && upvalues[b.Index].IsObject
+                        && upvalues[b.Index].AsObject is Cell upCell)
+                        entries.Add(new EvalScope.Entry { Name = b.Name, Cell = upCell, IsLexical = b.IsLexical });
+                    break;
+                }
+            }
+        }
+        return new EvalScope(entries);
+    }
+
     /// <summary>
     /// Internal entry. Copies <paramref name="args"/> into the first N
     /// local slots and stashes <paramref name="thisValue"/> for the
@@ -235,7 +318,7 @@ public sealed class JsVm
     private JsValue Run(Chunk chunk, JsValue[] args, JsValue thisValue,
         IReadOnlyList<JsValue> upvalues, bool drainMicrotasks,
         JsFunction? currentFunction, JsObject? newTarget,
-        SuspendedFrame? suspension = null)
+        SuspendedFrame? suspension = null, EvalScope? evalScope = null)
     {
         // Publish this VM on the realm so native intrinsics (JSON.parse
         // reviver, JSON.stringify replacer/toJSON, etc.) can dispatch JS
@@ -262,7 +345,7 @@ public sealed class JsVm
         _callDepth++;
         try
         {
-            var result = RunInner(chunk, args, thisValue, upvalues, currentFunction, newTarget, suspension);
+            var result = RunInner(chunk, args, thisValue, upvalues, currentFunction, newTarget, suspension, evalScope);
             // Drain microtasks while ActiveVm still points to this VM so
             // reaction jobs that dispatch JS handlers find a usable VM
             // (AbstractOperations.Call needs one for JsFunction). Only the
@@ -280,7 +363,7 @@ public sealed class JsVm
 
     private JsValue RunInner(Chunk chunk, JsValue[] args, JsValue thisValue,
         IReadOnlyList<JsValue> upvalues, JsFunction? currentFunction, JsObject? newTarget,
-        SuspendedFrame? suspension = null)
+        SuspendedFrame? suspension = null, EvalScope? evalScope = null)
     {
         var stack = new JsValue[MaxStack];
         var sp = 0;
@@ -599,6 +682,59 @@ public sealed class JsVm
                     // (non-writable prop, accessor without setter) throws TypeError.
                     var ok = AbstractOperations.Set(this, globalObj, name, value, JsValue.Object(globalObj));
                     if (!ok && frameStrict)
+                        throw new JsThrow(_runtime.Realm.NewTypeError(
+                            "Cannot assign to read-only property '" + name + "'"));
+                    break;
+                }
+
+                // wp:M3-72 — direct-eval caller-scope read. Resolve a free
+                // identifier (matching a caller binding name) against the live
+                // caller frame, falling back to a checked global load on a miss.
+                case Opcode.LoadEvalScope:
+                {
+                    var idx = ReadU16();
+                    var name = (string)constants[idx]!;
+                    _lastLoadName = name;
+                    if (evalScope is not null && evalScope.TryGet(name, out var entry))
+                    {
+                        var v = entry.Read();
+                        // §13.3.1.1 — reading a caller lexical binding still in
+                        // its TDZ throws ReferenceError.
+                        if (v.IsObject && ReferenceEquals(v.AsObject, _runtime.Realm.TdzSentinel))
+                            throw new JsThrow(_runtime.Realm.NewReferenceError(
+                                "Cannot access '" + name + "' before initialization"));
+                        Push(v);
+                        break;
+                    }
+                    var realm = _runtime.Realm;
+                    var globalObj = realm.GlobalObject;
+                    if (!globalObj.Has(name))
+                    {
+                        if (realm.ThrowOnUnresolvedGlobalRead && !realm.LenientGlobalNames.Contains(name))
+                            throw new JsThrow(realm.NewReferenceError(name + " is not defined"));
+                        Push(JsValue.Undefined);
+                        break;
+                    }
+                    Push(AbstractOperations.Get(this, globalObj, name, JsValue.Object(globalObj)));
+                    break;
+                }
+                // wp:M3-72 — direct-eval caller-scope write. Write through the
+                // live caller binding, else fall back to a global store.
+                case Opcode.StoreEvalScope:
+                {
+                    var idx = ReadU16();
+                    var name = (string)constants[idx]!;
+                    var value = Pop();
+                    if (evalScope is not null && evalScope.TryGet(name, out var entry))
+                    {
+                        entry.Write(value);
+                        break;
+                    }
+                    var globalObj = _runtime.Realm.GlobalObject;
+                    if (frameStrict && !globalObj.Has(name))
+                        throw new JsThrow(_runtime.Realm.NewReferenceError(name + " is not defined"));
+                    var ok2 = AbstractOperations.Set(this, globalObj, name, value, JsValue.Object(globalObj));
+                    if (!ok2 && frameStrict)
                         throw new JsThrow(_runtime.Realm.NewTypeError(
                             "Cannot assign to read-only property '" + name + "'"));
                     break;
@@ -1006,11 +1142,14 @@ public sealed class JsVm
                 }
                 case Opcode.DirectEval:
                 {
-                    // wp:M3-71 — §19.2.1.1 PerformEval (direct path). The compiler
-                    // emitted this for a bare-`eval` call resolving to the global
-                    // slot. Confirm the callee is STILL the realm intrinsic; if it
+                    // wp:M3-71/72 — §19.2.1.1 PerformEval (direct path). The
+                    // compiler emitted this for a bare-`eval` call resolving to
+                    // the global slot, with a u16 EvalScopeDescriptor index of the
+                    // calling function's variable environment followed by the u8
+                    // argc. Confirm the callee is STILL the realm intrinsic; if it
                     // was reassigned (or is otherwise not the intrinsic), fall back
                     // to an ordinary indirect call with this=undefined.
+                    var descIdx = ReadU16();
                     var argc = ReadU8();
                     var callArgs = new JsValue[argc];
                     for (var i = argc - 1; i >= 0; i--) callArgs[i] = Pop();
@@ -1019,7 +1158,12 @@ public sealed class JsVm
                     if (intrinsic is not null && callee.IsObject
                         && ReferenceEquals(callee.AsObject, intrinsic))
                     {
-                        Push(PerformDirectEval(callArgs, currentFunction, thisV,
+                        // wp:M3-72 — pair the compile-time descriptor with the live
+                        // frame storage so the eval'd code reads/writes the
+                        // caller's actual bindings.
+                        var descriptor = (Bytecode.EvalScopeDescriptor)constants[descIdx]!;
+                        var callerScope = BuildEvalScope(descriptor, locals, upvalues);
+                        Push(PerformDirectEval(callArgs, callerScope, currentFunction, thisV,
                             newTarget, frameStrict));
                         break;
                     }

@@ -181,16 +181,32 @@ public enum Opcode : byte
 
     /// <summary>wp:M3-71 — §19.2.1.1 PerformEval (direct path). Emitted only
     /// when the callee is a bare <c>eval</c> IdentifierReference that resolves
-    /// to NO local/upvalue (i.e. the realm <c>%eval%</c> intrinsic). Operand is
-    /// [u8 argc]; the stack holds <c>[eval, arg0..argN]</c>. The VM checks the
-    /// callee is still the realm eval intrinsic at runtime (a reassigned global
-    /// <c>eval</c> falls back to an ordinary indirect call) and, if so, parses +
-    /// compiles the source inheriting the CURRENT frame's lexical context
-    /// (strict / <c>[[HomeObject]]</c> for <c>super</c> / <c>new.target</c> /
-    /// <c>this</c> / derived-ctor-ness), then runs it on the same frame's
-    /// function so <c>super.x</c> and <c>new.target</c> resolve. A non-string
-    /// argument is returned unchanged.</summary>
-    DirectEval,     // [u8 argc] eval-intrinsic + args on stack
+    /// to NO local/upvalue (i.e. the realm <c>%eval%</c> intrinsic). Operands are
+    /// [u16 descriptorIdx][u8 argc]; the stack holds <c>[eval, arg0..argN]</c>.
+    /// The VM checks the callee is still the realm eval intrinsic at runtime (a
+    /// reassigned global <c>eval</c> falls back to an ordinary indirect call)
+    /// and, if so, parses + compiles the source inheriting the CURRENT frame's
+    /// lexical context (strict / <c>[[HomeObject]]</c> for <c>super</c> /
+    /// <c>new.target</c> / <c>this</c> / derived-ctor-ness), then runs it on the
+    /// same frame's function so <c>super.x</c> and <c>new.target</c> resolve.
+    /// wp:M3-72 — <c>descriptorIdx</c> points at the <see cref="EvalScopeDescriptor"/>
+    /// of the calling function's variable environment; the VM pairs it with the
+    /// live frame (locals / upvalues) to build the caller scope the eval'd code
+    /// reads/writes, and runs the §19.2.1.3 EvalDeclarationInstantiation
+    /// early-error checks. A non-string argument is returned unchanged.</summary>
+    DirectEval,     // [u16 descriptorIdx][u8 argc] eval-intrinsic + args on stack
+    /// <summary>wp:M3-72 — [u16 nameIdx] — caller-scope-aware identifier load.
+    /// Emitted only when compiling direct-eval source for a free identifier that
+    /// matches one of the caller's in-scope binding names. Consults the frame's
+    /// caller scope; on a hit pushes the caller binding's current value
+    /// (throwing ReferenceError for a TDZ-uninitialized lexical caller binding);
+    /// on a miss falls back to a checked global load.</summary>
+    LoadEvalScope,  // [u16 nameIdx]
+    /// <summary>wp:M3-72 — [u16 nameIdx] — caller-scope-aware identifier store.
+    /// Pops the value; if the frame's caller scope has the name, writes through
+    /// the caller binding's live storage; otherwise falls back to a global
+    /// store.</summary>
+    StoreEvalScope, // [u16 nameIdx]
 
     New,            // [u8 argc]
     Return,         // pop and return

@@ -46,3 +46,13 @@ The deferred half of WP-71 and the dominant remaining `eval-code` cluster
   var/lexical conflict throws SyntaxError; indirect eval still global-scoped.
 - Existing `Starling.Js.Tests` green except the known pre-existing failure.
 - NOTE: worktree base may predate merged work; keep isolated; integrator reconciles.
+
+## REDO landed (WP-72b)
+Re-done on the correct base (branch worktree-agent-a86b9b84abf5bae55, commit 0d5a9c2),
+EXTENDING WP-71's DirectEval (no duplication). Integrated main 5b897fd / pushed
+origin/js-262. Caller-scope read/write + EvalDeclarationInstantiation conflict
+early-errors. Impact: language 92.17%->92.20% (+14; eval-code 46%->48%); ZERO
+regressions. STILL DEFERRED: injecting the eval body's own new var/function
+bindings into the caller var-environment (needs a dynamic frame binding store —
+hard in the slot-based VM) — this is what the bulk of the remaining eval-code
+SyntaxError early-errors need.

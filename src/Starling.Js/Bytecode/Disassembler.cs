@@ -53,6 +53,8 @@ public static class Disassembler
                 case Opcode.PrivateIn:
                 case Opcode.TemplateObject:
                 case Opcode.BuildClass:
+                case Opcode.LoadEvalScope:
+                case Opcode.StoreEvalScope:
                 {
                     var idx = BinaryPrimitives.ReadUInt16LittleEndian(code.AsSpan(i, 2));
                     i += 2;
@@ -94,13 +96,23 @@ public static class Disassembler
                 // u8 operand opcodes
                 case Opcode.Call:
                 case Opcode.CallMethod:
-                case Opcode.DirectEval:
                 case Opcode.New:
                 case Opcode.Suspend:
                 {
                     var slot = code[i];
                     i++;
                     sb.Append(op).Append(' ').Append(slot);
+                    break;
+                }
+                // wp:M3-72 — u16 + u8 — DirectEval [descriptorIdx][argc]
+                case Opcode.DirectEval:
+                {
+                    var idx = BinaryPrimitives.ReadUInt16LittleEndian(code.AsSpan(i, 2));
+                    i += 2;
+                    var argc = code[i];
+                    i++;
+                    sb.Append(op).Append(' ').Append(idx).Append(' ').Append(argc);
+                    sb.Append("  ; direct-eval argc=").Append(argc);
                     break;
                 }
                 // u16 + u16 — MakeClosure [fnIdx][nUpvalues]
