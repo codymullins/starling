@@ -196,4 +196,34 @@ public class RegexPikeVmTests
         Run("\\x41", "", "A")!.Group(0).Should().Be("A");
         Run("\\u0041", "", "A")!.Group(0).Should().Be("A");
     }
+
+    [TestMethod]
+    public void AddThread_split_chain_does_not_overflow_native_stack()
+    {
+        // Each (?:|a) compiles to Split(jmp-to-next, char). The Arg1 path
+        // (empty branch) flows directly into the next Split, so the
+        // epsilon-closure walk that AddThread performs recurses once per
+        // group. Pre-fix AddThread used true recursion on the Arg1 branch,
+        // overflowing the native stack at depths well below the JS engine's
+        // logical call-stack guard. Run on a small-stack worker so the
+        // regression is caught regardless of the main test thread's stack.
+        const int reps = 8000;
+        var sb = new System.Text.StringBuilder(reps * 6);
+        for (var i = 0; i < reps; i++) sb.Append("(?:|a)");
+        var pattern = sb.ToString();
+
+        RegexMatch? result = null;
+        Exception? failure = null;
+        var worker = new System.Threading.Thread(() =>
+        {
+            try { result = Run(pattern, "", ""); }
+            catch (Exception ex) { failure = ex; }
+        }, maxStackSize: 256 * 1024);
+        worker.Start();
+        worker.Join();
+
+        failure.Should().BeNull();
+        result.Should().NotBeNull();
+        result!.Group(0).Should().Be("");
+    }
 }

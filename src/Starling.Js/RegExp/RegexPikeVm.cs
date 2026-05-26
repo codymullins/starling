@@ -163,69 +163,85 @@ public sealed class RegexPikeVm
 
     private void AddThread(List<Thread> list, HashSet<int> seen, Thread t, string input, int pos)
     {
+        // Split's lower-priority branch is parked on a heap-allocated stack
+        // instead of via native recursion. A deeply chained regex (e.g. a
+        // long run of `(?:|x)` from minified site code) would otherwise blow
+        // the native stack — once per epsilon Split — before the JS engine's
+        // logical call-stack guard in JsVm could fire.
+        Stack<Thread>? deferred = null;
         while (true)
         {
-            if (!seen.Add(t.Pc)) return;
-            var ins = _prog.Code[t.Pc];
-            switch (ins.Op)
+            if (seen.Add(t.Pc))
             {
-                case RegexOp.Jmp:
-                    t = new Thread(ins.Arg1, t.Slots);
-                    continue;
-                case RegexOp.Split:
-                    // Add Arg1 first (preferred), then Arg2 — leftmost-first /
-                    // greedy ordering depends on the compiler swapping these for
-                    // lazy quantifiers.
-                    AddThread(list, seen, new Thread(ins.Arg1, (int[])t.Slots.Clone()), input, pos);
-                    t = new Thread(ins.Arg2, t.Slots);
-                    continue;
-                case RegexOp.SaveStart:
-                    {
-                        var slots = (int[])t.Slots.Clone();
-                        slots[ins.Arg1 * 2] = pos;
-                        t = new Thread(t.Pc + 1, slots);
+                var ins = _prog.Code[t.Pc];
+                switch (ins.Op)
+                {
+                    case RegexOp.Jmp:
+                        t = new Thread(ins.Arg1, t.Slots);
                         continue;
-                    }
-                case RegexOp.SaveEnd:
-                    {
-                        var slots = (int[])t.Slots.Clone();
-                        slots[ins.Arg1 * 2 + 1] = pos;
-                        t = new Thread(t.Pc + 1, slots);
+                    case RegexOp.Split:
+                        // Defer Arg2 (lower priority) and continue inline on
+                        // Arg1 — preserving leftmost-first / greedy ordering.
+                        // The deferred thread gets a slot clone so SaveStart/
+                        // SaveEnd mutations on the Arg1 chain don't leak into
+                        // it when it's later popped.
+                        (deferred ??= new Stack<Thread>())
+                            .Push(new Thread(ins.Arg2, (int[])t.Slots.Clone()));
+                        t = new Thread(ins.Arg1, t.Slots);
                         continue;
-                    }
-                case RegexOp.AssertStart:
-                    if (pos == 0 || ((_flags & RegexFlags.Multiline) != 0 && pos > 0
-                        && RegexCharClass.IsLineTerminator(input[pos - 1])))
-                    {
-                        t = new Thread(t.Pc + 1, t.Slots);
-                        continue;
-                    }
-                    return;
-                case RegexOp.AssertEnd:
-                    if (pos == input.Length || ((_flags & RegexFlags.Multiline) != 0 && pos < input.Length
-                        && RegexCharClass.IsLineTerminator(input[pos])))
-                    {
-                        t = new Thread(t.Pc + 1, t.Slots);
-                        continue;
-                    }
-                    return;
-                case RegexOp.AssertWordBoundary:
-                    if (IsWordBoundary(input, pos))
-                    {
-                        t = new Thread(t.Pc + 1, t.Slots);
-                        continue;
-                    }
-                    return;
-                case RegexOp.AssertNonWordBoundary:
-                    if (!IsWordBoundary(input, pos))
-                    {
-                        t = new Thread(t.Pc + 1, t.Slots);
-                        continue;
-                    }
-                    return;
+                    case RegexOp.SaveStart:
+                        {
+                            var slots = (int[])t.Slots.Clone();
+                            slots[ins.Arg1 * 2] = pos;
+                            t = new Thread(t.Pc + 1, slots);
+                            continue;
+                        }
+                    case RegexOp.SaveEnd:
+                        {
+                            var slots = (int[])t.Slots.Clone();
+                            slots[ins.Arg1 * 2 + 1] = pos;
+                            t = new Thread(t.Pc + 1, slots);
+                            continue;
+                        }
+                    case RegexOp.AssertStart:
+                        if (pos == 0 || ((_flags & RegexFlags.Multiline) != 0 && pos > 0
+                            && RegexCharClass.IsLineTerminator(input[pos - 1])))
+                        {
+                            t = new Thread(t.Pc + 1, t.Slots);
+                            continue;
+                        }
+                        break;
+                    case RegexOp.AssertEnd:
+                        if (pos == input.Length || ((_flags & RegexFlags.Multiline) != 0 && pos < input.Length
+                            && RegexCharClass.IsLineTerminator(input[pos])))
+                        {
+                            t = new Thread(t.Pc + 1, t.Slots);
+                            continue;
+                        }
+                        break;
+                    case RegexOp.AssertWordBoundary:
+                        if (IsWordBoundary(input, pos))
+                        {
+                            t = new Thread(t.Pc + 1, t.Slots);
+                            continue;
+                        }
+                        break;
+                    case RegexOp.AssertNonWordBoundary:
+                        if (!IsWordBoundary(input, pos))
+                        {
+                            t = new Thread(t.Pc + 1, t.Slots);
+                            continue;
+                        }
+                        break;
+                    default:
+                        list.Add(t);
+                        break;
+                }
             }
-            list.Add(t);
-            return;
+            // Current branch terminated (seen-dedup, assert failure, or
+            // list.Add). Pop the next deferred branch; done when empty.
+            if (deferred is null || deferred.Count == 0) return;
+            t = deferred.Pop();
         }
     }
 
