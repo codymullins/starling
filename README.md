@@ -24,31 +24,31 @@ architecture to make WASM a first-class citizen, hitting the DOM directly rather
 than as a guest behind a JS bridge. And part of it, honestly, is just wanting to
 find out whether it can be done.
 
-## Status — high-level buckets
+## Project Status
 
-Legend: ✅ shipped · 🟡 partial / actively iterating · ⚫ not started
+_Last updated: 2026-05-25_
 
-Each bucket links to its design doc in [`browser-plan/`](browser-plan/) for the
-full feature inventory.
+| Area | Status |
+|---|---|
+| Overall | ![Experimental](https://img.shields.io/badge/status-experimental-red) |
+| ECMAScript | ![Test262](https://img.shields.io/badge/Test262_language-95%25-brightgreen) |
+| Web Platform | ![WPT](https://img.shields.io/badge/WPT-25%25-orange) |
+| DOM | ![DOM](https://img.shields.io/badge/DOM-partial-yellow) |
+| HTML Parser | ![HTML](https://img.shields.io/badge/HTML-spec_compliant-brightgreen) |
+| CSS | ![CSS](https://img.shields.io/badge/CSS-partial-yellow) |
+| Layout | ![Layout](https://img.shields.io/badge/layout-partial-yellow) |
+| Paint | ![Paint](https://img.shields.io/badge/paint-shipped-brightgreen) |
+| Networking | ![Networking](https://img.shields.io/badge/networking-partial-yellow) |
+| JavaScript | ![JavaScript](https://img.shields.io/badge/JS-partial-yellow) |
+| Web APIs / DOM bindings | ![WebAPIs](https://img.shields.io/badge/Web_APIs-partial-yellow) |
+| GUI shell | ![GUI](https://img.shields.io/badge/GUI-partial-yellow) |
+| Multi-process / sandbox | ![Sandbox](https://img.shields.io/badge/sandbox-not_started-lightgrey) |
+| Security | ![Security](https://img.shields.io/badge/security-not_hardened-red) |
 
-| Bucket | Status | Summary |
-|---|---|---|
-| [**HTML parsing**](browser-plan/04_HTML_PARSING.md) | ✅ | Tokenizer (html5lib 100%) + spec-compliant tree builder. |
-| [**DOM**](browser-plan/05_DOM.md) | ✅ | Nodes, mutations, live collections, events. |
-| [**CSS**](browser-plan/06_CSS.md) | 🟡 | Selectors (incl. `:has`), cascade + layers, Color 4, nesting, `@font-face`. More properties ongoing. |
-| [**Layout**](browser-plan/07_LAYOUT.md) | 🟡 | Block, inline, margin collapse, Flexbox, minimal tables + Grid. More flex/grid ongoing. |
-| [**Paint**](browser-plan/08_FONTS_PAINT.md) | ✅ | Pure-managed ImageSharp.Drawing 3; one DisplayList drives headless + GUI. WebGPU by default, CPU optional. |
-| [**Networking**](browser-plan/03_NETWORKING.md) | ✅ | URL (WPT 100%), TLS 1.3, HTTP/1.1 + keep-alive, gzip/brotli, redirects, cookies + PSL. |
-| [**Image pipeline**](browser-plan/08_FONTS_PAINT.md) | ✅ | OS-native codecs, `data:` URIs, accessible names for unrenderable images. |
-| [**JS engine**](browser-plan/09_JS_ENGINE.md) | 🟡 | ES2024 parse → bytecode → register VM (Test262 `language` ≈ 81%). Optional [Jint backend](browser-plan/09_JS_ENGINE.md#alternative-engine-backend-jint) for higher compat. |
-| [**DOM bindings / Web APIs**](browser-plan/10_WEB_APIS.md) | 🟡 | `querySelector*`, `innerHTML`, `fetch`, `XMLHttpRequest`, timers, storage, observers, HTML-spec script loading. Runs real-world bundles end-to-end (netclaw.dev, above). |
-| [**GUI shell**](browser-plan/11_AVALONIA_SHELL.md) | 🟡 | Avalonia 12 desktop (win/mac/linux): browser chrome, DevTools panels, shared-session tabs, in-process MCP server for agent control. |
-| **Telemetry / Aspire** | ✅ | Aspire AppHost orchestrates Gui + Headless; shared OTel + health-check bootstrap. |
-| **Multi-process / sandbox / disk cache / HSTS** | ⚫ | M9+, not started. |
-
-See [`browser-plan/13_MILESTONES.md`](browser-plan/13_MILESTONES.md) for the
-milestone-by-milestone roadmap and [`tasks/INDEX.md`](tasks/INDEX.md) for the
-work-package queue.
+Each area has a focused design doc in [`browser-plan/`](browser-plan/) with the
+full feature inventory. See [`browser-plan/13_MILESTONES.md`](browser-plan/13_MILESTONES.md)
+for the milestone-by-milestone roadmap and [`tasks/INDEX.md`](tasks/INDEX.md)
+for the work-package queue.
 
 ## Quickstart
 
