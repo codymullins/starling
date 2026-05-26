@@ -261,6 +261,7 @@ public enum Opcode : byte
     IteratorBindNext, // peek iterator-record; if already Done push undefined, else IteratorStep and push result.value (undefined on done, sets Done). §8.5.3 array-pattern element step.
     IteratorRest,   // peek iterator-record; collect remaining values into a fresh JsArray until Done, push the array. §8.5.3 BindingRestElement.
     IteratorCloseForThrow, // pop iterator-record; invoke .return() if present (swallowing any return()-error so the in-flight throw wins, §7.4.10).
+    IteratorCloseFinally,  // pop iterator-record; close iff the enclosing try-frame's pending completion is abrupt (skip on Normal). Swallows return()-errors only for a pending Throw. Used by the for-of synthetic finally (§7.4.8 / §14.7.5.6).
     SpreadIterable, // pop iterable + peek target JsArray; append all iterable's values to target via @@iterator
 
     // ----- Apply-style calls (B3-2: call with materialized args array) -----

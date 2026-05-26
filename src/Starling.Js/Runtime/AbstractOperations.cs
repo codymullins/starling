@@ -418,8 +418,24 @@ public static class AbstractOperations
     /// <c>null</c> when the iterator has signalled completion.</summary>
     public static JsValue? IteratorStep(JsRealm realm, JsVm? vm, ref IteratorRecord record)
     {
-        var result = IteratorNext(realm, vm, record);
-        var done = IteratorComplete(vm, result);
+        // §8.5.3 / §7.4.8 — if reading the next result (calling next() or
+        // accessing its `done` attribute) completes abruptly, the iterator is
+        // considered closed: mark the record Done so a surrounding
+        // IteratorClose does NOT then call return() on it (the abrupt next()
+        // result already terminates the iterator). dstr/array-elision-iter-abpt
+        // et al. depend on return() NOT being invoked in this case.
+        JsValue result;
+        bool done;
+        try
+        {
+            result = IteratorNext(realm, vm, record);
+            done = IteratorComplete(vm, result);
+        }
+        catch
+        {
+            record = record with { Done = true };
+            throw;
+        }
         if (done)
         {
             record = record with { Done = true };

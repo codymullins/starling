@@ -142,6 +142,18 @@ public sealed partial class JsCompiler
         public List<int> BreakPatches { get; } = [];
         public List<int> ContinuePatches { get; } = [];
         public int TryDepthAtEntry { get; init; }
+        /// <summary>Try-frame depth seen by a <c>continue</c> targeting this
+        /// frame. For most loops this equals <see cref="TryDepthAtEntry"/>. A
+        /// for-of/for-in wraps each iteration body in a synthetic
+        /// <c>try { … } finally { IteratorClose }</c>: a <c>break</c> (or
+        /// outward break/continue/return/throw) must run that finalizer so the
+        /// iterator closes, but a <c>continue</c> to THIS loop must re-step
+        /// WITHOUT closing (§14.7.5.6 LoopContinues). The two therefore see
+        /// different depths — break uses <see cref="TryDepthAtEntry"/> (outer,
+        /// so it crosses the synthetic finally), continue uses this (inner, so
+        /// it stays within the protected region and just re-steps).
+        /// Null means "same as <see cref="TryDepthAtEntry"/>" (the common case).</summary>
+        public int? ContinueTryDepth { get; init; }
         /// <summary>True when this frame belongs to a switch statement rather
         /// than an iteration statement. A bare <c>continue</c> must skip switch
         /// frames and target the nearest enclosing iteration frame instead.</summary>
@@ -1320,7 +1332,7 @@ public sealed partial class JsCompiler
             default:
                 // Generic labeled block: push a break-only frame so that
                 // `break label` inside the body can exit to past this statement.
-                var frame = new LoopFrame { TryDepthAtEntry = _tryDepth, IsSwitch = true, Label = ls.Label };
+                var frame = new LoopFrame { TryDepthAtEntry = _tryDepth, ContinueTryDepth = _tryDepth, IsSwitch = true, Label = ls.Label };
                 _loops.Push(frame);
                 EmitStatement(ls.Body);
                 foreach (var p in frame.BreakPatches) _b.PatchJump(p);
@@ -1362,7 +1374,7 @@ public sealed partial class JsCompiler
         PushScope();
 
         // Push the loop frame (IsSwitch=true so that bare `continue` skips it).
-        var frame = new LoopFrame { TryDepthAtEntry = _tryDepth, IsSwitch = true, Label = outerLabel };
+        var frame = new LoopFrame { TryDepthAtEntry = _tryDepth, ContinueTryDepth = _tryDepth, IsSwitch = true, Label = outerLabel };
         _loops.Push(frame);
 
         // Hoist any function declarations visible at the top of the switch body.
@@ -1824,73 +1836,156 @@ public sealed partial class JsCompiler
             }
         }
 
+        if (fo.Await)
+        {
+            EmitForOfAwait(fo, handleSlot, perIterSlots, label);
+            PopScope();
+            return;
+        }
+
+        // §14.7.5.6 ForIn/OfBodyEvaluation — each iteration's body (the LHS
+        // binding + the statement) runs inside a synthetic
+        //   try { <bind value>; <body> } finally { IteratorClose-if-abrupt }
+        // so that EVERY abrupt completion out of the body — break (to this loop
+        // or an outer one), `continue label` to an outer loop, `return`,
+        // `throw`, or an error thrown while binding the LHS — runs the
+        // iterator's `return()` exactly once before control leaves. A plain
+        // `continue` to THIS loop and a normal body completion are NOT abrupt:
+        // they re-step the iterator without closing it. The finalizer
+        // distinguishes the two via the try-frame's pending completion
+        // (IteratorCloseFinally skips Normal). break/continue/return/throw
+        // crossing the synthetic finally are handled by the existing
+        // BranchThroughFinally / DivertReturnThroughFinally machinery.
+        //
+        // The loop frame's break uses the OUTER try-depth (so a break crosses
+        // the synthetic finally → closes); continue uses the INNER depth (so a
+        // continue stays inside the protected region and only re-steps).
+        var loop = new LoopFrame
+        {
+            TryDepthAtEntry = _tryDepth,
+            ContinueTryDepth = _tryDepth + 1,
+            Label = label,
+        };
+        _loops.Push(loop);
+
+        var loopStart = _b.Position;
+        // step = IteratorStep(handle); if done goto jExit. Done OUTSIDE the try
+        // region: a normal exhaustion leaves the record Done and must NOT run
+        // the iterator-close finalizer.
+        _b.EmitSlot(Opcode.LoadLocal, handleSlot);
+        _b.Emit(Opcode.IteratorStep);
+        _b.Emit(Opcode.Dup);
+        _b.Emit(Opcode.LoadUndefined);
+        _b.Emit(Opcode.StrictEq);
+        var jExit = _b.EmitJump(Opcode.JumpIfTrue);
+
+        // §14.7.5.6 step 5.c — IteratorValue(nextResult). This runs OUTSIDE the
+        // protected region: per §7.4.8 an error while reading `.value` does NOT
+        // close the iterator (the abrupt next()/value result is treated as
+        // already closing it), so the finalizer must not fire for it. Stash the
+        // value in a temp so the protected region starts/ends stack-balanced.
+        _b.EmitU16(Opcode.LoadProperty, _b.AddConstant("value"));
+        var valueSlot = _b.ReserveLocal();
+        _b.EmitSlot(Opcode.StoreLocal, valueSlot);
+
+        // ---- per-iteration protected region (binding + body) ----
+        _b.Emit(Opcode.EnterTry);
+        _b.EmitI32Raw(-1);                  // no catch handler
+        var finallyOperandPos = _b.Position;
+        _b.EmitI32Raw(-1);
+        _tryDepth++;
+        try
+        {
+            // CreatePerIterationEnvironment — refresh let/const bindings before
+            // the iteration's value is stored into them.
+            if (perIterSlots is not null)
+                foreach (var slot in perIterSlots)
+                    _b.EmitSlot(Opcode.RefreshLetBinding, slot);
+            // Bind the stepped value to LHS. A throw here (LHS reference /
+            // destructuring / PutValue error) propagates to the finally, which
+            // closes the iterator (§14.7.5.6 step 5.i / body-put / body-dstr).
+            _b.EmitSlot(Opcode.LoadLocal, valueSlot);
+            EmitForOfBinding(fo.Left);
+            EmitStatement(fo.Body);
+        }
+        finally
+        {
+            _tryDepth--;
+        }
+        // continue / normal body finish → LeaveTry, which routes through the
+        // finalizer with a Normal pending completion (IteratorCloseFinally
+        // skips the close). After EndFinally the Normal completion FALLS
+        // THROUGH to the `goto loopStart` emitted just past the finalizer, so
+        // the iterator re-steps. Abrupt completions (break/continue-label/
+        // return/throw) instead re-route at EndFinally and never reach that
+        // jump.
+        var continueTarget = _b.Position;
+        foreach (var p in loop.ContinuePatches) PatchBackwardJump(p, continueTarget);
+        _b.Emit(Opcode.LeaveTry);
+
+        // finalizer: close the iterator only when leaving abruptly.
+        var finallyTargetDelta = _b.Position - (finallyOperandPos + 4);
+        _b.PatchI32(finallyOperandPos, finallyTargetDelta);
+        _b.EmitSlot(Opcode.LoadLocal, handleSlot);
+        _b.Emit(Opcode.IteratorCloseFinally);
+        _b.Emit(Opcode.EndFinally);
+
+        // Normal completion resumes here (after EndFinally falls through):
+        // re-step the iterator.
+        var jBack = _b.EmitJump(Opcode.Jump);
+        PatchBackwardJump(jBack, loopStart);
+
+        // done: normal exhaustion. Pop the undefined sentinel left by
+        // IteratorStep; the record is already Done, so no close is needed.
+        _b.PatchJump(jExit);
+        _b.Emit(Opcode.Pop);
+        // break-target: a break to THIS loop crosses the synthetic finally
+        // (BranchThroughFinally), runs the close, then lands here.
+        foreach (var p in loop.BreakPatches) _b.PatchJump(p);
+
+        _loops.Pop();
+        PopScope();
+    }
+
+    /// <summary>wp:M3-04g — the <c>for await … of</c> form. Kept on the
+    /// pre-existing IteratorStep/await structure (the synchronous synthetic
+    /// try/finally would tangle with Suspend/await); abrupt-completion
+    /// IteratorClose for the async loop is the prior behavior.</summary>
+    private void EmitForOfAwait(ForOfStatement fo, int handleSlot, List<int>? perIterSlots, string? label)
+    {
         var loop = new LoopFrame { TryDepthAtEntry = _tryDepth, Label = label };
         _loops.Push(loop);
 
         var loopStart = _b.Position;
-        int jExit;
-        if (fo.Await)
-        {
-            // step = await iterator.next(); if step.done goto done.
-            _b.EmitSlot(Opcode.LoadLocal, handleSlot);
-            _b.Emit(Opcode.AsyncIteratorNext);   // push the next()-promise
-            _b.Emit(Opcode.Suspend);
-            _b.EmitU8Raw(1);                     // await → result object on top
-            // Stack: [iterResult]. Branch on .done (always an object here).
-            _b.Emit(Opcode.Dup);
-            _b.EmitU16(Opcode.LoadProperty, _b.AddConstant("done"));
-            jExit = _b.EmitJump(Opcode.JumpIfTrue);
-        }
-        else
-        {
-            _b.EmitSlot(Opcode.LoadLocal, handleSlot);
-            _b.Emit(Opcode.IteratorStep);
-            // Stack top is iterator-result-object or undefined. Compare with
-            // undefined; jump to done when so.
-            _b.Emit(Opcode.Dup);
-            _b.Emit(Opcode.LoadUndefined);
-            _b.Emit(Opcode.StrictEq);
-            jExit = _b.EmitJump(Opcode.JumpIfTrue);
-        }
-        // CreatePerIterationEnvironment — refresh let/const bindings before
-        // the iteration's value is stored into them.
+        // step = await iterator.next(); if step.done goto done.
+        _b.EmitSlot(Opcode.LoadLocal, handleSlot);
+        _b.Emit(Opcode.AsyncIteratorNext);   // push the next()-promise
+        _b.Emit(Opcode.Suspend);
+        _b.EmitU8Raw(1);                     // await → result object on top
+        _b.Emit(Opcode.Dup);
+        _b.EmitU16(Opcode.LoadProperty, _b.AddConstant("done"));
+        var jExit = _b.EmitJump(Opcode.JumpIfTrue);
+
         if (perIterSlots is not null)
-        {
             foreach (var slot in perIterSlots)
                 _b.EmitSlot(Opcode.RefreshLetBinding, slot);
-        }
-        // Stack: [iterResult]. Extract .value.
         _b.EmitU16(Opcode.LoadProperty, _b.AddConstant("value"));
-        // Stack: [value]. Bind to LHS.
         EmitForOfBinding(fo.Left);
-        // Body.
         EmitStatement(fo.Body);
-        // continue → loopStart (re-fetch via IteratorStep / async next).
         foreach (var p in loop.ContinuePatches) PatchBackwardJump(p, loopStart);
         var jBack = _b.EmitJump(Opcode.Jump);
         PatchBackwardJump(jBack, loopStart);
 
-        // break-target: enters the cleanup path WITHOUT the stale sentinel
-        // (break jumps from inside the body where the stack is balanced).
-        // Cleanup is duplicated from the normal-exit path below but with no
-        // initial Pop.
         foreach (var p in loop.BreakPatches) _b.PatchJump(p);
-        EmitForOfClose(handleSlot, fo.Await);
+        EmitForOfClose(handleSlot, isAwait: true);
         var jPastNormal = _b.EmitJump(Opcode.Jump);
 
         _b.PatchJump(jExit);
-        // Stack on exit: [undefined-sentinel] (sync) or [done iter-result]
-        // (async). Pop it.
         _b.Emit(Opcode.Pop);
-        // IteratorClose on normal completion is a no-op (record already done)
-        // but we emit the opcode so abrupt completions stack into the cleanup
-        // path uniformly. For async, normal completion has already drained the
-        // iterator (done:true), so close is a no-op there too.
-        EmitForOfClose(handleSlot, fo.Await);
+        EmitForOfClose(handleSlot, isAwait: true);
 
         _b.PatchJump(jPastNormal);
         _loops.Pop();
-        PopScope();
     }
 
     /// <summary>wp:M3-04g — emit the IteratorClose for a for-of cleanup path.
@@ -1922,10 +2017,17 @@ public sealed partial class JsCompiler
 
         // Materialize the key snapshot. EnumerateKeys handles null/undefined
         // by yielding an empty array (spec: silently skip the loop body).
+        // Keep the (coerced) source object too: §14.7.5.9 requires a key that
+        // has been DELETED before it is reached to be skipped, so each step
+        // re-checks that the property still exists.
         EmitExpression(fi.Right);
+        _b.Emit(Opcode.Dup);
         _b.Emit(Opcode.EnumerateKeys);
         var keysSlot = _b.ReserveLocal();
         _b.EmitSlot(Opcode.StoreLocal, keysSlot);
+        // [src] still on the stack — coerce nullish to undefined-safe and stash.
+        var srcSlot = _b.ReserveLocal();
+        _b.EmitSlot(Opcode.StoreLocal, srcSlot);
 
         // Iteration counter.
         var iSlot = _b.ReserveLocal();
@@ -1960,6 +2062,21 @@ public sealed partial class JsCompiler
         _b.Emit(Opcode.GtEq);
         var jExit = _b.EmitJump(Opcode.JumpIfTrue);
 
+        // §14.7.5.9 — skip a key that has been deleted (or otherwise no longer
+        // exists) since the snapshot was taken: `if (!(key in src)) continue;`.
+        // The snapshot's keys are strings (own + inherited enumerable), so a
+        // HasProperty check correctly skips deleted own keys while still
+        // visiting inherited ones.
+        _b.EmitSlot(Opcode.LoadLocal, keysSlot);
+        _b.EmitSlot(Opcode.LoadLocal, iSlot);
+        _b.Emit(Opcode.LoadComputed);       // [key]
+        _b.EmitSlot(Opcode.LoadLocal, srcSlot); // [key, src]
+        _b.Emit(Opcode.In);                 // [bool] — HasProperty(src, key)
+        var jVisit = _b.EmitJump(Opcode.JumpIfTrue);
+        // deleted → skip to the increment.
+        var jSkip = _b.EmitJump(Opcode.Jump);
+        _b.PatchJump(jVisit);
+
         // CreatePerIterationEnvironment — refresh let/const bindings before
         // the iteration's key is stored into them.
         if (perIterSlots is not null)
@@ -1978,6 +2095,7 @@ public sealed partial class JsCompiler
         EmitStatement(fi.Body);
         // continue → increment.
         var incPos = _b.Position;
+        _b.PatchJump(jSkip);
         foreach (var p in loop.ContinuePatches) PatchBackwardJump(p, incPos);
         // i++ (use load/add/store; the Inc-update path is not exposed here).
         _b.EmitSlot(Opcode.LoadLocal, iSlot);
@@ -2062,7 +2180,14 @@ public sealed partial class JsCompiler
             targetFrame = _loops.Peek();
         }
 
-        var crossedTryFrames = _tryDepth - targetFrame.TryDepthAtEntry;
+        // A `continue` to a for-of/for-in targets the iteration body's interior
+        // (inside the synthetic IteratorClose finally), so it uses the frame's
+        // ContinueTryDepth; a `break` (and every outward completion) uses the
+        // outer TryDepthAtEntry so it crosses that finally and closes.
+        var targetTryDepth = isBreak
+            ? targetFrame.TryDepthAtEntry
+            : (targetFrame.ContinueTryDepth ?? targetFrame.TryDepthAtEntry);
+        var crossedTryFrames = _tryDepth - targetTryDepth;
         if (crossedTryFrames > 0)
         {
             // wp:M3-15 — the break/continue exits the loop/switch across one or

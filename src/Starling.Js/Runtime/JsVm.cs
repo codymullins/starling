@@ -1750,7 +1750,20 @@ public sealed class JsVm
                     else
                     {
                         var step = AbstractOperations.IteratorStep(_runtime.Realm, this, ref handle.Record);
-                        Push(step is null ? JsValue.Undefined : AbstractOperations.IteratorValue(this, step.Value));
+                        if (step is null)
+                        {
+                            Push(JsValue.Undefined);
+                        }
+                        else
+                        {
+                            // §8.5.3 — if IteratorValue (reading .value) throws,
+                            // the iterator is considered closed: mark Done so a
+                            // surrounding IteratorClose skips return().
+                            JsValue v;
+                            try { v = AbstractOperations.IteratorValue(this, step.Value); }
+                            catch { handle.Record = handle.Record with { Done = true }; throw; }
+                            Push(v);
+                        }
                     }
                     break;
                 }
@@ -1786,6 +1799,29 @@ public sealed class JsVm
                         && !h.Record.Done)
                     {
                         AbstractOperations.IteratorClose(this, h.Record, isThrowing: true);
+                    }
+                    break;
+                }
+
+                case Opcode.IteratorCloseFinally:
+                {
+                    // §7.4.8 / §14.7.5.6 — the for-of synthetic finalizer. The
+                    // for-of frame is on top of the try-stack with its pending
+                    // completion set (LeaveTry/Divert pushed it back before
+                    // jumping here). Close iff that completion is abrupt; on a
+                    // Normal pending completion (ordinary body finish OR a
+                    // `continue` to this loop) leave the iterator open so the
+                    // next iteration re-steps it. Swallow return()-errors only
+                    // for a pending Throw so the in-flight throw still wins.
+                    var handleV = Pop();
+                    var pending = tryStack.Count > 0 ? tryStack.Peek().Pending : PendingCompletion.Normal;
+                    if (pending != PendingCompletion.Normal
+                        && handleV.IsObject
+                        && handleV.AsObject is Starling.Js.Intrinsics.JsIteratorRecordHandle hf
+                        && !hf.Record.Done)
+                    {
+                        AbstractOperations.IteratorClose(
+                            this, hf.Record, isThrowing: pending == PendingCompletion.Throw);
                     }
                     break;
                 }
@@ -1871,13 +1907,24 @@ public sealed class JsVm
                         var obj = AbstractOperations.ToObject(_runtime.Realm, src);
                         var emitted = new HashSet<string>(StringComparer.Ordinal);
                         var shadowed = new HashSet<string>(StringComparer.Ordinal);
+                        // §10.1.11.1 OrdinaryOwnPropertyKeys ordering: integer
+                        // ("array index") keys first, in ascending numeric order,
+                        // then the remaining string keys in insertion order.
+                        // Integer keys are collected across the whole prototype
+                        // chain (deduped) and sorted; string keys keep their
+                        // per-level insertion order (own object first, then up
+                        // the chain).
+                        var intKeys = new SortedDictionary<uint, string>();
+                        var strKeys = new List<string>();
                         var current = obj;
                         while (current is not null)
                         {
                             foreach (var k in current.EnumerableKeys())
                             {
                                 if (shadowed.Contains(k)) continue;
-                                if (emitted.Add(k)) snapshot.Push(JsValue.String(k));
+                                if (!emitted.Add(k)) continue;
+                                if (JsArray.IsArrayIndex(k, out var idx)) intKeys[idx] = k;
+                                else strKeys.Add(k);
                             }
                             // Any own key (enumerable or not) on this level
                             // shadows same-named keys further up the proto
@@ -1886,6 +1933,8 @@ public sealed class JsVm
                             foreach (var k in current.Keys) shadowed.Add(k);
                             current = current.Prototype;
                         }
+                        foreach (var pair in intKeys) snapshot.Push(JsValue.String(pair.Value));
+                        foreach (var k in strKeys) snapshot.Push(JsValue.String(k));
                     }
                     Push(JsValue.Object(snapshot));
                     break;
