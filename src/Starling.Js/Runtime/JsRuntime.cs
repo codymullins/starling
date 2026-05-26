@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Starling.Js.Intrinsics;
 
 namespace Starling.Js.Runtime;
@@ -13,6 +14,12 @@ namespace Starling.Js.Runtime;
 /// </remarks>
 public sealed class JsRuntime
 {
+    // Shared ActivitySource with the rest of the engine subsystems
+    // (OtelDiagnostics.SourceName = "Starling.Engine"). Telemetry listeners
+    // pick spans up by name match — duplicating the constant here avoids a
+    // Starling.Telemetry reference from Starling.Js.
+    private static readonly ActivitySource RuntimeActivitySource = new("Starling.Engine");
+
     public JsRealm Realm { get; }
     public JsObject Global => Realm.GlobalObject;
 
@@ -36,6 +43,12 @@ public sealed class JsRuntime
 
     public JsRuntime()
     {
+        // Realm + intrinsic install is the heavyweight part of JS startup —
+        // every realm constructed (per page, per worker) walks the same
+        // installer list. A single span makes the cost visible alongside
+        // engine.fetch_html / engine.parse_html in the trace timeline.
+        using var realmActivity = RuntimeActivitySource.StartActivity(
+            "js.realm.init", ActivityKind.Internal);
         Realm = new JsRealm();
         // wp:M3-83 — back-reference so host re-entry into THIS realm (e.g. a
         // foreign $262.createRealm() realm whose eval/functions are invoked from

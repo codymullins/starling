@@ -5,15 +5,30 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace Starling.Gui.Mcp;
+namespace Starling.Mcp;
 
-public sealed class GuiMcpServer : IAsyncDisposable
+/// <summary>
+/// Loopback HTTP/1.1 + JSON-RPC 2.0 host for the MCP protocol. Generalised
+/// from the original GUI-only server: composes any mix of tool groups and
+/// resource providers, so the same code serves the GUI (browser-control +
+/// telemetry tools) and the headless CLI (telemetry only). Connection-per-
+/// request transport — push/streaming features (resources/subscribe, server-
+/// initiated notifications) are out of scope here.
+/// </summary>
+public sealed class StarlingMcpServer : IAsyncDisposable
 {
-    private const string DefaultUrl = "http://127.0.0.1:3077/mcp";
     private const int MaxHeaderBytes = 32 * 1024;
     private const int MaxBodyBytes = 1024 * 1024;
+    private const string DefaultProtocolVersion = "2025-11-25";
 
-    private readonly BrowserTools _tools;
+    private readonly IReadOnlyList<IMcpToolGroup> _toolGroups;
+    private readonly IReadOnlyList<IMcpResourceProvider> _resourceProviders;
+    private readonly string _serverName;
+    private readonly string _serverTitle;
+    private readonly string _serverVersion;
+    private readonly bool _advertiseResources;
+    private readonly string _toolsListJson;
+    private readonly string _resourcesListJson;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly TaskCompletionSource _stopped =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -21,10 +36,28 @@ public sealed class GuiMcpServer : IAsyncDisposable
     private TcpListener? _listener;
     private Task? _acceptLoop;
 
-    public GuiMcpServer(BrowserControlBridge browser)
+    public StarlingMcpServer(
+        Uri endpoint,
+        IEnumerable<IMcpToolGroup> toolGroups,
+        IEnumerable<IMcpResourceProvider>? resourceProviders = null,
+        string serverName = "starling",
+        string serverTitle = "Starling",
+        string serverVersion = "0.1.0")
     {
-        _tools = new BrowserTools(browser);
-        Endpoint = ResolveEndpoint();
+        ArgumentNullException.ThrowIfNull(endpoint);
+        ArgumentNullException.ThrowIfNull(toolGroups);
+
+        _toolGroups = toolGroups.ToArray();
+        _resourceProviders = (resourceProviders ?? []).ToArray();
+        _serverName = serverName;
+        _serverTitle = serverTitle;
+        _serverVersion = serverVersion;
+        _advertiseResources = _resourceProviders.Count > 0;
+        _toolsListJson = BuildListJson("tools", _toolGroups.Select(g => g.GetToolDescriptorsJson()));
+        _resourcesListJson = BuildListJson("resources",
+            _resourceProviders.Select(p => p.GetResourceDescriptorsJson()));
+        Endpoint = endpoint;
+        ValidateEndpoint(endpoint);
     }
 
     public Uri Endpoint { get; }
@@ -147,8 +180,12 @@ public sealed class GuiMcpServer : IAsyncDisposable
         {
             "initialize" => JsonRpcResult(id, InitializeResult(root)),
             "ping" => JsonRpcResult(id, new JsonObject()),
-            "tools/list" => JsonRpcResult(id, ToolsList()),
+            "tools/list" => JsonRpcResult(id, ParseListJson(_toolsListJson)),
             "tools/call" => JsonRpcResult(id, await CallToolAsync(root, ct).ConfigureAwait(false)),
+            "resources/list" when _advertiseResources
+                => JsonRpcResult(id, ParseListJson(_resourcesListJson)),
+            "resources/read" when _advertiseResources
+                => await ReadResourceAsync(id, root, ct).ConfigureAwait(false),
             _ => JsonRpcError(id, -32601, $"Method not found: {method}"),
         };
     }
@@ -158,244 +195,76 @@ public sealed class GuiMcpServer : IAsyncDisposable
         if (!request.TryGetProperty("params", out var @params) ||
             !@params.TryGetProperty("name", out var nameElement))
         {
-            return ToolResult(
-                BrowserControlResult.Failure(
-                    "tools/call requires params.name.",
-                    null,
-                    null,
-                    canGoBack: false,
-                    canGoForward: false,
-                    isBusy: false));
+            return ToolErrorResult("tools/call requires params.name.");
         }
 
-        var arguments = @params.TryGetProperty("arguments", out var args)
-            ? args
-            : default;
-        var name = nameElement.GetString();
-        BrowserControlResult result = name switch
+        var name = nameElement.GetString() ?? string.Empty;
+        var arguments = @params.TryGetProperty("arguments", out var args) ? args : default;
+
+        foreach (var group in _toolGroups)
         {
-            "browser_navigate" => await _tools.BrowserNavigate(ReadUrlArgument(arguments), ct).ConfigureAwait(false),
-            "browser_back" => await _tools.BrowserBack(ct).ConfigureAwait(false),
-            "browser_forward" => await _tools.BrowserForward(ct).ConfigureAwait(false),
-            "browser_refresh" => await _tools.BrowserRefresh(ct).ConfigureAwait(false),
-            "browser_screenshot" => await _tools.BrowserScreenshot(
-                ReadStringArgument(arguments, "path"), ct).ConfigureAwait(false),
-            "browser_inspect" => await _tools.BrowserInspect(
-                ReadBoolArgument(arguments, "includeHtml"),
-                ReadOptionalStringArgument(arguments, "logPath"),
-                ct).ConfigureAwait(false),
-            "browser_click" => await _tools.BrowserClick(
-                ReadDoubleArgument(arguments, "x"),
-                ReadDoubleArgument(arguments, "y"),
-                ct).ConfigureAwait(false),
-            "browser_move" => await _tools.BrowserMove(
-                ReadDoubleArgument(arguments, "x"),
-                ReadDoubleArgument(arguments, "y"),
-                ct).ConfigureAwait(false),
-            "browser_type" => await _tools.BrowserType(
-                ReadStringArgument(arguments, "text"),
-                ReadBoolArgument(arguments, "submit"),
-                ct).ConfigureAwait(false),
-            _ => BrowserControlResult.Failure(
-                $"Unknown browser tool: {name}",
-                null,
-                null,
-                canGoBack: false,
-                canGoForward: false,
-                isBusy: false),
-        };
-        return ToolResult(result);
-    }
-
-    private static string ReadUrlArgument(JsonElement arguments)
-    {
-        if (arguments.ValueKind == JsonValueKind.Object &&
-            arguments.TryGetProperty("url", out var url) &&
-            url.ValueKind == JsonValueKind.String)
-        {
-            return url.GetString() ?? string.Empty;
-        }
-
-        return string.Empty;
-    }
-
-    private static string ReadStringArgument(JsonElement arguments, string name)
-        => ReadOptionalStringArgument(arguments, name) ?? string.Empty;
-
-    private static string? ReadOptionalStringArgument(JsonElement arguments, string name)
-    {
-        if (arguments.ValueKind == JsonValueKind.Object &&
-            arguments.TryGetProperty(name, out var value) &&
-            value.ValueKind == JsonValueKind.String)
-        {
-            return value.GetString();
-        }
-
-        return null;
-    }
-
-    private static bool ReadBoolArgument(JsonElement arguments, string name)
-        => arguments.ValueKind == JsonValueKind.Object &&
-           arguments.TryGetProperty(name, out var value) &&
-           value.ValueKind == JsonValueKind.True;
-
-    private static double ReadDoubleArgument(JsonElement arguments, string name)
-        => arguments.ValueKind == JsonValueKind.Object &&
-           arguments.TryGetProperty(name, out var value) &&
-           value.ValueKind == JsonValueKind.Number &&
-           value.TryGetDouble(out var d)
-               ? d
-               : 0;
-
-    private static JsonNode InitializeResult(JsonElement request)
-    {
-        var protocolVersion = "2025-11-25";
-        if (request.TryGetProperty("params", out var @params) &&
-            @params.TryGetProperty("protocolVersion", out var requested) &&
-            requested.ValueKind == JsonValueKind.String &&
-            !string.IsNullOrWhiteSpace(requested.GetString()))
-        {
-            protocolVersion = requested.GetString()!;
-        }
-
-        return new JsonObject
-        {
-            ["protocolVersion"] = protocolVersion,
-            ["capabilities"] = new JsonObject
+            if (!group.HasTool(name)) continue;
+            try
             {
-                ["tools"] = new JsonObject
-                {
-                    ["listChanged"] = false,
-                },
-            },
-            ["serverInfo"] = new JsonObject
-            {
-                ["name"] = "starling-gui",
-                ["title"] = "Starling GUI",
-                ["version"] = "0.1.0",
-            },
-        };
-    }
-
-    // The tool catalogue is fully static, so parse it from a constant rather
-    // than building it with JsonArray collection initializers — JsonArray's
-    // generic Add<T> carries [RequiresDynamicCode]/[RequiresUnreferencedCode],
-    // whereas JsonNode.Parse is NativeAOT-safe. Parsing yields a fresh tree per
-    // call, so callers are free to mutate/attach it. (JsonObject built via the
-    // indexer setter, by contrast, is already AOT-safe and used elsewhere here.)
-    private static JsonNode ToolsList() => JsonNode.Parse(ToolsListJson)!;
-
-    private const string ToolsListJson = """
-        {
-          "tools": [
-            {
-              "name": "browser_navigate",
-              "description": "Navigate the visible Starling browser window to a URL.",
-              "inputSchema": {
-                "type": "object",
-                "properties": {
-                  "url": {
-                    "type": "string",
-                    "description": "The absolute URL to load, for example https://example.com."
-                  }
-                },
-                "required": ["url"]
-              }
-            },
-            {
-              "name": "browser_back",
-              "description": "Navigate the visible Starling browser window back in history.",
-              "inputSchema": { "type": "object", "properties": {} }
-            },
-            {
-              "name": "browser_forward",
-              "description": "Navigate the visible Starling browser window forward in history.",
-              "inputSchema": { "type": "object", "properties": {} }
-            },
-            {
-              "name": "browser_refresh",
-              "description": "Reload the current page in the visible Starling browser window.",
-              "inputSchema": { "type": "object", "properties": {} }
-            },
-            {
-              "name": "browser_screenshot",
-              "description": "Capture the current page in the visible Starling browser window to a PNG file (full scroll extent). The written path is returned in `detail`.",
-              "inputSchema": {
-                "type": "object",
-                "properties": {
-                  "path": {
-                    "type": "string",
-                    "description": "Output PNG path. Relative paths resolve against the GUI's working directory. Defaults to starling-screenshot.png."
-                  }
-                }
-              }
-            },
-            {
-              "name": "browser_inspect",
-              "description": "Inspect the current page: URL, title, live-scripting state, and recent JS console warnings/errors, returned in `detail`. Optionally include the serialized outerHTML and/or dump a full telemetry+HTML report to a logfile.",
-              "inputSchema": {
-                "type": "object",
-                "properties": {
-                  "includeHtml": {
-                    "type": "boolean",
-                    "description": "Include the page's serialized outerHTML in the response (truncated to 100 KB)."
-                  },
-                  "logPath": {
-                    "type": "string",
-                    "description": "If set, write a full report (all telemetry logs + complete outerHTML) to this file path."
-                  }
-                }
-              }
-            },
-            {
-              "name": "browser_click",
-              "description": "Left-click a point on the current page. Coordinates are page pixels from the document's top-left (same space browser_screenshot captures, full scroll extent). Clicking a text field focuses it (follow with browser_type); a link/button/checkbox is activated. The outcome is returned in `detail`.",
-              "inputSchema": {
-                "type": "object",
-                "properties": {
-                  "x": { "type": "number", "description": "X coordinate in page pixels from the document's left edge." },
-                  "y": { "type": "number", "description": "Y coordinate in page pixels from the document's top edge." }
-                },
-                "required": ["x", "y"]
-              }
-            },
-            {
-              "name": "browser_move",
-              "description": "Move the mouse to a point on the current page, updating hover/cursor state and dispatching DOM mouseover/mousemove/mouseout so JS hover handlers run. Coordinates are page pixels from the document's top-left (same space as browser_screenshot). What is under the cursor is returned in `detail`.",
-              "inputSchema": {
-                "type": "object",
-                "properties": {
-                  "x": { "type": "number", "description": "X coordinate in page pixels from the document's left edge." },
-                  "y": { "type": "number", "description": "Y coordinate in page pixels from the document's top edge." }
-                },
-                "required": ["x", "y"]
-              }
-            },
-            {
-              "name": "browser_type",
-              "description": "Type text into the currently focused text field (focus one first with browser_click). Fires a DOM input event so search-as-you-type and form handlers run. Set submit=true to press Enter afterward, submitting the owning form. The field's new value is returned in `detail`.",
-              "inputSchema": {
-                "type": "object",
-                "properties": {
-                  "text": { "type": "string", "description": "The literal text to type. Control characters are ignored." },
-                  "submit": { "type": "boolean", "description": "Press Enter after typing to submit the owning form. Defaults to false." }
-                },
-                "required": ["text"]
-              }
+                var result = await group.InvokeAsync(name, arguments, ct).ConfigureAwait(false);
+                return ToolResult(result);
             }
-          ]
+            catch (ArgumentException ex)
+            {
+                return ToolErrorResult(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[Starling MCP] tool '{name}' failed: {ex}");
+                return ToolErrorResult($"Tool '{name}' failed: {ex.Message}");
+            }
         }
-        """;
 
-    private static JsonNode ToolResult(BrowserControlResult result)
+        return ToolErrorResult($"Unknown tool: {name}");
+    }
+
+    private async Task<JsonNode> ReadResourceAsync(JsonElement? id, JsonElement request, CancellationToken ct)
     {
-        // Hand-build the JSON DOM so the whole MCP surface stays NativeAOT-safe
-        // (no reflection-based JsonSerializer). `text` carries the same payload
-        // string the structuredContent object holds, so parse a fresh copy for
-        // the structured field — a JsonNode can't be attached to two parents.
-        var text = ResultObject(result).ToJsonString();
-        // JsonArray's params-ctor takes JsonNode? items directly (AOT-safe),
-        // unlike the { } collection initializer which routes through Add<T>.
+        if (!request.TryGetProperty("params", out var @params) ||
+            !@params.TryGetProperty("uri", out var uriElement) ||
+            uriElement.ValueKind != JsonValueKind.String)
+        {
+            return JsonRpcError(id, -32602, "resources/read requires params.uri.");
+        }
+
+        var uri = uriElement.GetString() ?? string.Empty;
+        foreach (var provider in _resourceProviders)
+        {
+            if (!provider.HasResource(uri)) continue;
+            try
+            {
+                var content = await provider.ReadAsync(uri, ct).ConfigureAwait(false);
+                return JsonRpcResult(id, new JsonObject
+                {
+                    ["contents"] = new JsonArray(
+                        new JsonObject
+                        {
+                            ["uri"] = uri,
+                            ["mimeType"] = content.MimeType,
+                            ["text"] = content.Text,
+                        }),
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[Starling MCP] resource '{uri}' read failed: {ex}");
+                return JsonRpcError(id, -32603, $"Resource '{uri}' read failed: {ex.Message}");
+            }
+        }
+
+        return JsonRpcError(id, -32602, $"Unknown resource: {uri}");
+    }
+
+    private static JsonNode ToolResult(McpToolResult result)
+    {
+        // Stringify once for the text-content channel, then parse a fresh copy
+        // for structuredContent — a JsonNode can't be attached to two parents.
+        var text = result.StructuredContent.ToJsonString();
         return new JsonObject
         {
             ["content"] = new JsonArray(
@@ -405,21 +274,85 @@ public sealed class GuiMcpServer : IAsyncDisposable
                     ["text"] = text,
                 }),
             ["structuredContent"] = JsonNode.Parse(text),
-            ["isError"] = !result.Ok,
+            ["isError"] = result.IsError,
         };
     }
 
-    private static JsonObject ResultObject(BrowserControlResult result) => new()
+    private static JsonNode ToolErrorResult(string message) => new JsonObject
     {
-        ["ok"] = result.Ok,
-        ["url"] = result.Url,
-        ["title"] = result.Title,
-        ["canGoBack"] = result.CanGoBack,
-        ["canGoForward"] = result.CanGoForward,
-        ["isBusy"] = result.IsBusy,
-        ["error"] = result.Error,
-        ["detail"] = result.Detail,
+        ["content"] = new JsonArray(
+            new JsonObject
+            {
+                ["type"] = "text",
+                ["text"] = message,
+            }),
+        ["isError"] = true,
     };
+
+    private JsonNode InitializeResult(JsonElement request)
+    {
+        var protocolVersion = DefaultProtocolVersion;
+        if (request.TryGetProperty("params", out var @params) &&
+            @params.TryGetProperty("protocolVersion", out var requested) &&
+            requested.ValueKind == JsonValueKind.String &&
+            !string.IsNullOrWhiteSpace(requested.GetString()))
+        {
+            protocolVersion = requested.GetString()!;
+        }
+
+        var capabilities = new JsonObject
+        {
+            ["tools"] = new JsonObject { ["listChanged"] = false },
+        };
+        if (_advertiseResources)
+            capabilities["resources"] = new JsonObject
+            {
+                ["listChanged"] = false,
+                ["subscribe"] = false,
+            };
+
+        return new JsonObject
+        {
+            ["protocolVersion"] = protocolVersion,
+            ["capabilities"] = capabilities,
+            ["serverInfo"] = new JsonObject
+            {
+                ["name"] = _serverName,
+                ["title"] = _serverTitle,
+                ["version"] = _serverVersion,
+            },
+        };
+    }
+
+    // Compose the union of group/provider descriptors into one
+    // <c>{"tools": [...]}</c> or <c>{"resources": [...]}</c> string at
+    // construction time. The string is parsed fresh per request — JsonNode
+    // trees can't be reattached to a new parent, but a string-cache keeps
+    // the hot path allocation-light and AOT-safe (no JsonSerializer reflection).
+    private static string BuildListJson(string key, IEnumerable<string> arrayLiterals)
+    {
+        var merged = new JsonArray();
+        foreach (var literal in arrayLiterals)
+        {
+            if (string.IsNullOrWhiteSpace(literal)) continue;
+            var parsed = JsonNode.Parse(literal) as JsonArray
+                ?? throw new InvalidOperationException(
+                    $"Tool/resource group returned a non-array JSON literal: {literal}");
+            // Detach each element from its parent array so it can be re-parented.
+            // Pre-materialise the entries since assigning into the new array
+            // mutates the source's index → don't iterate the source directly.
+            var entries = parsed.ToArray();
+            foreach (var entry in entries)
+            {
+                if (entry is null) continue;
+                parsed.Remove(entry);
+                merged.Add(entry);
+            }
+        }
+        return new JsonObject { [key] = merged }.ToJsonString();
+    }
+
+    private static JsonNode ParseListJson(string json) => JsonNode.Parse(json)!;
 
     private static JsonNode JsonRpcResult(JsonElement? id, JsonNode result) => new JsonObject
     {
@@ -447,6 +380,20 @@ public sealed class GuiMcpServer : IAsyncDisposable
     // reflection; a JSON null id yields a null node → "id": null.
     private static JsonNode? IdToNode(JsonElement? id)
         => id is { } element ? JsonNode.Parse(element.GetRawText()) : null;
+
+    private static void ValidateEndpoint(Uri endpoint)
+    {
+        if (endpoint.Scheme != Uri.UriSchemeHttp)
+            throw new ArgumentException("MCP endpoint scheme must be http.", nameof(endpoint));
+        if (!IsLoopbackHost(endpoint.Host))
+            throw new ArgumentException("MCP endpoint must be a loopback host.", nameof(endpoint));
+        if (string.IsNullOrEmpty(endpoint.AbsolutePath) || endpoint.AbsolutePath == "/")
+            throw new ArgumentException("MCP endpoint must include a path, e.g. /mcp.", nameof(endpoint));
+    }
+
+    private static bool IsLoopbackHost(string host)
+        => host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+           IPAddress.TryParse(host, out var ip) && IPAddress.IsLoopback(ip);
 
     private static async Task<HttpRequest?> ReadRequestAsync(Stream stream, CancellationToken ct)
     {
@@ -571,7 +518,7 @@ public sealed class GuiMcpServer : IAsyncDisposable
         return Encoding.ASCII.GetString(bytes.ToArray());
     }
 
-    private async Task WriteJsonResponseAsync(Stream stream, JsonNode json, CancellationToken ct)
+    private static async Task WriteJsonResponseAsync(Stream stream, JsonNode json, CancellationToken ct)
     {
         var body = Encoding.UTF8.GetBytes(json.ToJsonString());
         await WriteResponseAsync(stream, 200, "OK", "application/json", body, ct).ConfigureAwait(false);
@@ -599,7 +546,7 @@ public sealed class GuiMcpServer : IAsyncDisposable
             await stream.WriteAsync(body, ct).ConfigureAwait(false);
     }
 
-    private bool IsAllowedHost(string? host)
+    private static bool IsAllowedHost(string? host)
     {
         if (string.IsNullOrWhiteSpace(host)) return false;
         var withoutPort = host;
@@ -615,28 +562,6 @@ public sealed class GuiMcpServer : IAsyncDisposable
         return withoutPort.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
                IPAddress.TryParse(withoutPort, out var ip) && IPAddress.IsLoopback(ip);
     }
-
-    private static Uri ResolveEndpoint()
-    {
-        var configured = Environment.GetEnvironmentVariable("STARLING_MCP_URL");
-        if (string.IsNullOrWhiteSpace(configured))
-            return new Uri(DefaultUrl);
-
-        if (!Uri.TryCreate(configured, UriKind.Absolute, out var uri) ||
-            uri.Scheme != Uri.UriSchemeHttp ||
-            !IPAddressIsLoopback(uri.Host) ||
-            uri.AbsolutePath is "" or "/")
-        {
-            throw new InvalidOperationException(
-                "STARLING_MCP_URL must be an absolute loopback HTTP URL with a path, for example http://127.0.0.1:3077/mcp.");
-        }
-
-        return uri;
-    }
-
-    private static bool IPAddressIsLoopback(string host)
-        => host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
-           IPAddress.TryParse(host, out var ip) && IPAddress.IsLoopback(ip);
 
     private sealed record HttpRequest(string Method, string Path, string? Host, byte[] Body);
 }

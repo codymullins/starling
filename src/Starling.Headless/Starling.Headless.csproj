@@ -11,5 +11,9 @@
          Aspire ServiceDefaults: the CLI doesn't use HostBuilder or
          ASP.NET, and OtelBootstrap.Initialize works on a plain Main. -->
     <ProjectReference Include="..\Starling.Telemetry\Starling.Telemetry.csproj" />
+    <!-- Optional MCP surface — only listens when STARLING_HEADLESS_MCP_URL
+         is set. Lets driving agents query the engine's own spans/logs/metrics
+         without going through the Aspire dashboard. -->
+    <ProjectReference Include="..\Starling.Mcp\Starling.Mcp.csproj" />
   </ItemGroup>
 </Project>

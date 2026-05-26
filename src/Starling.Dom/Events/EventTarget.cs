@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace Starling.Dom.Events;
 
 /// <summary>
@@ -52,8 +54,41 @@ public abstract class EventTarget
         if (@event.DispatchFlag)
             throw new InvalidOperationException("Event is already being dispatched.");
 
-        return EventDispatcher.Dispatch(this, @event);
+        // Surface the dispatch in OpenTelemetry traces — the Starling.Engine
+        // ActivitySource is shared with every other engine subsystem so the
+        // span shows up beside fetch/parse/layout/paint in the dashboard.
+        // StartActivity returns null when no listener is attached, so the
+        // hot path stays allocation-free.
+        using var activity = EventActivitySource.StartActivity("dom.event", ActivityKind.Internal);
+        if (activity is not null)
+        {
+            activity.SetTag("event.type", @event.Type);
+            activity.SetTag("event.bubbles", @event.Bubbles);
+            activity.SetTag("event.cancelable", @event.Cancelable);
+            activity.SetTag("event.target", DescribeTarget(this));
+        }
+
+        var notCanceled = EventDispatcher.Dispatch(this, @event);
+
+        if (activity is not null)
+        {
+            activity.SetTag("event.defaultPrevented", @event.DefaultPrevented);
+            activity.SetTag("event.propagationStopped", @event.PropagationStopped);
+        }
+
+        return notCanceled;
     }
+
+    private static string DescribeTarget(EventTarget target) => target switch
+    {
+        Element el => string.IsNullOrEmpty(el.Id)
+            ? el.TagName
+            : $"{el.TagName}#{el.Id}",
+        Document => "#document",
+        _ => target.GetType().Name,
+    };
+
+    private static readonly ActivitySource EventActivitySource = new("Starling.Engine");
 
     internal IReadOnlyList<ListenerEntry> ListenersSnapshot()
         => _listeners is null ? Array.Empty<ListenerEntry>() : _listeners.ToArray();

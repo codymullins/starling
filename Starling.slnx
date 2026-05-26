@@ -7,6 +7,7 @@
   <Folder Name="/src/">
     <Project Path="src/Starling.Codecs/Starling.Codecs.csproj" />
     <Project Path="src/Starling.Gui/Starling.Gui.csproj" />
+    <Project Path="src/Starling.Mcp/Starling.Mcp.csproj" />
     <Project Path="src/Starling.Telemetry/Starling.Telemetry.csproj" />
   </Folder>
   <Folder Name="/tests/">
@@ -14,6 +15,7 @@
     <Project Path="tests/Starling.Css.Spec.Tests/Starling.Css.Spec.Tests.csproj" />
     <Project Path="tests/Starling.Gui.Tests/Starling.Gui.Tests.csproj" />
     <Project Path="tests/Starling.Gui.Headless.Tests/Starling.Gui.Headless.Tests.csproj" />
+    <Project Path="tests/Starling.Mcp.Tests/Starling.Mcp.Tests.csproj" />
     <Project Path="tests/Starling.Spec.Common/Starling.Spec.Common.csproj" />
   </Folder>
   <Folder Name="/tools/">

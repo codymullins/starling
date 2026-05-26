@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- CA1859: the hand-built JsonNode helpers return the abstract JsonNode
+         on purpose (interchangeable result types across method arms — error vs.
+         result objects). Matches the GUI's existing suppression. -->
+    <NoWarn>$(NoWarn);CA1859</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Starling.Telemetry\Starling.Telemetry.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Starling.Mcp.Tests" />
+  </ItemGroup>
+</Project>

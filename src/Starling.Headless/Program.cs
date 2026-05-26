@@ -2,6 +2,8 @@ using SixLabors.ImageSharp;
 using Starling.Common.Diagnostics;
 using Starling.Engine;
 using Starling.Html.Tokenizer;
+using Starling.Mcp;
+using Starling.Mcp.Telemetry;
 using Starling.Telemetry;
 
 namespace Starling.Headless;
@@ -25,7 +27,13 @@ internal static class Program
         // run directly, the providers are still wired but the exporter is a
         // no-op. We tee the OTel-backed IDiagnostics with ConsoleDiagnostics
         // so plain `dotnet run` still emits stderr trace lines.
-        using var telemetry = OtelBootstrap.Initialize("starling-headless");
+        //
+        // When STARLING_HEADLESS_MCP_URL is set we also build the in-memory
+        // ring-buffer sinks so the MCP server can hand spans/logs/metrics back
+        // to driving agents.
+        var mcpUrl = ResolveMcpUrl();
+        var withInMemorySinks = mcpUrl is not null;
+        using var telemetry = OtelBootstrap.Initialize("starling-headless", withInMemorySinks);
         // STARLING_DIAG_TRACE=1 lowers the console-diag floor to Trace so paint
         // span timings ([Trace] paint: - raster.command_record (Xms)) appear
         // on stderr — useful for backend perf comparisons without spinning up
@@ -35,24 +43,98 @@ internal static class Program
             new ConsoleDiagnostics { MinLevel = traceConsole ? DiagLevel.Trace : DiagLevel.Info },
             telemetry.Diagnostics);
 
-        if (args.Length == 0)
+        var mcp = mcpUrl is not null && telemetry.TelemetryStream is not null
+            ? StartMcpServer(mcpUrl, telemetry.TelemetryStream)
+            : null;
+        try
         {
-            PrintUsage();
-            return 0;
+            if (args.Length == 0)
+            {
+                PrintUsage();
+                return 0;
+            }
+
+            var sub = args[0];
+            var rest = args[1..];
+
+            var exitCode = sub switch
+            {
+                "render" => Render(rest),
+                "tokenize" => Tokenize(rest),
+                "parse" or "style" or "layout" or "js"
+                    => StubSubcommand(sub),
+                "-h" or "--help" or "help" => UsageOk(),
+                _ => UnknownSubcommand(sub),
+            };
+
+            // With MCP enabled, hold the process open after the subcommand
+            // finishes so a driving agent can inspect post-mortem telemetry.
+            // Exits on Ctrl+C with the subcommand's return code preserved.
+            if (mcp is not null)
+                WaitForShutdownSignal(mcp.Endpoint);
+            return exitCode;
         }
-
-        var sub = args[0];
-        var rest = args[1..];
-
-        return sub switch
+        finally
         {
-            "render" => Render(rest),
-            "tokenize" => Tokenize(rest),
-            "parse" or "style" or "layout" or "js"
-                => StubSubcommand(sub),
-            "-h" or "--help" or "help" => UsageOk(),
-            _ => UnknownSubcommand(sub),
+            if (mcp is not null)
+                mcp.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+    }
+
+    private static Uri? ResolveMcpUrl()
+    {
+        var raw = Environment.GetEnvironmentVariable("STARLING_HEADLESS_MCP_URL");
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri))
+        {
+            Console.Error.WriteLine(
+                $"warning: STARLING_HEADLESS_MCP_URL is not a valid absolute URL ('{raw}'); MCP disabled.");
+            return null;
+        }
+        return uri;
+    }
+
+    private static StarlingMcpServer? StartMcpServer(Uri endpoint, TelemetryStream telemetry)
+    {
+        try
+        {
+            var server = new StarlingMcpServer(
+                endpoint: endpoint,
+                toolGroups: [new TelemetryTools(telemetry)],
+                resourceProviders: [new TelemetryResources(telemetry)],
+                serverName: "starling-headless",
+                serverTitle: "Starling Headless");
+            server.StartAsync().GetAwaiter().GetResult();
+            Console.Error.WriteLine($"[mcp] listening on {server.Endpoint}");
+            return server;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"warning: MCP server failed to start: {ex.Message}");
+            return null;
+        }
+    }
+
+    private static void WaitForShutdownSignal(Uri endpoint)
+    {
+        Console.Error.WriteLine(
+            $"[mcp] subcommand finished — server still listening on {endpoint}. " +
+            "Press Ctrl+C to exit.");
+        using var done = new ManualResetEventSlim(false);
+        ConsoleCancelEventHandler handler = (_, e) =>
+        {
+            e.Cancel = true;
+            done.Set();
         };
+        Console.CancelKeyPress += handler;
+        try
+        {
+            done.Wait();
+        }
+        finally
+        {
+            Console.CancelKeyPress -= handler;
+        }
     }
 
     /// <summary>

@@ -90,13 +90,31 @@ public static class OtelBootstrap
     /// exposes both the <see cref="ILoggerFactory"/> and a ready-to-use
     /// <see cref="IDiagnostics"/> — store it in a <c>using</c> at the top
     /// of <c>Main</c> so traces/metrics aren't dropped on exit.
+    ///
+    /// Pass <paramref name="withInMemorySinks"/> = true to additionally
+    /// build the same three ring-buffer sinks <see cref="AddStarlingTelemetry"/>
+    /// registers via DI — needed when the host wants to read its own
+    /// telemetry back (e.g. to serve it over MCP).
     /// </summary>
-    public static OtelHandle Initialize(string serviceName)
+    public static OtelHandle Initialize(string serviceName, bool withInMemorySinks = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(serviceName);
 
         var resource = ResourceBuilder.CreateDefault().AddService(serviceName);
         var hasOtlp = HasOtlpEndpoint();
+
+        InMemoryActivitySink? activitySink = null;
+        InMemoryMeterSink? meterSink = null;
+        InMemoryLogSink? logSink = null;
+        if (withInMemorySinks)
+        {
+            // Construct the sinks before the providers. ActivitySink and
+            // MeterSink self-register their listeners at construction; the
+            // log sink is wired as an ILoggerProvider on the factory below.
+            activitySink = new InMemoryActivitySink(serviceName, OtelDiagnostics.SourceName);
+            meterSink = new InMemoryMeterSink(OtelDiagnostics.SourceName);
+            logSink = new InMemoryLogSink();
+        }
 
         var tracerBuilder = Sdk.CreateTracerProviderBuilder()
             .SetResourceBuilder(resource)
@@ -116,6 +134,13 @@ public static class OtelBootstrap
 
         var loggerFactory = LoggerFactory.Create(builder =>
         {
+            if (logSink is not null)
+            {
+                builder.AddProvider(logSink);
+                // Mirror AddStarlingTelemetry: open Starling.engine.js (page
+                // console output) down to Debug for the in-memory sink only.
+                builder.AddFilter<InMemoryLogSink>("Starling.engine.js", LogLevel.Debug);
+            }
             builder.AddOpenTelemetry(logging =>
             {
                 logging.SetResourceBuilder(resource);
@@ -125,7 +150,14 @@ public static class OtelBootstrap
             });
         });
 
-        return new OtelHandle(tracerProvider, meterProvider, loggerFactory);
+        TelemetryStream? telemetryStream = null;
+        if (withInMemorySinks)
+        {
+            // Non-null when withInMemorySinks is true (assigned above).
+            telemetryStream = new TelemetryStream(logSink!, activitySink!, meterSink!);
+        }
+
+        return new OtelHandle(tracerProvider, meterProvider, loggerFactory, telemetryStream);
     }
 
     private static bool HasOtlpEndpoint()
@@ -135,11 +167,17 @@ public static class OtelBootstrap
     {
         private readonly TracerProvider _tracer;
         private readonly MeterProvider _meter;
+        private readonly TelemetryStream? _telemetryStream;
 
-        internal OtelHandle(TracerProvider tracer, MeterProvider meter, ILoggerFactory loggerFactory)
+        internal OtelHandle(
+            TracerProvider tracer,
+            MeterProvider meter,
+            ILoggerFactory loggerFactory,
+            TelemetryStream? telemetryStream)
         {
             _tracer = tracer;
             _meter = meter;
+            _telemetryStream = telemetryStream;
             LoggerFactory = loggerFactory;
             Diagnostics = new OtelDiagnostics(loggerFactory);
         }
@@ -147,12 +185,21 @@ public static class OtelBootstrap
         public ILoggerFactory LoggerFactory { get; }
         public IDiagnostics Diagnostics { get; }
 
+        /// <summary>
+        /// Non-null when <see cref="Initialize"/> was called with
+        /// <c>withInMemorySinks: true</c>. Hosts an in-memory ring-buffer
+        /// snapshot of recent spans/logs/metrics — useful for serving the
+        /// process's own telemetry over MCP without a separate exporter.
+        /// </summary>
+        public TelemetryStream? TelemetryStream => _telemetryStream;
+
         public void Dispose()
         {
             // Disposal order matters: flush exporters via the providers'
             // disposal hooks before tearing the logger factory down.
             _tracer.Dispose();
             _meter.Dispose();
+            _telemetryStream?.Dispose();
             LoggerFactory.Dispose();
         }
     }
