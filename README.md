@@ -30,25 +30,25 @@ _Last updated: 2026-05-25_
 
 | Area | Status |
 |---|---|
-| Overall | ![Experimental](https://img.shields.io/badge/status-experimental-red) |
-| ECMAScript | ![Test262](https://img.shields.io/badge/Test262_language-95%25-brightgreen) |
-| Web Platform | ![WPT](https://img.shields.io/badge/WPT-25%25-orange) |
-| DOM | ![DOM](https://img.shields.io/badge/DOM-partial-yellow) |
-| HTML Parser | ![HTML](https://img.shields.io/badge/HTML-spec_compliant-brightgreen) |
-| CSS | ![CSS](https://img.shields.io/badge/CSS-partial-yellow) |
-| Layout | ![Layout](https://img.shields.io/badge/layout-partial-yellow) |
-| Paint | ![Paint](https://img.shields.io/badge/paint-shipped-brightgreen) |
-| Networking | ![Networking](https://img.shields.io/badge/networking-partial-yellow) |
-| JavaScript | ![JavaScript](https://img.shields.io/badge/JS-partial-yellow) |
-| Web APIs / DOM bindings | ![WebAPIs](https://img.shields.io/badge/Web_APIs-partial-yellow) |
-| GUI shell | ![GUI](https://img.shields.io/badge/GUI-partial-yellow) |
-| Multi-process / sandbox | ![Sandbox](https://img.shields.io/badge/sandbox-not_started-lightgrey) |
-| Security | ![Security](https://img.shields.io/badge/security-not_hardened-red) |
+| [Overall](browser-plan/00_INDEX.md) | [![Experimental](https://img.shields.io/badge/status-experimental-red)](browser-plan/13_MILESTONES.md) |
+| [ECMAScript](browser-plan/09_JS_ENGINE.md) | [![Test262](https://img.shields.io/badge/Test262_language-95%25-brightgreen)](tests/Starling.Js.Test262.Tests/README.md) |
+| [Web Platform](browser-plan/12_TESTING.md) | [![WPT](https://img.shields.io/badge/WPT-25%25-orange)](tests/Starling.Wpt.Tests/README.md) |
+| [DOM](browser-plan/05_DOM.md) | [![DOM](https://img.shields.io/badge/DOM-partial-yellow)](tests/Starling.Dom.Tests/README.md) |
+| [HTML Parser](browser-plan/04_HTML_PARSING.md) | [![HTML](https://img.shields.io/badge/HTML-spec_compliant-brightgreen)](tests/Starling.Html.Tests/README.md) |
+| [CSS](browser-plan/06_CSS.md) | [![CSS](https://img.shields.io/badge/CSS-partial-yellow)](tests/Starling.Css.Spec.Tests/README.md) |
+| [Layout](browser-plan/07_LAYOUT.md) | [![Layout](https://img.shields.io/badge/layout-partial-yellow)](tests/Starling.Layout.Tests/README.md) |
+| [Paint](browser-plan/08_FONTS_PAINT.md) | [![Paint](https://img.shields.io/badge/paint-shipped-brightgreen)](tests/Starling.Paint.Tests/README.md) |
+| [Networking](browser-plan/03_NETWORKING.md) | [![Networking](https://img.shields.io/badge/networking-partial-yellow)](tests/Starling.Net.Tests/README.md) |
+| [JavaScript](browser-plan/09_JS_ENGINE.md) | [![JavaScript](https://img.shields.io/badge/JS-partial-yellow)](tests/Starling.Js.Tests/README.md) |
+| [Web APIs / DOM bindings](browser-plan/10_WEB_APIS.md) | [![WebAPIs](https://img.shields.io/badge/Web_APIs-partial-yellow)](tests/Starling.Bindings.Tests/README.md) |
+| [GUI shell](browser-plan/11_AVALONIA_SHELL.md) | [![GUI](https://img.shields.io/badge/GUI-partial-yellow)](tests/Starling.Gui.Tests/README.md) |
+| [Multi-process / sandbox](browser-plan/01_ARCHITECTURE.md) | [![Sandbox](https://img.shields.io/badge/sandbox-not_started-lightgrey)](browser-plan/13_MILESTONES.md) |
+| [Security](browser-plan/03_NETWORKING.md) | [![Security](https://img.shields.io/badge/security-not_hardened-red)](browser-plan/01_ARCHITECTURE.md) |
 
-Each area has a focused design doc in [`browser-plan/`](browser-plan/) with the
-full feature inventory. See [`browser-plan/13_MILESTONES.md`](browser-plan/13_MILESTONES.md)
-for the milestone-by-milestone roadmap and [`tasks/INDEX.md`](tasks/INDEX.md)
-for the work-package queue.
+Each area name links to its design doc. Each badge links to the tests
+that back the number. See
+[`browser-plan/13_MILESTONES.md`](browser-plan/13_MILESTONES.md) for the
+roadmap and [`tasks/INDEX.md`](tasks/INDEX.md) for the work-package queue.
 
 ## Quickstart
 

@@ -2,9 +2,9 @@
 
 Shared infrastructure for **CSS/web spec conformance tests**.
 
-These tests are **hand-written, one source of truth.** There is no
-stub generation: a conformance test exists only because someone wrote a real
-assertion (or a `[PendingFact]` placeholder for a known gap). Reference this
+There is no stub generation. A conformance test exists only because
+someone wrote a real assertion (or a `[PendingFact]` placeholder for a
+known gap). Reference this
 project from any `*.Tests` project that asserts spec behavior, then put the
 test wherever it naturally belongs — `Starling.Layout.Tests`,
 `Starling.Paint.Tests`, `Starling.Css.Tests`, etc. The `TestCategory~Spec:<id>`
@@ -40,7 +40,7 @@ CSS *parsing / cascade* conformance lives in `tests/Starling.Css.Spec.Tests/`
 tests/Starling.Css.Spec.Tests/
 └── <SpecId>/
     ├── _spec.md          # frontmatter: id, url, version, sections covered
-    ├── <Topic>Tests.cs   # hand-written; one class per spec section / feature
+    ├── <Topic>Tests.cs   # one class per spec section / feature
     └── ...
 ```
 
