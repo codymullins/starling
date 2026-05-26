@@ -166,6 +166,11 @@ public sealed class JsRealm
     public JsObject? NodeConstructor { get; set; }
     public JsObject? ElementConstructor { get; set; }
     public JsObject? DocumentConstructor { get; set; }
+    // DOM §4.9 — Attr + NamedNodeMap (WPT-05).
+    public JsObject? AttrPrototype { get; set; }
+    public JsObject? AttrConstructor { get; set; }
+    public JsObject? NamedNodeMapPrototype { get; set; }
+    public JsObject? NamedNodeMapConstructor { get; set; }
 
     // B5-3 — Fetch / XHR web APIs. Populated by Starling.Bindings.FetchBinding +
     // XhrBinding. Constructor + prototype slots live together for the suite.

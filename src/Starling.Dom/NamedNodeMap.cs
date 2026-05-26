@@ -2,10 +2,21 @@ using System.Collections;
 
 namespace Starling.Dom;
 
-public sealed class NamedNodeMap : IReadOnlyList<Attr>
+/// <summary>
+/// DOM §4.9 NamedNodeMap — the live attribute-node collection of an Element.
+/// Each entry is an <see cref="AttrNode"/>; the collection is keyed by
+/// (namespace, local-name) for namespace-aware operations and by qualified name
+/// for the non-namespaced HTML path.
+/// </summary>
+/// <remarks>
+/// The internal store is a <see cref="List{AttrNode}"/> so random-access by
+/// index (element.attributes[i]) is O(1). Lookup by name is O(n) — attribute
+/// lists are almost always tiny so this is fine.
+/// </remarks>
+public sealed class NamedNodeMap : IReadOnlyList<AttrNode>
 {
     private readonly Element _owner;
-    private readonly List<Attr> _attributes = [];
+    private readonly List<AttrNode> _attributes = [];
 
     internal NamedNodeMap(Element owner)
     {
@@ -14,9 +25,14 @@ public sealed class NamedNodeMap : IReadOnlyList<Attr>
 
     public int Count => _attributes.Count;
 
-    public Attr this[int index] => _attributes[index];
+    public AttrNode this[int index] => _attributes[index];
 
-    public Attr? GetNamedItem(string name)
+    // ---- Non-namespace-aware operations (HTML path). Attribute names are
+    // matched case-insensitively per the HTML spec (content attributes on HTML
+    // elements are ASCII case-insensitive). The stored Name is already
+    // lower-cased by Element.SetAttribute.
+
+    public AttrNode? GetNamedItem(string name)
     {
         ArgumentNullException.ThrowIfNull(name);
         foreach (var attr in _attributes)
@@ -24,31 +40,37 @@ public sealed class NamedNodeMap : IReadOnlyList<Attr>
             if (attr.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
                 return attr;
         }
-
         return null;
     }
 
-    public void SetNamedItem(Attr attr)
+    /// <summary>
+    /// Add or replace an attribute. Returns the old AttrNode that was replaced,
+    /// or null when the attribute was newly added. The old node's OwnerElement
+    /// is cleared; the new node's OwnerElement is set to <c>_owner</c>.
+    /// </summary>
+    public AttrNode? SetNamedItem(AttrNode attr)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(attr.Name);
+        ArgumentNullException.ThrowIfNull(attr);
         for (var i = 0; i < _attributes.Count; i++)
         {
             if (_attributes[i].Name.Equals(attr.Name, StringComparison.OrdinalIgnoreCase))
             {
-                if (_attributes[i] == attr)
-                    return;
-
+                var old = _attributes[i];
+                if (ReferenceEquals(old, attr)) return null; // no change
+                old.OwnerElement = null;
+                attr.OwnerElement = _owner;
                 _attributes[i] = attr;
                 _owner.OnAttributeMutated();
-                return;
+                return old;
             }
         }
-
+        attr.OwnerElement = _owner;
         _attributes.Add(attr);
         _owner.OnAttributeMutated();
+        return null;
     }
 
-    public Attr? RemoveNamedItem(string name)
+    public AttrNode? RemoveNamedItem(string name)
     {
         ArgumentNullException.ThrowIfNull(name);
         for (var i = 0; i < _attributes.Count; i++)
@@ -56,12 +78,12 @@ public sealed class NamedNodeMap : IReadOnlyList<Attr>
             if (_attributes[i].Name.Equals(name, StringComparison.OrdinalIgnoreCase))
             {
                 var removed = _attributes[i];
+                removed.OwnerElement = null;
                 _attributes.RemoveAt(i);
                 _owner.OnAttributeMutated();
                 return removed;
             }
         }
-
         return null;
     }
 
@@ -79,42 +101,50 @@ public sealed class NamedNodeMap : IReadOnlyList<Attr>
     private static bool NsEq(string? a, string? b)
         => (string.IsNullOrEmpty(a) ? null : a) == (string.IsNullOrEmpty(b) ? null : b);
 
-    public Attr? GetNamedItemNS(string? ns, string localName)
+    public AttrNode? GetNamedItemNS(string? ns, string localName)
     {
         ArgumentNullException.ThrowIfNull(localName);
         foreach (var attr in _attributes)
-            if (NsEq(attr.Namespace, ns) && LocalNameOf(attr.Name).Equals(localName, StringComparison.Ordinal))
+            if (NsEq(attr.Namespace, ns) && attr.LocalName.Equals(localName, StringComparison.Ordinal))
                 return attr;
         return null;
     }
 
-    public void SetNamedItemNS(Attr attr)
+    /// <summary>
+    /// Namespace-aware set. Returns the old AttrNode (if replaced) or null (if new).
+    /// </summary>
+    public AttrNode? SetNamedItemNS(AttrNode attr)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(attr.Name);
-        var localName = LocalNameOf(attr.Name);
+        ArgumentNullException.ThrowIfNull(attr);
         for (var i = 0; i < _attributes.Count; i++)
         {
             if (NsEq(_attributes[i].Namespace, attr.Namespace)
-                && LocalNameOf(_attributes[i].Name).Equals(localName, StringComparison.Ordinal))
+                && _attributes[i].LocalName.Equals(attr.LocalName, StringComparison.Ordinal))
             {
-                if (_attributes[i] == attr) return;
+                var old = _attributes[i];
+                if (ReferenceEquals(old, attr)) return null;
+                old.OwnerElement = null;
+                attr.OwnerElement = _owner;
                 _attributes[i] = attr;
                 _owner.OnAttributeMutated();
-                return;
+                return old;
             }
         }
+        attr.OwnerElement = _owner;
         _attributes.Add(attr);
         _owner.OnAttributeMutated();
+        return null;
     }
 
-    public Attr? RemoveNamedItemNS(string? ns, string localName)
+    public AttrNode? RemoveNamedItemNS(string? ns, string localName)
     {
         ArgumentNullException.ThrowIfNull(localName);
         for (var i = 0; i < _attributes.Count; i++)
         {
-            if (NsEq(_attributes[i].Namespace, ns) && LocalNameOf(_attributes[i].Name).Equals(localName, StringComparison.Ordinal))
+            if (NsEq(_attributes[i].Namespace, ns) && _attributes[i].LocalName.Equals(localName, StringComparison.Ordinal))
             {
                 var removed = _attributes[i];
+                removed.OwnerElement = null;
                 _attributes.RemoveAt(i);
                 _owner.OnAttributeMutated();
                 return removed;
@@ -123,7 +153,23 @@ public sealed class NamedNodeMap : IReadOnlyList<Attr>
         return null;
     }
 
-    public IEnumerator<Attr> GetEnumerator() => _attributes.GetEnumerator();
+    // ---- Internal value sync -------------------------------------------------
 
+    /// <summary>Called by AttrNode.Value setter to propagate a value change from
+    /// the node back into the element's attribute store without re-triggering the
+    /// round-trip.</summary>
+    internal void SyncAttrValue(AttrNode attr)
+    {
+        // The AttrNode IS the backing store — _attributes holds the same reference,
+        // so the value field is already updated. We just fire the mutation callback.
+        _owner.OnAttributeMutated();
+    }
+
+    // ---- Compatibility bridge: iterate as (Name, Value) tuples --------------
+
+    // Many internal consumers enumerate attributes as (Name, Value) pairs.
+    // The AttrNode exposes both, so callers can still use `attr.Name` / `attr.Value`.
+
+    public IEnumerator<AttrNode> GetEnumerator() => _attributes.GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }

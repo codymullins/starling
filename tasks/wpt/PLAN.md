@@ -302,3 +302,24 @@ Phase 3 `assert_equals` per area. Re-baseline + ratchet after each.
 | dom/traversal (`createNodeIterator`, `createTreeWalker`) | 1549 | entirely absent subsystem |
 | `assert_throws_dom` | 257 | Event dispatch + Range DOMException gaps |
 | `timeout` | 230 | Event dispatch async |
+
+- 2026-05-26: **WPT-05 Attr / createAttribute(NS) / NamedNodeMap complete.**
+  DOM §4.9 Attr-as-a-Node: new `AttrNode : Node` class with `name`, `localName`,
+  `prefix`, `namespaceURI`, `value` (live → propagates to ownerElement), `ownerElement`,
+  `specified`; migrated `NamedNodeMap` to `List<AttrNode>`; identity preservation in
+  `Element.SetAttribute` (mutates in-place); `JsNamedNodeMapObject` exotic with
+  `GetOwnPropertyDescriptor` + `Keys` overrides for indexed/named property access;
+  `InstallAttr` + `InstallNamedNodeMap` in `NodeBindings`; bonus:
+  `getAttributeNode`/NS, `setAttributeNode`/NS, `removeAttributeNode`,
+  `toggleAttribute`, `hasAttributes`, `getAttributeNames`; `appendChild`/
+  `insertBefore`/`replaceChild` throw `HierarchyRequestError` for `AttrNode` children;
+  `document.createAttribute` (WHATWG permissive — any non-empty string) and
+  `createAttributeNS`; HTML documents lower-case names; XML docs (`IsHtml=false`)
+  preserve case.
+  - **WPT result**: pass **1459→1604 (+145)**, rate **27.79%→30.60%** (+2.81pp).
+    `attributes-are-nodes.html` 4/4, `Document-createAttribute.html` 36/36,
+    `attributes-namednodemap.html` 8/8, `namednodemap-supported-property-names.html` 3/3.
+  - **Unit tests**: 29 new `AttrNodeTests` (DOM layer) + 38 new `AttrBindingTests`
+    (JS binding) — all green.
+  - Full suite green: Dom 68, Bindings 257, Js 1840 (pre-existing `Captured_lexical`
+    unchanged), no regressions in other areas.

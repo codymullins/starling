@@ -5,6 +5,8 @@ using Starling.Js.Runtime;
 
 namespace Starling.Bindings;
 
+// AttrNode wrapping is handled through the Node cache since AttrNode extends Node.
+
 /// <summary>
 /// B5-1 — Lazy DOM-node ↔ JS-wrapper map. Each host node gets at most one JS
 /// wrapper per realm, returned by every <see cref="Wrap"/> call. The wrapper's
@@ -53,6 +55,7 @@ public static class DomWrappers
         {
             Document => realm.DocumentPrototype ?? realm.ObjectPrototype,
             Element => realm.ElementPrototype ?? realm.ObjectPrototype,
+            AttrNode => realm.AttrPrototype ?? realm.NodePrototype ?? realm.ObjectPrototype,
             _ => NodeBindings.CharDataProtoFor(realm, node) ?? realm.NodePrototype ?? realm.ObjectPrototype,
         };
         var wrapper = new JsObject(proto);
@@ -60,6 +63,13 @@ public static class DomWrappers
         cache.Add(node, wrapper);
         return wrapper;
     }
+
+    /// <summary>Wrap an <see cref="AttrNode"/> in a JS object bound to the
+    /// Attr prototype. Uses the same node cache so identity is stable.</summary>
+    public static JsObject WrapAttr(JsRealm realm, AttrNode attr) => WrapNode(realm, attr);
+
+    /// <summary>Resolve the host <see cref="AttrNode"/> from a JS wrapper, or null.</summary>
+    public static AttrNode? UnwrapAttr(JsValue v) => UnwrapNode(v) as AttrNode;
 
     /// <summary>Resolve the host <see cref="Node"/> backing a JS wrapper, or
     /// null when the object is not a wrapped DOM node.</summary>
@@ -72,6 +82,181 @@ public static class DomWrappers
     /// <summary>Convenience for proto methods: returns null when <c>this</c> is
     /// not a wrapped node of the expected type.</summary>
     internal static T? UnwrapAs<T>(JsValue v) where T : class => EventTargetBinding.ResolveHost(v) as T;
+}
+
+/// <summary>
+/// Exotic JS object backing <c>element.attributes</c> (DOM §4.9 NamedNodeMap).
+/// Inherits from <c>NamedNodeMap.prototype</c>; individual attribute names are
+/// exposed as named properties returning the wrapped <see cref="AttrNode"/>.
+/// Indexed properties (e.g. <c>el.attributes[0]</c>) also resolve to AttrNode wrappers.
+/// Per-attribute named properties shadow only the name — methods like
+/// <c>getNamedItem</c> are on the prototype and are NOT shadowed even if an
+/// attribute has the same name.
+/// </summary>
+internal sealed class JsNamedNodeMapObject : JsObject
+{
+    private readonly JsRealm _realm;
+    private readonly Element _element;
+
+    public JsNamedNodeMapObject(JsRealm realm, Element element)
+        : base(realm.NamedNodeMapPrototype ?? realm.ObjectPrototype)
+    {
+        _realm = realm;
+        _element = element;
+        // NOTE: "length" is NOT installed as an own property descriptor here.
+        // Instead it is surfaced dynamically via GetOwnPropertyDescriptor so
+        // Object.getOwnPropertyNames does NOT include "length" in its output
+        // (matching WPT expectations for namednodemap-supported-property-names).
+    }
+
+    // ---- Helpers ------------------------------------------------------------
+
+    public int Length => _element.Attributes.Count;
+
+    public AttrNode? GetItem(int index)
+        => index >= 0 && index < _element.Attributes.Count ? _element.Attributes[index] : null;
+
+    public AttrNode? GetNamedItem(string name)
+        => _element.Attributes.GetNamedItem(name);
+
+    public AttrNode? GetNamedItemNS(string? ns, string localName)
+        => _element.Attributes.GetNamedItemNS(ns, localName);
+
+    public AttrNode? SetNamedItem(AttrNode attr)
+        => _element.Attributes.SetNamedItem(attr);
+
+    public AttrNode? SetNamedItemNS(AttrNode attr)
+        => _element.Attributes.SetNamedItemNS(attr);
+
+    public AttrNode? RemoveNamedItem(string name)
+        => _element.Attributes.RemoveNamedItem(name);
+
+    public AttrNode? RemoveNamedItemNS(string? ns, string localName)
+        => _element.Attributes.RemoveNamedItemNS(ns, localName);
+
+    // ---- Exotic property semantics (DOM §4.9.1 NamedNodeMap) ----------------
+    //
+    // The VM uses AbstractOperations.Get → GetOwnPropertyDescriptor, NOT the
+    // virtual JsObject.Get(string) method. We must override GetOwnPropertyDescriptor
+    // so that integer indices and attribute names resolve through the prototype
+    // chain walk performed by AbstractOperations.Get.
+    //
+    // Priority order per spec:
+    //   1. Own data/accessor properties (e.g. "length" accessor installed in ctor)
+    //   2. Prototype methods (NamedNodeMap.prototype: item, getNamedItem, etc.)
+    //      — the VM handles this automatically via prototype chain walk
+    //   3. Indexed access: attributes[0], attributes[1], ...
+    //   4. Named getter: attributes.id → the Attr node for "id"
+    //      BUT only if the name is NOT already on the prototype (prototype methods win)
+    //
+    // We surface #3 and #4 via GetOwnPropertyDescriptor so the VM's chain walk finds them.
+
+    public override PropertyDescriptor? GetOwnPropertyDescriptor(string name)
+    {
+        // Check explicitly installed own properties first (e.g. "length" accessor).
+        var own = base.GetOwnPropertyDescriptor(name);
+        if (own is not null) return own;
+
+        // Indexed integer properties → attributes[i]
+        if (uint.TryParse(name, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var idx))
+        {
+            var indexed = GetItem((int)idx);
+            if (indexed is not null)
+                return PropertyDescriptor.Data(JsValue.Object(DomWrappers.WrapAttr(_realm, indexed)),
+                    writable: false, enumerable: true, configurable: true);
+            return null;
+        }
+
+        // Named getter (DOM §4.9.1): attribute name → wrapped AttrNode.
+        // Prototype methods take priority — they are found by the VM walking the
+        // prototype chain BEFORE reaching our own descriptor. So we can safely
+        // return the attribute descriptor here; if the prototype has the same name
+        // it wins because GetOwnPropertyDescriptor on the prototype returns non-null
+        // and the chain walk stops there.
+        //
+        // Exception: we explicitly do NOT return descriptors for prototype method
+        // names so that method identity holds (map.item === NamedNodeMap.prototype.item).
+        // Check the prototype first.
+        if (IsOnPrototype(name)) return null;
+
+        var attr = _element.Attributes.GetNamedItem(name);
+        if (attr is not null)
+            return PropertyDescriptor.Data(JsValue.Object(DomWrappers.WrapAttr(_realm, attr)),
+                writable: false, enumerable: true, configurable: true);
+
+        return null;
+    }
+
+    /// <summary>Returns true when <paramref name="name"/> is a property on our
+    /// NamedNodeMap.prototype (so named-getter does not shadow it).</summary>
+    private bool IsOnPrototype(string name)
+    {
+        for (var p = Prototype; p is not null; p = p.Prototype)
+            if (p.GetOwnPropertyDescriptor(name) is not null) return true;
+        return false;
+    }
+
+    public override bool Has(string name)
+    {
+        if (base.Has(name)) return true;
+        if (uint.TryParse(name, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var idx))
+            return (int)idx < _element.Attributes.Count;
+        if (IsOnPrototype(name)) return true;
+        return _element.Attributes.GetNamedItem(name) is not null;
+    }
+
+    public override bool HasOwn(string name)
+    {
+        if (base.HasOwn(name)) return true;
+        if (uint.TryParse(name, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var idx))
+            return (int)idx < _element.Attributes.Count;
+        if (IsOnPrototype(name)) return false;
+        return _element.Attributes.GetNamedItem(name) is not null;
+    }
+
+    public override IEnumerable<string> EnumerableKeys()
+    {
+        // Indexed attribute positions
+        for (var i = 0; i < _element.Attributes.Count; i++)
+            yield return i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        // Named attribute keys (non-shadowed by prototype)
+        foreach (var attr in _element.Attributes)
+            if (!IsOnPrototype(attr.Name)) yield return attr.Name;
+        // Own non-attr enumerable keys (e.g. nothing extra currently)
+        foreach (var k in base.EnumerableKeys()) yield return k;
+    }
+
+    public override IEnumerable<Starling.Js.Runtime.JsPropertyKey> OwnPropertyKeys
+    {
+        get
+        {
+            for (var i = 0; i < _element.Attributes.Count; i++)
+                yield return Starling.Js.Runtime.JsPropertyKey.String(i.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            foreach (var attr in _element.Attributes)
+                if (!IsOnPrototype(attr.Name))
+                    yield return Starling.Js.Runtime.JsPropertyKey.String(attr.Name);
+            foreach (var k in base.OwnPropertyKeys) yield return k;
+        }
+    }
+
+    // Object.getOwnPropertyNames uses target.Keys (the _properties dict keys).
+    // Override it to include our dynamic attribute indices + names.
+    // NOTE: "length" is on the prototype, not on each instance, so it is NOT
+    // returned here (matching the WPT expectation).
+    public override IEnumerable<string> Keys
+    {
+        get
+        {
+            // Indexed keys
+            for (var i = 0; i < _element.Attributes.Count; i++)
+                yield return i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            // Named attribute keys (if not shadowed by prototype methods)
+            foreach (var attr in _element.Attributes)
+                if (!IsOnPrototype(attr.Name)) yield return attr.Name;
+            // Any explicitly installed own props (currently none for this exotic object)
+            foreach (var k in base.Keys) yield return k;
+        }
+    }
 }
 
 /// <summary>

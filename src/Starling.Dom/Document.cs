@@ -55,6 +55,35 @@ public sealed class Document : Node
 
     public QuirksMode Mode { get; internal set; } = QuirksMode.NoQuirks;
 
+    /// <summary>True when this is an HTML document (created by the HTML parser
+    /// or <c>createHTMLDocument</c>). False for XML documents created via
+    /// <c>implementation.createDocument</c>. Affects name-casing in
+    /// <c>createAttribute</c> (HTML lower-cases, XML preserves).</summary>
+    public bool IsHtml { get; set; } = true;
+
+    // ---- DOM §4.9 — createAttribute / createAttributeNS --------------------
+
+    /// <summary>DOM §4.9 createAttribute — creates a new detached Attr node
+    /// with the given local name and no namespace. Case is preserved by this
+    /// method; the JS binding is responsible for lower-casing on HTML documents.</summary>
+    public AttrNode CreateAttribute(string localName)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(localName);
+        return new AttrNode(localName) { OwnerDocument = this };
+    }
+
+    /// <summary>DOM §4.9 createAttributeNS — creates a new detached Attr node
+    /// with a namespace URI and qualified name. Name validation and
+    /// namespace/prefix consistency checks are enforced by the JS binding layer
+    /// (ValidateQualifiedName) before calling this method.</summary>
+    public AttrNode CreateAttributeNS(string? @namespace, string qualifiedName)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(qualifiedName);
+        var attr = AttrNode.CreateNamespaced(qualifiedName, @namespace);
+        attr.OwnerDocument = this;
+        return attr;
+    }
+
     public Element CreateElement(string tagName, string? @namespace = null)
         => new(tagName, @namespace) { OwnerDocument = this };
 

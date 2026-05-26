@@ -92,7 +92,12 @@ public class Element : Node
     {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(value);
-        Attributes.SetNamedItem(new Attr(name.ToLowerInvariant(), value));
+        var lname = name.ToLowerInvariant();
+        var existing = Attributes.GetNamedItem(lname);
+        if (existing is not null)
+            existing.Value = value; // mutate in-place so AttrNode identity is preserved
+        else
+            Attributes.SetNamedItem(new AttrNode(lname, value));
     }
 
     public bool HasAttribute(string name)
@@ -120,7 +125,12 @@ public class Element : Node
     {
         ArgumentNullException.ThrowIfNull(qualifiedName);
         ArgumentNullException.ThrowIfNull(value);
-        Attributes.SetNamedItemNS(new Attr(qualifiedName, value, string.IsNullOrEmpty(@namespace) ? null : @namespace));
+        var ns = string.IsNullOrEmpty(@namespace) ? null : @namespace;
+        var existing = Attributes.GetNamedItemNS(ns, NamedNodeMap.LocalNameOf(qualifiedName));
+        if (existing is not null)
+            existing.Value = value; // mutate in-place
+        else
+            Attributes.SetNamedItemNS(AttrNode.CreateNamespaced(qualifiedName, ns, value));
     }
 
     public bool HasAttributeNS(string? @namespace, string localName)
@@ -154,4 +164,16 @@ public class Element : Node
     public override string ToString() => $"<{TagName}>";
 
     internal void OnAttributeMutated() => OnTreeMutated();
+
+    /// <summary>Called by <see cref="AttrNode.Value"/> setter to propagate a
+    /// value change on an attached attribute node back into any dependent state
+    /// (mutation observers, style engine invalidation, etc.). Currently just
+    /// bumps the mutation version via OnAttributeMutated.</summary>
+    internal void SyncAttrNodeValue(AttrNode attr, string newValue)
+    {
+        // The AttrNode._value field is already updated by the caller.
+        // Fire the same mutation hook that setAttribute fires so all observers
+        // (cascade invalidation, mutation records) are notified.
+        OnAttributeMutated();
+    }
 }

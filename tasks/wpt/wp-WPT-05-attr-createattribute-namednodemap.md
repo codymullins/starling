@@ -1,63 +1,50 @@
----
-id: WPT-05
-title: Attr / Document.createAttribute(NS) / NamedNodeMap
-status: in_progress
-area: wpt / dom
-baseline: 27.79% (1459/5250, dom,css,url, sha-pinned, post-WP-01)
----
+# WPT-05 — Attr / Document.createAttribute(NS) / NamedNodeMap
 
-## Goal
-Expose Attr-as-Node fully: `document.createAttribute(name)` /
-`createAttributeNS(ns, qname)`, `Attr` as a window interface constructor with
-`name`/`localName`/`namespaceURI`/`prefix`/`value`/`ownerElement` properties,
-and `NamedNodeMap` (the live attribute collection) with
-`length`/`item(i)`/`getNamedItem(name)`/`getNamedItemNS`/`setNamedItem(attr)`/
-`setNamedItemNS`/`removeNamedItem(name)`/`removeNamedItemNS` (per DOM §4.9).
+status: complete
 
-## Why these tests fail today (measured)
-- `missing-method:createAttribute` 46 — e.g. `dom/attributes-are-nodes.html`.
-- `dom/attributes-are-nodes.html` 0/4 (entirely failing on Attr-as-Node semantics).
-- Downstream assert_equals tail across `dom/nodes` Attribute-* files.
+## Scope
 
-Predicted Δ: **~40** (createAttribute + cascade in attributes-are-nodes +
-adjacent attr-named-* files).
+Implement DOM §4.9 — Attr as a Node, NamedNodeMap as the live attribute collection,
+and the `Document.createAttribute`/`createAttributeNS` factory methods.
 
-## Scope (in)
-1. **`Document.createAttribute(localName)`** — name validation (per WP-01
-   pattern using existing validation if applicable); returns a detached Attr
-   node owned by the document, no namespace.
-2. **`Document.createAttributeNS(namespace, qualifiedName)`** — prefix/local
-   split + validation (NamespaceError on invalid qualified-name combos, mirror
-   `createElementNS` rules from commit `ab947c0`).
-3. **`Attr` as a window interface constructor** with prototype carrying:
-   `name` (qualified), `localName`, `namespaceURI`, `prefix`, `value`
-   (get/set — set updates the owner element if attached), `ownerElement`,
-   `specified` (always `true` for compat).
-4. **`NamedNodeMap`** as a JS object on `element.attributes` — live, indexed
-   access, `.length`, `.item(i)`, `getNamedItem`/`getNamedItemNS`/
-   `setNamedItem`/`setNamedItemNS`/`removeNamedItem`/`removeNamedItemNS`.
-   Named property access (`element.attributes.id`) per §4.9.1.
+## Deliverables
 
-## Scope (out)
-- Hand-off coordination with WPT-03 on the *constructor object*: if WPT-03
-  lands first, just install `.prototype`. If this lands first, install the
-  ctor too. SME (Cody) will resolve at integration.
-- Full Element attribute API rewrite — Attr nodes already exist internally
-  (per WP-01 recon); this WP exposes the missing surface.
+- `AttrNode : Node` class (`src/Starling.Dom/AttrNode.cs`)
+- `NamedNodeMap` migrated to `List<AttrNode>` (`src/Starling.Dom/NamedNodeMap.cs`)
+- `Document.createAttribute` + `createAttributeNS` (`src/Starling.Dom/Document.cs`)
+- `Document.IsHtml` flag for case behaviour
+- `JsNamedNodeMapObject` exotic object (`src/Starling.Bindings/DomWrappers.cs`)
+- `InstallAttr` + `InstallNamedNodeMap` (`src/Starling.Bindings/NodeBindings.cs`)
+- Bonus: `getAttributeNode`/NS, `setAttributeNode`/NS, `removeAttributeNode`,
+  `toggleAttribute`, `hasAttributes`, `getAttributeNames`
+- `HierarchyRequestError` guard in `appendChild`/`insertBefore`/`replaceChild`
+- 29 DOM-layer unit tests (`tests/Starling.Dom.Tests/AttrNodeTests.cs`)
+- 38 JS binding unit tests (`tests/Starling.Bindings.Tests/AttrBindingTests.cs`)
 
-## Acceptance
-- Measured Δ on full suite; report `pass X→Y` and `attributes-are-nodes.html`
-  pass count.
-- No regression in dom/nodes (Element.attributes is heavily used).
-- MSTest: createAttribute/createAttributeNS validation + name spec tests,
-  Attr.value updates owner element, NamedNodeMap live behaviour
-  (mutate via setAttribute, observe via attributes.item).
-- PLAN.md status log; WP doc → `complete`.
+## Results
 
-## Notes (recon)
-- Existing Attr type: `src/Starling.Dom/` (confirm via search; namespaces already
-  on Attr per WP-01 recon).
-- `Element.attributes` may already exist as some collection — search before
-  designing. If it's a non-live array, replace with a live NamedNodeMap.
-- Binding pattern: WP-01 / `EventTargetBinding.DefineAccessor/DefineMethod` +
-  `DomWrappers`.
+| Metric | Before | After | Delta |
+|--------|--------|-------|-------|
+| WPT pass count | 1459 | 1604 | +145 |
+| WPT pass rate | 27.79% | 30.60% | +2.81pp |
+
+Key files now 100%:
+- `dom/nodes/attributes-are-nodes.html` 4/4
+- `dom/nodes/Document-createAttribute.html` 36/36
+- `dom/nodes/attributes-namednodemap.html` 8/8
+- `dom/nodes/namednodemap-supported-property-names.html` 3/3
+
+## Key design decisions
+
+- WHATWG DOM `createAttribute` accepts ANY non-empty string (no XML Name validation).
+- `createAttribute` for HTML documents lower-cases the name in the JS binding layer;
+  the C# `Document.CreateAttribute` method preserves case.
+- `AttrNode.LocalName` for the non-namespaced path equals the full `Name` (no colon
+  split); only `createAttributeNS` uses prefix/local splitting.
+- Identity preservation: `Element.SetAttribute` mutates existing `AttrNode` in-place
+  so JS references remain valid.
+- `NamedNodeMap.length` is on the prototype (accessor), NOT an own property, so
+  `Object.getOwnPropertyNames(map)` returns only `["0","1","id","class",...]`.
+- Named property access (`map["id"]`) is implemented via `GetOwnPropertyDescriptor`
+  override (not `Get`), because the VM's `AbstractOperations.Get` uses the descriptor
+  chain internally.

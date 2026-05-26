@@ -56,6 +56,8 @@ public static class NodeBindings
             throw new InvalidOperationException("EventTargetBinding.Install must run before NodeBindings.Install");
 
         InstallNode(realm);
+        InstallAttr(realm);           // WPT-05: Attr extends Node
+        InstallNamedNodeMap(realm);   // WPT-05: NamedNodeMap constructor
         InstallElement(realm);
         InstallDocument(realm);
         InstallCharacterDataInterfaces(realm);
@@ -127,6 +129,9 @@ public static class NodeBindings
             var child = args.Length > 0 ? DomWrappers.UnwrapNode(args[0]) : null;
             if (parent is null || child is null)
                 throw new JsThrow(realm.NewTypeError("appendChild requires a Node argument"));
+            // DOM §4.4.3 — Attr nodes cannot be inserted into a normal node tree.
+            if (child is AttrNode)
+                throw DomExceptionBinding.Throw(realm, "HierarchyRequestError", "Cannot insert an Attr into a node tree.");
             parent.AppendChild(child);
             return args[0];
         }, length: 1);
@@ -146,6 +151,9 @@ public static class NodeBindings
             var refChild = args.Length > 1 ? DomWrappers.UnwrapNode(args[1]) : null;
             if (parent is null || child is null)
                 throw new JsThrow(realm.NewTypeError("insertBefore requires a Node argument"));
+            // DOM §4.4.3 — Attr nodes cannot be inserted into a normal node tree.
+            if (child is AttrNode)
+                throw DomExceptionBinding.Throw(realm, "HierarchyRequestError", "Cannot insert an Attr into a node tree.");
             parent.InsertBefore(child, refChild);
             return args[0];
         }, length: 2);
@@ -156,6 +164,9 @@ public static class NodeBindings
             var oldChild = args.Length > 1 ? DomWrappers.UnwrapNode(args[1]) : null;
             if (parent is null || newChild is null || oldChild is null)
                 throw new JsThrow(realm.NewTypeError("replaceChild requires two Node arguments"));
+            // DOM §4.4.3 — Attr nodes cannot be inserted into a normal node tree.
+            if (newChild is AttrNode)
+                throw DomExceptionBinding.Throw(realm, "HierarchyRequestError", "Cannot insert an Attr into a node tree.");
             parent.ReplaceChild(newChild, oldChild);
             return args[1];
         }, length: 2);
@@ -577,6 +588,65 @@ public static class NodeBindings
             return JsValue.Number(count);
         });
 
+        // ---- attributes (NamedNodeMap exotic JS object) --------------------
+        // DOM §4.9 — element.attributes is a live NamedNodeMap. We build a
+        // JsNamedNodeMapObject (exotic) cached on the element wrapper.
+        EventTargetBinding.DefineAccessor(realm, elProto, "attributes", (thisV, _) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is not { } e) return JsValue.Null;
+            var wrapper = thisV.IsObject ? thisV.AsObject : null;
+            if (wrapper is null) return JsValue.Null;
+            const string cacheKey = "__attributes__";
+            var cached = wrapper.Get(cacheKey);
+            if (!cached.IsUndefined) return cached;
+            var nmObj = new JsNamedNodeMapObject(realm, e);
+            wrapper.Set(cacheKey, JsValue.Object(nmObj));
+            return JsValue.Object(nmObj);
+        });
+
+        // ---- getAttributeNode / setAttributeNode / removeAttributeNode ----
+        EventTargetBinding.DefineMethod(realm, elProto, "getAttributeNode", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is not { } e || args.Length == 0) return JsValue.Null;
+            var attr = e.Attributes.GetNamedItem(JsValue.ToStringValue(args[0]));
+            return attr is null ? JsValue.Null : JsValue.Object(DomWrappers.WrapAttr(realm, attr));
+        }, length: 1);
+        EventTargetBinding.DefineMethod(realm, elProto, "getAttributeNodeNS", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is not { } e || args.Length < 2) return JsValue.Null;
+            var ns = args[0].IsNullish ? null : JsValue.ToStringValue(args[0]);
+            var attr = e.Attributes.GetNamedItemNS(ns, JsValue.ToStringValue(args[1]));
+            return attr is null ? JsValue.Null : JsValue.Object(DomWrappers.WrapAttr(realm, attr));
+        }, length: 2);
+        EventTargetBinding.DefineMethod(realm, elProto, "setAttributeNode", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is not { } e || args.Length == 0) return JsValue.Null;
+            if (DomWrappers.UnwrapAttr(args[0]) is not { } attr)
+                throw new JsThrow(realm.NewTypeError("setAttributeNode requires an Attr argument"));
+            var old = e.Attributes.SetNamedItem(attr);
+            return old is null ? JsValue.Null : JsValue.Object(DomWrappers.WrapAttr(realm, old));
+        }, length: 1);
+        EventTargetBinding.DefineMethod(realm, elProto, "setAttributeNodeNS", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is not { } e || args.Length == 0) return JsValue.Null;
+            if (DomWrappers.UnwrapAttr(args[0]) is not { } attr)
+                throw new JsThrow(realm.NewTypeError("setAttributeNodeNS requires an Attr argument"));
+            var old = e.Attributes.SetNamedItemNS(attr);
+            return old is null ? JsValue.Null : JsValue.Object(DomWrappers.WrapAttr(realm, old));
+        }, length: 1);
+        EventTargetBinding.DefineMethod(realm, elProto, "removeAttributeNode", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is not { } e || args.Length == 0) return JsValue.Null;
+            if (DomWrappers.UnwrapAttr(args[0]) is not { } attr)
+                throw new JsThrow(realm.NewTypeError("removeAttributeNode requires an Attr argument"));
+            // Find by reference; if not found throw NotFoundError.
+            var found = e.Attributes.GetNamedItem(attr.Name);
+            if (found is null || !ReferenceEquals(found, attr))
+                throw DomExceptionBinding.Throw(realm, "NotFoundError", "The node was not found.");
+            e.Attributes.RemoveNamedItem(attr.Name);
+            return JsValue.Object(DomWrappers.WrapAttr(realm, attr));
+        }, length: 1);
+
         EventTargetBinding.DefineMethod(realm, elProto, "getAttribute", (thisV, args) =>
         {
             if (DomWrappers.UnwrapElement(thisV) is not { } e || args.Length == 0) return JsValue.Null;
@@ -640,6 +710,33 @@ public static class NodeBindings
             DomWrappers.UnwrapElement(thisV) is { } e && args.Length > 0
                 ? JsValue.Boolean(e.HasAttribute(JsValue.ToStringValue(args[0])))
                 : JsValue.False, length: 1);
+        // DOM §4.9 hasAttributes — true when element has one or more attributes.
+        EventTargetBinding.DefineMethod(realm, elProto, "hasAttributes", (thisV, _) =>
+            JsValue.Boolean(DomWrappers.UnwrapElement(thisV) is { } e && e.Attributes.Count > 0), length: 0);
+        // DOM §4.9 getAttributeNames — returns an array of qualified attribute names.
+        EventTargetBinding.DefineMethod(realm, elProto, "getAttributeNames", (thisV, _) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is not { } e) return MakeArray(realm, Array.Empty<JsValue>());
+            var names = new List<JsValue>(e.Attributes.Count);
+            foreach (var attr in e.Attributes) names.Add(JsValue.String(attr.Name));
+            return MakeArray(realm, names);
+        }, length: 0);
+        // DOM §4.9 toggleAttribute(name[, force]) — toggles a boolean attribute.
+        EventTargetBinding.DefineMethod(realm, elProto, "toggleAttribute", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is not { } e || args.Length == 0) return JsValue.False;
+            var name = JsValue.ToStringValue(args[0]);
+            bool result;
+            if (args.Length > 1 && !args[1].IsUndefined)
+            {
+                var force = JsValue.ToBoolean(args[1]);
+                if (force) { e.SetAttribute(name, ""); result = true; }
+                else { e.RemoveAttribute(name); result = false; }
+            }
+            else if (e.HasAttribute(name)) { e.RemoveAttribute(name); result = false; }
+            else { e.SetAttribute(name, ""); result = true; }
+            return JsValue.Boolean(result);
+        }, length: 1);
         EventTargetBinding.DefineMethod(realm, elProto, "removeAttribute", (thisV, args) =>
         {
             if (DomWrappers.UnwrapElement(thisV) is { } e && args.Length > 0)
@@ -1143,6 +1240,34 @@ public static class NodeBindings
                 items.Add(JsValue.Object(DomWrappers.Wrap(realm, m)));
             return MakeArray(realm, items);
         }, length: 1);
+        // ---- DOM §4.9 createAttribute / createAttributeNS -----------------
+        EventTargetBinding.DefineMethod(realm, docProto, "createAttribute", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapDocument(thisV) is not { } d)
+                throw new JsThrow(realm.NewTypeError("createAttribute called on non-Document"));
+            // DOM Living Standard: null/undefined are coerced to string first.
+            // The only invalid name is the empty string (after coercion).
+            var name = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+            if (name.Length == 0)
+                throw DomExceptionBinding.Throw(realm, "InvalidCharacterError", "The attribute name must not be empty.");
+            // HTML documents lower-case; XML documents preserve case.
+            if (d.IsHtml) name = name.ToLowerInvariant();
+            var attr = d.CreateAttribute(name);
+            return JsValue.Object(DomWrappers.WrapAttr(realm, attr));
+        }, length: 1);
+        EventTargetBinding.DefineMethod(realm, docProto, "createAttributeNS", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapDocument(thisV) is not { } d)
+                throw new JsThrow(realm.NewTypeError("createAttributeNS called on non-Document"));
+            if (args.Length < 2)
+                throw new JsThrow(realm.NewTypeError("createAttributeNS requires (namespace, qualifiedName)"));
+            var ns = args[0].IsNullish ? null : JsValue.ToStringValue(args[0]);
+            var qname = args[1].IsNullish ? "" : JsValue.ToStringValue(args[1]);
+            ValidateQualifiedName(realm, ns, qname); // throws InvalidCharacterError / NamespaceError
+            var attr = d.CreateAttributeNS(ns, qname);
+            return JsValue.Object(DomWrappers.WrapAttr(realm, attr));
+        }, length: 2);
+
         EventTargetBinding.DefineMethod(realm, docProto, "createElement", (thisV, args) =>
         {
             if (DomWrappers.UnwrapDocument(thisV) is not { } d || args.Length == 0)
@@ -1257,7 +1382,7 @@ public static class NodeBindings
         {
             var ns = args.Length > 0 && !args[0].IsNullish ? JsValue.ToStringValue(args[0]) : null;
             var qname = args.Length > 1 && !args[1].IsNullish ? JsValue.ToStringValue(args[1]) : "";
-            var doc = new Document();
+            var doc = new Document { IsHtml = false }; // XML document — preserve name case
             if (args.Length > 2 && DomWrappers.UnwrapAs<DocumentType>(args[2]) is { } dt)
                 doc.AppendChild(dt);
             if (!string.IsNullOrEmpty(qname))
@@ -1625,8 +1750,9 @@ public static class NodeBindings
             ? doc.CreateElementNS(el.Namespace, el.Prefix is null ? el.LocalName : el.Prefix + ":" + el.LocalName)
             : doc.CreateElement(el.LocalName);
         // Copy attributes, preserving any namespace/qualified name.
+        // Clone the AttrNode so the clone element gets its own independent nodes.
         foreach (var attr in el.Attributes)
-            clone.Attributes.SetNamedItemNS(attr);
+            clone.Attributes.SetNamedItemNS(attr.Clone());
         return clone;
     }
 
@@ -1951,6 +2077,167 @@ public static class NodeBindings
 
     /// <summary>Public kebab→camel converter shared with <see cref="CssomBinding"/>.</summary>
     internal static string KebabToCamelPublic(string kebab) => KebabToCamel(kebab);
+
+    // =====================================================================
+    //                         Attr (WPT-05 DOM §4.9)
+    // =====================================================================
+    private static void InstallAttr(JsRealm realm)
+    {
+        // Attr.prototype inherits from Node.prototype (Attr is a Node subtype).
+        var attrProto = new JsObject(realm.NodePrototype);
+        realm.AttrPrototype = attrProto;
+
+        // Attr interface properties — all read-only getters except value.
+        EventTargetBinding.DefineAccessor(realm, attrProto, "name",
+            (thisV, _) => DomWrappers.UnwrapAttr(thisV) is { } a ? JsValue.String(a.Name) : JsValue.String(""));
+        EventTargetBinding.DefineAccessor(realm, attrProto, "localName",
+            (thisV, _) => DomWrappers.UnwrapAttr(thisV) is { } a ? JsValue.String(a.LocalName) : JsValue.String(""));
+        EventTargetBinding.DefineAccessor(realm, attrProto, "namespaceURI",
+            (thisV, _) => DomWrappers.UnwrapAttr(thisV) is { } a && a.Namespace is { } ns
+                ? JsValue.String(ns) : JsValue.Null);
+        EventTargetBinding.DefineAccessor(realm, attrProto, "prefix",
+            (thisV, _) => DomWrappers.UnwrapAttr(thisV) is { } a && a.Prefix is { } p
+                ? JsValue.String(p) : JsValue.Null);
+        EventTargetBinding.DefineAccessor(realm, attrProto, "value",
+            (thisV, _) => DomWrappers.UnwrapAttr(thisV) is { } a ? JsValue.String(a.Value) : JsValue.String(""),
+            (thisV, args) =>
+            {
+                if (DomWrappers.UnwrapAttr(thisV) is { } a)
+                    a.Value = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+                return JsValue.Undefined;
+            });
+        // DOM §4.9 ownerElement
+        EventTargetBinding.DefineAccessor(realm, attrProto, "ownerElement",
+            (thisV, _) => DomWrappers.UnwrapAttr(thisV) is { } a && a.OwnerElement is { } el
+                ? JsValue.Object(DomWrappers.Wrap(realm, el)) : JsValue.Null);
+        // specified is always true per DOM spec (compat)
+        EventTargetBinding.DefineAccessor(realm, attrProto, "specified",
+            (thisV, _) => JsValue.True);
+
+        // Attr constructor — illegal to call directly.
+        var attrCtor = new JsNativeFunction(realm, "Attr", 0, (_, _) =>
+            throw new JsThrow(realm.NewTypeError("Illegal constructor")), isConstructor: false);
+        attrCtor.SetPrototypeOf(realm.NodeConstructor!);
+        attrCtor.DefineOwnProperty("prototype",
+            PropertyDescriptor.Data(JsValue.Object(attrProto), writable: false, enumerable: false, configurable: false));
+        attrProto.DefineOwnProperty("constructor",
+            PropertyDescriptor.Data(JsValue.Object(attrCtor), writable: true, enumerable: false, configurable: true));
+        realm.AttrConstructor = attrCtor;
+        realm.GlobalObject.DefineOwnProperty("Attr",
+            PropertyDescriptor.Data(JsValue.Object(attrCtor), writable: true, enumerable: false, configurable: true));
+    }
+
+    // =====================================================================
+    //                      NamedNodeMap (WPT-05 DOM §4.9)
+    // =====================================================================
+    private static void InstallNamedNodeMap(JsRealm realm)
+    {
+        // NamedNodeMap.prototype — just the prototype object. Individual
+        // element.attributes instances are JsNamedNodeMapObject (exotic) that
+        // inherit from this prototype so method identity holds:
+        //   map.item === NamedNodeMap.prototype.item
+        var nmProto = new JsObject(realm.ObjectPrototype);
+        realm.NamedNodeMapPrototype = nmProto;
+
+        // length is on the prototype so it is NOT an own property of individual
+        // element.attributes objects (matching WPT expectations for
+        // namednodemap-supported-property-names.html).
+        EventTargetBinding.DefineAccessor(realm, nmProto, "length", (thisV, _) =>
+        {
+            if (thisV.IsObject && thisV.AsObject is JsNamedNodeMapObject nm)
+                return JsValue.Number(nm.Length);
+            return JsValue.Number(0);
+        });
+
+        // All methods are defined on the prototype; they re-dispatch to the
+        // backing NamedNodeMap via the exotic object's element reference.
+        EventTargetBinding.DefineMethod(realm, nmProto, "item", (thisV, args) =>
+        {
+            if (thisV.IsObject && thisV.AsObject is JsNamedNodeMapObject nm)
+            {
+                if (args.Length == 0) return JsValue.Null;
+                var idx = (int)JsValue.ToNumber(args[0]);
+                var attr = nm.GetItem(idx);
+                return attr is null ? JsValue.Null : JsValue.Object(DomWrappers.WrapAttr(realm, attr));
+            }
+            return JsValue.Null;
+        }, length: 1);
+        EventTargetBinding.DefineMethod(realm, nmProto, "getNamedItem", (thisV, args) =>
+        {
+            if (thisV.IsObject && thisV.AsObject is JsNamedNodeMapObject nm && args.Length > 0)
+            {
+                var attr = nm.GetNamedItem(JsValue.ToStringValue(args[0]));
+                return attr is null ? JsValue.Null : JsValue.Object(DomWrappers.WrapAttr(realm, attr));
+            }
+            return JsValue.Null;
+        }, length: 1);
+        EventTargetBinding.DefineMethod(realm, nmProto, "getNamedItemNS", (thisV, args) =>
+        {
+            if (thisV.IsObject && thisV.AsObject is JsNamedNodeMapObject nm && args.Length >= 2)
+            {
+                var ns = args[0].IsNullish ? null : JsValue.ToStringValue(args[0]);
+                var attr = nm.GetNamedItemNS(ns, JsValue.ToStringValue(args[1]));
+                return attr is null ? JsValue.Null : JsValue.Object(DomWrappers.WrapAttr(realm, attr));
+            }
+            return JsValue.Null;
+        }, length: 2);
+        EventTargetBinding.DefineMethod(realm, nmProto, "setNamedItem", (thisV, args) =>
+        {
+            if (thisV.IsObject && thisV.AsObject is JsNamedNodeMapObject nm && args.Length > 0)
+            {
+                if (DomWrappers.UnwrapAttr(args[0]) is not { } attr)
+                    throw new JsThrow(realm.NewTypeError("setNamedItem requires an Attr argument"));
+                var old = nm.SetNamedItem(attr);
+                return old is null ? JsValue.Null : JsValue.Object(DomWrappers.WrapAttr(realm, old));
+            }
+            return JsValue.Null;
+        }, length: 1);
+        EventTargetBinding.DefineMethod(realm, nmProto, "setNamedItemNS", (thisV, args) =>
+        {
+            if (thisV.IsObject && thisV.AsObject is JsNamedNodeMapObject nm && args.Length > 0)
+            {
+                if (DomWrappers.UnwrapAttr(args[0]) is not { } attr)
+                    throw new JsThrow(realm.NewTypeError("setNamedItemNS requires an Attr argument"));
+                var old = nm.SetNamedItemNS(attr);
+                return old is null ? JsValue.Null : JsValue.Object(DomWrappers.WrapAttr(realm, old));
+            }
+            return JsValue.Null;
+        }, length: 1);
+        EventTargetBinding.DefineMethod(realm, nmProto, "removeNamedItem", (thisV, args) =>
+        {
+            if (thisV.IsObject && thisV.AsObject is JsNamedNodeMapObject nm && args.Length > 0)
+            {
+                var old = nm.RemoveNamedItem(JsValue.ToStringValue(args[0]));
+                if (old is null)
+                    throw DomExceptionBinding.Throw(realm, "NotFoundError", "The attribute was not found.");
+                return JsValue.Object(DomWrappers.WrapAttr(realm, old));
+            }
+            throw DomExceptionBinding.Throw(realm, "NotFoundError", "The attribute was not found.");
+        }, length: 1);
+        EventTargetBinding.DefineMethod(realm, nmProto, "removeNamedItemNS", (thisV, args) =>
+        {
+            if (thisV.IsObject && thisV.AsObject is JsNamedNodeMapObject nm && args.Length >= 2)
+            {
+                var ns = args[0].IsNullish ? null : JsValue.ToStringValue(args[0]);
+                var old = nm.RemoveNamedItemNS(ns, JsValue.ToStringValue(args[1]));
+                if (old is null)
+                    throw DomExceptionBinding.Throw(realm, "NotFoundError", "The attribute was not found.");
+                return JsValue.Object(DomWrappers.WrapAttr(realm, old));
+            }
+            throw DomExceptionBinding.Throw(realm, "NotFoundError", "The attribute was not found.");
+        }, length: 2);
+
+        // NamedNodeMap constructor — illegal to call directly.
+        var nmCtor = new JsNativeFunction(realm, "NamedNodeMap", 0, (_, _) =>
+            throw new JsThrow(realm.NewTypeError("Illegal constructor")), isConstructor: false);
+        nmCtor.DefineOwnProperty("prototype",
+            PropertyDescriptor.Data(JsValue.Object(nmProto), writable: false, enumerable: false, configurable: false));
+        nmProto.DefineOwnProperty("constructor",
+            PropertyDescriptor.Data(JsValue.Object(nmCtor), writable: true, enumerable: false, configurable: true));
+        realm.NamedNodeMapConstructor = nmCtor;
+        realm.GlobalObject.DefineOwnProperty("NamedNodeMap",
+            PropertyDescriptor.Data(JsValue.Object(nmCtor), writable: true, enumerable: false, configurable: true));
+    }
 
     // Comprehensive list of CSS properties exposed via element.style.X
     private static readonly string[] InlineStyleProperties =
