@@ -312,7 +312,7 @@ public static class StringCtor
             // replaceAll's non-global guard is a RegExp-specific invariant
             // (§22.1.3.20 step 2): a RegExp without the global flag throws.
             if (replaceAll && RegExpCtor.IsRegExp(args[0])
-                && (((JsRegExp)args[0].AsObject).Flags & Starling.Js.RegExp.RegexFlags.Global) == 0)
+                && (((JsRegExp)args[0].AsObject).Flags & Starling.RegExp.RegexFlags.Global) == 0)
                 throw new JsThrow(realm.NewTypeError("String.prototype.replaceAll called with a non-global RegExp"));
             var replaceFn = args[0].AsObject.Get(SymbolCtor.Replace);
             if (AbstractOperations.IsCallable(replaceFn))
@@ -432,9 +432,9 @@ public static class StringCtor
             // an array. Spec §22.1.3.13 requires matchAll to throw TypeError if
             // the regex is not global; mirror that here for parity with the
             // Symbol.matchAll path.
-            if ((re.Flags & Starling.Js.RegExp.RegexFlags.Global) == 0)
+            if ((re.Flags & Starling.RegExp.RegexFlags.Global) == 0)
                 throw new JsThrow(realm.NewTypeError("matchAll requires a global regular expression"));
-            var unicode = (re.Flags & Starling.Js.RegExp.RegexFlags.Unicode) != 0;
+            var unicode = (re.Flags & Starling.RegExp.RegexFlags.Unicode) != 0;
             return JsValue.Object(new JsRegExpStringIterator(realm, re, s, global: true, unicode: unicode));
         }
         var fn = re.Get(SymbolCtor.Match);

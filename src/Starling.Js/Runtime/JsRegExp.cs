@@ -1,4 +1,4 @@
-using Starling.Js.RegExp;
+using Starling.RegExp;
 
 namespace Starling.Js.Runtime;
 

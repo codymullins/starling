@@ -1,5 +1,5 @@
 using System.Text;
-using Starling.Js.RegExp;
+using Starling.RegExp;
 using Starling.Js.Runtime;
 
 namespace Starling.Js.Intrinsics;

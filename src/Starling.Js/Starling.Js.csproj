@@ -4,5 +4,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Starling.Common\Starling.Common.csproj" />
+    <ProjectReference Include="..\..\lib\starling-regexp\src\Starling.RegExp\Starling.RegExp.csproj" />
   </ItemGroup>
 </Project>
