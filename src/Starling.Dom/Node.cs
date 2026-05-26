@@ -12,6 +12,12 @@ namespace Starling.Dom;
 /// </remarks>
 public abstract class Node : EventTarget
 {
+    /// <summary>DOM §6.3.3 — NodeIterator removal steps. Bindings layer
+    /// subscribes here so live iterators can update their reference node when
+    /// a node is removed from the tree. Called with (ownerDocument, removedNode)
+    /// before the parent link is cleared. Null when no iterators are active.</summary>
+    public static Action<Document, Node>? NodeRemovedHook;
+
     public abstract NodeKind Kind { get; }
 
     public Node? ParentNode { get; internal set; }
@@ -136,6 +142,13 @@ public abstract class Node : EventTarget
     {
         var parent = ParentNode;
         if (parent is null) return;
+
+        // DOM §6.3.3: notify live NodeIterators before the parent link is cleared.
+        if (NodeRemovedHook is { } hook)
+        {
+            var doc = OwnerDocument ?? (this is Document d ? d : null);
+            if (doc is not null) hook(doc, this);
+        }
 
         if (PreviousSibling is not null) PreviousSibling.NextSibling = NextSibling;
         else parent.FirstChild = NextSibling;

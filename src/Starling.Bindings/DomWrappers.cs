@@ -47,11 +47,13 @@ public static class DomWrappers
         var cache = NodeCachesPerRealm.GetValue(realm, _ => new ConditionalWeakTable<Node, JsObject>());
         if (cache.TryGetValue(node, out var existing)) return existing;
 
+        // CharacterData subtypes (Text, Comment, CData, PI) get their own
+        // prototype so `instanceof Text` / `instanceof Comment` work.
         var proto = node switch
         {
             Document => realm.DocumentPrototype ?? realm.ObjectPrototype,
             Element => realm.ElementPrototype ?? realm.ObjectPrototype,
-            _ => realm.NodePrototype ?? realm.ObjectPrototype,
+            _ => NodeBindings.CharDataProtoFor(realm, node) ?? realm.NodePrototype ?? realm.ObjectPrototype,
         };
         var wrapper = new JsObject(proto);
         EventTargetBinding.BindWrapper(wrapper, node);

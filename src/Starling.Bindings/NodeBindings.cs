@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Starling.Dom;
 using Starling.Html;
 using Starling.Html.TreeBuilder;
@@ -27,6 +28,26 @@ namespace Starling.Bindings;
 /// </remarks>
 public static class NodeBindings
 {
+    // Per-realm CharacterData / Text / Comment / etc. prototypes, stored so
+    // DomWrappers.WrapNode can route wrappers to the correct prototype chain.
+    // The tuple holds (TextProto, CommentProto, CDataProto, DocFragProto, PIProto).
+    private static readonly ConditionalWeakTable<JsRealm, CharDataProtos> CharDataProtosPerRealm = new();
+
+    internal static JsObject? CharDataProtoFor(JsRealm realm, Node node)
+    {
+        if (!CharDataProtosPerRealm.TryGetValue(realm, out var p)) return null;
+        return node switch
+        {
+            Text => p.TextProto,
+            CData => p.CDataProto,
+            Comment => p.CommentProto,
+            ProcessingInstruction => p.PIProto,
+            DocumentFragment => p.DocFragProto,
+            CharacterData => p.CharDataProto,
+            _ => null,
+        };
+    }
+
     public static void Install(JsRealm realm)
     {
         ArgumentNullException.ThrowIfNull(realm);
@@ -37,6 +58,7 @@ public static class NodeBindings
         InstallNode(realm);
         InstallElement(realm);
         InstallDocument(realm);
+        InstallCharacterDataInterfaces(realm);
     }
 
     // =====================================================================
@@ -874,6 +896,14 @@ public static class NodeBindings
         });
         EventTargetBinding.DefineAccessor(realm, docProto, "readyState", (thisV, _) =>
             JsValue.String("complete"));
+        // DOM §4.5 — document.doctype: the DocumentType child of the document, or null.
+        EventTargetBinding.DefineAccessor(realm, docProto, "doctype", (thisV, _) =>
+        {
+            if (DomWrappers.UnwrapDocument(thisV) is not { } d) return JsValue.Null;
+            for (var c = d.FirstChild; c is not null; c = c.NextSibling)
+                if (c is DocumentType dt) return JsValue.Object(DomWrappers.Wrap(realm, dt));
+            return JsValue.Null;
+        });
         // HTML §8.4.1 — document.compatMode returns "CSS1Compat" when the
         // document is in no-quirks or limited-quirks mode. jQuery 1.x reads
         // this on boot to decide the scrollSize calculation branch.
@@ -999,6 +1029,15 @@ public static class NodeBindings
             var c = d.CreateComment(args.Length > 0 ? JsValue.ToStringValue(args[0]) : "");
             return JsValue.Object(DomWrappers.Wrap(realm, c));
         }, length: 1);
+        // DOM §4.6 — createCDATASection(data). Only valid in XML documents per spec;
+        // this binding accepts it unconditionally (browsers do the same in non-strict mode).
+        EventTargetBinding.DefineMethod(realm, docProto, "createCDATASection", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapDocument(thisV) is not { } d)
+                throw new JsThrow(realm.NewTypeError("createCDATASection called on non-Document"));
+            var cdata = d.CreateCDataSection(args.Length > 0 ? JsValue.ToStringValue(args[0]) : "");
+            return JsValue.Object(DomWrappers.Wrap(realm, cdata));
+        }, length: 1);
         EventTargetBinding.DefineMethod(realm, docProto, "createDocumentFragment", (thisV, _) =>
         {
             if (DomWrappers.UnwrapDocument(thisV) is not { } d)
@@ -1006,8 +1045,13 @@ public static class NodeBindings
             return JsValue.Object(DomWrappers.Wrap(realm, d.CreateDocumentFragment()));
         }, length: 0);
 
+        // DOM §6 — traversal: NodeFilter global + createTreeWalker + createNodeIterator.
+        TraversalBinding.Install(realm, docProto);
+
+        // DOM §4.5 — "new Document()" creates an XML document (no HTML semantics).
+        // Not blocked in the spec; creating a Document via the constructor is valid.
         var docCtor = new JsNativeFunction(realm, "Document", 0, (_, _) =>
-            throw new JsThrow(realm.NewTypeError("Illegal constructor")), isConstructor: false);
+            JsValue.Object(DomWrappers.Wrap(realm, new Document())), isConstructor: true);
         docCtor.DefineOwnProperty("prototype",
             PropertyDescriptor.Data(JsValue.Object(docProto), writable: false, enumerable: false, configurable: false));
         docProto.DefineOwnProperty("constructor",
@@ -1661,4 +1705,114 @@ public static class NodeBindings
         "zoom",
         "content", "list-style", "list-style-type",
     ];
+
+    // =====================================================================
+    //  CharacterData / Text / Comment / DocumentFragment interfaces
+    //  DOM §4.10–4.11: expose constructors so `instanceof Text`,
+    //  `instanceof Comment`, `instanceof DocumentFragment` work in JS.
+    // =====================================================================
+    private static void InstallCharacterDataInterfaces(JsRealm realm)
+    {
+        var nodeProto = realm.NodePrototype!;
+
+        // CharacterData.prototype (§4.10) — inherits from Node.
+        var cdProto = new JsObject(nodeProto);
+        EventTargetBinding.DefineAccessor(realm, cdProto, "data",
+            (thisV, _) => DomWrappers.UnwrapAs<CharacterData>(thisV) is { } cd
+                ? JsValue.String(cd.Data) : JsValue.String(""),
+            (thisV, args) =>
+            {
+                if (DomWrappers.UnwrapAs<CharacterData>(thisV) is { } cd)
+                    cd.Data = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+                return JsValue.Undefined;
+            });
+        EventTargetBinding.DefineAccessor(realm, cdProto, "length",
+            (thisV, _) => DomWrappers.UnwrapAs<CharacterData>(thisV) is { } cd
+                ? JsValue.Number(cd.Data.Length) : JsValue.Number(0));
+        var cdCtor = MakeIllegalCtor(realm, "CharacterData");
+        cdCtor.DefineOwnProperty("prototype",
+            PropertyDescriptor.Data(JsValue.Object(cdProto), writable: false, enumerable: false, configurable: false));
+        cdProto.DefineOwnProperty("constructor",
+            PropertyDescriptor.Data(JsValue.Object(cdCtor), writable: true, enumerable: false, configurable: true));
+        realm.GlobalObject.DefineOwnProperty("CharacterData",
+            PropertyDescriptor.Data(JsValue.Object(cdCtor), writable: true, enumerable: false, configurable: true));
+
+        // Text.prototype — inherits from CharacterData.
+        var textProto = new JsObject(cdProto);
+        EventTargetBinding.DefineAccessor(realm, textProto, "wholeText",
+            (thisV, _) => DomWrappers.UnwrapAs<Text>(thisV) is { } t
+                ? JsValue.String(t.Data) : JsValue.String(""));
+        var textCtor = MakeIllegalCtor(realm, "Text");
+        textCtor.DefineOwnProperty("prototype",
+            PropertyDescriptor.Data(JsValue.Object(textProto), writable: false, enumerable: false, configurable: false));
+        textProto.DefineOwnProperty("constructor",
+            PropertyDescriptor.Data(JsValue.Object(textCtor), writable: true, enumerable: false, configurable: true));
+        realm.GlobalObject.DefineOwnProperty("Text",
+            PropertyDescriptor.Data(JsValue.Object(textCtor), writable: true, enumerable: false, configurable: true));
+
+        // Comment.prototype — inherits from CharacterData.
+        var commentProto = new JsObject(cdProto);
+        var commentCtor = MakeIllegalCtor(realm, "Comment");
+        commentCtor.DefineOwnProperty("prototype",
+            PropertyDescriptor.Data(JsValue.Object(commentProto), writable: false, enumerable: false, configurable: false));
+        commentProto.DefineOwnProperty("constructor",
+            PropertyDescriptor.Data(JsValue.Object(commentCtor), writable: true, enumerable: false, configurable: true));
+        realm.GlobalObject.DefineOwnProperty("Comment",
+            PropertyDescriptor.Data(JsValue.Object(commentCtor), writable: true, enumerable: false, configurable: true));
+
+        // DocumentFragment.prototype — inherits from Node.
+        var dfProto = new JsObject(nodeProto);
+        var dfCtor = MakeIllegalCtor(realm, "DocumentFragment");
+        dfCtor.DefineOwnProperty("prototype",
+            PropertyDescriptor.Data(JsValue.Object(dfProto), writable: false, enumerable: false, configurable: false));
+        dfProto.DefineOwnProperty("constructor",
+            PropertyDescriptor.Data(JsValue.Object(dfCtor), writable: true, enumerable: false, configurable: true));
+        realm.GlobalObject.DefineOwnProperty("DocumentFragment",
+            PropertyDescriptor.Data(JsValue.Object(dfCtor), writable: true, enumerable: false, configurable: true));
+
+        // ProcessingInstruction.prototype — inherits from CharacterData.
+        var piProto = new JsObject(cdProto);
+        EventTargetBinding.DefineAccessor(realm, piProto, "target",
+            (thisV, _) => DomWrappers.UnwrapAs<ProcessingInstruction>(thisV) is { } pi
+                ? JsValue.String(pi.Target) : JsValue.String(""));
+        var piCtor = MakeIllegalCtor(realm, "ProcessingInstruction");
+        piCtor.DefineOwnProperty("prototype",
+            PropertyDescriptor.Data(JsValue.Object(piProto), writable: false, enumerable: false, configurable: false));
+        piProto.DefineOwnProperty("constructor",
+            PropertyDescriptor.Data(JsValue.Object(piCtor), writable: true, enumerable: false, configurable: true));
+        realm.GlobalObject.DefineOwnProperty("ProcessingInstruction",
+            PropertyDescriptor.Data(JsValue.Object(piCtor), writable: true, enumerable: false, configurable: true));
+
+        // CDATASection.prototype — inherits from Text.
+        var cdataProto = new JsObject(textProto);
+        var cdataCtor = MakeIllegalCtor(realm, "CDATASection");
+        cdataCtor.DefineOwnProperty("prototype",
+            PropertyDescriptor.Data(JsValue.Object(cdataProto), writable: false, enumerable: false, configurable: false));
+        cdataProto.DefineOwnProperty("constructor",
+            PropertyDescriptor.Data(JsValue.Object(cdataCtor), writable: true, enumerable: false, configurable: true));
+        realm.GlobalObject.DefineOwnProperty("CDATASection",
+            PropertyDescriptor.Data(JsValue.Object(cdataCtor), writable: true, enumerable: false, configurable: true));
+
+        // Register the prototypes so DomWrappers.WrapNode can use them.
+        CharDataProtosPerRealm.Add(realm, new CharDataProtos(
+            CharDataProto: cdProto,
+            TextProto: textProto,
+            CommentProto: commentProto,
+            CDataProto: cdataProto,
+            DocFragProto: dfProto,
+            PIProto: piProto));
+    }
+
+    private static JsNativeFunction MakeIllegalCtor(JsRealm realm, string name) =>
+        new JsNativeFunction(realm, name, 0,
+            (_, _) => throw new JsThrow(realm.NewTypeError("Illegal constructor")),
+            isConstructor: false);
 }
+
+internal sealed record CharDataProtos(
+    JsObject CharDataProto,
+    JsObject TextProto,
+    JsObject CommentProto,
+    JsObject CDataProto,
+    JsObject DocFragProto,
+    JsObject PIProto);

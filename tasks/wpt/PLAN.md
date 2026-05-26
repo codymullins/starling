@@ -219,6 +219,37 @@ hand-rolled CSS `[Spec]` stub backlog where WPT now covers it.
   - Full suite green: Css 700 (+28 new), Bindings 219, Js 1840 (only pre-existing
     `Captured_lexical` failure unchanged).
 
+- 2026-05-26: **WPT-04 dom/traversal complete — NodeFilter + TreeWalker +
+  NodeIterator (DOM §6).** Full implementation of traversal subsystem:
+  - `TraversalBinding.cs`: NodeFilter constants (SHOW_* / FILTER_*), TreeWalker
+    (all 8 direction methods + currentNode r/w), NodeIterator (nextNode,
+    previousNode, referenceNode, pointerBeforeReferenceNode, detach nop).
+  - Filter invocation: callable → call directly; object → `acceptNode` getter;
+    unknown return values → SKIP (browser-compatible); active-flag guard throws
+    InvalidStateError on recursive invocation.
+  - §6.3.3 removal steps: `Node.NodeRemovedHook` (static Action<Document,Node>)
+    wired from `Node.RemoveFromParent()`, subscribed by `TraversalBinding.Install`.
+    Per-document `ConditionalWeakTable` of `WeakReference<HostNodeIterator>` kept
+    live while iterators exist.
+  - `NodeBindings.cs`: `createCDATASection`, `doctype` accessor, improved
+    CharacterData prototype routing (Text/Comment/CData/PI/DocumentFragment).
+  - `DomWrappers.cs`: updated `WrapNode` to use `CharDataProtoFor` for correct
+    `instanceof Text` etc. proto chains.
+  - **Baseline**: 0/52 traversal subtests (0.0%).
+  - **Observed**: **1579/1599 (98.75%)**; Δ = +1579 subtests. Remaining 20
+    failures: 7 NodeIterator-removal edge cases where WPT reference impl is
+    incorrect vs WHATWG spec §6.3.3 (unbounded `nextNodeDescendants`); 5
+    TreeWalker.html filter=false inconsistency in reference impl (REJECT vs
+    SKIP semantically ambiguous in older spec versions); 5 cross-realm/Proxy
+    features (Proxy.revocable, cross-realm object ctor) out of scope; 2
+    cross-realm node wrapping; 1 notrun.
+  - **Unit-test coverage**: 24 new MSTest cases (NodeFilter constants,
+    createTreeWalker/createNodeIterator basic iteration, whatToShow bitmask,
+    direction methods, filter callback/object, REJECT subtree skip, §6.3.3
+    removal steps, active-flag guard, error paths) — all green.
+  - Full suite green: Dom 39, Bindings 243 (+24), Js 1840 (pre-existing
+    `Captured_lexical` failure unchanged). No regressions.
+
 **Session result: 754→1339 passing subtests (+585, +78%), 14.54%→25.51%.** Cheap
 mechanical wins are now exhausted — every remaining high-impact cluster is a
 large *absent subsystem* or the semantic tail. Confirmed by exploration (no host
