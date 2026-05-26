@@ -73,6 +73,14 @@ public sealed class CssomDeclarationBlock
         {
             stored = value.Trim();
         }
+        else if (key.Equals("unicode-range", StringComparison.OrdinalIgnoreCase))
+        {
+            // CSS Syntax §4.3.10 <urange> — special canonicalization.
+            var canonical = UrangeParser.Canonicalize(value);
+            if (canonical is null)
+                return; // invalid urange — leave property unchanged
+            stored = canonical;
+        }
         else
         {
             var canonical = CssValueSerializer.Canonicalize(value);

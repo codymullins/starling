@@ -1,7 +1,7 @@
 ---
 id: WPT-06
 title: CSSOM tail — urange canonicalization + getComputedStyle serialization
-status: in_progress
+status: complete
 area: wpt / css / cssom
 baseline: 27.79% (1459/5250, dom,css,url, sha-pinned, post-WP-01)
 ---

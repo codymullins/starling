@@ -90,4 +90,74 @@ public sealed class CssomValueTests
         var rule = FirstRule("div { color: red; width: 10px; }");
         rule.Style.CssText.Should().Be("color: red; width: 10px;");
     }
+
+    // ---------------------------------------------------------------
+    // WPT-06: <urange> canonicalization (CSS Syntax §4.3.10)
+    // ---------------------------------------------------------------
+
+    [TestMethod]
+    [DataRow("u+abc", "U+ABC")]
+    [DataRow("u+a", "U+A")]
+    [DataRow("u+a?", "U+A0-AF")]
+    [DataRow("u+0-1", "U+0-1")]
+    [DataRow("u+0", "U+0")]
+    [DataRow("u+000000", "U+0")]
+    [DataRow("u+0a", "U+A")]
+    [DataRow("u+00000a", "U+A")]
+    [DataRow("u+1e9a", "U+1E9A")]
+    [DataRow("u+1e3", "U+1E3")]
+    [DataRow("u+1e-20", "U+1E-20")]
+    [DataRow("u+?", "U+0-F")]
+    [DataRow("u+?????", "U+0-FFFFF")]
+    [DataRow("u+0-10ffff", "U+0-10FFFF")]
+    [Spec("css-syntax-3", "https://drafts.csswg.org/css-syntax/#urange-syntax", "4.3.10")]
+    public void UrangeParser_canonicalizes_valid(string input, string expected)
+    {
+        var rule = FirstRule(".foo {}");
+        rule.Style.SetProperty("unicode-range", "U+1357", null); // valid fallback
+        rule.Style.SetProperty("unicode-range", input, null);
+        // Compare case-insensitively (WPT uses .toUpperCase() on both sides).
+        rule.Style.GetPropertyValue("unicode-range").ToUpperInvariant()
+            .Should().Be(expected.ToUpperInvariant());
+    }
+
+    [TestMethod]
+    [DataRow("u+efg")]       // 'g' not hex
+    [DataRow("u+ abc")]      // space after +
+    [DataRow("u +abc")]      // space before +
+    [DataRow("u+aaaaaaa")]   // 7 hex chars > 6
+    [DataRow("u+0000000")]   // 7 zeros
+    [DataRow("u+aaaaaa?")]   // 6 hex + 1 wildcard = 7
+    [DataRow("u+a?a")]       // hex after wildcard
+    [DataRow("u+222222")]    // > U+10FFFF
+    [DataRow("u+0-110000")]  // end > U+10FFFF
+    [DataRow("u+??????")]    // U+FFFFFF > max
+    [Spec("css-syntax-3", "https://drafts.csswg.org/css-syntax/#urange-syntax", "4.3.10")]
+    public void UrangeParser_rejects_invalid(string input)
+    {
+        var rule = FirstRule(".foo {}");
+        rule.Style.SetProperty("unicode-range", "U+1357", null); // valid fallback
+        rule.Style.SetProperty("unicode-range", input, null);
+        // Invalid value must be ignored; the fallback should remain.
+        rule.Style.GetPropertyValue("unicode-range").ToUpperInvariant()
+            .Should().Be("U+1357");
+    }
+
+    [TestMethod]
+    [DataRow("--foo-1:bar;", "bar")]
+    [DataRow("--foo-2: bar;", "bar")]
+    [DataRow("--foo-3:bar ;", "bar")]
+    [DataRow("--foo-4: bar ;", "bar")]
+    [Spec("cssom", "https://www.w3.org/TR/cssom-1/", "6.7.4")]
+    public void Custom_property_declared_value_is_trimmed(string declaration, string expected)
+    {
+        // Verify that CssomDeclarationBlock stores trimmed custom property values.
+        var block = new CssomDeclarationBlock();
+        // Simulate stylesheet parsing: extract prop+value from the test declaration.
+        var colon = declaration.IndexOf(':');
+        var name = declaration[..colon].Trim();
+        var rawValue = declaration[(colon + 1)..].TrimEnd(';', ' ');
+        block.SetProperty(name, rawValue, null);
+        block.GetPropertyValue(name).Should().Be(expected);
+    }
 }

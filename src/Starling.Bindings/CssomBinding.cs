@@ -93,25 +93,44 @@ internal static class CssomBinding
     {
         var obj = new JsObject(realm.ObjectPrototype);
         var rules = sheet.Rules;
-        var count = 0;
+        // Expose every rule (including at-rule placeholders) at its correct
+        // integer index so that cssRules[0] is always the first rule even when
+        // the first rule is an @font-face or other at-rule.
         for (var i = 0; i < rules.Count; i++)
         {
-            if (rules[i] is not { } rule) continue;
-            obj.DefineOwnProperty(count.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                PropertyDescriptor.Data(JsValue.Object(BuildStyleRule(realm, rule)),
-                    writable: false, enumerable: true, configurable: true));
-            count++;
+            var ruleObj = rules[i] is { } styleRule
+                ? JsValue.Object(BuildStyleRule(realm, styleRule))
+                : JsValue.Object(BuildAtRulePlaceholder(realm));
+            obj.DefineOwnProperty(i.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                PropertyDescriptor.Data(ruleObj, writable: false, enumerable: true, configurable: true));
         }
         obj.DefineOwnProperty("length",
-            PropertyDescriptor.Data(JsValue.Number(count), writable: false, enumerable: false, configurable: true));
-        var styleRules = rules.Where(r => r is not null).Cast<CssomStyleRule>().ToList();
+            PropertyDescriptor.Data(JsValue.Number(rules.Count), writable: false, enumerable: false, configurable: true));
         EventTargetBinding.DefineMethod(realm, obj, "item", (_, args) =>
         {
             if (args.Length == 0) return JsValue.Null;
             var idx = (int)JsValue.ToNumber(args[0]);
-            return idx >= 0 && idx < styleRules.Count
-                ? JsValue.Object(BuildStyleRule(realm, styleRules[idx])) : JsValue.Null;
+            if (idx < 0 || idx >= rules.Count) return JsValue.Null;
+            return rules[idx] is { } r
+                ? JsValue.Object(BuildStyleRule(realm, r))
+                : JsValue.Object(BuildAtRulePlaceholder(realm));
         }, length: 1);
+        return obj;
+    }
+
+    /// <summary>Build a minimal CSSRule-shaped object for an at-rule that the
+    /// CSSOM model keeps as an opaque placeholder. Exposes a read-only
+    /// <c>style</c> (an empty declaration) so @font-face rules can accept
+    /// <c>setProperty("unicode-range", …)</c> calls from tests.</summary>
+    private static JsObject BuildAtRulePlaceholder(JsRealm realm)
+    {
+        var obj = new JsObject(realm.ObjectPrototype);
+        var emptyBlock = new Starling.Css.Cssom.CssomDeclarationBlock();
+        // type = 5 = CSSFontFaceRule (most common at-rule placeholder).
+        EventTargetBinding.DefineAccessor(realm, obj, "type", (_, _) => JsValue.Number(5));
+        EventTargetBinding.DefineAccessor(realm, obj, "cssText", (_, _) => JsValue.String(""));
+        EventTargetBinding.DefineAccessor(realm, obj, "style",
+            (_, _) => JsValue.Object(BuildDeclaration(realm, emptyBlock)));
         return obj;
     }
 

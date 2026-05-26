@@ -97,10 +97,304 @@ public sealed class ComputedStyle
     public string GetPropertyValue(string name)
     {
         ArgumentNullException.ThrowIfNull(name);
+        // Custom properties (--foo) are stored in a parallel dictionary;
+        // serialize their component-value list back to text per CSSOM §6.7.4.
+        if (name.StartsWith("--", StringComparison.Ordinal))
+        {
+            if (!CustomProperties.TryGetValue(name, out var tokens)) return string.Empty;
+            // Substitute any var() references, then serialize with comment-insertion
+            // for consecutive tokens that would otherwise re-tokenize differently.
+            var flat = SubstituteVars(tokens, CustomProperties, depth: 0);
+            return SerializeWithComments(flat).Trim();
+        }
         return PropertyRegistry.TryGetPropertyId(name, out var property)
             ? ToCssText(Get(property))
             : string.Empty;
     }
+
+    // -----------------------------------------------------------------
+    // Custom-property var() substitution + serialization
+    // CSS Custom Properties §3.3 + CSS Syntax §8.1
+    // -----------------------------------------------------------------
+
+    /// <summary>Flatten a component-value list by substituting var() references.
+    /// Returns a flat list of leaf tokens (no functions / blocks for now;
+    /// blocks are preserved as block tokens). Depth-limits at 8 to avoid cycles.</summary>
+    private static IReadOnlyList<Starling.Css.Tokenizer.CssToken> SubstituteVars(
+        IReadOnlyList<CssComponentValue> values,
+        IReadOnlyDictionary<string, IReadOnlyList<CssComponentValue>> customProps,
+        int depth)
+    {
+        if (depth > 8) return Array.Empty<Starling.Css.Tokenizer.CssToken>();
+        var result = new List<Starling.Css.Tokenizer.CssToken>();
+        foreach (var cv in values)
+        {
+            switch (cv)
+            {
+                case CssTokenValue tv:
+                    result.Add(tv.Token);
+                    break;
+                case CssFunction func when func.Name.Equals("var", StringComparison.OrdinalIgnoreCase):
+                {
+                    // Resolve the var(): first positional argument is the custom property name.
+                    var varName = ExtractVarName(func.Values);
+                    if (varName is not null && customProps.TryGetValue(varName, out var replacement))
+                    {
+                        result.AddRange(SubstituteVars(replacement, customProps, depth + 1));
+                    }
+                    else
+                    {
+                        // Try the fallback (everything after the first comma).
+                        var fallback = ExtractVarFallback(func.Values);
+                        if (fallback is not null)
+                            result.AddRange(SubstituteVars(fallback, customProps, depth + 1));
+                        // If neither, substitute with nothing (guaranteed-invalid token).
+                    }
+                    break;
+                }
+                case CssFunction func:
+                {
+                    // Non-var function: serialize as function token + inner content + ')'.
+                    result.Add(new Starling.Css.Tokenizer.CssToken(Starling.Css.Tokenizer.CssTokenType.Function, func.Name));
+                    result.AddRange(SubstituteVars(func.Values, customProps, depth + 1));
+                    result.Add(new Starling.Css.Tokenizer.CssToken(Starling.Css.Tokenizer.CssTokenType.RightParen));
+                    break;
+                }
+                case CssSimpleBlock block:
+                {
+                    result.Add(new Starling.Css.Tokenizer.CssToken(block.StartToken));
+                    result.AddRange(SubstituteVars(block.Values, customProps, depth + 1));
+                    result.Add(new Starling.Css.Tokenizer.CssToken(
+                        block.StartToken == Starling.Css.Tokenizer.CssTokenType.LeftParen ? Starling.Css.Tokenizer.CssTokenType.RightParen :
+                        block.StartToken == Starling.Css.Tokenizer.CssTokenType.LeftSquare ? Starling.Css.Tokenizer.CssTokenType.RightSquare :
+                        Starling.Css.Tokenizer.CssTokenType.RightBrace));
+                    break;
+                }
+            }
+        }
+        return result;
+    }
+
+    private static string? ExtractVarName(IReadOnlyList<CssComponentValue> args)
+    {
+        // First non-whitespace token should be the custom property ident.
+        foreach (var cv in args)
+        {
+            if (cv is CssTokenValue { Token.Type: Starling.Css.Tokenizer.CssTokenType.Whitespace })
+                continue;
+            if (cv is CssTokenValue tv && tv.Token.Type == Starling.Css.Tokenizer.CssTokenType.Ident
+                && tv.Token.Value.StartsWith("--", StringComparison.Ordinal))
+                return tv.Token.Value;
+            return null;
+        }
+        return null;
+    }
+
+    private static List<CssComponentValue>? ExtractVarFallback(IReadOnlyList<CssComponentValue> args)
+    {
+        // Everything after the first comma is the fallback.
+        for (var i = 0; i < args.Count; i++)
+        {
+            if (args[i] is CssTokenValue { Token.Type: Starling.Css.Tokenizer.CssTokenType.Comma })
+                return args.Skip(i + 1).ToList();
+        }
+        return null;
+    }
+
+    /// <summary>Serialize a flat token list, inserting <c>/**/</c> between
+    /// consecutive tokens that would re-tokenize differently (CSS Syntax §8.1
+    /// serialization table). Skips whitespace tokens from the flat list since
+    /// the surrounding context manages spacing.</summary>
+    private static string SerializeWithComments(IReadOnlyList<Starling.Css.Tokenizer.CssToken> tokens)
+    {
+        var sb = new System.Text.StringBuilder();
+        Starling.Css.Tokenizer.CssToken? prev = null;
+        foreach (var t in tokens)
+        {
+            // Skip whitespace — we re-insert via comment or space.
+            if (t.Type == Starling.Css.Tokenizer.CssTokenType.Whitespace)
+            {
+                // Mark that a space was seen so we can insert it if no comment needed.
+                if (prev.HasValue) { sb.Append(' '); prev = null; }
+                continue;
+            }
+            if (prev.HasValue && NeedsComment(prev.Value, t))
+                sb.Append("/**/");
+            sb.Append(TokenToText(t));
+            prev = t;
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>CSS Syntax §8.1 serialization table: returns true if a comment
+    /// must be inserted between <paramref name="a"/> and <paramref name="b"/>
+    /// to prevent them from re-tokenizing as a single token.</summary>
+    private static bool NeedsComment(
+        Starling.Css.Tokenizer.CssToken a,
+        Starling.Css.Tokenizer.CssToken b)
+    {
+        var aType = a.Type;
+        var bType = b.Type;
+
+        // ident / at-keyword / hash / dimension start with a name code point.
+        var aIsIdent = aType is
+            Starling.Css.Tokenizer.CssTokenType.Ident or
+            Starling.Css.Tokenizer.CssTokenType.AtKeyword or
+            Starling.Css.Tokenizer.CssTokenType.Hash or
+            Starling.Css.Tokenizer.CssTokenType.Dimension;
+        var bIsIdentStart = bType is
+            Starling.Css.Tokenizer.CssTokenType.Ident or
+            Starling.Css.Tokenizer.CssTokenType.Function or
+            Starling.Css.Tokenizer.CssTokenType.Url or
+            Starling.Css.Tokenizer.CssTokenType.Dimension;
+
+        // ident followed by: ident, function, url, dimension, number, percentage,
+        // Cdc (-->), or '(' or '-'.
+        if (aIsIdent && bIsIdentStart) return true;
+        if (aIsIdent && bType is
+            Starling.Css.Tokenizer.CssTokenType.Number or
+            Starling.Css.Tokenizer.CssTokenType.Percentage or
+            Starling.Css.Tokenizer.CssTokenType.Cdc) return true;
+        if (aIsIdent && bType == Starling.Css.Tokenizer.CssTokenType.Delim && (b.Delimiter == '-' || b.Delimiter == '(')) return true;
+        if (aIsIdent && bType == Starling.Css.Tokenizer.CssTokenType.LeftParen) return true;
+
+        // number / percentage followed by: ident, function, url, %, dimension,
+        // number, '('.
+        var aIsNum = aType is
+            Starling.Css.Tokenizer.CssTokenType.Number or
+            Starling.Css.Tokenizer.CssTokenType.Percentage or
+            Starling.Css.Tokenizer.CssTokenType.Dimension;
+        if (aIsNum && bIsIdentStart) return true;
+        if (aIsNum && bType is
+            Starling.Css.Tokenizer.CssTokenType.Number or
+            Starling.Css.Tokenizer.CssTokenType.Percentage) return true;
+        if (aIsNum && bType == Starling.Css.Tokenizer.CssTokenType.Delim && b.Delimiter == '%') return true;
+        if (aIsNum && bType == Starling.Css.Tokenizer.CssTokenType.LeftParen) return true;
+
+        // hash / delim('#') followed by ident-start tokens.
+        if (aType == Starling.Css.Tokenizer.CssTokenType.Hash && bIsIdentStart) return true;
+        if (aType == Starling.Css.Tokenizer.CssTokenType.Hash && bType is
+            Starling.Css.Tokenizer.CssTokenType.Number or
+            Starling.Css.Tokenizer.CssTokenType.Percentage or
+            Starling.Css.Tokenizer.CssTokenType.Dimension or
+            Starling.Css.Tokenizer.CssTokenType.Cdc) return true;
+        if (aType == Starling.Css.Tokenizer.CssTokenType.Hash && bType == Starling.Css.Tokenizer.CssTokenType.Delim && b.Delimiter == '-') return true;
+
+        // '#' delim followed by ident.
+        if (aType == Starling.Css.Tokenizer.CssTokenType.Delim && a.Delimiter == '#' && bIsIdentStart) return true;
+        if (aType == Starling.Css.Tokenizer.CssTokenType.Delim && a.Delimiter == '#' && bType is
+            Starling.Css.Tokenizer.CssTokenType.Number or
+            Starling.Css.Tokenizer.CssTokenType.Percentage or
+            Starling.Css.Tokenizer.CssTokenType.Dimension or
+            Starling.Css.Tokenizer.CssTokenType.Cdc) return true;
+        if (aType == Starling.Css.Tokenizer.CssTokenType.Delim && a.Delimiter == '#' && bType == Starling.Css.Tokenizer.CssTokenType.Delim && b.Delimiter == '-') return true;
+
+        // '-' delim followed by: ident, function, url, number, percentage, dimension.
+        if (aType == Starling.Css.Tokenizer.CssTokenType.Delim && a.Delimiter == '-')
+        {
+            if (bIsIdentStart || bType is
+                Starling.Css.Tokenizer.CssTokenType.Number or
+                Starling.Css.Tokenizer.CssTokenType.Percentage or
+                Starling.Css.Tokenizer.CssTokenType.Dimension) return true;
+            if (bType == Starling.Css.Tokenizer.CssTokenType.Delim && b.Delimiter == '-') return true;
+        }
+
+        // '@' delim followed by ident.
+        if (aType == Starling.Css.Tokenizer.CssTokenType.Delim && a.Delimiter == '@')
+        {
+            if (bIsIdentStart || bType == Starling.Css.Tokenizer.CssTokenType.Delim && b.Delimiter == '-') return true;
+        }
+
+        // '.' delim followed by number/percentage/dimension.
+        if (aType == Starling.Css.Tokenizer.CssTokenType.Delim && a.Delimiter == '.')
+        {
+            if (bType is Starling.Css.Tokenizer.CssTokenType.Number or
+                Starling.Css.Tokenizer.CssTokenType.Percentage or
+                Starling.Css.Tokenizer.CssTokenType.Dimension) return true;
+        }
+
+        // '+' delim followed by number/percentage/dimension — "+123" is a signed number.
+        if (aType == Starling.Css.Tokenizer.CssTokenType.Delim && a.Delimiter == '+')
+        {
+            if (bType is Starling.Css.Tokenizer.CssTokenType.Number or
+                Starling.Css.Tokenizer.CssTokenType.Percentage or
+                Starling.Css.Tokenizer.CssTokenType.Dimension) return true;
+        }
+
+        // '/' delim followed by '*' delim — "/*" starts a CSS block comment.
+        if (aType == Starling.Css.Tokenizer.CssTokenType.Delim && a.Delimiter == '/' &&
+            bType == Starling.Css.Tokenizer.CssTokenType.Delim && b.Delimiter == '*')
+            return true;
+
+        return false;
+    }
+
+    private static string ComponentValueToText(CssComponentValue value) => value switch
+    {
+        CssTokenValue token => TokenToText(token.Token),
+        CssFunction func => func.Name + "(" + string.Concat(func.Values.Select(ComponentValueToText)) + ")",
+        CssSimpleBlock block => BlockStart(block.StartToken) + string.Concat(block.Values.Select(ComponentValueToText)) + BlockEnd(block.StartToken),
+        _ => string.Empty,
+    };
+
+    private static string TokenToText(Starling.Css.Tokenizer.CssToken t) => t.Type switch
+    {
+        Starling.Css.Tokenizer.CssTokenType.Ident => t.Value,
+        Starling.Css.Tokenizer.CssTokenType.AtKeyword => "@" + t.Value,
+        // Prefer single-quote serialization when the string contains a double
+        // quote (avoids backslash escaping and matches what the author likely wrote).
+        Starling.Css.Tokenizer.CssTokenType.String when t.Value.Contains('"') =>
+            "'" + t.Value.Replace("\\", "\\\\").Replace("'", "\\'") + "'",
+        Starling.Css.Tokenizer.CssTokenType.String => "\"" + t.Value.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"",
+        Starling.Css.Tokenizer.CssTokenType.Hash => "#" + t.Value,
+        Starling.Css.Tokenizer.CssTokenType.Number => SerializeNum(t.Number),
+        Starling.Css.Tokenizer.CssTokenType.Percentage => SerializeNum(t.Number) + "%",
+        Starling.Css.Tokenizer.CssTokenType.Dimension => SerializeNum(t.Number) + t.Unit,
+        Starling.Css.Tokenizer.CssTokenType.Delim => t.Delimiter.ToString(),
+        Starling.Css.Tokenizer.CssTokenType.Whitespace => " ",
+        Starling.Css.Tokenizer.CssTokenType.Colon => ":",
+        Starling.Css.Tokenizer.CssTokenType.Comma => ",",
+        Starling.Css.Tokenizer.CssTokenType.Semicolon => ";",
+        Starling.Css.Tokenizer.CssTokenType.LeftParen => "(",
+        Starling.Css.Tokenizer.CssTokenType.RightParen => ")",
+        Starling.Css.Tokenizer.CssTokenType.LeftSquare => "[",
+        Starling.Css.Tokenizer.CssTokenType.RightSquare => "]",
+        Starling.Css.Tokenizer.CssTokenType.LeftBrace => "{",
+        Starling.Css.Tokenizer.CssTokenType.RightBrace => "}",
+        Starling.Css.Tokenizer.CssTokenType.Url => "url(" + t.Value + ")",
+        Starling.Css.Tokenizer.CssTokenType.Function => t.Value + "(",
+        Starling.Css.Tokenizer.CssTokenType.Cdc => "-->",
+        Starling.Css.Tokenizer.CssTokenType.Cdo => "<!--",
+        _ => t.Value,
+    };
+
+    // Number serialization per CSS Syntax 3 §8.2 (shortest form, no trailing
+    // zeros, leading 0 for fractions). Mirrors CssValueSerializer.SerializeNumber
+    // without creating a cross-assembly dependency.
+    private static string SerializeNum(double n)
+    {
+        if (n == 0) return "0";
+        var s = n.ToString("R", CultureInfo.InvariantCulture);
+        if (s.Contains('E') || s.Contains('e'))
+            s = n.ToString("0.################", CultureInfo.InvariantCulture);
+        return s;
+    }
+
+    private static string BlockStart(Starling.Css.Tokenizer.CssTokenType type) => type switch
+    {
+        Starling.Css.Tokenizer.CssTokenType.LeftParen => "(",
+        Starling.Css.Tokenizer.CssTokenType.LeftSquare => "[",
+        Starling.Css.Tokenizer.CssTokenType.LeftBrace => "{",
+        _ => string.Empty,
+    };
+
+    private static string BlockEnd(Starling.Css.Tokenizer.CssTokenType type) => type switch
+    {
+        Starling.Css.Tokenizer.CssTokenType.LeftParen => ")",
+        Starling.Css.Tokenizer.CssTokenType.LeftSquare => "]",
+        Starling.Css.Tokenizer.CssTokenType.LeftBrace => "}",
+        _ => string.Empty,
+    };
 
     public static string ToCssText(CssValue value)
         => value switch

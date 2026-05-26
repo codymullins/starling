@@ -199,6 +199,26 @@ hand-rolled CSS `[Spec]` stub backlog where WPT now covers it.
     (only pre-existing `Captured_lexical` failure unchanged), Html 7162,
     Engine 154, Paint 171, Layout 201, Bindings.Jint 85.
 
+- 2026-05-26: **WPT-06 CSSOM tail — urange canonicalization + getComputedStyle
+  value serialization.** Two deferred items from WP-01:
+  - `<urange>` parser (`UrangeParser.cs`, CSS Syntax §4.3.10): character-level
+    hex-range parse + canonicalization for `unicode-range` property. Canonical
+    form: uppercase `U+START` or `U+START-END`, no leading zeros, wildcards
+    expanded. `@font-face` at-rule exposed at its correct `cssRules` index
+    (was silently skipped as a placeholder).
+  - `ComputedStyle.GetPropertyValue("--foo")` (CSSOM §6.7.4): custom properties
+    now surface their cascaded, whitespace-trimmed component-value text.
+    `var()` substitution + CSS Syntax §8.1 serialization comment-table for
+    consecutive-token ambiguity.
+  - **Observed**: pass **1459→1622 (+163)**, rate **27.79%→30.90%**,
+    css/css-syntax **135/394 (34.3%)→298/394 (75.6%)**. Canonical files:
+    urange-parsing 10/95→95/95 (100%), declarations-trim-whitespace 0/9→9/9
+    (100%), serialize-consecutive-tokens 0/72→70/72 (97.2%; 2 unfixable:
+    comment-text preservation requires tokenizer comment retention).
+  - No regressions in dom/url areas. WP-01 css-syntax 135 passes all preserved.
+  - Full suite green: Css 700 (+28 new), Bindings 219, Js 1840 (only pre-existing
+    `Captured_lexical` failure unchanged).
+
 **Session result: 754→1339 passing subtests (+585, +78%), 14.54%→25.51%.** Cheap
 mechanical wins are now exhausted — every remaining high-impact cluster is a
 large *absent subsystem* or the semantic tail. Confirmed by exploration (no host
