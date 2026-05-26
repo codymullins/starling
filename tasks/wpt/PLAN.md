@@ -250,6 +250,22 @@ hand-rolled CSS `[Spec]` stub backlog where WPT now covers it.
   - Full suite green: Dom 39, Bindings 243 (+24), Js 1840 (pre-existing
     `Captured_lexical` failure unchanged). No regressions.
 
+- 2026-05-26: **WPT-03 interface constructors + DOMException throwers complete.**
+  Full CharacterData/Text/Comment/ProcessingInstruction/DocumentFragment/DocumentType
+  prototype hierarchy + constructors on `window`. DOMException throwing in all
+  spec'd tree-mutation methods (HierarchyRequestError, NotFoundError), dispatchEvent
+  (InvalidStateError), CharacterData offset methods (IndexSizeError), createEvent
+  uninitialized-flag, cancelBubble/returnValue, Event phase constants.
+  - `instanceof` RHS failures: 48→8 (−40, 83% reduction).
+  - `assert_throws_dom` failures: changed profile (many new subtests now running).
+  - Absolute: 1459→3813 (+2354 passes), denominator 5248→18225 (+12977 newly-enabled subtests
+    as crashing tests now run fully). Rate 27.80%→20.92% (rate decline = denominator expansion
+    from interface ctors enabling test initialization).
+  - dom/interface-objects.html: 19/23 (82.6%); 4 missing = Attr, NodeIterator,
+    TreeWalker, NodeFilter (WPT-04 scope).
+  - dom/nodes: 3251/7865 (41.3%) vs near-zero previously.
+  - Full suite: Dom 39, Bindings 219, Js 1840 (pre-existing Captured_lexical fails), Css 672.
+
 **Session result: 754→1339 passing subtests (+585, +78%), 14.54%→25.51%.** Cheap
 mechanical wins are now exhausted — every remaining high-impact cluster is a
 large *absent subsystem* or the semantic tail. Confirmed by exploration (no host

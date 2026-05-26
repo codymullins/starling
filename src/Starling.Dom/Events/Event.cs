@@ -30,6 +30,11 @@ public class Event
     /// An uninitialized event must not be dispatched (DOM §2.9).</summary>
     public bool Initialized { get; internal set; } = true;
 
+    /// <summary>DOM §2.9: mark this event as uninitialized. Called by the JS
+    /// <c>document.createEvent()</c> binding so the event requires a
+    /// subsequent <c>initEvent</c> call before it can be dispatched.</summary>
+    public void MarkAsUninitialized() => Initialized = false;
+
     /// <summary>Legacy <c>Event.initEvent</c> (DOM §2.9). Re-initializes a
     /// not-yet-dispatched event; a no-op while dispatching. Sets type/bubbles/
     /// cancelable and clears the propagation + canceled flags.</summary>
@@ -48,9 +53,14 @@ public class Event
     public bool IsTrusted { get; internal set; }
     public long TimeStamp { get; }
 
-    internal bool PropagationStopped { get; private set; }
+    public bool PropagationStopped { get; private set; }
     internal bool ImmediatePropagationStopped { get; private set; }
     internal bool DispatchFlag { get; set; }
+
+    /// <summary>Public accessor for the dispatch flag — used by JS bindings
+    /// to check whether this event is already being dispatched before calling
+    /// <c>EventTarget.DispatchEvent</c> (which would throw internally).</summary>
+    public bool IsBeingDispatched => DispatchFlag;
 
     public void StopPropagation() => PropagationStopped = true;
 

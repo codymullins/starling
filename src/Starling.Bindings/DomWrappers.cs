@@ -56,7 +56,13 @@ public static class DomWrappers
             Document => realm.DocumentPrototype ?? realm.ObjectPrototype,
             Element => realm.ElementPrototype ?? realm.ObjectPrototype,
             AttrNode => realm.AttrPrototype ?? realm.NodePrototype ?? realm.ObjectPrototype,
-            _ => NodeBindings.CharDataProtoFor(realm, node) ?? realm.NodePrototype ?? realm.ObjectPrototype,
+            Text => realm.TextPrototype ?? realm.CharacterDataPrototype ?? realm.NodePrototype ?? realm.ObjectPrototype,
+            Comment => realm.CommentPrototype ?? realm.CharacterDataPrototype ?? realm.NodePrototype ?? realm.ObjectPrototype,
+            CData => realm.CharacterDataPrototype ?? realm.NodePrototype ?? realm.ObjectPrototype,
+            ProcessingInstruction => realm.ProcessingInstructionPrototype ?? realm.CharacterDataPrototype ?? realm.NodePrototype ?? realm.ObjectPrototype,
+            DocumentFragment => realm.DocumentFragmentPrototype ?? realm.NodePrototype ?? realm.ObjectPrototype,
+            DocumentType => realm.DocumentTypePrototype ?? realm.NodePrototype ?? realm.ObjectPrototype,
+            _ => realm.NodePrototype ?? realm.ObjectPrototype,
         };
         var wrapper = new JsObject(proto);
         EventTargetBinding.BindWrapper(wrapper, node);
@@ -71,6 +77,23 @@ public static class DomWrappers
     /// <summary>Resolve the host <see cref="AttrNode"/> from a JS wrapper, or null.</summary>
     public static AttrNode? UnwrapAttr(JsValue v) => UnwrapNode(v) as AttrNode;
 
+    /// <summary>Wrap a node with an explicit prototype (used by constructors that
+    /// create detached nodes where the default prototype-selection heuristic would
+    /// pick the wrong type — e.g. <c>new Text("…")</c> creates a Text with
+    /// TextPrototype, not the generic NodePrototype).</summary>
+    public static JsObject WrapWithProto(JsRealm realm, Node node, JsObject proto)
+    {
+        ArgumentNullException.ThrowIfNull(realm);
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(proto);
+        var cache = NodeCachesPerRealm.GetValue(realm, _ => new ConditionalWeakTable<Node, JsObject>());
+        if (cache.TryGetValue(node, out var existing)) return existing;
+        var wrapper = new JsObject(proto);
+        EventTargetBinding.BindWrapper(wrapper, node);
+        cache.Add(node, wrapper);
+        return wrapper;
+    }
+
     /// <summary>Resolve the host <see cref="Node"/> backing a JS wrapper, or
     /// null when the object is not a wrapped DOM node.</summary>
     public static Node? UnwrapNode(JsValue v) =>
@@ -82,6 +105,32 @@ public static class DomWrappers
     /// <summary>Convenience for proto methods: returns null when <c>this</c> is
     /// not a wrapped node of the expected type.</summary>
     internal static T? UnwrapAs<T>(JsValue v) where T : class => EventTargetBinding.ResolveHost(v) as T;
+
+    /// <summary>Build a plain JS object representing an <see cref="Attr"/> value.
+    /// Attr is not a Node in DOM4+, so we create a simple bag with the relevant
+    /// properties (name, localName, value, namespaceURI, prefix, ownerElement,
+    /// specified) — sufficient for the WPT attribute accessor tests.</summary>
+    public static JsObject WrapAttr(JsRealm realm, Attr attr, Element? ownerElement = null)
+    {
+        var o = new JsObject(realm.ObjectPrototype);
+        // Compute localName and prefix from the qualified name (e.g. "xml:lang" → prefix="xml", localName="lang")
+        var name = attr.Name;
+        string? prefix = null;
+        string localName = name;
+        var colon = name.IndexOf(':');
+        if (colon > 0) { prefix = name[..colon]; localName = name[(colon + 1)..]; }
+        o.Set("name", JsValue.String(name));
+        o.Set("localName", JsValue.String(localName));
+        o.Set("value", JsValue.String(attr.Value ?? ""));
+        o.Set("namespaceURI", attr.Namespace is null ? JsValue.Null : JsValue.String(attr.Namespace));
+        o.Set("prefix", prefix is null ? JsValue.Null : JsValue.String(prefix));
+        o.Set("specified", JsValue.True);
+        if (ownerElement is not null)
+            o.Set("ownerElement", JsValue.Object(DomWrappers.Wrap(realm, ownerElement)));
+        else
+            o.Set("ownerElement", JsValue.Null);
+        return o;
+    }
 }
 
 /// <summary>

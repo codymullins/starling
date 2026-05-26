@@ -151,6 +151,12 @@ public sealed class JsRealm
     // outside Starling.Js and may not be installed in every embedding.
     public JsObject? EventTargetPrototype { get; set; }
     public JsObject? NodePrototype { get; set; }
+    public JsObject? CharacterDataPrototype { get; set; }
+    public JsObject? TextPrototype { get; set; }
+    public JsObject? CommentPrototype { get; set; }
+    public JsObject? ProcessingInstructionPrototype { get; set; }
+    public JsObject? DocumentFragmentPrototype { get; set; }
+    public JsObject? DocumentTypePrototype { get; set; }
     public JsObject? ElementPrototype { get; set; }
     public JsObject? DocumentPrototype { get; set; }
     public JsObject? EventPrototype { get; set; }
@@ -164,6 +170,10 @@ public sealed class JsRealm
     public JsObject? EventTargetConstructor { get; set; }
     public JsObject? EventConstructor { get; set; }
     public JsObject? NodeConstructor { get; set; }
+    public JsObject? TextConstructor { get; set; }
+    public JsObject? CommentConstructor { get; set; }
+    public JsObject? DocumentFragmentConstructor { get; set; }
+    public JsObject? DocumentTypeConstructor { get; set; }
     public JsObject? ElementConstructor { get; set; }
     public JsObject? DocumentConstructor { get; set; }
     // DOM §4.9 — Attr + NamedNodeMap (WPT-05).

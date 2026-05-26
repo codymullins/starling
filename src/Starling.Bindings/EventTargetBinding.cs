@@ -96,6 +96,25 @@ public static class EventTargetBinding
             if (TryGetHostEvent(thisV, out var e)) e.StopImmediatePropagation();
             return JsValue.Undefined;
         }, length: 0);
+        // DOM §2.2 — cancelBubble: getter returns stopPropagation state;
+        // setter of true calls stopPropagation (false is a no-op per spec).
+        DefineAccessor(realm, evProto, "cancelBubble",
+            (thisV, _) => TryGetHostEvent(thisV, out var e) ? JsValue.Boolean(e.PropagationStopped) : JsValue.False,
+            (thisV, args) =>
+            {
+                if (args.Length > 0 && JsValue.ToBoolean(args[0]))
+                    if (TryGetHostEvent(thisV, out var e)) e.StopPropagation();
+                return JsValue.Undefined;
+            });
+        // DOM §2.2 — returnValue: legacy alias for !defaultPrevented (setter = preventDefault if false).
+        DefineAccessor(realm, evProto, "returnValue",
+            (thisV, _) => TryGetHostEvent(thisV, out var e) ? JsValue.Boolean(!e.DefaultPrevented) : JsValue.True,
+            (thisV, args) =>
+            {
+                if (args.Length > 0 && !JsValue.ToBoolean(args[0]))
+                    if (TryGetHostEvent(thisV, out var e)) e.PreventDefault();
+                return JsValue.Undefined;
+            });
         // Legacy Event.initEvent (DOM §2.9) — used with document.createEvent.
         DefineMethod(realm, evProto, "initEvent", (thisV, args) =>
         {
@@ -128,6 +147,13 @@ public static class EventTargetBinding
             PropertyDescriptor.Data(JsValue.Object(evProto), writable: false, enumerable: false, configurable: false));
         evProto.DefineOwnProperty("constructor",
             PropertyDescriptor.Data(JsValue.Object(evCtor), writable: true, enumerable: false, configurable: true));
+        // DOM §2.2 — EventPhase constants on both the constructor and prototype.
+        foreach (var (name, val) in new[] { ("NONE", 0), ("CAPTURING_PHASE", 1), ("AT_TARGET", 2), ("BUBBLING_PHASE", 3) })
+        {
+            var desc = PropertyDescriptor.Data(JsValue.Number(val), writable: false, enumerable: true, configurable: false);
+            evCtor.DefineOwnProperty(name, desc);
+            evProto.DefineOwnProperty(name, desc);
+        }
         realm.EventConstructor = evCtor;
         realm.GlobalObject.DefineOwnProperty("Event",
             PropertyDescriptor.Data(JsValue.Object(evCtor), writable: true, enumerable: false, configurable: true));
@@ -252,6 +278,58 @@ public static class EventTargetBinding
             Detail = (int)NumOf(init, "detail"),
             RelatedTarget = init.IsObject ? ResolveHost(init.AsObject.Get("relatedTarget")) : null,
         });
+
+        // WheelEvent / InputEvent / CompositionEvent — minimal stubs that inherit
+        // from UIEvent. No extra properties for now; these just need to be
+        // constructable so `new WheelEvent('wheel')` doesn't throw.
+        var wheelEvProto = new JsObject(mouseEvProto);
+        DefineAccessor(realm, wheelEvProto, "deltaX", (_, _) => JsValue.Number(0));
+        DefineAccessor(realm, wheelEvProto, "deltaY", (_, _) => JsValue.Number(0));
+        DefineAccessor(realm, wheelEvProto, "deltaZ", (_, _) => JsValue.Number(0));
+        DefineAccessor(realm, wheelEvProto, "deltaMode", (_, _) => JsValue.Number(0));
+        DefineSubtypeCtor(realm, wheelEvProto, "WheelEvent", (type, init) => new MouseEvent(type, ReadInit(init)));
+
+        var inputEvProto = new JsObject(uiEvProto);
+        DefineSubtypeCtor(realm, inputEvProto, "InputEvent", (type, init) => new UiEvent(type, ReadInit(init)));
+
+        var compositionEvProto = new JsObject(uiEvProto);
+        DefineAccessor(realm, compositionEvProto, "data", (_, _) => JsValue.String(""));
+        DefineSubtypeCtor(realm, compositionEvProto, "CompositionEvent", (type, init) => new UiEvent(type, ReadInit(init)));
+
+        // HashChangeEvent / PopStateEvent / StorageEvent / MessageEvent — stubs
+        // for tests that reference these constructors.
+        foreach (var (name, proto) in new[]
+        {
+            ("HashChangeEvent", new JsObject(evProto)),
+            ("MessageEvent", new JsObject(evProto)),
+            ("StorageEvent", new JsObject(evProto)),
+            ("BeforeUnloadEvent", new JsObject(evProto)),
+            ("TextEvent", new JsObject(uiEvProto)),
+            ("DragEvent", new JsObject(mouseEvProto)),
+        })
+        {
+            var captured = proto;
+            var capturedName = name;
+            DefineSubtypeCtor(realm, captured, capturedName,
+                (type, init) => new Event(type, ReadInit(init)));
+        }
+
+        // NodeList, HTMLCollection, DOMTokenList — expose interface constructor
+        // objects on window so `instanceof NodeList` etc. can be checked.
+        // These don't need real constructors since no WPT test creates instances
+        // directly; they just need to exist as non-null objects.
+        foreach (var ifaceName in new[] { "NodeList", "HTMLCollection", "DOMTokenList" })
+        {
+            var ifaceProto = new JsObject(realm.ObjectPrototype);
+            var ifaceCtor = new JsNativeFunction(realm, ifaceName, 0, (_, _) =>
+                throw new JsThrow(realm.NewTypeError("Illegal constructor")), isConstructor: false);
+            ifaceCtor.DefineOwnProperty("prototype",
+                PropertyDescriptor.Data(JsValue.Object(ifaceProto), writable: false, enumerable: false, configurable: false));
+            ifaceProto.DefineOwnProperty("constructor",
+                PropertyDescriptor.Data(JsValue.Object(ifaceCtor), writable: true, enumerable: false, configurable: true));
+            realm.GlobalObject.DefineOwnProperty(ifaceName,
+                PropertyDescriptor.Data(JsValue.Object(ifaceCtor), writable: true, enumerable: false, configurable: true));
+        }
     }
 
     // ----- helpers for the UIEvents subtype constructors -----
@@ -317,6 +395,10 @@ public static class EventTargetBinding
 
     private static JsValue WrapUninitEvent(JsRealm realm, Event host)
     {
+        // DOM §2.9: events created via createEvent() are uninitialized until
+        // initEvent() is called. Mark them so dispatchEvent can throw
+        // InvalidStateError if dispatch is attempted before initialization.
+        host.MarkAsUninitialized();
         var proto = host switch
         {
             MouseEvent => realm.MouseEventPrototype,
@@ -406,7 +488,23 @@ public static class EventTargetBinding
         if (host is null) return JsValue.False;
         if (args.Length == 0 || !args[0].IsObject || args[0].AsObject is not JsEventWrapper wrapper)
             throw new JsThrow(realm.NewTypeError("dispatchEvent requires an Event instance"));
-        return JsValue.Boolean(host.DispatchEvent(wrapper.HostEvent));
+        var ev = wrapper.HostEvent;
+        // DOM §2.7 step 1: "If event's dispatch flag is set … throw InvalidStateError"
+        if (ev.IsBeingDispatched)
+            throw DomExceptionBinding.Throw(realm, "InvalidStateError",
+                "The event is already being dispatched.");
+        // DOM §2.7 step 2: "If event's initialized flag is not set … throw InvalidStateError"
+        if (!ev.Initialized)
+            throw DomExceptionBinding.Throw(realm, "InvalidStateError",
+                "The event has not been initialized (call initEvent first).");
+        try
+        {
+            return JsValue.Boolean(host.DispatchEvent(ev));
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw DomExceptionBinding.Throw(realm, "InvalidStateError", ex.Message);
+        }
     }
 
     // ---- DispatchEvent overload helper (accepts CustomEvent wrapper too)

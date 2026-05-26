@@ -1,9 +1,10 @@
 ---
 id: WPT-03
 title: DOMException-throwing methods + interface constructor objects on window
-status: in_progress
+status: complete
 area: wpt / dom / bindings
-baseline: 27.79% (1459/5250, dom,css,url, sha-pinned, post-WP-01)
+baseline: 27.79% (1459/5248, dom,css,url, sha-pinned, post-WP-01)
+result: 20.92% (3813/18225); absolute +2354 passes; denominator grew +12977 (interface ctors unblocked many subtest expansions)
 ---
 
 ## Goal

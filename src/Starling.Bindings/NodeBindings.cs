@@ -58,6 +58,7 @@ public static class NodeBindings
         InstallNode(realm);
         InstallAttr(realm);           // WPT-05: Attr extends Node
         InstallNamedNodeMap(realm);   // WPT-05: NamedNodeMap constructor
+        InstallCharacterData(realm);  // WPT-03: CharacterData / Text / Comment / PI prototype hierarchy
         InstallElement(realm);
         InstallDocument(realm);
         InstallCharacterDataInterfaces(realm);
@@ -126,48 +127,65 @@ public static class NodeBindings
         EventTargetBinding.DefineMethod(realm, nodeProto, "appendChild", (thisV, args) =>
         {
             var parent = DomWrappers.UnwrapNode(thisV);
-            var child = args.Length > 0 ? DomWrappers.UnwrapNode(args[0]) : null;
-            if (parent is null || child is null)
+            if (parent is null) throw new JsThrow(realm.NewTypeError("appendChild called on non-Node"));
+            if (args.Length == 0 || !args[0].IsObject || DomWrappers.UnwrapNode(args[0]) is null)
                 throw new JsThrow(realm.NewTypeError("appendChild requires a Node argument"));
+            var child = DomWrappers.UnwrapNode(args[0])!;
             // DOM §4.4.3 — Attr nodes cannot be inserted into a normal node tree.
             if (child is AttrNode)
                 throw DomExceptionBinding.Throw(realm, "HierarchyRequestError", "Cannot insert an Attr into a node tree.");
-            parent.AppendChild(child);
+            ValidatePreInsert(realm, parent, child, null);
+            try { parent.AppendChild(child); }
+            catch (InvalidOperationException ex) { throw NodeMutationException(realm, ex, parent, child); }
             return args[0];
         }, length: 1);
         EventTargetBinding.DefineMethod(realm, nodeProto, "removeChild", (thisV, args) =>
         {
             var parent = DomWrappers.UnwrapNode(thisV);
-            var child = args.Length > 0 ? DomWrappers.UnwrapNode(args[0]) : null;
-            if (parent is null || child is null)
+            if (parent is null) throw new JsThrow(realm.NewTypeError("removeChild called on non-Node"));
+            if (args.Length == 0 || !args[0].IsObject || DomWrappers.UnwrapNode(args[0]) is null)
                 throw new JsThrow(realm.NewTypeError("removeChild requires a Node argument"));
-            parent.RemoveChild(child);
+            var child = DomWrappers.UnwrapNode(args[0])!;
+            if (!ReferenceEquals(child.ParentNode, parent))
+                throw DomExceptionBinding.Throw(realm, "NotFoundError", "The node to be removed is not a child of this node");
+            try { parent.RemoveChild(child); }
+            catch (InvalidOperationException ex) { throw NodeMutationException(realm, ex, parent, child); }
             return args[0];
         }, length: 1);
         EventTargetBinding.DefineMethod(realm, nodeProto, "insertBefore", (thisV, args) =>
         {
             var parent = DomWrappers.UnwrapNode(thisV);
-            var child = args.Length > 0 ? DomWrappers.UnwrapNode(args[0]) : null;
-            var refChild = args.Length > 1 ? DomWrappers.UnwrapNode(args[1]) : null;
-            if (parent is null || child is null)
+            if (parent is null) throw new JsThrow(realm.NewTypeError("insertBefore called on non-Node"));
+            if (args.Length == 0 || !args[0].IsObject || DomWrappers.UnwrapNode(args[0]) is null)
                 throw new JsThrow(realm.NewTypeError("insertBefore requires a Node argument"));
+            var child = DomWrappers.UnwrapNode(args[0])!;
+            var refChild = args.Length > 1 && !args[1].IsNullish ? DomWrappers.UnwrapNode(args[1]) : null;
             // DOM §4.4.3 — Attr nodes cannot be inserted into a normal node tree.
             if (child is AttrNode)
                 throw DomExceptionBinding.Throw(realm, "HierarchyRequestError", "Cannot insert an Attr into a node tree.");
-            parent.InsertBefore(child, refChild);
+            if (refChild is not null && !ReferenceEquals(refChild.ParentNode, parent))
+                throw DomExceptionBinding.Throw(realm, "NotFoundError", "The reference node is not a child of this node");
+            ValidatePreInsert(realm, parent, child, refChild);
+            try { parent.InsertBefore(child, refChild); }
+            catch (InvalidOperationException ex) { throw NodeMutationException(realm, ex, parent, child); }
             return args[0];
         }, length: 2);
         EventTargetBinding.DefineMethod(realm, nodeProto, "replaceChild", (thisV, args) =>
         {
             var parent = DomWrappers.UnwrapNode(thisV);
-            var newChild = args.Length > 0 ? DomWrappers.UnwrapNode(args[0]) : null;
-            var oldChild = args.Length > 1 ? DomWrappers.UnwrapNode(args[1]) : null;
-            if (parent is null || newChild is null || oldChild is null)
+            if (parent is null) throw new JsThrow(realm.NewTypeError("replaceChild called on non-Node"));
+            if (args.Length < 2 || !args[0].IsObject || !args[1].IsObject
+                || DomWrappers.UnwrapNode(args[0]) is null || DomWrappers.UnwrapNode(args[1]) is null)
                 throw new JsThrow(realm.NewTypeError("replaceChild requires two Node arguments"));
+            var newChild = DomWrappers.UnwrapNode(args[0])!;
+            var oldChild = DomWrappers.UnwrapNode(args[1])!;
             // DOM §4.4.3 — Attr nodes cannot be inserted into a normal node tree.
             if (newChild is AttrNode)
                 throw DomExceptionBinding.Throw(realm, "HierarchyRequestError", "Cannot insert an Attr into a node tree.");
-            parent.ReplaceChild(newChild, oldChild);
+            if (!ReferenceEquals(oldChild.ParentNode, parent))
+                throw DomExceptionBinding.Throw(realm, "NotFoundError", "The child to be replaced is not a child of this node");
+            try { parent.ReplaceChild(newChild, oldChild); }
+            catch (InvalidOperationException ex) { throw NodeMutationException(realm, ex, parent, newChild); }
             return args[1];
         }, length: 2);
         EventTargetBinding.DefineMethod(realm, nodeProto, "hasChildNodes",
@@ -286,6 +304,16 @@ public static class NodeBindings
             var r = n.LookupPrefix(args.Length > 0 && !args[0].IsNullish ? JsValue.ToStringValue(args[0]) : null);
             return r is null ? JsValue.Null : JsValue.String(r);
         }, length: 1);
+
+        // DOM §4.4 — getRootNode: climb parent chain to the topmost node (WPT-03).
+        EventTargetBinding.DefineMethod(realm, nodeProto, "getRootNode", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapNode(thisV) is not { } n) return JsValue.Null;
+            _ = args.Length > 0 && args[0].IsObject && JsValue.ToBoolean(args[0].AsObject.Get("composed"));
+            var root = n;
+            while (root.ParentNode is { } p) root = p;
+            return JsValue.Object(DomWrappers.Wrap(realm, root));
+        }, length: 0);
 
         // ---- CharacterData mixin (DOM §4.9) — exposed on Node.prototype so
         // Text/Comment/CData/ProcessingInstruction inherit them. Methods that
@@ -860,6 +888,53 @@ public static class NodeBindings
             if (DomWrappers.UnwrapElement(thisV) is { } e) e.RemoveFromParent();
             return JsValue.Undefined;
         }, length: 0);
+        // DOM §4.9 — Element.hasAttributes().
+        EventTargetBinding.DefineMethod(realm, elProto, "hasAttributes", (thisV, _) =>
+            JsValue.Boolean(DomWrappers.UnwrapElement(thisV) is { } e && e.Attributes.Count > 0), length: 0);
+        // DOM §4.9 — Element.getAttributeNode(name) → Attr | null.
+        EventTargetBinding.DefineMethod(realm, elProto, "getAttributeNode", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is not { } e || args.Length == 0) return JsValue.Null;
+            var name = JsValue.ToStringValue(args[0]);
+            var attr = e.Attributes.GetNamedItem(name);
+            return attr is null ? JsValue.Null : JsValue.Object(DomWrappers.WrapAttr(realm, attr));
+        }, length: 1);
+        // DOM §4.9 — Element.getAttributeNodeNS(ns, localName) → Attr | null.
+        EventTargetBinding.DefineMethod(realm, elProto, "getAttributeNodeNS", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is not { } e || args.Length < 2) return JsValue.Null;
+            var ns = args[0].IsNullish ? null : JsValue.ToStringValue(args[0]);
+            var localName = JsValue.ToStringValue(args[1]);
+            var attr = e.Attributes.GetNamedItemNS(ns, localName);
+            return attr is null ? JsValue.Null : JsValue.Object(DomWrappers.WrapAttr(realm, attr));
+        }, length: 2);
+        // DOM §4.9 — Element.toggleAttribute(qualifiedName[, force]).
+        EventTargetBinding.DefineMethod(realm, elProto, "toggleAttribute", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is not { } e || args.Length == 0) return JsValue.False;
+            var name = JsValue.ToStringValue(args[0]);
+            if (!IsValidName(name))
+                throw DomExceptionBinding.Throw(realm, "InvalidCharacterError", $"'{name}' is not a valid attribute name");
+            var force = args.Length > 1 && !args[1].IsUndefined ? (bool?)JsValue.ToBoolean(args[1]) : null;
+            var has = e.HasAttribute(name);
+            if (force.HasValue)
+            {
+                if (force.Value) { if (!has) e.SetAttribute(name, ""); return JsValue.True; }
+                else { if (has) e.RemoveAttribute(name); return JsValue.False; }
+            }
+            if (has) { e.RemoveAttribute(name); return JsValue.False; }
+            e.SetAttribute(name, "");
+            return JsValue.True;
+        }, length: 1);
+        // DOM §4.9 — Element.getAttributeNames().
+        EventTargetBinding.DefineMethod(realm, elProto, "getAttributeNames", (thisV, _) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is not { } e) return MakeArray(realm, Array.Empty<JsValue>());
+            var items = new List<JsValue>();
+            foreach (var attr in e.Attributes)
+                items.Add(JsValue.String(attr.Name));
+            return MakeArray(realm, items);
+        }, length: 0);
         EventTargetBinding.DefineMethod(realm, elProto, "insertAdjacentHTML", (thisV, args) =>
         {
             if (DomWrappers.UnwrapElement(thisV) is not { } e)
@@ -902,6 +977,42 @@ public static class NodeBindings
             return JsValue.Undefined;
         }, length: 2);
 
+        // DOM Living Standard — insertAdjacentElement(position, element).
+        EventTargetBinding.DefineMethod(realm, elProto, "insertAdjacentElement", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is not { } e) return JsValue.Null;
+            if (args.Length < 2) return JsValue.Null;
+            var position = JsValue.ToStringValue(args[0]).ToLowerInvariant();
+            var newEl = DomWrappers.UnwrapElement(args[1]);
+            if (newEl is null) return JsValue.Null;
+            switch (position)
+            {
+                case "beforebegin": if (e.ParentNode is { } pb) pb.InsertBefore(newEl, e); break;
+                case "afterbegin": e.InsertBefore(newEl, e.FirstChild); break;
+                case "beforeend": e.AppendChild(newEl); break;
+                case "afterend": if (e.ParentNode is { } pa) pa.InsertBefore(newEl, e.NextSibling); break;
+                default: return JsValue.Null;
+            }
+            return args[1];
+        }, length: 2);
+        // DOM Living Standard — insertAdjacentText(position, data).
+        EventTargetBinding.DefineMethod(realm, elProto, "insertAdjacentText", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is not { } e) return JsValue.Undefined;
+            if (args.Length < 2) return JsValue.Undefined;
+            var position = JsValue.ToStringValue(args[0]).ToLowerInvariant();
+            var data = JsValue.ToStringValue(args[1]);
+            var doc = e.OwnerDocument ?? new Document();
+            var textNode = doc.CreateTextNode(data);
+            switch (position)
+            {
+                case "beforebegin": if (e.ParentNode is { } pb) pb.InsertBefore(textNode, e); break;
+                case "afterbegin": e.InsertBefore(textNode, e.FirstChild); break;
+                case "beforeend": e.AppendChild(textNode); break;
+                case "afterend": if (e.ParentNode is { } pa) pa.InsertBefore(textNode, e.NextSibling); break;
+            }
+            return JsValue.Undefined;
+        }, length: 2);
         // ---- cloneNode(deep?) -----------------------------------------------
         // DOM §4.4.4 — shallow clone copies tag + attributes; deep clone also
         // recursively copies all descendant nodes.
@@ -1329,6 +1440,61 @@ public static class NodeBindings
                 throw new JsThrow(realm.NewTypeError("createDocumentFragment called on non-Document"));
             return JsValue.Object(DomWrappers.Wrap(realm, d.CreateDocumentFragment()));
         }, length: 0);
+        // DOM §4.5 — document.createAttribute(localName).
+        EventTargetBinding.DefineMethod(realm, docProto, "createAttribute", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapDocument(thisV) is null || args.Length == 0)
+                throw new JsThrow(realm.NewTypeError("createAttribute requires a localName"));
+            var localName = JsValue.ToStringValue(args[0]);
+            if (!IsValidName(localName))
+                throw DomExceptionBinding.Throw(realm, "InvalidCharacterError", $"'{localName}' is not a valid attribute name");
+            var attr = new Attr(localName, "");
+            return JsValue.Object(DomWrappers.WrapAttr(realm, attr));
+        }, length: 1);
+        // DOM §4.5 — document.createAttributeNS(namespace, qualifiedName).
+        EventTargetBinding.DefineMethod(realm, docProto, "createAttributeNS", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapDocument(thisV) is null || args.Length < 2)
+                throw new JsThrow(realm.NewTypeError("createAttributeNS requires (namespace, qualifiedName)"));
+            var ns = args[0].IsNullish ? null : JsValue.ToStringValue(args[0]);
+            var qname = JsValue.ToStringValue(args[1]);
+            ValidateQualifiedName(realm, ns, qname);
+            return JsValue.Object(DomWrappers.WrapAttr(realm, new Attr(qname, "", ns)));
+        }, length: 2);
+        // DOM §4.5 — document.createCDATASection(data).
+        EventTargetBinding.DefineMethod(realm, docProto, "createCDATASection", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapDocument(thisV) is not { } d)
+                throw new JsThrow(realm.NewTypeError("createCDATASection called on non-Document"));
+            var data = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+            if (data.Contains("]]>", StringComparison.Ordinal))
+                throw DomExceptionBinding.Throw(realm, "InvalidCharacterError", "CDATA section data must not contain ']]>'");
+            return JsValue.Object(DomWrappers.Wrap(realm, new CData(data)));
+        }, length: 1);
+        // DOM §4.5 — document.adoptNode(node): moves a node from its document into this one.
+        EventTargetBinding.DefineMethod(realm, docProto, "adoptNode", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapDocument(thisV) is null || args.Length == 0)
+                throw new JsThrow(realm.NewTypeError("adoptNode requires a Node argument"));
+            if (DomWrappers.UnwrapNode(args[0]) is null)
+                throw new JsThrow(realm.NewTypeError("adoptNode requires a Node argument"));
+            // Adopt: remove from current parent. The ownerDocument change would require
+            // walking the subtree; as a simplification we just return the node.
+            var node = DomWrappers.UnwrapNode(args[0])!;
+            node.RemoveFromParent();
+            return args[0];
+        }, length: 1);
+        // DOM §4.5 — document.importNode(node, deep?): clone into this document.
+        EventTargetBinding.DefineMethod(realm, docProto, "importNode", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapDocument(thisV) is null || args.Length == 0)
+                throw new JsThrow(realm.NewTypeError("importNode requires a Node argument"));
+            if (DomWrappers.UnwrapNode(args[0]) is not { } src)
+                throw new JsThrow(realm.NewTypeError("importNode requires a Node argument"));
+            var deep = args.Length > 1 && JsValue.ToBoolean(args[1]);
+            var clone = CloneNode(realm, src, deep);
+            return JsValue.Object(DomWrappers.Wrap(realm, clone));
+        }, length: 1);
 
         // DOM §6 — traversal: NodeFilter global + createTreeWalker + createNodeIterator.
         TraversalBinding.Install(realm, docProto);
@@ -1336,7 +1502,12 @@ public static class NodeBindings
         // DOM §4.5 — "new Document()" creates an XML document (no HTML semantics).
         // Not blocked in the spec; creating a Document via the constructor is valid.
         var docCtor = new JsNativeFunction(realm, "Document", 0, (_, _) =>
-            JsValue.Object(DomWrappers.Wrap(realm, new Document())), isConstructor: true);
+        {
+            // DOM §4.5 — new Document() creates a new empty XML document.
+            var doc = new Document();
+            return JsValue.Object(DomWrappers.Wrap(realm, doc));
+        }, isConstructor: true);
+        docCtor.SetPrototypeOf(realm.NodeConstructor!);
         docCtor.DefineOwnProperty("prototype",
             PropertyDescriptor.Data(JsValue.Object(docProto), writable: false, enumerable: false, configurable: false));
         docProto.DefineOwnProperty("constructor",
@@ -1344,6 +1515,17 @@ public static class NodeBindings
         realm.DocumentConstructor = docCtor;
         realm.GlobalObject.DefineOwnProperty("Document",
             PropertyDescriptor.Data(JsValue.Object(docCtor), writable: true, enumerable: false, configurable: true));
+        // HTMLDocument is an alias for Document (HTML §3.1).
+        realm.GlobalObject.DefineOwnProperty("HTMLDocument",
+            PropertyDescriptor.Data(JsValue.Object(docCtor), writable: true, enumerable: false, configurable: true));
+        // DOMImplementation — expose as window.DOMImplementation (missing-ctor bucket).
+        var domImplProto = new JsObject(realm.ObjectPrototype);
+        var domImplCtor = new JsNativeFunction(realm, "DOMImplementation", 0, (_, _) =>
+            throw new JsThrow(realm.NewTypeError("Illegal constructor")), isConstructor: false);
+        domImplCtor.DefineOwnProperty("prototype",
+            PropertyDescriptor.Data(JsValue.Object(domImplProto), writable: false, enumerable: false, configurable: false));
+        realm.GlobalObject.DefineOwnProperty("DOMImplementation",
+            PropertyDescriptor.Data(JsValue.Object(domImplCtor), writable: true, enumerable: false, configurable: true));
     }
 
     // ---- helpers ---------------------------------------------------------
@@ -1543,6 +1725,335 @@ public static class NodeBindings
             bc = bc.NextSibling;
         }
         return ac is null && bc is null;
+    }
+
+    /// <summary>DOM §4.4 — structural equality between two nodes (isEqualNode).
+    /// Two nodes are equal when they have the same type, the same qualifying data
+    /// (tag/data/etc.), the same attributes, and the same children — recursively.</summary>
+    private static bool NodesEqual(Node a, Node b)
+    {
+        if (a.Kind != b.Kind) return false;
+        switch (a)
+        {
+            case DocumentType dta when b is DocumentType dtb:
+                if (dta.Name != dtb.Name || dta.PublicId != dtb.PublicId || dta.SystemId != dtb.SystemId) return false;
+                break;
+            case Element ea when b is Element eb:
+                if (ea.Namespace != eb.Namespace || ea.LocalName != eb.LocalName) return false;
+                // Compare attributes (order-independent per spec).
+                var attrsA = ea.Attributes.ToList();
+                var attrsB = eb.Attributes.ToList();
+                if (attrsA.Count != attrsB.Count) return false;
+                foreach (var attr in attrsA)
+                {
+                    var matchIdx = attrsB.FindIndex(x => x.Name == attr.Name && x.Namespace == attr.Namespace);
+                    if (matchIdx < 0 || attrsB[matchIdx].Value != attr.Value) return false;
+                }
+                break;
+            case ProcessingInstruction pia when b is ProcessingInstruction pib:
+                if (pia.Target != pib.Target || pia.Data != pib.Data) return false;
+                break;
+            case CharacterData cda when b is CharacterData cdb:
+                if (cda.Data != cdb.Data) return false;
+                break;
+        }
+        // Recursively compare children.
+        var ca = a.FirstChild;
+        var cb = b.FirstChild;
+        while (ca is not null && cb is not null)
+        {
+            if (!NodesEqual(ca, cb)) return false;
+            ca = ca.NextSibling;
+            cb = cb.NextSibling;
+        }
+        return ca is null && cb is null;
+    }
+
+    // =====================================================================
+    //                          CharacterData
+    // =====================================================================
+    private static void InstallCharacterData(JsRealm realm)
+    {
+        // CharacterData prototype inherits from Node.prototype.
+        var cdProto = new JsObject(realm.NodePrototype!);
+        realm.CharacterDataPrototype = cdProto;
+
+        EventTargetBinding.DefineAccessor(realm, cdProto, "data",
+            (thisV, _) => DomWrappers.UnwrapAs<CharacterData>(thisV) is { } cd ? JsValue.String(cd.Data) : JsValue.String(""),
+            (thisV, args) =>
+            {
+                if (DomWrappers.UnwrapAs<CharacterData>(thisV) is { } cd)
+                    cd.Data = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+                return JsValue.Undefined;
+            });
+        EventTargetBinding.DefineAccessor(realm, cdProto, "length",
+            (thisV, _) => DomWrappers.UnwrapAs<CharacterData>(thisV) is { } cd ? JsValue.Number(cd.Data.Length) : JsValue.Number(0));
+        EventTargetBinding.DefineAccessor(realm, cdProto, "nodeValue",
+            (thisV, _) => DomWrappers.UnwrapAs<CharacterData>(thisV) is { } cd ? JsValue.String(cd.Data) : JsValue.Null,
+            (thisV, args) =>
+            {
+                if (DomWrappers.UnwrapAs<CharacterData>(thisV) is { } cd)
+                    cd.Data = args.Length > 0 && !args[0].IsNullish ? JsValue.ToStringValue(args[0]) : "";
+                return JsValue.Undefined;
+            });
+        EventTargetBinding.DefineAccessor(realm, cdProto, "textContent",
+            (thisV, _) => DomWrappers.UnwrapAs<CharacterData>(thisV) is { } cd ? JsValue.String(cd.Data) : JsValue.String(""),
+            (thisV, args) =>
+            {
+                if (DomWrappers.UnwrapAs<CharacterData>(thisV) is { } cd)
+                    cd.Data = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+                return JsValue.Undefined;
+            });
+
+        // DOM §4.8 CharacterData.substringData(offset, count) → string.
+        EventTargetBinding.DefineMethod(realm, cdProto, "substringData", (thisV, args) =>
+        {
+            var cd = DomWrappers.UnwrapAs<CharacterData>(thisV);
+            if (cd is null) return JsValue.String("");
+            var offset = args.Length > 0 ? (int)JsValue.ToNumber(args[0]) : 0;
+            var count = args.Length > 1 ? (int)JsValue.ToNumber(args[1]) : 0;
+            var len = cd.Data.Length;
+            if (offset < 0 || offset > len)
+                throw DomExceptionBinding.Throw(realm, "IndexSizeError", $"Offset {offset} is outside the data length {len}");
+            var end = Math.Min(offset + Math.Max(0, count), len);
+            return JsValue.String(cd.Data[offset..end]);
+        }, length: 2);
+
+        // DOM §4.8 CharacterData.appendData(data).
+        EventTargetBinding.DefineMethod(realm, cdProto, "appendData", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapAs<CharacterData>(thisV) is { } cd)
+                cd.Data += args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+            return JsValue.Undefined;
+        }, length: 1);
+
+        // DOM §4.8 CharacterData.insertData(offset, data).
+        EventTargetBinding.DefineMethod(realm, cdProto, "insertData", (thisV, args) =>
+        {
+            var cd = DomWrappers.UnwrapAs<CharacterData>(thisV);
+            if (cd is null) return JsValue.Undefined;
+            var offset = args.Length > 0 ? (int)JsValue.ToNumber(args[0]) : 0;
+            var data = args.Length > 1 ? JsValue.ToStringValue(args[1]) : "";
+            var len = cd.Data.Length;
+            if (offset < 0 || offset > len)
+                throw DomExceptionBinding.Throw(realm, "IndexSizeError", $"Offset {offset} is outside the data length {len}");
+            cd.Data = cd.Data[..offset] + data + cd.Data[offset..];
+            return JsValue.Undefined;
+        }, length: 2);
+
+        // DOM §4.8 CharacterData.deleteData(offset, count).
+        EventTargetBinding.DefineMethod(realm, cdProto, "deleteData", (thisV, args) =>
+        {
+            var cd = DomWrappers.UnwrapAs<CharacterData>(thisV);
+            if (cd is null) return JsValue.Undefined;
+            var offset = args.Length > 0 ? (int)JsValue.ToNumber(args[0]) : 0;
+            var count = args.Length > 1 ? (int)JsValue.ToNumber(args[1]) : 0;
+            var len = cd.Data.Length;
+            if (offset < 0 || offset > len)
+                throw DomExceptionBinding.Throw(realm, "IndexSizeError", $"Offset {offset} is outside the data length {len}");
+            var end = Math.Min(offset + Math.Max(0, count), len);
+            cd.Data = cd.Data[..offset] + cd.Data[end..];
+            return JsValue.Undefined;
+        }, length: 2);
+
+        // DOM §4.8 CharacterData.replaceData(offset, count, data).
+        EventTargetBinding.DefineMethod(realm, cdProto, "replaceData", (thisV, args) =>
+        {
+            var cd = DomWrappers.UnwrapAs<CharacterData>(thisV);
+            if (cd is null) return JsValue.Undefined;
+            var offset = args.Length > 0 ? (int)JsValue.ToNumber(args[0]) : 0;
+            var count = args.Length > 1 ? (int)JsValue.ToNumber(args[1]) : 0;
+            var data = args.Length > 2 ? JsValue.ToStringValue(args[2]) : "";
+            var len = cd.Data.Length;
+            if (offset < 0 || offset > len)
+                throw DomExceptionBinding.Throw(realm, "IndexSizeError", $"Offset {offset} is outside the data length {len}");
+            var end = Math.Min(offset + Math.Max(0, count), len);
+            cd.Data = cd.Data[..offset] + data + cd.Data[end..];
+            return JsValue.Undefined;
+        }, length: 3);
+
+        // CharacterData interface constructor (illegal per spec — abstract type).
+        var cdCtor = new JsNativeFunction(realm, "CharacterData", 0, (_, _) =>
+            throw new JsThrow(realm.NewTypeError("Illegal constructor")), isConstructor: false);
+        cdCtor.SetPrototypeOf(realm.NodeConstructor!);
+        cdCtor.DefineOwnProperty("prototype",
+            PropertyDescriptor.Data(JsValue.Object(cdProto), writable: false, enumerable: false, configurable: false));
+        cdProto.DefineOwnProperty("constructor",
+            PropertyDescriptor.Data(JsValue.Object(cdCtor), writable: true, enumerable: false, configurable: true));
+        realm.GlobalObject.DefineOwnProperty("CharacterData",
+            PropertyDescriptor.Data(JsValue.Object(cdCtor), writable: true, enumerable: false, configurable: true));
+
+        // Text prototype inherits from CharacterData.prototype.
+        var textProto = new JsObject(cdProto);
+        realm.TextPrototype = textProto;
+        // Text.splitText(offset) — splits a text node at offset.
+        EventTargetBinding.DefineMethod(realm, textProto, "splitText", (thisV, args) =>
+        {
+            var text = DomWrappers.UnwrapAs<Text>(thisV);
+            if (text is null) throw new JsThrow(realm.NewTypeError("splitText called on non-Text node"));
+            var offset = args.Length > 0 ? (int)JsValue.ToNumber(args[0]) : 0;
+            var len = text.Data.Length;
+            if (offset < 0 || offset > len)
+                throw DomExceptionBinding.Throw(realm, "IndexSizeError", $"Offset {offset} is outside the text length {len}");
+            var newText = new Text(text.Data[offset..]);
+            text.Data = text.Data[..offset];
+            if (text.ParentNode is { } parent)
+                parent.InsertBefore(newText, text.NextSibling);
+            return JsValue.Object(DomWrappers.Wrap(realm, newText));
+        }, length: 1);
+        // Text.wholeText — concatenates text node and adjacent text siblings.
+        EventTargetBinding.DefineAccessor(realm, textProto, "wholeText", (thisV, _) =>
+        {
+            if (DomWrappers.UnwrapAs<Text>(thisV) is not { } t) return JsValue.String("");
+            var sb = new System.Text.StringBuilder();
+            // Walk backwards to find start
+            Node cur = t;
+            while (cur.PreviousSibling is Text prev) cur = prev;
+            // Concatenate
+            while (cur is Text txt) { sb.Append(txt.Data); cur = cur.NextSibling!; if (cur is null) break; }
+            return JsValue.String(sb.ToString());
+        });
+
+        var textCtor = new JsNativeFunction(realm, "Text", 1, (_, args) =>
+        {
+            var data = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+            // Create a detached text node (ownerDocument is null).
+            var doc = realm.DocumentPrototype is not null
+                ? new Document()
+                : new Document();
+            return JsValue.Object(DomWrappers.WrapWithProto(realm, new Text(data), textProto));
+        }, isConstructor: true);
+        textCtor.SetPrototypeOf(cdCtor);
+        textCtor.DefineOwnProperty("prototype",
+            PropertyDescriptor.Data(JsValue.Object(textProto), writable: false, enumerable: false, configurable: false));
+        textProto.DefineOwnProperty("constructor",
+            PropertyDescriptor.Data(JsValue.Object(textCtor), writable: true, enumerable: false, configurable: true));
+        realm.TextConstructor = textCtor;
+        realm.GlobalObject.DefineOwnProperty("Text",
+            PropertyDescriptor.Data(JsValue.Object(textCtor), writable: true, enumerable: false, configurable: true));
+
+        // Comment prototype inherits from CharacterData.prototype.
+        var commentProto = new JsObject(cdProto);
+        realm.CommentPrototype = commentProto;
+        var commentCtor = new JsNativeFunction(realm, "Comment", 1, (_, args) =>
+        {
+            var data = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+            return JsValue.Object(DomWrappers.WrapWithProto(realm, new Comment(data), commentProto));
+        }, isConstructor: true);
+        commentCtor.SetPrototypeOf(cdCtor);
+        commentCtor.DefineOwnProperty("prototype",
+            PropertyDescriptor.Data(JsValue.Object(commentProto), writable: false, enumerable: false, configurable: false));
+        commentProto.DefineOwnProperty("constructor",
+            PropertyDescriptor.Data(JsValue.Object(commentCtor), writable: true, enumerable: false, configurable: true));
+        realm.CommentConstructor = commentCtor;
+        realm.GlobalObject.DefineOwnProperty("Comment",
+            PropertyDescriptor.Data(JsValue.Object(commentCtor), writable: true, enumerable: false, configurable: true));
+
+        // ProcessingInstruction prototype inherits from CharacterData.prototype.
+        var piProto = new JsObject(cdProto);
+        realm.ProcessingInstructionPrototype = piProto;
+        EventTargetBinding.DefineAccessor(realm, piProto, "target",
+            (thisV, _) => DomWrappers.UnwrapAs<ProcessingInstruction>(thisV) is { } pi ? JsValue.String(pi.Target) : JsValue.String(""));
+        var piCtor = new JsNativeFunction(realm, "ProcessingInstruction", 0, (_, _) =>
+            throw new JsThrow(realm.NewTypeError("Illegal constructor")), isConstructor: false);
+        piCtor.SetPrototypeOf(cdCtor);
+        piCtor.DefineOwnProperty("prototype",
+            PropertyDescriptor.Data(JsValue.Object(piProto), writable: false, enumerable: false, configurable: false));
+        piProto.DefineOwnProperty("constructor",
+            PropertyDescriptor.Data(JsValue.Object(piCtor), writable: true, enumerable: false, configurable: true));
+        realm.GlobalObject.DefineOwnProperty("ProcessingInstruction",
+            PropertyDescriptor.Data(JsValue.Object(piCtor), writable: true, enumerable: false, configurable: true));
+
+        // DocumentFragment inherits from Node.prototype.
+        var dfProto = new JsObject(realm.NodePrototype!);
+        realm.DocumentFragmentPrototype = dfProto;
+        EventTargetBinding.DefineMethod(realm, dfProto, "querySelector", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapAs<DocumentFragment>(thisV) is not { } df || args.Length == 0) return JsValue.Null;
+            var match = QuerySelectorEngine.First(df, JsValue.ToStringValue(args[0]), realm);
+            return match is null ? JsValue.Null : JsValue.Object(DomWrappers.Wrap(realm, match));
+        }, length: 1);
+        EventTargetBinding.DefineMethod(realm, dfProto, "querySelectorAll", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapAs<DocumentFragment>(thisV) is not { } df || args.Length == 0) return MakeArray(realm, Array.Empty<JsValue>());
+            var items = new List<JsValue>();
+            foreach (var m in QuerySelectorEngine.All(df, JsValue.ToStringValue(args[0]), realm))
+                items.Add(JsValue.Object(DomWrappers.Wrap(realm, m)));
+            return MakeArray(realm, items);
+        }, length: 1);
+        var dfCtor = new JsNativeFunction(realm, "DocumentFragment", 0, (_, _) =>
+        {
+            // DOM §4.7 — the DocumentFragment constructor creates a detached fragment.
+            var doc = new Document();
+            return JsValue.Object(DomWrappers.WrapWithProto(realm, doc.CreateDocumentFragment(), dfProto));
+        }, isConstructor: true);
+        dfCtor.SetPrototypeOf(realm.NodeConstructor!);
+        dfCtor.DefineOwnProperty("prototype",
+            PropertyDescriptor.Data(JsValue.Object(dfProto), writable: false, enumerable: false, configurable: false));
+        dfProto.DefineOwnProperty("constructor",
+            PropertyDescriptor.Data(JsValue.Object(dfCtor), writable: true, enumerable: false, configurable: true));
+        realm.DocumentFragmentConstructor = dfCtor;
+        realm.GlobalObject.DefineOwnProperty("DocumentFragment",
+            PropertyDescriptor.Data(JsValue.Object(dfCtor), writable: true, enumerable: false, configurable: true));
+
+        // DocumentType inherits from Node.prototype.
+        var dtProto = new JsObject(realm.NodePrototype!);
+        realm.DocumentTypePrototype = dtProto;
+        EventTargetBinding.DefineAccessor(realm, dtProto, "name",
+            (thisV, _) => DomWrappers.UnwrapAs<DocumentType>(thisV) is { } dt ? JsValue.String(dt.Name) : JsValue.String(""));
+        EventTargetBinding.DefineAccessor(realm, dtProto, "publicId",
+            (thisV, _) => DomWrappers.UnwrapAs<DocumentType>(thisV) is { } dt ? JsValue.String(dt.PublicId) : JsValue.String(""));
+        EventTargetBinding.DefineAccessor(realm, dtProto, "systemId",
+            (thisV, _) => DomWrappers.UnwrapAs<DocumentType>(thisV) is { } dt ? JsValue.String(dt.SystemId) : JsValue.String(""));
+        var dtCtor = new JsNativeFunction(realm, "DocumentType", 0, (_, _) =>
+            throw new JsThrow(realm.NewTypeError("Illegal constructor")), isConstructor: false);
+        dtCtor.SetPrototypeOf(realm.NodeConstructor!);
+        dtCtor.DefineOwnProperty("prototype",
+            PropertyDescriptor.Data(JsValue.Object(dtProto), writable: false, enumerable: false, configurable: false));
+        dtProto.DefineOwnProperty("constructor",
+            PropertyDescriptor.Data(JsValue.Object(dtCtor), writable: true, enumerable: false, configurable: true));
+        realm.DocumentTypeConstructor = dtCtor;
+        realm.GlobalObject.DefineOwnProperty("DocumentType",
+            PropertyDescriptor.Data(JsValue.Object(dtCtor), writable: true, enumerable: false, configurable: true));
+    }
+
+    /// <summary>DOM §4.4 — pre-insert validation. Throws HierarchyRequestError for:
+    /// (1) parent is not a valid container type (Document, Element, DocumentFragment),
+    /// (2) child is an ancestor of parent, (3) child is a Document in a non-Document parent,
+    /// (4) inserting a node type that is not allowed in the parent type.</summary>
+    private static void ValidatePreInsert(JsRealm realm, Node parent, Node child, Node? refChild)
+    {
+        // Parent must be able to have children.
+        if (parent is not (Document or Element or DocumentFragment))
+            throw DomExceptionBinding.Throw(realm, "HierarchyRequestError",
+                $"Node of type '{parent.GetType().Name}' cannot have children");
+        // Child must not be an ancestor of parent (cycle check).
+        for (var p = parent; p is not null; p = p.ParentNode)
+        {
+            if (ReferenceEquals(p, child))
+                throw DomExceptionBinding.Throw(realm, "HierarchyRequestError",
+                    "The new child element contains the parent");
+        }
+        // A document cannot be inserted as a child (unless it's already there somehow).
+        if (child is Document && parent is not Document)
+            throw DomExceptionBinding.Throw(realm, "HierarchyRequestError",
+                "Documents cannot be inserted as a child node");
+    }
+
+    /// <summary>Convert an <see cref="InvalidOperationException"/> from a host
+    /// tree mutation into the correct <see cref="JsThrow"/> DOMException.</summary>
+    private static JsThrow NodeMutationException(JsRealm realm, InvalidOperationException ex, Node parent, Node child)
+    {
+        // Map common host-side error messages to DOM error names.
+        var msg = ex.Message ?? "";
+        if (msg.Contains("ancestor", StringComparison.OrdinalIgnoreCase) ||
+            msg.Contains("hierarchy", StringComparison.OrdinalIgnoreCase))
+            return DomExceptionBinding.Throw(realm, "HierarchyRequestError", msg);
+        if (msg.Contains("not found", StringComparison.OrdinalIgnoreCase) ||
+            msg.Contains("not a child", StringComparison.OrdinalIgnoreCase))
+            return DomExceptionBinding.Throw(realm, "NotFoundError", msg);
+        // Default: HierarchyRequestError
+        return DomExceptionBinding.Throw(realm, "HierarchyRequestError", msg);
     }
 
     private static bool IsNameStart(char c) => char.IsLetter(c) || c == '_' || c == ':';
