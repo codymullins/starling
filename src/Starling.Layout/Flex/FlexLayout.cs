@@ -386,14 +386,95 @@ internal sealed class FlexLayout
     {
         if (props.IsRow)
         {
-            const double measureWidth = 1_000_000d;
-            _block.LayoutItem(child, measureWidth, null, measure: true);
-            // LayoutItem returns consumed height; we want consumed width.
-            return Math.Min(containerWidth, UsedMainWidth(child));
+            return Math.Min(containerWidth, NaturalWidth(child, containerWidth));
         }
         // Column direction: measure the child's natural height at the
         // container width.
         return _block.LayoutItem(child, containerWidth, null, measure: true);
+    }
+
+    /// <summary>
+    /// The child's natural (max-content) outer width. For a non-flex child this
+    /// is the standard "lay it out at a huge width and read the consumed
+    /// content extent" trick. For a child that is itself a flex container the
+    /// huge-width layout would let any inner <c>flex-grow</c> descendant fill
+    /// the measurement width and propagate that ~1M back as the natural size
+    /// (google.com search-pill bug: a row flex with a flex-grown right cluster
+    /// reported itself as ~600 wide, starving the sibling textarea slot).
+    /// Per CSS Flexbox 1 §9.9 / CSS Sizing 4, the max-content of a flex
+    /// container is structural: sum of items' max-content contributions plus
+    /// main gaps (row), or max of items' cross-content sizes (column).
+    /// Recursive so it survives arbitrary nesting.
+    /// </summary>
+    private double NaturalWidth(Box.Box box, double containerWidth)
+    {
+        if (box.Kind == BoxKind.AnonymousBlock || !BlockLayout.IsFlexContainer(box.Style))
+        {
+            const double measureWidth = 1_000_000d;
+            _block.LayoutItem(box, measureWidth, null, measure: true);
+            return UsedMainWidth(box);
+        }
+
+        // Nested flex container — compute structurally.
+        var props = FlexParser.ParseContainer(
+            box.Style,
+            mainAxisBasisPx: containerWidth,
+            crossAxisBasisPx: _viewport.Height,
+            _viewport);
+
+        // Out-of-flow items don't participate in flex sizing (Flexbox §4); they
+        // are placed later by PositionLayout and must not contribute to the
+        // intrinsic size.
+        var items = new List<Box.Box>(box.Children.Count);
+        foreach (var c in box.Children)
+            if (!BlockLayout.IsOutOfFlow(c.Style)) items.Add(c);
+        if (items.Count == 0) return 0;
+
+        if (props.IsRow)
+        {
+            // Row flex: sum of items' outer natural widths + (n-1) * MainGap.
+            double sum = 0;
+            foreach (var item in items)
+            {
+                ResolveBoxModel(item, containerWidth);
+                sum += ItemNaturalWidth(item, containerWidth)
+                       + item.Padding.Horizontal + item.Border.Horizontal
+                       + item.Margin.Horizontal;
+            }
+            sum += props.MainGap * (items.Count - 1);
+            return sum;
+        }
+
+        // Column flex: cross axis is horizontal — natural width is the max of
+        // items' outer natural widths.
+        double max = 0;
+        foreach (var item in items)
+        {
+            ResolveBoxModel(item, containerWidth);
+            var outer = ItemNaturalWidth(item, containerWidth)
+                        + item.Padding.Horizontal + item.Border.Horizontal
+                        + item.Margin.Horizontal;
+            if (outer > max) max = outer;
+        }
+        return max;
+    }
+
+    /// <summary>
+    /// A single flex item's natural (max-content) inner width. Honours an
+    /// explicit <c>flex-basis</c> length, then an explicit <c>width</c>, then
+    /// falls back to <see cref="NaturalWidth"/> for the content size.
+    /// </summary>
+    private double ItemNaturalWidth(Box.Box item, double containerWidth)
+    {
+        if (item.Style is not null)
+        {
+            var itemProps = FlexParser.ParseItem(item.Style);
+            if (itemProps.Basis is { } b) return Math.Max(0, b);
+            var explicitWidth = BlockLayout.ResolveLength(
+                item.Style, PropertyId.Width, containerWidth, _viewport, allowAuto: true);
+            if (explicitWidth is { } w) return Math.Max(0, w);
+        }
+        return NaturalWidth(item, containerWidth);
     }
 
     /// <summary>

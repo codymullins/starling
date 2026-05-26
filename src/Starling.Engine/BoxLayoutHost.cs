@@ -14,7 +14,7 @@ namespace Starling.Engine;
 /// </summary>
 /// <remarks>
 /// <para><b>Incremental re-layout:</b> the host tracks the document's
-/// <see cref="Document.MutationVersion"/>. Each readback first checks whether a
+/// <see cref="Document.LayoutInvalidationVersion"/>. Each readback first checks whether a
 /// DOM mutation has bumped the version since the last layout; if so it lazily
 /// re-runs the cascade + layout via the recompute delegate and rebuilds its
 /// element→box index before answering. This makes mutate-then-measure idioms
@@ -28,11 +28,51 @@ internal sealed class BoxLayoutHost : ILayoutHost
 {
     private readonly Dictionary<Element, Box> _boxByElement = new(ReferenceEqualityComparer.Instance);
     private readonly Document? _document;
-    private readonly Func<(BlockBox Root, StyleEngine Style)>? _relayout;
+    /// <summary>Recompute delegate. The string argument is the trigger reason
+    /// — the binding entry that forced layout (e.g. <c>"offsetWidth"</c>,
+    /// <c>"getBoundingClientRect"</c>, <c>"getComputedStyle:visibility"</c>).
+    /// Engine.cs passes this through to <c>Activity.Current?.SetTag</c> on the
+    /// <c>engine.prelayout_for_js</c> span so the trace identifies the
+    /// forced-reflow culprit without needing to dump the script source.</summary>
+    private readonly Func<string?, (BlockBox Root, StyleEngine Style)>? _relayout;
+
+    /// <summary>Optional lightweight delegate that builds only the cascade
+    /// (no layout). When set, <see cref="GetComputedProperty"/> uses it for
+    /// purely-cascaded properties (visibility/opacity/display/…) instead of
+    /// forcing a full layout via <see cref="_relayout"/>. Cheap: ~21 ms on
+    /// google.com vs ~400 ms for the layout pass that the visibility read
+    /// used to drag in.</summary>
+    private readonly Func<StyleEngine>? _cascadeOnlyBuilder;
+
     private BlockBox? _root;
     private StyleEngine? _style;
     private int _laidOutVersion;
     private bool _laidOut;
+    /// <summary>Document mutation version the current <see cref="_style"/>
+    /// reflects. May equal <see cref="_laidOutVersion"/> (cascade built as a
+    /// side effect of a layout) or be a newer version when only a cascade-only
+    /// rebuild happened since the last layout. -1 means no cascade has been
+    /// built yet. Tracked so repeat cascade-only reads inside one script
+    /// hit the cache instead of re-running the cascade.</summary>
+    private int _cascadeReadyVersion = -1;
+
+    /// <summary>Shared cascade cache that lives alongside the held layout.
+    /// Without this, every <see cref="GetComputedProperty"/> call walks the
+    /// full ancestor cascade from scratch — on Google's homepage each
+    /// <c>getComputedStyle(el).visibility</c> read costs ~200&#160;ms because
+    /// it re-cascades a deep ancestor chain. Reset by <see cref="EnsureFresh"/>
+    /// when a DOM mutation forces a re-layout.</summary>
+    private CascadeCache _cascadeCache = new();
+
+    /// <summary>Diagnostic counters — number of times <see cref="EnsureFresh"/>
+    /// actually re-ran layout vs short-circuited via the
+    /// <see cref="Document.LayoutInvalidationVersion"/> check. Useful for confirming the
+    /// cache is doing its job on a real page: each layout run is ~200 ms on a
+    /// medium page, so a count &gt; 1 inside one script means
+    /// <see cref="Document.LayoutInvalidationVersion"/> is being bumped mid-execution.</summary>
+    public long RelayoutCount;
+    /// <summary>Reads that hit the cached layout (no re-run).</summary>
+    public long FreshHits;
 
     /// <summary>
     /// Build a host over an already-computed layout. Without a
@@ -40,7 +80,7 @@ internal sealed class BoxLayoutHost : ILayoutHost
     /// a static snapshot — DOM mutations are not reflected.
     /// </summary>
     public BoxLayoutHost(BlockBox root, StyleEngine style,
-        Document? document = null, Func<(BlockBox Root, StyleEngine Style)>? relayout = null)
+        Document? document = null, Func<string?, (BlockBox Root, StyleEngine Style)>? relayout = null)
     {
         ArgumentNullException.ThrowIfNull(root);
         ArgumentNullException.ThrowIfNull(style);
@@ -48,7 +88,7 @@ internal sealed class BoxLayoutHost : ILayoutHost
         _style = style;
         _document = document;
         _relayout = relayout;
-        _laidOutVersion = document?.MutationVersion ?? 0;
+        _laidOutVersion = document?.LayoutInvalidationVersion ?? 0;
         Index(root);
         _laidOut = true;
     }
@@ -60,17 +100,68 @@ internal sealed class BoxLayoutHost : ILayoutHost
     /// pass entirely — the only layout that runs is the final render pass. The
     /// first geometry/computed-style read triggers the <paramref name="relayout"/>
     /// delegate; subsequent reads reuse it until a DOM mutation bumps the
-    /// document's <see cref="Document.MutationVersion"/>.
+    /// document's <see cref="Document.LayoutInvalidationVersion"/>.
     /// </summary>
-    public BoxLayoutHost(Document document, Func<(BlockBox Root, StyleEngine Style)> relayout)
+    public BoxLayoutHost(Document document, Func<string?, (BlockBox Root, StyleEngine Style)> relayout,
+        Func<StyleEngine>? cascadeOnlyBuilder = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(relayout);
         _document = document;
         _relayout = relayout;
-        _laidOutVersion = document.MutationVersion;
+        _cascadeOnlyBuilder = cascadeOnlyBuilder;
+        _laidOutVersion = document.LayoutInvalidationVersion;
         _laidOut = false;
     }
+
+    /// <summary>Resolved-value properties whose getComputedStyle return is
+    /// determined by the cascade alone (no used-value layout step). Reading
+    /// these via <see cref="GetComputedProperty"/> skips the forced layout
+    /// pass when a <see cref="_cascadeOnlyBuilder"/> was supplied. Conservative
+    /// allowlist — anything not here forces layout, matching the previous
+    /// behavior.</summary>
+    private static readonly HashSet<string> s_cascadeOnlyProperties = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "visibility",
+        "opacity",
+        "color",
+        "background-color",
+        "background-image",
+        "cursor",
+        "display",
+        "position",
+        "z-index",
+        "font-family",
+        "font-style",
+        "font-weight",
+        "font-variant",
+        "font-size",
+        "line-height",
+        "text-align",
+        "text-decoration",
+        "text-decoration-line",
+        "text-decoration-color",
+        "text-transform",
+        "white-space",
+        "word-break",
+        "overflow-wrap",
+        "direction",
+        "pointer-events",
+        "user-select",
+        "list-style-type",
+        "list-style-image",
+        "list-style-position",
+        "vertical-align",
+        "box-sizing",
+        "float",
+        "clear",
+    };
+
+    /// <summary>Diagnostic counter — number of <see cref="GetComputedProperty"/>
+    /// reads answered via the cascade-only fast path. Reads tied to a layout
+    /// pass count toward <see cref="RelayoutCount"/> / <see cref="FreshHits"/>
+    /// instead.</summary>
+    public long CascadeOnlyHits;
 
     /// <summary>
     /// Whether a layout has actually been materialized yet. False for a deferred
@@ -89,7 +180,7 @@ internal sealed class BoxLayoutHost : ILayoutHost
     /// tree for the final paint — skipping a redundant second cascade + layout
     /// (Win B) — when nothing layout-affecting has changed since
     /// (<see cref="LaidOutVersion"/> still equals the document's
-    /// <see cref="Document.MutationVersion"/> and no late resources arrived).
+    /// <see cref="Document.LayoutInvalidationVersion"/> and no late resources arrived).
     /// </summary>
     public (BlockBox Root, StyleEngine Style) Materialized => (_root!, _style!);
 
@@ -97,20 +188,61 @@ internal sealed class BoxLayoutHost : ILayoutHost
     /// If a DOM mutation has advanced the document's mutation version since the
     /// last layout, re-run layout and rebuild the element→box index. No-op for a
     /// static snapshot (no recompute delegate) or when nothing has mutated.
+    /// <paramref name="trigger"/> identifies which binding entry forced this
+    /// layout (e.g. <c>"offsetWidth"</c>); the engine forwards it to a tag on
+    /// the emitted span so the trace pinpoints the forced-reflow culprit.
     /// </summary>
-    private void EnsureFresh()
+    private void EnsureFresh(string trigger)
     {
         if (_relayout is null) return; // static snapshot — indexed at construction
-        if (_laidOut && (_document is null || _document.MutationVersion == _laidOutVersion))
+        if (_laidOut && (_document is null || _document.LayoutInvalidationVersion == _laidOutVersion))
+        {
+            FreshHits++;
             return;
+        }
+        RelayoutCount++;
 
-        var (root, style) = _relayout();
+        var (root, style) = _relayout(trigger);
         _root = root;
         _style = style;
         _boxByElement.Clear();
+        // A fresh StyleEngine means every ancestor cascade we previously
+        // cached is stale — entries are tied to the old engine's selector
+        // index / sheet ordering. Drop the cache so it rebuilds against the
+        // new engine on the next computed-style read.
+        _cascadeCache = new CascadeCache();
         Index(root);
-        _laidOutVersion = _document?.MutationVersion ?? 0;
+        _laidOutVersion = _document?.LayoutInvalidationVersion ?? 0;
         _laidOut = true;
+        _cascadeReadyVersion = _laidOutVersion;
+    }
+
+    /// <summary>Ensure a <see cref="StyleEngine"/> is current for the document's
+    /// present mutation version, WITHOUT running layout. Falls back to
+    /// <see cref="EnsureFresh"/> when no cheap cascade builder was supplied.
+    /// </summary>
+    private void EnsureCascadeFresh(string trigger)
+    {
+        if (_relayout is null) return; // static snapshot — indexed at construction
+        var current = _document?.LayoutInvalidationVersion ?? 0;
+        // Already have a fresh cascade for this mutation version (either from
+        // a previous layout or a previous cascade-only build).
+        if (_style is not null && _cascadeReadyVersion == current)
+        {
+            FreshHits++;
+            return;
+        }
+        if (_cascadeOnlyBuilder is not null)
+        {
+            _style = _cascadeOnlyBuilder();
+            _cascadeCache = new CascadeCache();
+            _cascadeReadyVersion = current;
+            CascadeOnlyHits++;
+            return;
+        }
+        // No cascade-only path available — fall back to the full layout so the
+        // read can still be answered.
+        EnsureFresh(trigger);
     }
 
     private void Index(Box box)
@@ -121,7 +253,7 @@ internal sealed class BoxLayoutHost : ILayoutHost
 
     public bool TryGetBoundingClientRect(Element element, out LayoutRect rect)
     {
-        EnsureFresh();
+        EnsureFresh("getBoundingClientRect");
         if (_boxByElement.TryGetValue(element, out var box))
         {
             var frame = box.Frame;
@@ -134,7 +266,7 @@ internal sealed class BoxLayoutHost : ILayoutHost
 
     public bool TryGetOffsetMetrics(Element element, out OffsetMetrics metrics)
     {
-        EnsureFresh();
+        EnsureFresh("offset-metrics");
         if (_boxByElement.TryGetValue(element, out var box))
         {
             var frame = box.Frame;
@@ -160,7 +292,7 @@ internal sealed class BoxLayoutHost : ILayoutHost
     public bool MatchMedia(string query)
     {
         if (string.IsNullOrEmpty(query)) return false;
-        EnsureFresh();
+        EnsureFresh("matchMedia");
         if (_style is null) return false;
         try { return _style.MatchMedia(query); }
         catch { return false; }
@@ -169,11 +301,22 @@ internal sealed class BoxLayoutHost : ILayoutHost
     public string GetComputedProperty(Element element, string propertyName)
     {
         if (string.IsNullOrEmpty(propertyName)) return string.Empty;
-        EnsureFresh();
+        // Include the requested property in the trigger so the tag distinguishes
+        // a getComputedStyle(...).visibility read (cascade-only, cheap) from a
+        // .width read (layout-forcing, the one we care about).
+        var trigger = "getComputedStyle:" + propertyName;
+        if (s_cascadeOnlyProperties.Contains(propertyName))
+            EnsureCascadeFresh(trigger);
+        else
+            EnsureFresh(trigger);
         if (_style is null) return string.Empty;
         try
         {
-            var computed = _style.Compute(element);
+            // Pass the host's CascadeCache so repeated reads on the same
+            // element (or descendants sharing an ancestor chain) reuse the
+            // ancestor cascades. Without the cache, getComputedStyle in a
+            // hot JS loop re-walks the chain per call.
+            var computed = _style.Compute(element, context: null, _cascadeCache);
             return computed?.GetPropertyValue(propertyName) ?? string.Empty;
         }
         catch

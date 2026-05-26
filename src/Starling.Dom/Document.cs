@@ -20,6 +20,71 @@ public sealed class Document : Node
 
     internal void BumpMutationVersion() => MutationVersion++;
 
+    /// <summary>Subset of <see cref="MutationVersion"/> that only advances on
+    /// mutations a built-in style/layout pass would actually care about
+    /// (structural changes, text edits, and value changes to attributes
+    /// flagged by <see cref="IsLayoutRelevantAttribute"/>). Used by the
+    /// layout-cache invalidation check so a hot-path analytics burst that
+    /// only writes <c>data-*</c> / <c>aria-*</c> / framework attributes
+    /// doesn't tear down the cached layout.</summary>
+    public int LayoutInvalidationVersion { get; private set; }
+
+    internal void BumpLayoutInvalidationVersion() => LayoutInvalidationVersion++;
+
+    /// <summary>Per-attribute-name bump counter (diagnostic). Engine reads
+    /// this after script execution to surface "which attribute caused all the
+    /// re-layouts" without needing a full mutation log.</summary>
+    public readonly Dictionary<string, int> AttributeMutationCounts =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    internal void NoteAttributeMutation(string attrName)
+    {
+        AttributeMutationCounts.TryGetValue(attrName, out var n);
+        AttributeMutationCounts[attrName] = n + 1;
+    }
+
+    /// <summary>True iff a value change on <paramref name="attrName"/> can
+    /// shift cascade or layout for an ordinary HTML page.</summary>
+    /// <remarks>
+    /// <para>Used to suppress <see cref="BumpMutationVersion"/> for
+    /// accessibility / metadata attributes that real pages mutate frequently
+    /// during their analytics passes but that no built-in style targets —
+    /// <c>data-*</c>, <c>aria-*</c>, <c>role</c>, <c>jsname</c>, etc. On
+    /// Google's homepage this turns ~350 of ~500 attribute mutations into
+    /// no-op bumps, which keeps the layout cache valid through the analytics
+    /// noise and skips redundant reflows.</para>
+    /// <para><b>Correctness caveat:</b> a page whose author CSS uses an
+    /// attribute selector (e.g. <c>[role="button"] { … }</c>) AND mutates
+    /// that attribute via script will miss a cascade recompute until the
+    /// next layout-relevant change. That combination is rare in the wild;
+    /// the spec-correct alternative is selector-aware invalidation, which is
+    /// a follow-up.</para>
+    /// </remarks>
+    public static bool IsLayoutRelevantAttribute(string attrName)
+    {
+        if (string.IsNullOrEmpty(attrName)) return true;
+        if (attrName.StartsWith("data-", StringComparison.OrdinalIgnoreCase)) return false;
+        if (attrName.StartsWith("aria-", StringComparison.OrdinalIgnoreCase)) return false;
+        // js* covers Google's framework attributes (jsname, jscontroller,
+        // jsaction, jsslot, jsl, etc.) — present on most modern Google pages
+        // and never targeted by built-in styles.
+        if (attrName.StartsWith("js", StringComparison.OrdinalIgnoreCase)
+            && attrName.Length > 2 && char.IsLower(attrName[2]))
+            return false;
+        return attrName switch
+        {
+            "role" or "tabindex" or "title" or "alt"
+                or "href" or "target" or "rel" or "download" or "ping"
+                or "for" or "form" or "list" or "autocomplete"
+                or "accesskey" or "contenteditable" or "draggable" or "spellcheck"
+                or "translate" or "autocapitalize" or "enterkeyhint" or "inputmode"
+                or "is" or "slot" or "part" or "exportparts"
+                or "itemid" or "itemprop" or "itemref" or "itemscope" or "itemtype"
+                => false,
+            _ => true,
+        };
+    }
+
     /// <summary>
     /// The element with keyboard focus — HTML's <c>document.activeElement</c>.
     /// Set by the shell when the user clicks a focusable control and by

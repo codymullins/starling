@@ -159,6 +159,32 @@ internal sealed class ScriptFetcher : IDisposable
 
         var source = await FetchAsync(absolute, ct).ConfigureAwait(false);
         if (source is null) return null;
+
+        _diag.Log(DiagLevel.Info, "engine",
+            $"external script disposition={disposition} bytes={source.Length}");
+
+        // Large bundles dominate critical-path wall time on real pages
+        // (google.com's xjs bundle is ~1 MB Defer / ~2 s of compile+exec and
+        // errors out before any visible effect). Promote any oversize external
+        // script to Async — both <em>None</em> (parser-blocking) and
+        // <em>Defer</em> (runs before DOMContentLoaded) become Async (runs in
+        // the deferred phase, after first paint). Small scripts (jQuery
+        // ~30 KB, React ~40 KB, typical analytics shims) stay in their
+        // declared phase. The threshold trades correctness-vs-speed:
+        //   - None→Async: violates parser-blocking ordering. Scripts that
+        //     append inline DOM (rare for large bundles) would render late.
+        //   - Defer→Async: violates "before DOMContentLoaded" ordering.
+        //     Scripts that wire DOMContentLoaded handlers may miss them, but
+        //     most large defer bundles are interactivity-only.
+        // 200 KB is a heuristic — measure before raising/lowering.
+        const int LargeScriptDeferThresholdBytes = 200 * 1024;
+        if ((disposition == ScriptDisposition.None || disposition == ScriptDisposition.Defer)
+            && source.Length > LargeScriptDeferThresholdBytes)
+        {
+            _diag.Log(DiagLevel.Info, "engine",
+                $"deferring large external script ({source.Length} bytes, was {disposition}): {absolute}");
+            disposition = ScriptDisposition.Async;
+        }
         return new LoadedScript(script, source, absolute, IsInline: false, disposition);
     }
 

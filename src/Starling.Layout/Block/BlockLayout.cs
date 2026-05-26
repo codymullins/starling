@@ -23,12 +23,14 @@ internal sealed class BlockLayout
     private readonly ITextMeasurer _measurer;
     private readonly Size _viewport;
     private readonly InlineLayout _inline;
+    private readonly CancellationToken _abort;
 
-    public BlockLayout(ITextMeasurer measurer, Size viewport, IDiagnostics? diagnostics = null)
+    public BlockLayout(ITextMeasurer measurer, Size viewport, IDiagnostics? diagnostics = null, CancellationToken abort = default)
     {
         _measurer = measurer;
         _viewport = viewport;
         _inline = new InlineLayout(measurer, viewport, diagnostics);
+        _abort = abort;
     }
 
     public void Layout(Box.Box root)
@@ -123,6 +125,12 @@ internal sealed class BlockLayout
         var floats = new FloatContext(containerWidth);
         foreach (var child in parent.Children)
         {
+            // Host abort (Stop button, navigation supersede). One check per
+            // child keeps the cancellation latency bounded — a deeply nested
+            // subtree pays at every level — without polluting the per-property
+            // inner work below.
+            _abort.ThrowIfCancellationRequested();
+
             // CSS 2.1 §9.3.1: `position: absolute` and `position: fixed`
             // remove the element from normal flow. We skip them here so the
             // cursor doesn't advance — they're placed in a second pass by

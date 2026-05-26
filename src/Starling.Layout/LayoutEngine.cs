@@ -25,18 +25,21 @@ public sealed class LayoutEngine
     private readonly ITextMeasurer _measurer;
     private readonly IImageResolver _images;
     private readonly IDiagnostics _diag;
+    private readonly CancellationToken _abort;
 
     public LayoutEngine(
         StyleEngine style,
         ITextMeasurer? measurer = null,
         IImageResolver? images = null,
-        IDiagnostics? diagnostics = null)
+        IDiagnostics? diagnostics = null,
+        CancellationToken abort = default)
     {
         ArgumentNullException.ThrowIfNull(style);
         _style = style;
         _measurer = measurer ?? DefaultTextMeasurer.Instance;
         _images = images ?? NullImageResolver.Instance;
         _diag = diagnostics ?? NoopDiagnostics.Instance;
+        _abort = abort;
     }
 
     public BlockBox LayoutDocument(Document document, Size viewport)
@@ -67,7 +70,7 @@ public sealed class LayoutEngine
         BlockLayout block;
         using (_diag.Span("layout", "block"))
         {
-            block = new BlockLayout(_measurer, viewport, _diag);
+            block = new BlockLayout(_measurer, viewport, _diag, _abort);
             block.Layout(root);
         }
 

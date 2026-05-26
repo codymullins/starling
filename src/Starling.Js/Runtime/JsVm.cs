@@ -50,6 +50,13 @@ public sealed class JsVm
         _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
     }
 
+    /// <summary>Per-opcode dispatch counts for this VM. Indexed by
+    /// <see cref="Opcode"/> byte value. Incremented once per dispatched
+    /// instruction inside <see cref="RunInner"/>; surfaced by the script
+    /// session's <c>js: execute</c> trace span so we can see which ops a slow
+    /// script burns time on without rebuilding the interpreter.</summary>
+    public readonly long[] OpcodeCounts = new long[256];
+
     /// <summary>The realm this VM dispatches against.</summary>
     public JsRealm Realm => _runtime.Realm;
 
@@ -556,12 +563,26 @@ public sealed class JsVm
             return null;
         }
 
+        // Host-driven abort (Stop button, navigation supersede). Checked at a
+        // ~1-in-1024 cadence so the interpreter pays at most one cheap mask + a
+        // very-rarely-taken branch per opcode. The token lives on the runtime so
+        // every nested RunInner frame observes the same signal; the throw
+        // unwinds through the C# stack and out of Run(), where the engine's
+        // navigation catch picks it up. The check sits OUTSIDE the JsThrow
+        // try/catch below so cancellation never masquerades as a script throw.
+        const int AbortCheckMask = 0x3FF;
+        var stepCount = 0;
+
         while (true)
         {
+            if ((stepCount++ & AbortCheckMask) == 0)
+                _runtime.AbortToken.ThrowIfCancellationRequested();
+
             JsThrow? rethrow = null;
             try
             {
             var op = (Opcode)code[ip++];
+            OpcodeCounts[(byte)op]++;
             switch (op)
             {
                 case Opcode.Halt:

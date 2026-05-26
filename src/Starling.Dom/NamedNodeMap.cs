@@ -60,13 +60,13 @@ public sealed class NamedNodeMap : IReadOnlyList<AttrNode>
                 old.OwnerElement = null;
                 attr.OwnerElement = _owner;
                 _attributes[i] = attr;
-                _owner.OnAttributeMutated();
+                _owner.OnAttributeMutated(attr.Name);
                 return old;
             }
         }
         attr.OwnerElement = _owner;
         _attributes.Add(attr);
-        _owner.OnAttributeMutated();
+        _owner.OnAttributeMutated(attr.Name);
         return null;
     }
 
@@ -80,7 +80,7 @@ public sealed class NamedNodeMap : IReadOnlyList<AttrNode>
                 var removed = _attributes[i];
                 removed.OwnerElement = null;
                 _attributes.RemoveAt(i);
-                _owner.OnAttributeMutated();
+                _owner.OnAttributeMutated(removed.Name);
                 return removed;
             }
         }
@@ -126,13 +126,13 @@ public sealed class NamedNodeMap : IReadOnlyList<AttrNode>
                 old.OwnerElement = null;
                 attr.OwnerElement = _owner;
                 _attributes[i] = attr;
-                _owner.OnAttributeMutated();
+                _owner.OnAttributeMutated(attr.Name);
                 return old;
             }
         }
         attr.OwnerElement = _owner;
         _attributes.Add(attr);
-        _owner.OnAttributeMutated();
+        _owner.OnAttributeMutated(attr.Name);
         return null;
     }
 
@@ -146,7 +146,7 @@ public sealed class NamedNodeMap : IReadOnlyList<AttrNode>
                 var removed = _attributes[i];
                 removed.OwnerElement = null;
                 _attributes.RemoveAt(i);
-                _owner.OnAttributeMutated();
+                _owner.OnAttributeMutated(removed.Name);
                 return removed;
             }
         }
@@ -162,7 +162,7 @@ public sealed class NamedNodeMap : IReadOnlyList<AttrNode>
     {
         // The AttrNode IS the backing store — _attributes holds the same reference,
         // so the value field is already updated. We just fire the mutation callback.
-        _owner.OnAttributeMutated();
+        _owner.OnAttributeMutated(attr.Name);
     }
 
     // ---- Compatibility bridge: iterate as (Name, Value) tuples --------------

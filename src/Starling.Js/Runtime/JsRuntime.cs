@@ -22,6 +22,15 @@ public sealed class JsRuntime
     /// page render.</summary>
     public bool IgnoreUncaught { get; set; }
 
+    /// <summary>Cancellation token observed by the VM dispatch loop so a host's
+    /// Stop signal can interrupt a long-running synchronous script
+    /// (<c>while(true)</c> hangs, expensive layouts driven from JS, etc.) without
+    /// waiting for it to return. Checked at a low frequency (every few thousand
+    /// bytecode steps) so the overhead stays under one branch per opcode on the
+    /// hot path. The VM throws <see cref="OperationCanceledException"/> when
+    /// cancellation is observed; the engine's navigation catch unwraps it.</summary>
+    public CancellationToken AbortToken { get; set; }
+
     /// <summary>Compatibility wrapper for <c>console.*</c> output. Prefer
     /// <see cref="JsRealm.ConsoleSink"/> for new host integrations.</summary>
     public Action<string, string> ConsoleSink

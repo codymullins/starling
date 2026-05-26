@@ -275,6 +275,57 @@ public static class AbstractOperations
         return target.DefineOwnProperty(key, PropertyDescriptor.Data(value));
     }
 
+    /// <summary>Per-native-function aggregate timing for the active VM/Realm.
+    /// Diagnostic-only. Keyed by <see cref="JsNativeFunction.Name"/>; each
+    /// entry tracks call count and total Stopwatch ticks. Read+cleared by the
+    /// host's script-session trace shim. Always populated (negligible per-call
+    /// overhead) so a single STARLING_DIAG_TRACE=1 run can surface
+    /// intrinsic-cost hot spots without a re-build.
+    /// <para>
+    /// Ticks here are <b>inclusive</b>: a call to <c>Function.prototype.apply</c>
+    /// that dispatches a JS body charges that body's wall-clock against
+    /// <c>apply</c>. <see cref="NativeCallSelfTicks"/> holds the same key set
+    /// with the inner JS / inner native time subtracted, so a reader can tell
+    /// whether the native function itself is slow or just dispatched expensive
+    /// work.
+    /// </para></summary>
+    public static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (long Count, long Ticks)> NativeCallStats =
+        new(StringComparer.Ordinal);
+
+    /// <summary>Companion to <see cref="NativeCallStats"/> tracking only the
+    /// outermost frame's <i>self</i> time — total elapsed minus any nested
+    /// CallNative/JsFunction invocations made from the body. Reveals the
+    /// inclusive/exclusive split for dispatchers like <c>call</c>/<c>apply</c>/
+    /// <c>forEach</c>.</summary>
+    public static readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> NativeCallSelfTicks =
+        new(StringComparer.Ordinal);
+
+    /// <summary>Per-thread stack of "ticks charged to nested callees so far"
+    /// for the active native frame. Each <see cref="CallNative"/> pushes a zero
+    /// on entry; its own elapsed minus the popped child-sum is the self-time
+    /// it accumulates. Re-entrancy from JS bodies (which can call more native
+    /// methods) updates the same stack so the math composes.</summary>
+    [ThreadStatic]
+    private static System.Collections.Generic.List<long>? t_nestedTicksStack;
+
+    /// <summary>Single-call outliers — any <see cref="CallNative"/> invocation
+    /// whose inclusive elapsed exceeded <see cref="NativeOutlierMinTicks"/>.
+    /// Diagnostic ring of up to <see cref="NativeOutlierCapacity"/> entries so
+    /// (name, ticks) outliers (e.g. one 37 ms <c>apply</c>) are individually
+    /// visible instead of hiding in the per-function average.</summary>
+    public static readonly System.Collections.Concurrent.ConcurrentQueue<(string Name, long Ticks)> NativeCallOutliers =
+        new();
+
+    /// <summary>Outlier threshold — calls below this are not recorded
+    /// individually. 5 ms picks up multi-frame native dispatchers and
+    /// pathological regex matches without flooding on normal traffic.</summary>
+    public static readonly long NativeOutlierMinTicks =
+        System.Diagnostics.Stopwatch.Frequency / 200;  // 5 ms
+
+    /// <summary>Cap on the outlier queue. Older entries are evicted FIFO so a
+    /// long-running script doesn't grow this unboundedly.</summary>
+    public const int NativeOutlierCapacity = 64;
+
     /// <summary>§7.3.14 Call — dispatch to native or JS callables. For JS
     /// functions, requires the VM. For native functions, the VM is optional.</summary>
     public static JsValue Call(JsVm? vm, JsValue callee, JsValue thisValue, JsValue[] args)
@@ -283,7 +334,7 @@ public static class AbstractOperations
             throw NotAFunction(vm, JsValue.ToStringValue(callee));
         return callee.AsObject switch
         {
-            JsNativeFunction nat => nat.Body(thisValue, args),
+            JsNativeFunction nat => CallNative(nat, thisValue, args),
             JsFunction fn => vm is not null
                 ? vm.CallFunction(fn, thisValue, args)
                 // wp:M3-83 — host invokes a foreign-realm JS function with no
@@ -300,6 +351,46 @@ public static class AbstractOperations
             JsProxy proxy => proxy.ProxyCall(thisValue, args),
             _ => throw NotAFunction(vm, callee.AsObject.ToString() ?? "object"),
         };
+    }
+
+    private static JsValue CallNative(JsNativeFunction nat, JsValue thisValue, JsValue[] args)
+    {
+        // Push a zero "charged to nested callees" slot for this frame; any
+        // nested CallNative (or JsFunction body recursing through CallFunction
+        // → CallNative) will add its own inclusive elapsed into this slot, so
+        // self = (my inclusive elapsed) − (sum of nested ticks).
+        var stack = t_nestedTicksStack ??= new System.Collections.Generic.List<long>();
+        stack.Add(0);
+        var start = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
+        {
+            return nat.Body(thisValue, args);
+        }
+        finally
+        {
+            var dt = System.Diagnostics.Stopwatch.GetTimestamp() - start;
+            var nested = stack[^1];
+            stack.RemoveAt(stack.Count - 1);
+            // Charge my inclusive elapsed up to whatever native frame is now on
+            // top (if any) so it can subtract it from its own self time later.
+            if (stack.Count > 0) stack[^1] += dt;
+
+            var key = string.IsNullOrEmpty(nat.Name) ? "<anon>" : nat.Name;
+            NativeCallStats.AddOrUpdate(key,
+                (1, dt),
+                (_, prev) => (prev.Count + 1, prev.Ticks + dt));
+
+            var self = dt - nested;
+            if (self < 0) self = 0;  // clock skew guard (Stopwatch.GetTimestamp is monotonic but ticks accounting can race in proxies)
+            NativeCallSelfTicks.AddOrUpdate(key, self, (_, prev) => prev + self);
+
+            if (dt >= NativeOutlierMinTicks)
+            {
+                NativeCallOutliers.Enqueue((key, dt));
+                while (NativeCallOutliers.Count > NativeOutlierCapacity)
+                    NativeCallOutliers.TryDequeue(out _);
+            }
+        }
     }
 
     /// <summary>§7.3.14 Call step 2 — calling a non-callable is a TypeError.

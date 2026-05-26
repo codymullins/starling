@@ -460,12 +460,56 @@ public sealed class JsRealm
     /// until the typed wrapper subclasses land.</summary>
     internal JsObject BoxBoolean(JsValue v) => BoxPrimitive(BooleanPrototype, v);
     internal JsObject BoxNumber(JsValue v) => BoxPrimitive(NumberPrototype, v);
+    /// <summary>Number of times <see cref="BoxString"/> has produced a
+    /// <see cref="JsStringObject"/> in this realm. Diagnostic counter — read
+    /// via <c>STARLING_DIAG_TRACE=1</c> to confirm boxing volume on real
+    /// pages.</summary>
+    public long StringBoxCount;
+
+    /// <summary>Total UTF-16 code units across all strings ever boxed. With
+    /// the lazy <see cref="JsStringObject"/> the boxing cost is O(1)
+    /// regardless of this number; pre-fix it was O(total chars). Tracked so
+    /// we can quantify the savings on real pages.</summary>
+    public long StringBoxCharsTotal;
+
+    /// <summary>Size-bucket histogram for boxed strings. Buckets are powers
+    /// of-four-ish — see <see cref="BoxBucketLabels"/> for the upper bounds:
+    /// ≤16, ≤256, ≤4K, ≤64K, ≤1M, &gt;1M code units. Disambiguates the avg in
+    /// the per-script trace line: when 8 GB of "char-length" comes from one
+    /// 1 MB source string re-boxed thousands of times vs. many medium strings,
+    /// the bucket distribution looks completely different and points to the
+    /// real workload (a fat-string method-call hot loop vs. broad string
+    /// churn).</summary>
+    public readonly long[] StringBoxSizeBuckets = new long[(int)BoxBucketCount];
+
+    /// <summary>Number of size buckets in <see cref="StringBoxSizeBuckets"/>.</summary>
+    public const int BoxBucketCount = 6;
+
+    /// <summary>Human-readable upper bounds for <see cref="StringBoxSizeBuckets"/>.
+    /// Index aligned with the array.</summary>
+    public static readonly string[] BoxBucketLabels = { "≤16", "≤256", "≤4K", "≤64K", "≤1M", ">1M" };
+
+    private static int BoxBucketIndex(int len)
+    {
+        if (len <= 16) return 0;
+        if (len <= 256) return 1;
+        if (len <= 4096) return 2;
+        if (len <= 65536) return 3;
+        if (len <= 1048576) return 4;
+        return 5;
+    }
+
     internal JsObject BoxString(JsValue v)
     {
-        var box = BoxPrimitive(StringPrototype, v);
         if (v.IsString)
-            Starling.Js.Intrinsics.StringCtor.DefineStringData(box, v.AsString);
-        return box;
+        {
+            var len = v.AsString.Length;
+            System.Threading.Interlocked.Increment(ref StringBoxCount);
+            System.Threading.Interlocked.Add(ref StringBoxCharsTotal, len);
+            System.Threading.Interlocked.Increment(ref StringBoxSizeBuckets[BoxBucketIndex(len)]);
+            return new JsStringObject(StringPrototype, v.AsString);
+        }
+        return BoxPrimitive(StringPrototype, v);
     }
     internal JsObject BoxBigInt(JsValue v) => BoxPrimitive(BigIntPrototype, v);
     internal JsObject BoxSymbol(JsValue v) => BoxPrimitive(SymbolPrototype, v);

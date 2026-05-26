@@ -67,12 +67,18 @@ internal sealed class JintScriptSession : IScriptSession
 
         // Keep the engine lean and deterministic: bounded recursion, no ambient
         // CLR member access. Web surfaces come from the explicit bindings.
+        // The host's abort token (Stop button, navigation supersede) goes in via
+        // the built-in cancellation constraint so a long-running synchronous
+        // script unwinds with OperationCanceledException between statements.
+        var abortToken = options.AbortToken;
         _engine = new global::Jint.Engine(opts =>
         {
             opts.Strict = false;
             opts.AllowClr(); // no assemblies registered → no ambient CLR types
             opts.EnableModules(_moduleLoader);
             opts.UseHostFactory(_ => new StarlingJintModuleMetaHost());
+            if (abortToken.CanBeCanceled)
+                opts.CancellationToken(abortToken);
         });
 
         _ctx = new JintBackendContext(

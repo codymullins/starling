@@ -104,25 +104,8 @@ public static class StringCtor
             PropertyDescriptor.Data(JsValue.Object(ctor), writable: true, enumerable: false, configurable: true));
     }
 
-    private static JsObject CreateStringObject(JsRealm realm, string text, JsObject? proto = null)
-    {
-        var obj = realm.NewObjectWithProto(proto ?? realm.StringPrototype);
-        DefineStringData(obj, text);
-        return obj;
-    }
-
-    internal static void DefineStringData(JsObject obj, string text)
-    {
-        obj.DefineOwnProperty("__primitiveValue",
-            PropertyDescriptor.Data(JsValue.String(text), writable: false, enumerable: false, configurable: false));
-        obj.DefineOwnProperty("length",
-            PropertyDescriptor.Data(JsValue.Number(text.Length), writable: false, enumerable: false, configurable: false));
-        for (var i = 0; i < text.Length; i++)
-        {
-            obj.DefineOwnProperty(i.ToString(CultureInfo.InvariantCulture),
-                PropertyDescriptor.Data(JsValue.String(text[i].ToString()), writable: false, enumerable: true, configurable: false));
-        }
-    }
+    private static JsStringObject CreateStringObject(JsRealm realm, string text, JsObject? proto = null)
+        => new(proto ?? realm.StringPrototype, text);
 
     private static string ThisStringValue(JsRealm realm, JsValue thisV)
     {
@@ -133,8 +116,7 @@ public static class StringCtor
         if (thisV.IsString) return thisV.AsString;
         if (thisV.IsObject)
         {
-            var slot = thisV.AsObject.Get("__primitiveValue");
-            if (slot.IsString) return slot.AsString;
+            if (thisV.AsObject is JsStringObject jso) return jso.Text;
             return JsValue.ToStringValue(AbstractOperations.ToPrimitive(thisV, "string"));
         }
         return JsValue.ToStringValue(thisV);

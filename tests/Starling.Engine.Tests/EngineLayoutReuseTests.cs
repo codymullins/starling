@@ -84,14 +84,21 @@ public sealed class EngineLayoutReuseTests
           </body></html>";
 
         // Same content, but the script mutates AFTER reading geometry, forcing a
-        // full re-layout for the final paint. The mutation is layout-neutral
-        // (an attribute that affects nothing visible), so the rendered output
-        // must be identical to the reuse path.
+        // full re-layout for the final paint. The mutation rewrites the `class`
+        // attribute (and back) so it lands a Layout-relevant version bump
+        // — `data-*` / `aria-*` / framework-private attributes are now
+        // explicitly excluded from layout invalidation
+        // (Document.IsLayoutRelevantAttribute) so they no longer trip the
+        // re-layout path. The net rendered output must still match the reuse
+        // path because the toggle is a round-trip to the original class state.
         var relayoutHtml = $@"<!doctype html><html>{baseBody}
             <script>
                 var ra = document.getElementById('a').getBoundingClientRect();
                 if (ra.width !== 200) throw new Error('w ' + ra.width);
-                document.getElementById('a').setAttribute('data-x', '1');
+                var el = document.getElementById('a');
+                var orig = el.getAttribute('class') || '';
+                el.setAttribute('class', orig + ' tmp');
+                el.setAttribute('class', orig);
             </script>
           </body></html>";
 

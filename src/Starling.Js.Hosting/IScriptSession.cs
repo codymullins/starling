@@ -58,6 +58,14 @@ public sealed record ScriptSessionOptions(
 
     /// <inheritdoc cref="ViewportWidth"/>
     public int ViewportHeight { get; init; }
+
+    /// <summary>Cancellation observed by the backend's JS execution path so a
+    /// user-visible Stop interrupts mid-script. Each backend wires this into
+    /// its interpreter loop — Starling.Js checks it from the VM dispatch loop,
+    /// Jint passes it via <c>Options.CancellationToken</c>. Defaults to
+    /// <see cref="CancellationToken.None"/> for callers that do not need
+    /// interruption (PNG/headless tests, unit tests).</summary>
+    public CancellationToken AbortToken { get; init; }
 }
 
 /// <summary>

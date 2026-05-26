@@ -26,6 +26,18 @@ public sealed class DisplayListBuilder
     /// </summary>
     private const double OverdrawMargin = 64d;
 
+    /// <summary>Host abort signal — see Painter.LayoutDocumentWithStyle.
+    /// Observed by the box-tree walk so a Stop arriving during paint of a very
+    /// large page unwinds between sibling boxes instead of running to completion.</summary>
+    private readonly CancellationToken _abort;
+
+    public DisplayListBuilder() : this(CancellationToken.None) { }
+
+    public DisplayListBuilder(CancellationToken abort)
+    {
+        _abort = abort;
+    }
+
     /// <summary>
     /// Builds a display list from a laid-out box tree (no culling — every item
     /// is emitted). <paramref name="styleOverride"/> is an optional per-box
@@ -130,8 +142,13 @@ public sealed class DisplayListBuilder
            || style.Get(PropertyId.Visibility) is not CssKeyword k
            || k.Name.Equals("visible", StringComparison.OrdinalIgnoreCase);
 
-    private static void Visit(Box box, DisplayList list, double originX, double originY, Matrix2D current, Rect? cull, Func<Box, ComputedStyle?>? styleOverride, IImageResolver? images, LayerSlice? slice)
+    private void Visit(Box box, DisplayList list, double originX, double originY, Matrix2D current, Rect? cull, Func<Box, ComputedStyle?>? styleOverride, IImageResolver? images, LayerSlice? slice)
     {
+        // Host abort (Stop button, navigation supersede). One check per visited
+        // box keeps the cancellation latency bounded across a deep DOM without
+        // touching the inner-emit hot loops below.
+        _abort.ThrowIfCancellationRequested();
+
         // Layer-slice mode: a descendant that is itself a layer root paints into
         // its OWN slice, not this one. The slice root is exempt — it is the box
         // this slice is rooted at, so it must paint here.
@@ -202,7 +219,7 @@ public sealed class DisplayListBuilder
     private static bool Intersects(Rect a, Rect b)
         => a.X < b.Right && a.Right > b.X && a.Y < b.Bottom && a.Bottom > b.Y;
 
-    private static void PaintBoxAndChildren(Box box, DisplayList list, double frameX, double frameY, Matrix2D current, Rect? cull, Func<Box, ComputedStyle?>? styleOverride, IImageResolver? images, LayerSlice? slice)
+    private void PaintBoxAndChildren(Box box, DisplayList list, double frameX, double frameY, Matrix2D current, Rect? cull, Func<Box, ComputedStyle?>? styleOverride, IImageResolver? images, LayerSlice? slice)
     {
         // Backgrounds and borders for box-bearing boxes. Only BlockContainer
         // qualifies unconditionally; InlineBox qualifies only when it is an

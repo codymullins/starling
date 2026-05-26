@@ -163,7 +163,24 @@ public class Element : Node
 
     public override string ToString() => $"<{TagName}>";
 
-    internal void OnAttributeMutated() => OnTreeMutated();
+    internal void OnAttributeMutated(string attrName)
+    {
+        if (OwnerDocument is { } d)
+        {
+            d.NoteAttributeMutation(attrName);
+            // Always advance MutationVersion — observers, PumpFrame, and live
+            // collections rely on "any DOM change advances this counter". But
+            // LayoutInvalidationVersion only advances for attributes that the
+            // built-in cascade actually depends on. See
+            // Document.IsLayoutRelevantAttribute for the trade-off.
+            d.BumpMutationVersion();
+            if (Document.IsLayoutRelevantAttribute(attrName))
+                d.BumpLayoutInvalidationVersion();
+            return;
+        }
+        // Detached element — fall back to the parent walk in OnTreeMutated.
+        OnTreeMutated();
+    }
 
     /// <summary>Called by <see cref="AttrNode.Value"/> setter to propagate a
     /// value change on an attached attribute node back into any dependent state
@@ -174,6 +191,6 @@ public class Element : Node
         // The AttrNode._value field is already updated by the caller.
         // Fire the same mutation hook that setAttribute fires so all observers
         // (cascade invalidation, mutation records) are notified.
-        OnAttributeMutated();
+        OnAttributeMutated(attr.Name);
     }
 }

@@ -560,6 +560,12 @@ public sealed class MainWindow : Window, IBrowserController
         void OnFirstPaint(LaidOutPage page) => Dispatcher.UIThread.Post(() =>
         {
             if (!ReferenceEquals(_navCts, myCts)) return;
+            // Wall time from navigation start to "page is visible." This is
+            // the user-meaningful "loaded and rendered" moment, distinct from
+            // the navigate-task's full-settle time (which includes deferred
+            // scripts that run after first paint).
+            _diag.Log(DiagLevel.Info, "gui",
+                $"first-paint: {sw.ElapsedMilliseconds} ms ({opLabel})");
             ApplyShownPage(page, opLabel, sw.ElapsedMilliseconds);
         });
 

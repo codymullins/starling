@@ -95,7 +95,7 @@ public abstract class Node : EventTarget
                 previous.NextSibling = child;
         }
 
-        OnTreeMutated();
+        OnTreeMutated(affectsLayout: !IsLayoutInvariantElement(child));
         NotifyConnected(child);
         return child;
     }
@@ -159,7 +159,9 @@ public abstract class Node : EventTarget
         ParentNode = null;
         PreviousSibling = null;
         NextSibling = null;
-        parent.OnTreeMutated();
+        // Cache before nulling refs above? We already read `this` after the
+        // unhook, so call the lookup now while the type is known.
+        parent.OnTreeMutated(affectsLayout: !IsLayoutInvariantElement(this));
     }
 
     public IEnumerable<Node> ChildNodes
@@ -275,10 +277,47 @@ public abstract class Node : EventTarget
         }
     }
 
-    protected virtual void OnTreeMutated()
+    protected virtual void OnTreeMutated() => OnTreeMutated(affectsLayout: true);
+
+    /// <summary>Variant that lets callers opt out of the layout-invalidation
+    /// bump when the moved child is known not to participate in the box tree
+    /// (e.g. <c>&lt;script&gt;</c>, <c>&lt;meta&gt;</c>, <c>&lt;link&gt;</c>).
+    /// On real pages script-injected non-rendered elements drive most of the
+    /// spurious mid-execution reflows; google.com's startup hits two forced
+    /// prelayouts that this skip avoids when only such elements were appended
+    /// between the reads.</summary>
+    protected virtual void OnTreeMutated(bool affectsLayout)
     {
-        if (OwnerDocument is { } document) document.BumpMutationVersion();
-        else ParentNode?.OnTreeMutated();
+        if (OwnerDocument is { } document)
+        {
+            // Structural / text mutations always invalidate the mutation
+            // version (observers, live collections, MutationObserver rely on
+            // it). Layout invalidation is opt-out for non-rendered children.
+            document.BumpMutationVersion();
+            if (affectsLayout)
+                document.BumpLayoutInvalidationVersion();
+        }
+        else ParentNode?.OnTreeMutated(affectsLayout);
+    }
+
+    /// <summary>An element that never produces a box and contributes no
+    /// stylesheet rules: <c>script</c>, <c>meta</c>, <c>title</c>, <c>base</c>,
+    /// <c>noscript</c>, <c>template</c>. Inserting or removing it cannot
+    /// change any other element's layout, so we can skip the
+    /// LayoutInvalidationVersion bump. <c>&lt;style&gt;</c> and
+    /// <c>&lt;link&gt;</c> are excluded (they can add author CSS that
+    /// recascades layout).</summary>
+    internal static bool IsLayoutInvariantElement(Node n)
+    {
+        if (n is not Element e) return false;
+        var name = e.LocalName;
+        if (string.IsNullOrEmpty(name)) return false;
+        return name.Equals("script", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("meta", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("title", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("base", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("noscript", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("template", StringComparison.OrdinalIgnoreCase);
     }
 
     internal void SetOwnerDocumentRecursive(Document? document)

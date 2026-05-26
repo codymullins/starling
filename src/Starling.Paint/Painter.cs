@@ -204,11 +204,14 @@ public sealed class Painter
         IImageResolver? images = null,
         Func<Element, StyleSheet?>? externalStylesheet = null,
         FontFaceRegistry? webFonts = null,
-        ColorScheme colorScheme = ColorScheme.Light)
-        => LayoutDocumentWithStyle(document, viewport, defaultFontSize, images, externalStylesheet, webFonts, nowMs: null, colorScheme);
+        ColorScheme colorScheme = ColorScheme.Light,
+        CancellationToken ct = default)
+        => LayoutDocumentWithStyle(document, viewport, defaultFontSize, images, externalStylesheet, webFonts, nowMs: null, colorScheme, ct);
 
     /// <summary>Layout overload that threads a frame timestamp through the
-    /// cascade. See the matching RenderDocument overload for semantics.</summary>
+    /// cascade. See the matching RenderDocument overload for semantics. The
+    /// optional <paramref name="ct"/> is observed by the block-layout pass so a
+    /// host's Stop signal interrupts a heavy reflow between sibling boxes.</summary>
     public (Starling.Layout.Box.BlockBox Root, StyleEngine Style) LayoutDocumentWithStyle(
         Document document,
         LayoutSize viewport,
@@ -217,7 +220,8 @@ public sealed class Painter
         Func<Element, StyleSheet?>? externalStylesheet,
         FontFaceRegistry? webFonts,
         double? nowMs,
-        ColorScheme colorScheme = ColorScheme.Light)
+        ColorScheme colorScheme = ColorScheme.Light,
+        CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(document);
 
@@ -228,7 +232,7 @@ public sealed class Painter
         var measurer = PaintBackendSelector.CreateMeasurer(_fonts, webFonts);
         try
         {
-            var layoutEngine = new LayoutEngineImpl(style, measurer, images, _diag);
+            var layoutEngine = new LayoutEngineImpl(style, measurer, images, _diag, ct);
             Starling.Layout.Box.BlockBox root;
             using (_diag.Span("paint", "layout"))
                 root = layoutEngine.LayoutDocument(document, viewport, nowMs);
@@ -291,6 +295,26 @@ public sealed class Painter
         }
     }
 
+    /// <summary>Build only the cascade — no layout, no display list. Used by
+    /// <c>BoxLayoutHost</c> (in <c>Starling.Engine</c>) to answer
+    /// <c>getComputedStyle</c> reads for purely-cascaded properties
+    /// (<c>visibility</c>, <c>opacity</c>, <c>display</c>, …) without paying the
+    /// full layout pass. On google.com this saves ~210 ms — the trace shows
+    /// the page's startup script reads <c>getComputedStyle(el).visibility</c>
+    /// before any geometry is needed, and the engine previously forced layout
+    /// to answer that.</summary>
+    public StyleEngine BuildStyleEngine(
+        Document document,
+        LayoutSize viewport,
+        float? defaultFontSize,
+        Func<Element, StyleSheet?>? externalStylesheet,
+        ColorScheme colorScheme = ColorScheme.Light)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        using (_diag.Span("paint", "style_cascade.standalone"))
+            return CreateStyleEngine(document, viewport, defaultFontSize, externalStylesheet, _diag, colorScheme);
+    }
+
     private static StyleEngine CreateStyleEngine(
         Document document,
         LayoutSize viewport,
@@ -316,10 +340,16 @@ public sealed class Painter
 
         if (defaultFontSize is > 0)
         {
-            style.AddStyleSheet(CssParser.ParseStyleSheet(
-                FormattableString.Invariant($"body {{ font-size: {defaultFontSize.Value}px; }}"),
-                StyleOrigin.User,
-                diag));
+            // The user-stylesheet override is content-addressable by font size.
+            // Parse once per distinct size and reuse across layouts so repeated
+            // re-layouts during script execution don't re-parse a constant sheet.
+            var sheet = s_userFontSizeSheetCache.GetOrAdd(
+                defaultFontSize.Value,
+                size => CssParser.ParseStyleSheet(
+                    FormattableString.Invariant($"body {{ font-size: {size}px; }}"),
+                    StyleOrigin.User,
+                    diag));
+            style.AddStyleSheet(sheet);
         }
 
         // Walk the tree in document order so `<style>` and `<link rel=stylesheet>`
@@ -329,6 +359,20 @@ public sealed class Painter
 
         return style;
     }
+
+    // Inline-<style> parse cache. Layout runs every time a script reads
+    // geometry/computed style after a DOM mutation; each layout currently
+    // walks the document and re-parses every <style> block. Google's
+    // homepage has ~50 inline <style>s, so without the cache each layout
+    // pays for ~50 ParseStyleSheet + selector-index builds. Weak-keyed on
+    // the Element so the entry GCs with the document.
+    private sealed class CachedSheet
+    {
+        public string Source { get; init; } = string.Empty;
+        public StyleSheet Sheet { get; init; } = null!;
+    }
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Element, CachedSheet> s_inlineSheetCache = new();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<float, StyleSheet> s_userFontSizeSheetCache = new();
 
     private static void AddAuthorStylesheets(
         Node node,
@@ -342,7 +386,24 @@ public sealed class Painter
             {
                 var source = element.TextContent;
                 if (!string.IsNullOrWhiteSpace(source))
-                    style.AddStyleSheet(CssParser.ParseStyleSheet(source, StyleOrigin.Author, diag));
+                {
+                    StyleSheet sheet;
+                    // `Element.TextContent` allocates a fresh string each
+                    // access; ReferenceEquals would always miss. Value compare
+                    // — bounded by total CSS bytes per layout (small).
+                    if (s_inlineSheetCache.TryGetValue(element, out var cached)
+                        && string.Equals(cached.Source, source, StringComparison.Ordinal))
+                    {
+                        sheet = cached.Sheet;
+                    }
+                    else
+                    {
+                        sheet = CssParser.ParseStyleSheet(source, StyleOrigin.Author, diag);
+                        s_inlineSheetCache.Remove(element);
+                        s_inlineSheetCache.Add(element, new CachedSheet { Source = source, Sheet = sheet });
+                    }
+                    style.AddStyleSheet(sheet);
+                }
             }
             else if (element.LocalName == "link" && externalStylesheet is not null)
             {
