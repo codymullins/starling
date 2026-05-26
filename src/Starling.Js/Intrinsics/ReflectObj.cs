@@ -61,7 +61,8 @@ public static class ReflectObj
             var key = AbstractOperations.ToPropertyKey(args.Length > 1 ? args[1] : JsValue.Undefined);
             var descObj = args.Length > 2 ? args[2] : JsValue.Undefined;
             var desc = ToPropertyDescriptor(realm, descObj);
-            return JsValue.Boolean(target.DefineOwnProperty(key, desc));
+            return JsValue.Boolean(
+                Starling.Js.Runtime.JsMappedArguments.DefineFromUser(target, key, desc, descObj.AsObject));
         });
 
         DefineMethod(realm, reflect, "getPrototypeOf", length: 1, (thisV, args) =>

@@ -289,9 +289,9 @@ public static class ObjectCtor
         var p = props.AsObject;
         foreach (var key in p.EnumerableKeys())
         {
-            var descObj = p.Get(key);
-            var desc = ToPropertyDescriptor(realm, descObj);
-            if (!target.DefineOwnProperty(key, desc))
+            var descVal = p.Get(key);
+            var desc = ToPropertyDescriptor(realm, descVal);
+            if (!Starling.Js.Runtime.JsMappedArguments.DefineFromUser(target, JsPropertyKey.String(key), desc, descVal.AsObject))
                 throw new JsThrow(realm.NewTypeError($"Cannot define property '{key}'"));
         }
     }
@@ -308,7 +308,7 @@ public static class ObjectCtor
         var target = args[0].AsObject;
         var key = AbstractOperations.ToPropertyKey(args[1]);
         var desc = ToPropertyDescriptor(realm, args[2]);
-        if (!target.DefineOwnProperty(key, desc))
+        if (!Starling.Js.Runtime.JsMappedArguments.DefineFromUser(target, key, desc, args[2].AsObject))
             throw new JsThrow(realm.NewTypeError($"Cannot redefine property '{key}'"));
         return args[0];
     }

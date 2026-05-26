@@ -355,6 +355,38 @@ public sealed class JsRealm
         return obj;
     }
 
+    /// <summary>§10.4.4.6 CreateMappedArgumentsObject — the mapped form for a
+    /// non-strict, simple-parameter-list function. Indices <c>0..argc-1</c> are
+    /// ordinary writable/enumerable/configurable data properties; those whose
+    /// index <paramref name="slotForIndex"/> entry is non-negative are
+    /// additionally live-linked to that parameter's local slot via
+    /// <see cref="JsMappedArguments"/>. <paramref name="callee"/> is the executing
+    /// function, exposed as a writable/non-enumerable/configurable <c>callee</c>
+    /// (NOT the strict-mode poison pill). The <paramref name="locals"/> array is
+    /// held by reference so the parameter link survives the frame's return.</summary>
+    public JsObject CreateMappedArgumentsObject(
+        IReadOnlyList<JsValue> args, JsValue[] locals, int[] slotForIndex, JsObject? callee)
+    {
+        var obj = new JsMappedArguments(ObjectPrototype, locals, slotForIndex);
+        for (var i = 0; i < args.Count; i++)
+            obj.DefineOwnProperty(
+                i.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                PropertyDescriptor.Data(args[i], writable: true, enumerable: true, configurable: true));
+        obj.DefineOwnProperty("length",
+            PropertyDescriptor.Data(JsValue.Number(args.Count), writable: true, enumerable: false, configurable: true));
+        var arrayIter = ArrayPrototype.GetOwnPropertyDescriptor(Intrinsics.SymbolCtor.Iterator);
+        if (arrayIter is { } iterDesc && iterDesc.Value.IsObject)
+            obj.DefineOwnProperty(Intrinsics.SymbolCtor.Iterator,
+                PropertyDescriptor.BuiltinMethod(iterDesc.Value));
+        // §10.4.4.6 step 7.b — non-strict mapped arguments expose `callee` as the
+        // function object itself (writable, non-enumerable, configurable).
+        obj.DefineOwnProperty("callee",
+            PropertyDescriptor.Data(
+                callee is null ? JsValue.Undefined : JsValue.Object(callee),
+                writable: true, enumerable: false, configurable: true));
+        return obj;
+    }
+
     /// <summary>Construct a generic Error-like object with a <c>message</c>
     /// data slot. Used by abstract operations to surface engine-level errors
     /// before the full Error intrinsic lands.</summary>

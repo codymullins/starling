@@ -2109,6 +2109,32 @@ public sealed class JsVm
                         locals[slot] = argObj;
                     break;
                 }
+                case Opcode.MakeMappedArguments:
+                {
+                    // §10.4.4.6 — build the mapped arguments object, live-linking
+                    // each parameter index to its local slot in THIS frame so
+                    // arguments[i] ⇄ parameter i. Must run after parameter binding
+                    // (including PromoteParamCell) so a captured parameter's slot
+                    // already holds its Cell and the map shares it.
+                    var slot = ReadU16();
+                    var paramCount = ReadU16();
+                    var slotForIndex = new int[paramCount];
+                    for (var i = 0; i < paramCount; i++)
+                    {
+                        var ps = ReadU16();
+                        // §10.4.4.6 — index i is mapped only when its parameter is
+                        // the last with that name (compiler marks shadowed dupes
+                        // 0xFFFF) AND an argument was actually passed at i.
+                        slotForIndex[i] = (ps == 0xFFFF || i >= args.Length) ? -1 : ps;
+                    }
+                    var argObj = JsValue.Object(_runtime.Realm.CreateMappedArgumentsObject(
+                        args, locals, slotForIndex, currentFunction));
+                    if (locals[slot].IsObject && locals[slot].AsObject is Cell cell)
+                        cell.Value = argObj;
+                    else
+                        locals[slot] = argObj;
+                    break;
+                }
                 case Opcode.BindCallee:
                 {
                     // wp:M3-21 — §15.2.5. Bind a named function expression's own

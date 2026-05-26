@@ -118,6 +118,25 @@ public static class Disassembler
                     sb.Append("  ; direct-eval argc=").Append(argc);
                     break;
                 }
+                // u16 slot + u16 paramCount + paramCount × u16 paramSlot
+                case Opcode.MakeMappedArguments:
+                {
+                    var slot = BinaryPrimitives.ReadUInt16LittleEndian(code.AsSpan(i, 2));
+                    i += 2;
+                    var paramCount = BinaryPrimitives.ReadUInt16LittleEndian(code.AsSpan(i, 2));
+                    i += 2;
+                    sb.Append(op).Append(' ').Append(slot).Append(' ').Append(paramCount);
+                    sb.Append("  ; mapped slots=[");
+                    for (var p = 0; p < paramCount; p++)
+                    {
+                        var ps = BinaryPrimitives.ReadUInt16LittleEndian(code.AsSpan(i, 2));
+                        i += 2;
+                        if (p > 0) sb.Append(',');
+                        sb.Append(ps == 0xFFFF ? "-" : ps.ToString());
+                    }
+                    sb.Append(']');
+                    break;
+                }
                 // u16 + u16 — MakeClosure [fnIdx][nUpvalues]
                 case Opcode.MakeClosure:
                 {

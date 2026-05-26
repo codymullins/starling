@@ -206,6 +206,20 @@ public sealed partial class JsCompiler
     /// real var-environments and never inject.</summary>
     private bool _evalInjectVars;
 
+    /// <summary>wp:M3-80 — the local slot of each positional formal parameter, in
+    /// declaration order, recorded by <see cref="BindFunctionParameters"/> and
+    /// consumed by <see cref="MaybeBindArguments"/> to build the §10.4.4.6 mapped
+    /// arguments object's parameter map. Only meaningful for a simple parameter
+    /// list (every formal a plain identifier); <see cref="_paramsAreSimple"/>
+    /// gates its use. Null until parameters are bound.</summary>
+    private int[]? _paramSlots;
+
+    /// <summary>wp:M3-80 — true when this function's parameter list is "simple"
+    /// per §15.1.3 (every formal a plain <c>Identifier</c>; no defaults, rest, or
+    /// destructuring). A simple list in a non-strict function gets the mapped
+    /// arguments object; anything else stays unmapped.</summary>
+    private bool _paramsAreSimple;
+
     /// <summary>wp:M3-79 — statement completion value (§13–§14 + §13.2.13
     /// UpdateEmpty). When compiling eval / Program code (<see cref="CompileForEval"/>
     /// / <see cref="CompileForDirectEval"/>) this holds a reserved local slot that
@@ -4045,6 +4059,30 @@ public sealed partial class JsCompiler
             _b.MarkCaptured(slot);
             _b.EmitSlot(Opcode.InitCellLocal, slot);
         }
+
+        // wp:M3-80 — §10.4.4.6 CreateMappedArgumentsObject. A non-strict function
+        // with a simple parameter list (every formal a plain identifier) gets the
+        // MAPPED arguments object: each index is live-linked to its parameter's
+        // local slot. Strict mode or any non-simple formal keeps the unmapped form.
+        if (!_b.IsStrict && _paramsAreSimple && _paramSlots is { } paramSlots)
+        {
+            // Last-wins per spec: when a name repeats (allowed in non-strict
+            // simple lists), only the final index for that name is mapped.
+            var lastIndexOfName = new Dictionary<string, int>(StringComparer.Ordinal);
+            for (var i = 0; i < parameters.Count; i++)
+                lastIndexOfName[((Identifier)parameters[i]).Name] = i;
+
+            _b.EmitU16(Opcode.MakeMappedArguments, slot);
+            _b.EmitU16Raw(parameters.Count);
+            for (var i = 0; i < parameters.Count; i++)
+            {
+                var name = ((Identifier)parameters[i]).Name;
+                // 0xFFFF marks an unmapped index (shadowed earlier duplicate).
+                _b.EmitU16Raw(lastIndexOfName[name] == i ? paramSlots[i] : 0xFFFF);
+            }
+            return;
+        }
+
         _b.EmitSlot(Opcode.MakeArguments, slot);
     }
 
@@ -4113,6 +4151,12 @@ public sealed partial class JsCompiler
     {
         var argSlots = new int[parameters.Count];
         Array.Fill(argSlots, -1);
+
+        // wp:M3-80 — record the per-index parameter slots and whether the list is
+        // simple (every formal a plain identifier) so MaybeBindArguments can build
+        // the mapped arguments object's parameter map.
+        _paramSlots = argSlots;
+        _paramsAreSimple = parameters.All(p => p is Identifier);
 
         // VM argument copying fills local slots 0..argc-1, so reserve every
         // positional parameter slot before declaring destructured binding locals.

@@ -193,6 +193,15 @@ public class JsObject
     public bool DefineOwnProperty(JsPropertyKey key, PropertyDescriptor desc)
         => key.IsSymbol ? DefineOwnProperty(key.AsSymbol, desc) : DefineOwnProperty(key.AsString, desc);
 
+    /// <summary>Write an own string-keyed property descriptor with NO validation
+    /// — the caller has already performed §10.1.6.3 ValidateAndApplyPropertyDescriptor.
+    /// Used by §10.4.4.2 mapped-arguments [[DefineOwnProperty]], whose partial-field
+    /// merge cannot be expressed through the simplified <see cref="DefineOwnProperty(string, PropertyDescriptor)"/>
+    /// validator (which rejects a non-configurable data property's legal
+    /// writable:true→false transition).</summary>
+    internal void ForceDefineOwnProperty(string name, PropertyDescriptor desc)
+        => _properties[name] = desc;
+
     private bool DefineOwnPropertyCore<TKey>(Dictionary<TKey, PropertyDescriptor> table, TKey key, PropertyDescriptor desc)
         where TKey : notnull
     {

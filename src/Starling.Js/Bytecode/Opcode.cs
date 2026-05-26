@@ -488,6 +488,21 @@ public enum Opcode : byte
     /// <c>arguments</c> lexically through the upvalue mechanism.</summary>
     MakeArguments,
 
+    /// <summary>wp:M3-80 — §10.4.4.6 CreateMappedArgumentsObject: materialize the
+    /// callee's <c>arguments</c> object as the <em>mapped</em> exotic form, where
+    /// each index <c>i &lt; paramCount</c> is live-linked to the i-th formal
+    /// parameter's local slot (writing <c>arguments[i]</c> updates the parameter
+    /// and reassigning the parameter updates <c>arguments[i]</c>). Emitted instead
+    /// of <see cref="MakeArguments"/> only for a NON-strict function with a simple
+    /// parameter list (no defaults / rest / destructuring). Operand layout:
+    /// <c>[u16 argsLocalSlot][u16 paramCount]</c> followed by <c>paramCount</c>
+    /// <c>[u16 paramSlot]</c> entries (a paramSlot of 0xFFFF marks an index whose
+    /// parameter name is shadowed by a later duplicate and so is left unmapped per
+    /// the spec's last-wins mapping). The VM reads the parameter slots from the
+    /// current frame's <c>locals</c>, holding the array by reference so the
+    /// mapping stays live after the frame returns.</summary>
+    MakeMappedArguments,
+
     /// <summary>wp:M3-21 — §15.2.5 InstantiateOrdinaryFunctionExpression: bind a
     /// named function <em>expression</em>'s own name inside its body to the
     /// function instance currently executing, so the body can refer to itself
