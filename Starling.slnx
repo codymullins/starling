@@ -28,6 +28,7 @@
   <Project Path="src/Starling.Engine/Starling.Engine.csproj" />
   <Project Path="src/Starling.Headless/Starling.Headless.csproj" />
   <Project Path="src/Starling.Html/Starling.Html.csproj" />
+  <Project Path="lib/starling-regexp/src/Starling.RegExp/Starling.RegExp.csproj" />
   <Project Path="src/Starling.Js/Starling.Js.csproj" />
   <Project Path="src/Starling.Js.Hosting/Starling.Js.Hosting.csproj" />
   <Project Path="src/Starling.Layout/Starling.Layout.csproj" />

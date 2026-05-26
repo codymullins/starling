@@ -1,0 +1,3 @@
+[submodule "lib/starling-regexp"]
+	path = lib/starling-regexp
+	url = git@github.com:starling-browser/starling-regexp.git

@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using Starling.Js.Bytecode;
 using Starling.Js.Intrinsics;
-using Starling.Js.RegExp;
+using Starling.RegExp;
 
 namespace Starling.Js.Runtime;
 
