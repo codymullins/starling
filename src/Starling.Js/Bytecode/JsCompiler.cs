@@ -1140,6 +1140,12 @@ public sealed partial class JsCompiler
             case BlockStatement bs:
                 PushScope();
                 HoistLexicalDeclarations(bs.Body);
+                // §14.2.13 BlockDeclarationInstantiation — a FunctionDeclaration
+                // inside a Block creates a block-scoped binding initialized to
+                // the function value when the block is entered. Hoist before
+                // walking the body so the textual position emits nothing and
+                // same-block references resolve through the block scope.
+                HoistFunctionDeclarations(bs.Body);
                 foreach (var inner in bs.Body) EmitStatement(inner);
                 PopScope();
                 return;
