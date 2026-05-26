@@ -206,6 +206,21 @@ public sealed partial class JsCompiler
     /// real var-environments and never inject.</summary>
     private bool _evalInjectVars;
 
+    /// <summary>wp:M3-79 — statement completion value (§13–§14 + §13.2.13
+    /// UpdateEmpty). When compiling eval / Program code (<see cref="CompileForEval"/>
+    /// / <see cref="CompileForDirectEval"/>) this holds a reserved local slot that
+    /// accumulates the running completion value: each statement with a NON-empty
+    /// completion (an ExpressionStatement, or a construct that produces an explicit
+    /// value) stores its value into it; statements with an EMPTY completion
+    /// (EmptyStatement, var/let/const/function/class declarations, an empty Block)
+    /// leave it untouched (UpdateEmpty keeps the prior value). Constructs that
+    /// "create their own running value" (if / with / switch / loops / try) reset it
+    /// to <c>undefined</c> at entry so their own completion overwrites the prior
+    /// statement's value (e.g. <c>1; if (false) {}</c> → undefined). The slot's
+    /// final value is what an <c>eval</c> returns. <c>null</c> for ordinary
+    /// script / function-body compilation, which never observes completion values.</summary>
+    private int? _completionSlot;
+
     public JsCompiler() : this(parent: null) { }
 
     private JsCompiler(JsCompiler? parent)
@@ -476,6 +491,21 @@ public sealed partial class JsCompiler
 
     private void EmitProgram(Program p, bool keepLastExpression)
     {
+        // wp:M3-79 — eval / Program code returns the §13–§14 statement completion
+        // value (with §13.2.13 UpdateEmpty). Reserve a completion register,
+        // initialise it to undefined, and accumulate each statement's completion
+        // into it as the body is emitted (see _completionSlot). The final value is
+        // loaded onto the stack at Halt so RunEval / Run returns it. Ordinary
+        // (non-eval) script compilation leaves _completionSlot null and behaves as
+        // before. Reserve the slot FIRST so it is stable across the whole body.
+        if (keepLastExpression)
+        {
+            var cv = _b.ReserveLocal();
+            _completionSlot = cv;
+            _b.Emit(Opcode.LoadUndefined);
+            _b.EmitSlot(Opcode.StoreLocal, cv);
+        }
+
         // wp:M3-73 — §19.2.1.3 EvalDeclarationInstantiation (non-global branch):
         // before any eval-body code runs, idempotently pre-declare every
         // top-level var-declared name (and top-level function name) that is NOT
@@ -503,24 +533,21 @@ public sealed partial class JsCompiler
         // for function declarations).
         HoistFunctionDeclarations(p.Body);
 
-        for (var i = 0; i < p.Body.Count; i++)
+        foreach (var s in p.Body)
         {
-            var s = p.Body[i];
-            var isLast = i == p.Body.Count - 1;
             if (s is FunctionDeclaration)
             {
                 // Already hoisted; nothing to emit at the textual position.
+                // A function declaration's completion is empty (§14.x), so it
+                // leaves the completion register unchanged (UpdateEmpty).
                 continue;
             }
-            if (isLast && keepLastExpression && s is ExpressionStatement es)
-            {
-                EmitExpression(es.Expression); // skip trailing Pop
-            }
-            else
-            {
-                EmitStatement(s);
-            }
+            EmitStatement(s);
         }
+        // wp:M3-79 — leave the accumulated completion value on the stack for the
+        // VM's Halt to return as the eval / Program completion value.
+        if (_completionSlot is int finalSlot)
+            _b.EmitSlot(Opcode.LoadLocal, finalSlot);
         _b.Emit(Opcode.Halt);
     }
 
@@ -641,6 +668,30 @@ public sealed partial class JsCompiler
     {
         if (_b.IsCaptured(slot)) _b.EmitSlot(Opcode.LoadCellLocal, slot);
         else _b.EmitSlot(Opcode.LoadLocal, slot);
+    }
+
+    /// <summary>wp:M3-79 — true when this compile is tracking statement completion
+    /// values (eval / Program code). See <see cref="_completionSlot"/>.</summary>
+    private bool TrackCompletion => _completionSlot is not null;
+
+    /// <summary>wp:M3-79 — set the completion register to <c>undefined</c>. Emitted
+    /// at the entry of constructs whose own completion overwrites the running value
+    /// (if / with / switch / loops / try) so e.g. <c>1; if (false) {}</c> → undefined
+    /// and a zero-iteration loop yields undefined. No-op when not tracking.</summary>
+    private void EmitCompletionReset()
+    {
+        if (_completionSlot is not int slot) return;
+        _b.Emit(Opcode.LoadUndefined);
+        _b.EmitSlot(Opcode.StoreLocal, slot);
+    }
+
+    /// <summary>wp:M3-79 — store the value currently on top of the stack into the
+    /// completion register (consuming it). Used for an ExpressionStatement's value.
+    /// No-op (and leaves the value where it is) when not tracking.</summary>
+    private void EmitCompletionStore()
+    {
+        if (_completionSlot is not int slot) return;
+        _b.EmitSlot(Opcode.StoreLocal, slot);
     }
 
     /// <summary>Materialize a function as either a plain template
@@ -1059,10 +1110,16 @@ public sealed partial class JsCompiler
     {
         switch (s)
         {
+            // EmptyStatement (`;`) has an EMPTY completion (§14.4): leave the
+            // completion register untouched (UpdateEmpty keeps the prior value).
             case EmptyStatement: return;
             case ExpressionStatement es:
                 EmitExpression(es.Expression);
-                _b.Emit(Opcode.Pop);
+                // wp:M3-79 — an ExpressionStatement's completion is its expression
+                // value (§14.5). When tracking completion, store it into the
+                // register (consuming it) rather than discarding it.
+                if (TrackCompletion) EmitCompletionStore();
+                else _b.Emit(Opcode.Pop);
                 return;
             case BlockStatement bs:
                 PushScope();
@@ -1074,6 +1131,13 @@ public sealed partial class JsCompiler
                 EmitVarDecl(vd);
                 return;
             case IfStatement i:
+                // wp:M3-79 — §14.6: an IfStatement's completion is its taken
+                // branch's value, or undefined when no branch is taken / the
+                // branch is empty (both spec rules end in
+                // "Return NormalCompletion(undefined)"). Reset the register to
+                // undefined up front so `1; if (false) {}` → undefined; the taken
+                // branch's ExpressionStatements then overwrite it.
+                EmitCompletionReset();
                 EmitExpression(i.Test);
                 var jz = _b.EmitJump(Opcode.JumpIfFalse);
                 EmitStatement(i.Consequent);
@@ -1161,6 +1225,13 @@ public sealed partial class JsCompiler
     {
         var hasHandler = ts.Handler is not null;
         var hasFinalizer = ts.Finalizer is not null;
+        // wp:M3-79 — §14.15: a try statement's completion is the (try-block, or
+        // catch-block) value with §13.2.13 UpdateEmpty; a normally-completing
+        // finally block's value is DISCARDED (`6; try { 7; } finally { 8; }` → 7).
+        // Reset before the block so the try's own value overwrites the prior
+        // statement's; the finally body's effect on the register is saved/restored
+        // around it (see below).
+        EmitCompletionReset();
         if (!hasHandler && !hasFinalizer)
         {
             EmitStatement(ts.Block);
@@ -1249,7 +1320,27 @@ public sealed partial class JsCompiler
             var finallyTargetDelta = _b.Position - (finallyOperandPos + 4);
             _b.PatchI32(finallyOperandPos, finallyTargetDelta);
 
-            EmitStatement(ts.Finalizer!);
+            // wp:M3-79 — a normally-completing finally block does NOT contribute
+            // its value to the try statement's completion (§14.15.3 step 9 keeps
+            // the saved (try/catch) result). When tracking completion, snapshot
+            // the register before the finalizer body and restore it after, so the
+            // finalizer's own ExpressionStatements don't clobber the try value. An
+            // ABRUPT finalizer (e.g. `finally { break; }`) jumps out before the
+            // restore, leaving the register at its finalizer-entry value, which is
+            // what UpdateEmpty(abrupt-with-empty-value, V) preserves.
+            if (_completionSlot is int cvSlot)
+            {
+                var saved = _b.ReserveLocal();
+                _b.EmitSlot(Opcode.LoadLocal, cvSlot);
+                _b.EmitSlot(Opcode.StoreLocal, saved);
+                EmitStatement(ts.Finalizer!);
+                _b.EmitSlot(Opcode.LoadLocal, saved);
+                _b.EmitSlot(Opcode.StoreLocal, cvSlot);
+            }
+            else
+            {
+                EmitStatement(ts.Finalizer!);
+            }
             _b.Emit(Opcode.EndFinally);
         }
 
@@ -1267,6 +1358,12 @@ public sealed partial class JsCompiler
         // §14.11.2 step 1–4: evaluate the head OUTSIDE the protected region so a
         // throw during evaluation / ToObject doesn't run the PopWith finalizer
         // (nothing has been pushed yet).
+        // wp:M3-79 — §14.11.2: a with statement's completion is
+        // UpdateEmpty(body, undefined), so its own value overwrites the prior
+        // statement's (`1; with ({}) {}` → undefined). Reset before the body; the
+        // body's ExpressionStatements then overwrite it. The synthetic
+        // finally below only runs PopWith and never touches the register.
+        EmitCompletionReset();
         EmitExpression(ws.Object);
         _b.Emit(Opcode.PushWith);
 
@@ -1376,6 +1473,12 @@ public sealed partial class JsCompiler
         // Push the loop frame (IsSwitch=true so that bare `continue` skips it).
         var frame = new LoopFrame { TryDepthAtEntry = _tryDepth, ContinueTryDepth = _tryDepth, IsSwitch = true, Label = outerLabel };
         _loops.Push(frame);
+
+        // wp:M3-79 — §14.12.4 CaseBlockEvaluation "Let V = undefined" once; the
+        // matched clause (and any fall-through clauses') ExpressionStatements
+        // update it via UpdateEmpty, a no-match / empty-body switch yields
+        // undefined. Reset before the comparison chain (which doesn't touch V).
+        EmitCompletionReset();
 
         // Hoist any function declarations visible at the top of the switch body.
         var allConsequent = sw.Cases.SelectMany(c => c.Consequent).ToList();
@@ -1580,6 +1683,12 @@ public sealed partial class JsCompiler
     /// the loop frame so nested jumps land at the right targets.</summary>
     private void EmitWhile(WhileStatement w, string? label = null)
     {
+        // wp:M3-79 — §14.7.3: "Let V = undefined" once before the loop. Each
+        // iteration's body value updates V (via the body's ExpressionStatements);
+        // a zero-iteration loop yields undefined (`1; while (false) {}`), and on a
+        // break/continue the running V is preserved (UpdateEmpty with the empty
+        // break/continue value). Reset once here, before the loop entry.
+        EmitCompletionReset();
         var loop = new LoopFrame { TryDepthAtEntry = _tryDepth, Label = label };
         _loops.Push(loop);
         var loopStart = _b.Position;
@@ -1600,6 +1709,9 @@ public sealed partial class JsCompiler
     /// <c>continue</c> jumps to the test; <c>break</c> jumps past the loop.</summary>
     private void EmitDoWhile(DoWhileStatement dw, string? label = null)
     {
+        // wp:M3-79 — §14.7.2: "Let V = undefined" once before the loop (see
+        // EmitWhile). `1; do {} while (false)` → undefined; `2; do { 3; } …` → 3.
+        EmitCompletionReset();
         var loop = new LoopFrame { TryDepthAtEntry = _tryDepth, Label = label };
         _loops.Push(loop);
         var loopStart = _b.Position;
@@ -1669,6 +1781,12 @@ public sealed partial class JsCompiler
             foreach (var slot in perIterSlots)
                 _b.EmitSlot(Opcode.RefreshLetBinding, slot);
         }
+
+        // wp:M3-79 — §14.7.4.4 ForBodyEvaluation step 1 "Let V = undefined" — after
+        // init / the first per-iteration refresh, before the first test. A
+        // zero-iteration for yields undefined; otherwise the last non-empty body
+        // value (`for (var i=0;i<3;i++) i` → 2).
+        EmitCompletionReset();
 
         var loop = new LoopFrame { TryDepthAtEntry = _tryDepth, Label = label };
         _loops.Push(loop);
@@ -1868,6 +1986,11 @@ public sealed partial class JsCompiler
         };
         _loops.Push(loop);
 
+        // wp:M3-79 — §14.7.5.6 ForIn/OfBodyEvaluation step 2 "Let V = undefined"
+        // once before iterating; each iteration's body value updates it, a
+        // zero-iteration loop yields undefined.
+        EmitCompletionReset();
+
         var loopStart = _b.Position;
         // step = IteratorStep(handle); if done goto jExit. Done OUTSIDE the try
         // region: a normal exhaustion leaves the record Done and must NOT run
@@ -1955,6 +2078,9 @@ public sealed partial class JsCompiler
     {
         var loop = new LoopFrame { TryDepthAtEntry = _tryDepth, Label = label };
         _loops.Push(loop);
+
+        // wp:M3-79 — §14.7.5.6 "Let V = undefined" once before iterating.
+        EmitCompletionReset();
 
         var loopStart = _b.Position;
         // step = await iterator.next(); if step.done goto done.
@@ -2053,6 +2179,11 @@ public sealed partial class JsCompiler
 
         var loop = new LoopFrame { TryDepthAtEntry = _tryDepth, Label = label };
         _loops.Push(loop);
+
+        // wp:M3-79 — §14.7.5.6 "Let V = undefined" once before iterating; each
+        // visited iteration's body value updates it, a zero-iteration (or
+        // all-skipped) loop yields undefined.
+        EmitCompletionReset();
 
         var loopStart = _b.Position;
         // if (i >= keys.length) break.
