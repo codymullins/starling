@@ -20,16 +20,17 @@ public sealed partial class HtmlTokenizer
     {
         switch (state)
         {
-            case TokenizerState.CharacterReference:                  StepCharRef(c); break;
-            case TokenizerState.NamedCharacterReference:             StepNamedCharRef(c); break;
-            case TokenizerState.AmbiguousAmpersand:                  StepAmbiguousAmp(c); break;
-            case TokenizerState.NumericCharacterReference:           StepNumCharRef(c); break;
-            case TokenizerState.HexadecimalCharacterReferenceStart:  StepHexStart(c); break;
-            case TokenizerState.DecimalCharacterReferenceStart:      StepDecStart(c); break;
-            case TokenizerState.HexadecimalCharacterReference:       StepHex(c); break;
-            case TokenizerState.DecimalCharacterReference:           StepDec(c); break;
-            case TokenizerState.NumericCharacterReferenceEnd:        StepNumEnd(c); break;
-            default: throw new InvalidOperationException(
+            case TokenizerState.CharacterReference: StepCharRef(c); break;
+            case TokenizerState.NamedCharacterReference: StepNamedCharRef(c); break;
+            case TokenizerState.AmbiguousAmpersand: StepAmbiguousAmp(c); break;
+            case TokenizerState.NumericCharacterReference: StepNumCharRef(c); break;
+            case TokenizerState.HexadecimalCharacterReferenceStart: StepHexStart(c); break;
+            case TokenizerState.DecimalCharacterReferenceStart: StepDecStart(c); break;
+            case TokenizerState.HexadecimalCharacterReference: StepHex(c); break;
+            case TokenizerState.DecimalCharacterReference: StepDec(c); break;
+            case TokenizerState.NumericCharacterReferenceEnd: StepNumEnd(c); break;
+            default:
+                throw new InvalidOperationException(
                 $"DispatchCharRefState invoked for unrelated state '{state}'.");
         }
     }

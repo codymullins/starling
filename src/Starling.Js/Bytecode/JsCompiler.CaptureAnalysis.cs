@@ -163,7 +163,10 @@ internal static class CaptureAnalysis
                 // BindingIdentifier site — recursing further is not required for
                 // the early-error rule (and would be a spec edge case).
                 return false;
-            case EmptyStatement: case BreakStatement: case ContinueStatement: case DebuggerStatement:
+            case EmptyStatement:
+            case BreakStatement:
+            case ContinueStatement:
+            case DebuggerStatement:
                 return false;
             default:
                 return false;
@@ -740,7 +743,10 @@ internal static class CaptureAnalysis
                 if (cd.BaseClass is not null) WalkExpressionInOuter(cd.BaseClass, captured);
                 AddClassBodyFreeNames(cd.Body, captured);
                 return;
-            case EmptyStatement: case BreakStatement: case ContinueStatement: case DebuggerStatement:
+            case EmptyStatement:
+            case BreakStatement:
+            case ContinueStatement:
+            case DebuggerStatement:
                 return;
         }
     }
@@ -751,9 +757,14 @@ internal static class CaptureAnalysis
         switch (e)
         {
             case Identifier:
-            case NumericLiteral: case StringLiteral: case BooleanLiteral:
-            case NullLiteral: case BigIntLiteral: case RegExpLiteral:
-            case ThisExpression: case PrivateNameExpression:
+            case NumericLiteral:
+            case StringLiteral:
+            case BooleanLiteral:
+            case NullLiteral:
+            case BigIntLiteral:
+            case RegExpLiteral:
+            case ThisExpression:
+            case PrivateNameExpression:
                 return;
             case PrivateInExpression pin: WalkExpressionInOuter(pin.Object, captured); return;
             case BinaryExpression bin: WalkExpressionInOuter(bin.Left, captured); WalkExpressionInOuter(bin.Right, captured); return;
@@ -1117,7 +1128,10 @@ internal static class CaptureAnalysis
                 if (cd.BaseClass is not null) InnerExpression(cd.BaseClass, scopes, outerCaptured);
                 InnerClassBody(cd.Body, scopes, outerCaptured);
                 return;
-            case EmptyStatement: case BreakStatement: case ContinueStatement: case DebuggerStatement:
+            case EmptyStatement:
+            case BreakStatement:
+            case ContinueStatement:
+            case DebuggerStatement:
                 return;
         }
     }
@@ -1130,9 +1144,14 @@ internal static class CaptureAnalysis
             case Identifier id:
                 if (!IsBoundIn(scopes, id.Name)) outerCaptured.Add(id.Name);
                 return;
-            case NumericLiteral: case StringLiteral: case BooleanLiteral:
-            case NullLiteral: case BigIntLiteral: case RegExpLiteral:
-            case ThisExpression: case PrivateNameExpression:
+            case NumericLiteral:
+            case StringLiteral:
+            case BooleanLiteral:
+            case NullLiteral:
+            case BigIntLiteral:
+            case RegExpLiteral:
+            case ThisExpression:
+            case PrivateNameExpression:
                 return;
             case PrivateInExpression pin: InnerExpression(pin.Object, scopes, outerCaptured); return;
             case BinaryExpression bin: InnerExpression(bin.Left, scopes, outerCaptured); InnerExpression(bin.Right, scopes, outerCaptured); return;

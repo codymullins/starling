@@ -74,9 +74,9 @@ public sealed class UrlBar : Border
 
         // Segmented URL display (visible by default)
         _schemeText = MonoSegment("https", t.Faint);
-        _sepText    = MonoSegment("://",    t.Faint);
-        _hostText   = MonoSegment("",       t.Text);
-        _pathText   = MonoSegment("",       t.Muted);
+        _sepText = MonoSegment("://", t.Faint);
+        _hostText = MonoSegment("", t.Text);
+        _pathText = MonoSegment("", t.Muted);
 
         var displayRow = new StackPanel
         {
@@ -155,9 +155,9 @@ public sealed class UrlBar : Border
             VerticalAlignment = VerticalAlignment.Center,
             ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto"),
         };
-        _grid.Children.Add(lockCell);    Grid.SetColumn(lockCell, 0);
-        _grid.Children.Add(_display);    Grid.SetColumn(_display, 1);
-        _grid.Children.Add(findBtn);     Grid.SetColumn(findBtn, 3);
+        _grid.Children.Add(lockCell); Grid.SetColumn(lockCell, 0);
+        _grid.Children.Add(_display); Grid.SetColumn(_display, 1);
+        _grid.Children.Add(findBtn); Grid.SetColumn(findBtn, 3);
 
         // The well itself — soft border, generous corner radius
         Background = new SolidColorBrush(t.Surface);
@@ -424,7 +424,8 @@ public sealed class UrlBar : Border
 
         _progressSpinner = new Ellipse
         {
-            Width = 9, Height = 9,
+            Width = 9,
+            Height = 9,
             Stroke = new SolidColorBrush(t.Accent),
             StrokeThickness = 1.5,
             StrokeDashArray = [16, 6],
@@ -473,7 +474,7 @@ public sealed class UrlBar : Border
         // Hover brightens the muted resting state back to accent. During
         // active navigation the pill is already accent, so hover is a no-op.
         ChromeKit.AttachHover(_progressPill,
-            () => { if (_progressTimer is null) ApplyPillColors(active: true);  },
+            () => { if (_progressTimer is null) ApplyPillColors(active: true); },
             () => { if (_progressTimer is null) ApplyPillColors(active: false); });
 
         _grid.Children.Add(_progressPill);
@@ -640,7 +641,10 @@ public sealed class UrlBar : Border
             Child = rows,
             BoxShadow = new BoxShadows(new BoxShadow
             {
-                OffsetX = 0, OffsetY = 8, Blur = 28, Spread = -6,
+                OffsetX = 0,
+                OffsetY = 8,
+                Blur = 28,
+                Spread = -6,
                 Color = Color.FromArgb(90, 0, 0, 0),
             }),
         };

@@ -10,25 +10,26 @@ public sealed partial class HtmlTokenizer
     {
         switch (state)
         {
-            case TokenizerState.ScriptData:                           StepScriptData(c); break;
-            case TokenizerState.ScriptDataLessThanSign:               StepScriptDataLt(c); break;
-            case TokenizerState.ScriptDataEndTagOpen:                 StepScriptDataEndTagOpen(c); break;
-            case TokenizerState.ScriptDataEndTagName:                 StepScriptDataEndTagName(c); break;
-            case TokenizerState.ScriptDataEscapeStart:                StepScriptDataEscapeStart(c); break;
-            case TokenizerState.ScriptDataEscapeStartDash:            StepScriptDataEscapeStartDash(c); break;
-            case TokenizerState.ScriptDataEscaped:                    StepScriptDataEscaped(c); break;
-            case TokenizerState.ScriptDataEscapedDash:                StepScriptDataEscapedDash(c); break;
-            case TokenizerState.ScriptDataEscapedDashDash:            StepScriptDataEscapedDashDash(c); break;
-            case TokenizerState.ScriptDataEscapedLessThanSign:        StepScriptDataEscapedLt(c); break;
-            case TokenizerState.ScriptDataEscapedEndTagOpen:          StepScriptDataEscapedEndTagOpen(c); break;
-            case TokenizerState.ScriptDataEscapedEndTagName:          StepScriptDataEscapedEndTagName(c); break;
-            case TokenizerState.ScriptDataDoubleEscapeStart:          StepScriptDataDoubleEscapeStart(c); break;
-            case TokenizerState.ScriptDataDoubleEscaped:              StepScriptDataDoubleEscaped(c); break;
-            case TokenizerState.ScriptDataDoubleEscapedDash:          StepScriptDataDoubleEscapedDash(c); break;
-            case TokenizerState.ScriptDataDoubleEscapedDashDash:      StepScriptDataDoubleEscapedDashDash(c); break;
-            case TokenizerState.ScriptDataDoubleEscapedLessThanSign:  StepScriptDataDoubleEscapedLt(c); break;
-            case TokenizerState.ScriptDataDoubleEscapeEnd:            StepScriptDataDoubleEscapeEnd(c); break;
-            default: throw new InvalidOperationException(
+            case TokenizerState.ScriptData: StepScriptData(c); break;
+            case TokenizerState.ScriptDataLessThanSign: StepScriptDataLt(c); break;
+            case TokenizerState.ScriptDataEndTagOpen: StepScriptDataEndTagOpen(c); break;
+            case TokenizerState.ScriptDataEndTagName: StepScriptDataEndTagName(c); break;
+            case TokenizerState.ScriptDataEscapeStart: StepScriptDataEscapeStart(c); break;
+            case TokenizerState.ScriptDataEscapeStartDash: StepScriptDataEscapeStartDash(c); break;
+            case TokenizerState.ScriptDataEscaped: StepScriptDataEscaped(c); break;
+            case TokenizerState.ScriptDataEscapedDash: StepScriptDataEscapedDash(c); break;
+            case TokenizerState.ScriptDataEscapedDashDash: StepScriptDataEscapedDashDash(c); break;
+            case TokenizerState.ScriptDataEscapedLessThanSign: StepScriptDataEscapedLt(c); break;
+            case TokenizerState.ScriptDataEscapedEndTagOpen: StepScriptDataEscapedEndTagOpen(c); break;
+            case TokenizerState.ScriptDataEscapedEndTagName: StepScriptDataEscapedEndTagName(c); break;
+            case TokenizerState.ScriptDataDoubleEscapeStart: StepScriptDataDoubleEscapeStart(c); break;
+            case TokenizerState.ScriptDataDoubleEscaped: StepScriptDataDoubleEscaped(c); break;
+            case TokenizerState.ScriptDataDoubleEscapedDash: StepScriptDataDoubleEscapedDash(c); break;
+            case TokenizerState.ScriptDataDoubleEscapedDashDash: StepScriptDataDoubleEscapedDashDash(c); break;
+            case TokenizerState.ScriptDataDoubleEscapedLessThanSign: StepScriptDataDoubleEscapedLt(c); break;
+            case TokenizerState.ScriptDataDoubleEscapeEnd: StepScriptDataDoubleEscapeEnd(c); break;
+            default:
+                throw new InvalidOperationException(
                 $"DispatchScriptState invoked for unrelated state '{state}'.");
         }
     }

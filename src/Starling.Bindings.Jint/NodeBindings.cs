@@ -555,12 +555,12 @@ internal static class NodeBindings
             switch (position.ToLowerInvariant())
             {
                 case "beforebegin":
-                {
-                    if (e.ParentNode is not { } parent) return JsValue.Undefined;
-                    var context = parent as Element ?? e;
-                    parent.InsertBefore(ParseFragment(context, markup), e);
-                    break;
-                }
+                    {
+                        if (e.ParentNode is not { } parent) return JsValue.Undefined;
+                        var context = parent as Element ?? e;
+                        parent.InsertBefore(ParseFragment(context, markup), e);
+                        break;
+                    }
                 case "afterbegin":
                     e.InsertBefore(ParseFragment(e, markup), e.FirstChild);
                     break;
@@ -568,12 +568,12 @@ internal static class NodeBindings
                     e.AppendChild(ParseFragment(e, markup));
                     break;
                 case "afterend":
-                {
-                    if (e.ParentNode is not { } parent) return JsValue.Undefined;
-                    var context = parent as Element ?? e;
-                    parent.InsertBefore(ParseFragment(context, markup), e.NextSibling);
-                    break;
-                }
+                    {
+                        if (e.ParentNode is not { } parent) return JsValue.Undefined;
+                        var context = parent as Element ?? e;
+                        parent.InsertBefore(ParseFragment(context, markup), e.NextSibling);
+                        break;
+                    }
                 default:
                     throw TypeError(engine, $"insertAdjacentHTML: '{position}' is not a valid position");
             }

@@ -789,78 +789,78 @@ public sealed partial class JsParser
             case JsTokenKind.Tilde:
             case JsTokenKind.Plus:
             case JsTokenKind.Minus:
-            {
-                var t = Advance();
-                var arg = ParseUnary();
-                // §13.5.1.1 — in strict code `delete` of a bare/parenthesized
-                // unqualified identifier reference is a SyntaxError.
-                if (t.Kind == JsTokenKind.Delete && _strict && IsUnqualifiedReference(arg))
-                    throw new JsParseException(
-                        "'delete' of an unqualified identifier is not allowed in strict mode", t.Start);
-                return new UnaryExpression(t.Lexeme, arg, Prefix: true, t.Start, arg.End);
-            }
+                {
+                    var t = Advance();
+                    var arg = ParseUnary();
+                    // §13.5.1.1 — in strict code `delete` of a bare/parenthesized
+                    // unqualified identifier reference is a SyntaxError.
+                    if (t.Kind == JsTokenKind.Delete && _strict && IsUnqualifiedReference(arg))
+                        throw new JsParseException(
+                            "'delete' of an unqualified identifier is not allowed in strict mode", t.Start);
+                    return new UnaryExpression(t.Lexeme, arg, Prefix: true, t.Start, arg.End);
+                }
             case JsTokenKind.PlusPlus:
             case JsTokenKind.MinusMinus:
-            {
-                var t = Advance();
-                var arg = ParseUnary();
-                // §13.4.1 — ++/-- of `eval`/`arguments` is a strict SyntaxError.
-                CheckAssignmentTarget(arg, t.Start);
-                // §13.3.1.1 — an OptionalChain is not a valid assignment target,
-                // so `--a?.b` (prefix update on an optional chain) is an error.
-                if (IsOptionalChain(arg))
-                    throw new JsParseException(
-                        "optional chain is not a valid assignment target", arg.Start);
-                return new UpdateExpression(t.Lexeme, arg, Prefix: true, t.Start, arg.End);
-            }
-            case JsTokenKind.Identifier when _current.Lexeme == "await" && !_current.ContainsEscape:
-            {
-                // B1b-2c — await expression. Treat as a unary prefix in any
-                // context; the runtime errors if used outside an async fn.
-                // (Spec restricts to async contexts; we accept liberally.)
-                // Guard against "await" used as a plain identifier (e.g. as
-                // a property name or assignment target) — those flow through
-                // ParsePrimary which advances the token first.
-                // §13.3.10.1 / §16.2.1.6.2 — but in an await context (async
-                // function OR Module top level) `await` is always the keyword and
-                // may never be used as an identifier reference / assignment target,
-                // so the fall-through is only permitted outside an await context.
-                // An escaped `await` is never the keyword (handled by the
-                // ContainsEscape guard above → falls through to ParsePrimary,
-                // which yields a SyntaxError in await contexts).
-                var next = _lex.Peek().Kind;
-                if (!AwaitIsKeyword && (next == JsTokenKind.Eq || next == JsTokenKind.Comma
-                    || next == JsTokenKind.Semicolon || next == JsTokenKind.RParen
-                    || next == JsTokenKind.RBrace || next == JsTokenKind.RBracket
-                    || next == JsTokenKind.Dot || next == JsTokenKind.Arrow
-                    || next == JsTokenKind.LParen))
                 {
-                    // `await` used as identifier (legacy). Fall through.
-                    return ParseUpdate();
+                    var t = Advance();
+                    var arg = ParseUnary();
+                    // §13.4.1 — ++/-- of `eval`/`arguments` is a strict SyntaxError.
+                    CheckAssignmentTarget(arg, t.Start);
+                    // §13.3.1.1 — an OptionalChain is not a valid assignment target,
+                    // so `--a?.b` (prefix update on an optional chain) is an error.
+                    if (IsOptionalChain(arg))
+                        throw new JsParseException(
+                            "optional chain is not a valid assignment target", arg.Start);
+                    return new UpdateExpression(t.Lexeme, arg, Prefix: true, t.Start, arg.End);
                 }
-                // §15.8.1 — an async function's FormalParameters may not contain
-                // an AwaitExpression (`async function*(x = await 1) {}`).
-                if (_inFormalParameters && _inAsync)
-                    throw new JsParseException(
-                        "an AwaitExpression may not appear in formal parameters", _current.Start);
-                // §15.7.1 — a class static initialization block may not contain
-                // an AwaitExpression (`static { await 0; }`).
-                if (_inStaticBlock)
-                    throw new JsParseException(
-                        "an AwaitExpression may not appear in a class static block", _current.Start);
-                // §16.2.1.6.2 — in module code, `await` is always reserved: an
-                // `await UnaryExpression` outside an await context (i.e. in a
-                // non-async function nested in the module) is an early SyntaxError,
-                // not the liberal "accept and defer to runtime" form classic
-                // scripts use.
-                if (_module && !AwaitIsKeyword)
-                    throw new JsParseException(
-                        "'await' is only valid in async functions and at the top level of a module",
-                        _current.Start);
-                var t = Advance();
-                var arg = ParseUnary();
-                return new AwaitExpression(arg, t.Start, arg.End);
-            }
+            case JsTokenKind.Identifier when _current.Lexeme == "await" && !_current.ContainsEscape:
+                {
+                    // B1b-2c — await expression. Treat as a unary prefix in any
+                    // context; the runtime errors if used outside an async fn.
+                    // (Spec restricts to async contexts; we accept liberally.)
+                    // Guard against "await" used as a plain identifier (e.g. as
+                    // a property name or assignment target) — those flow through
+                    // ParsePrimary which advances the token first.
+                    // §13.3.10.1 / §16.2.1.6.2 — but in an await context (async
+                    // function OR Module top level) `await` is always the keyword and
+                    // may never be used as an identifier reference / assignment target,
+                    // so the fall-through is only permitted outside an await context.
+                    // An escaped `await` is never the keyword (handled by the
+                    // ContainsEscape guard above → falls through to ParsePrimary,
+                    // which yields a SyntaxError in await contexts).
+                    var next = _lex.Peek().Kind;
+                    if (!AwaitIsKeyword && (next == JsTokenKind.Eq || next == JsTokenKind.Comma
+                        || next == JsTokenKind.Semicolon || next == JsTokenKind.RParen
+                        || next == JsTokenKind.RBrace || next == JsTokenKind.RBracket
+                        || next == JsTokenKind.Dot || next == JsTokenKind.Arrow
+                        || next == JsTokenKind.LParen))
+                    {
+                        // `await` used as identifier (legacy). Fall through.
+                        return ParseUpdate();
+                    }
+                    // §15.8.1 — an async function's FormalParameters may not contain
+                    // an AwaitExpression (`async function*(x = await 1) {}`).
+                    if (_inFormalParameters && _inAsync)
+                        throw new JsParseException(
+                            "an AwaitExpression may not appear in formal parameters", _current.Start);
+                    // §15.7.1 — a class static initialization block may not contain
+                    // an AwaitExpression (`static { await 0; }`).
+                    if (_inStaticBlock)
+                        throw new JsParseException(
+                            "an AwaitExpression may not appear in a class static block", _current.Start);
+                    // §16.2.1.6.2 — in module code, `await` is always reserved: an
+                    // `await UnaryExpression` outside an await context (i.e. in a
+                    // non-async function nested in the module) is an early SyntaxError,
+                    // not the liberal "accept and defer to runtime" form classic
+                    // scripts use.
+                    if (_module && !AwaitIsKeyword)
+                        throw new JsParseException(
+                            "'await' is only valid in async functions and at the top level of a module",
+                            _current.Start);
+                    var t = Advance();
+                    var arg = ParseUnary();
+                    return new AwaitExpression(arg, t.Start, arg.End);
+                }
         }
         return ParseUpdate();
     }
@@ -1149,17 +1149,17 @@ public sealed partial class JsParser
                 Advance();
                 return new StringLiteral((string)t.Value!, t.Start, t.End);
             case JsTokenKind.RegExpLiteral:
-            {
-                Advance();
-                var (pattern, flags) = ((string, string))t.Value!;
-                // §12.9.5 / §22.2.1 — a RegularExpressionLiteral whose pattern or
-                // flags fail to parse is an early SyntaxError (negative phase
-                // "parse"). Validate eagerly here by compiling through the same
-                // RegExp engine the runtime uses, converting any regex-level
-                // syntax failure into a parse error at the literal's position.
-                ValidateRegExpLiteral(pattern, flags, t.Start);
-                return new RegExpLiteral(pattern, flags, t.Start, t.End);
-            }
+                {
+                    Advance();
+                    var (pattern, flags) = ((string, string))t.Value!;
+                    // §12.9.5 / §22.2.1 — a RegularExpressionLiteral whose pattern or
+                    // flags fail to parse is an early SyntaxError (negative phase
+                    // "parse"). Validate eagerly here by compiling through the same
+                    // RegExp engine the runtime uses, converting any regex-level
+                    // syntax failure into a parse error at the literal's position.
+                    ValidateRegExpLiteral(pattern, flags, t.Start);
+                    return new RegExpLiteral(pattern, flags, t.Start, t.End);
+                }
             case JsTokenKind.BooleanLiteral:
                 Advance();
                 return new BooleanLiteral((bool)t.Value!, t.Start, t.End);
@@ -1358,36 +1358,36 @@ public sealed partial class JsParser
         _disallowInDepth = 0;
         try
         {
-        var elements = new List<Expression?>();
-        while (!Check(JsTokenKind.RBracket))
-        {
-            if (Check(JsTokenKind.Comma))
+            var elements = new List<Expression?>();
+            while (!Check(JsTokenKind.RBracket))
             {
-                elements.Add(null); // elision
-                Advance();
-                continue;
+                if (Check(JsTokenKind.Comma))
+                {
+                    elements.Add(null); // elision
+                    Advance();
+                    continue;
+                }
+                SpreadElement? spread = null;
+                if (Check(JsTokenKind.Ellipsis))
+                {
+                    var sstart = _current.Start;
+                    Advance();
+                    var inner = ParseAssignment();
+                    spread = new SpreadElement(inner, sstart, inner.End);
+                    elements.Add(spread);
+                }
+                else
+                {
+                    elements.Add(ParseAssignment());
+                }
+                if (!Match(JsTokenKind.Comma)) break;
+                // Record a spread that was directly followed by a comma so the
+                // destructuring reinterpret pass can reject `[...x,]` / `[...x, y]`.
+                if (spread is not null) _spreadFollowedByComma.Add(spread);
             }
-            SpreadElement? spread = null;
-            if (Check(JsTokenKind.Ellipsis))
-            {
-                var sstart = _current.Start;
-                Advance();
-                var inner = ParseAssignment();
-                spread = new SpreadElement(inner, sstart, inner.End);
-                elements.Add(spread);
-            }
-            else
-            {
-                elements.Add(ParseAssignment());
-            }
-            if (!Match(JsTokenKind.Comma)) break;
-            // Record a spread that was directly followed by a comma so the
-            // destructuring reinterpret pass can reject `[...x,]` / `[...x, y]`.
-            if (spread is not null) _spreadFollowedByComma.Add(spread);
-        }
-        var end = _current.End;
-        Expect(JsTokenKind.RBracket, "expected ']' to close array literal");
-        return new ArrayExpression(elements, start, end);
+            var end = _current.End;
+            Expect(JsTokenKind.RBracket, "expected ']' to close array literal");
+            return new ArrayExpression(elements, start, end);
         }
         finally { _disallowInDepth = savedNoIn; }
     }
@@ -1826,8 +1826,8 @@ public sealed partial class JsParser
 }
 
 #pragma warning disable RCS1194 // Implement exception constructors — we
-                                 // surface only the single (message, position)
-                                 // form; the parser never throws bare instances.
+// surface only the single (message, position)
+// form; the parser never throws bare instances.
 public sealed class JsParseException(string message, JsPosition position)
     : Exception($"{message} (at {position})")
 {

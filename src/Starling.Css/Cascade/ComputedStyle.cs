@@ -135,41 +135,41 @@ public sealed class ComputedStyle
                     result.Add(tv.Token);
                     break;
                 case CssFunction func when func.Name.Equals("var", StringComparison.OrdinalIgnoreCase):
-                {
-                    // Resolve the var(): first positional argument is the custom property name.
-                    var varName = ExtractVarName(func.Values);
-                    if (varName is not null && customProps.TryGetValue(varName, out var replacement))
                     {
-                        result.AddRange(SubstituteVars(replacement, customProps, depth + 1));
+                        // Resolve the var(): first positional argument is the custom property name.
+                        var varName = ExtractVarName(func.Values);
+                        if (varName is not null && customProps.TryGetValue(varName, out var replacement))
+                        {
+                            result.AddRange(SubstituteVars(replacement, customProps, depth + 1));
+                        }
+                        else
+                        {
+                            // Try the fallback (everything after the first comma).
+                            var fallback = ExtractVarFallback(func.Values);
+                            if (fallback is not null)
+                                result.AddRange(SubstituteVars(fallback, customProps, depth + 1));
+                            // If neither, substitute with nothing (guaranteed-invalid token).
+                        }
+                        break;
                     }
-                    else
-                    {
-                        // Try the fallback (everything after the first comma).
-                        var fallback = ExtractVarFallback(func.Values);
-                        if (fallback is not null)
-                            result.AddRange(SubstituteVars(fallback, customProps, depth + 1));
-                        // If neither, substitute with nothing (guaranteed-invalid token).
-                    }
-                    break;
-                }
                 case CssFunction func:
-                {
-                    // Non-var function: serialize as function token + inner content + ')'.
-                    result.Add(new Starling.Css.Tokenizer.CssToken(Starling.Css.Tokenizer.CssTokenType.Function, func.Name));
-                    result.AddRange(SubstituteVars(func.Values, customProps, depth + 1));
-                    result.Add(new Starling.Css.Tokenizer.CssToken(Starling.Css.Tokenizer.CssTokenType.RightParen));
-                    break;
-                }
+                    {
+                        // Non-var function: serialize as function token + inner content + ')'.
+                        result.Add(new Starling.Css.Tokenizer.CssToken(Starling.Css.Tokenizer.CssTokenType.Function, func.Name));
+                        result.AddRange(SubstituteVars(func.Values, customProps, depth + 1));
+                        result.Add(new Starling.Css.Tokenizer.CssToken(Starling.Css.Tokenizer.CssTokenType.RightParen));
+                        break;
+                    }
                 case CssSimpleBlock block:
-                {
-                    result.Add(new Starling.Css.Tokenizer.CssToken(block.StartToken));
-                    result.AddRange(SubstituteVars(block.Values, customProps, depth + 1));
-                    result.Add(new Starling.Css.Tokenizer.CssToken(
-                        block.StartToken == Starling.Css.Tokenizer.CssTokenType.LeftParen ? Starling.Css.Tokenizer.CssTokenType.RightParen :
-                        block.StartToken == Starling.Css.Tokenizer.CssTokenType.LeftSquare ? Starling.Css.Tokenizer.CssTokenType.RightSquare :
-                        Starling.Css.Tokenizer.CssTokenType.RightBrace));
-                    break;
-                }
+                    {
+                        result.Add(new Starling.Css.Tokenizer.CssToken(block.StartToken));
+                        result.AddRange(SubstituteVars(block.Values, customProps, depth + 1));
+                        result.Add(new Starling.Css.Tokenizer.CssToken(
+                            block.StartToken == Starling.Css.Tokenizer.CssTokenType.LeftParen ? Starling.Css.Tokenizer.CssTokenType.RightParen :
+                            block.StartToken == Starling.Css.Tokenizer.CssTokenType.LeftSquare ? Starling.Css.Tokenizer.CssTokenType.RightSquare :
+                            Starling.Css.Tokenizer.CssTokenType.RightBrace));
+                        break;
+                    }
             }
         }
         return result;

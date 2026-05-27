@@ -521,44 +521,44 @@ public sealed class JsLexer
 
     private static JsTokenKind KeywordLookup(string s) => s switch
     {
-        "break"      => JsTokenKind.Break,
-        "case"       => JsTokenKind.Case,
-        "catch"      => JsTokenKind.Catch,
-        "class"      => JsTokenKind.Class,
-        "const"      => JsTokenKind.Const,
-        "continue"   => JsTokenKind.Continue,
-        "debugger"   => JsTokenKind.Debugger,
-        "default"    => JsTokenKind.Default,
-        "delete"     => JsTokenKind.Delete,
-        "do"         => JsTokenKind.Do,
-        "else"       => JsTokenKind.Else,
-        "enum"       => JsTokenKind.Enum,
-        "export"     => JsTokenKind.Export,
-        "extends"    => JsTokenKind.Extends,
-        "false"      => JsTokenKind.BooleanLiteral,
-        "finally"    => JsTokenKind.Finally,
-        "for"        => JsTokenKind.For,
-        "function"   => JsTokenKind.Function,
-        "if"         => JsTokenKind.If,
-        "import"     => JsTokenKind.Import,
-        "in"         => JsTokenKind.In,
+        "break" => JsTokenKind.Break,
+        "case" => JsTokenKind.Case,
+        "catch" => JsTokenKind.Catch,
+        "class" => JsTokenKind.Class,
+        "const" => JsTokenKind.Const,
+        "continue" => JsTokenKind.Continue,
+        "debugger" => JsTokenKind.Debugger,
+        "default" => JsTokenKind.Default,
+        "delete" => JsTokenKind.Delete,
+        "do" => JsTokenKind.Do,
+        "else" => JsTokenKind.Else,
+        "enum" => JsTokenKind.Enum,
+        "export" => JsTokenKind.Export,
+        "extends" => JsTokenKind.Extends,
+        "false" => JsTokenKind.BooleanLiteral,
+        "finally" => JsTokenKind.Finally,
+        "for" => JsTokenKind.For,
+        "function" => JsTokenKind.Function,
+        "if" => JsTokenKind.If,
+        "import" => JsTokenKind.Import,
+        "in" => JsTokenKind.In,
         "instanceof" => JsTokenKind.Instanceof,
-        "new"        => JsTokenKind.New,
-        "null"       => JsTokenKind.NullLiteral,
-        "return"     => JsTokenKind.Return,
-        "super"      => JsTokenKind.Super,
-        "switch"     => JsTokenKind.Switch,
-        "this"       => JsTokenKind.This,
-        "throw"      => JsTokenKind.Throw,
-        "true"       => JsTokenKind.BooleanLiteral,
-        "try"        => JsTokenKind.Try,
-        "typeof"     => JsTokenKind.Typeof,
-        "var"        => JsTokenKind.Var,
-        "void"       => JsTokenKind.Void,
-        "while"      => JsTokenKind.While,
-        "with"       => JsTokenKind.With,
-        "yield"      => JsTokenKind.Yield,
-        _            => JsTokenKind.Identifier,
+        "new" => JsTokenKind.New,
+        "null" => JsTokenKind.NullLiteral,
+        "return" => JsTokenKind.Return,
+        "super" => JsTokenKind.Super,
+        "switch" => JsTokenKind.Switch,
+        "this" => JsTokenKind.This,
+        "throw" => JsTokenKind.Throw,
+        "true" => JsTokenKind.BooleanLiteral,
+        "try" => JsTokenKind.Try,
+        "typeof" => JsTokenKind.Typeof,
+        "var" => JsTokenKind.Var,
+        "void" => JsTokenKind.Void,
+        "while" => JsTokenKind.While,
+        "with" => JsTokenKind.With,
+        "yield" => JsTokenKind.Yield,
+        _ => JsTokenKind.Identifier,
     };
 
     // -----------------------------------------------------------------------
@@ -940,11 +940,11 @@ public sealed class JsLexer
             // (sloppy semantics) and tag it as a strict-mode error. In a template
             // body this form is itself a NotEscapeSequence (no cooked value).
             case >= '0' and <= '7':
-            {
-                var v = ScanLegacyOctalEscape(e);
-                if (_inTemplateBody) { _lastEscapeWasInvalid = true; _lastEscapeWasLegacyOctal = false; }
-                return v;
-            }
+                {
+                    var v = ScanLegacyOctalEscape(e);
+                    if (_inTemplateBody) { _lastEscapeWasInvalid = true; _lastEscapeWasLegacyOctal = false; }
+                    return v;
+                }
             // §B.1.2 NonOctalDecimalEscapeSequence — `\8` / `\9`. The value is
             // just the digit, but it is a strict-mode error (and a template
             // NotEscapeSequence).

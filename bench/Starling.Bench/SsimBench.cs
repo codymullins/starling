@@ -10,7 +10,7 @@ namespace Starling.Bench;
 [MemoryDiagnoser]
 public class SsimBench
 {
-    private const int Width  = 1024;
+    private const int Width = 1024;
     private const int Height = 768;
 
     private byte[] _a = null!;

@@ -50,7 +50,8 @@ public sealed class WptRunner
                 result = new WptFileResult(rel, false, -1, Array.Empty<WptSubtest>(),
                     "host:" + ex.GetType().Name + ":" + Truncate(ex.Message));
             }
-        }, maxStackSize: 32 * 1024 * 1024) { IsBackground = true };
+        }, maxStackSize: 32 * 1024 * 1024)
+        { IsBackground = true };
 
         worker.Start();
         // Real-time backstop: a little over the cooperative load timeout.

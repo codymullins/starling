@@ -11,11 +11,11 @@ public readonly struct PropertyDescriptor : IEquatable<PropertyDescriptor>
     [Flags]
     private enum Bits : byte
     {
-        None        = 0,
-        Writable    = 1 << 0,
-        Enumerable  = 1 << 1,
+        None = 0,
+        Writable = 1 << 0,
+        Enumerable = 1 << 1,
         Configurable = 1 << 2,
-        Accessor    = 1 << 3,
+        Accessor = 1 << 3,
     }
 
     public readonly JsValue Value;

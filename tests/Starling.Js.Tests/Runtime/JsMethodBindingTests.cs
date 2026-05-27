@@ -94,7 +94,8 @@ public class JsMethodBindingTests
         // property lookup AND for this-binding).
         var runtime = new JsRuntime();
         var callCount = 0;
-        runtime.RegisterGlobal("recv", args => {
+        runtime.RegisterGlobal("recv", args =>
+        {
             callCount++;
             var obj = new JsObject();
             obj.Set("m", JsValue.Object(new JsNativeFunction("m",

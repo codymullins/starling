@@ -103,15 +103,15 @@ public class WebviewPanelScaleTests
     {
         var pixels = new byte[w * h * 4];
         for (var y = 0; y < h; y++)
-        for (var x = 0; x < w; x++)
-        {
-            var o = (y * w + x) * 4;
-            var green = x >= markerFrom && y >= markerFrom;
-            pixels[o] = (byte)(green ? 0 : 255);     // R
-            pixels[o + 1] = (byte)(green ? 255 : 0);  // G
-            pixels[o + 2] = 0;                        // B
-            pixels[o + 3] = 255;                      // A
-        }
+            for (var x = 0; x < w; x++)
+            {
+                var o = (y * w + x) * 4;
+                var green = x >= markerFrom && y >= markerFrom;
+                pixels[o] = (byte)(green ? 0 : 255);     // R
+                pixels[o + 1] = (byte)(green ? 255 : 0);  // G
+                pixels[o + 2] = 0;                        // B
+                pixels[o + 3] = 255;                      // A
+            }
 
         var bmp = new WriteableBitmap(new PixelSize(w, h), new Vector(96, 96), PixelFormat.Rgba8888, AlphaFormat.Unpremul);
         using var fb = bmp.Lock();

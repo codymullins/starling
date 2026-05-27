@@ -229,7 +229,10 @@ public sealed class DomEventTests
 
         target.DispatchEvent(new MouseEvent("click", new EventInit(Bubbles: true))
         {
-            ClientX = 50, ClientY = 75, Button = 0, ShiftKey = true,
+            ClientX = 50,
+            ClientY = 75,
+            Button = 0,
+            ShiftKey = true,
         });
 
         captured.Should().NotBeNull();

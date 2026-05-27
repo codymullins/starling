@@ -32,9 +32,9 @@ public static class Program
 
         return args[0] switch
         {
-            "catalog"        => RunCatalog(webrefCss),
-            "report"         => RunReport(),
-            _                => Fail($"unknown command: {args[0]}"),
+            "catalog" => RunCatalog(webrefCss),
+            "report" => RunReport(),
+            _ => Fail($"unknown command: {args[0]}"),
         };
     }
 
@@ -59,9 +59,9 @@ public static class Program
         foreach (var (id, doc) in specs)
         {
             var props = doc.Properties?.Count ?? 0;
-            var ats   = doc.AtRules?.Count ?? 0;
-            var sels  = doc.Selectors?.Count ?? 0;
-            var vals  = doc.Values?.Count ?? 0;
+            var ats = doc.AtRules?.Count ?? 0;
+            var sels = doc.Selectors?.Count ?? 0;
+            var vals = doc.Values?.Count ?? 0;
             totalProps += props;
             totalAtRules += ats;
             totalSelectors += sels;

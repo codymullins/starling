@@ -116,7 +116,7 @@ public sealed class StorageTests
     // compiler does not yet emit the `delete` unary opcode — pin a test when
     // that compiler gap closes.)
 
-[TestMethod]
+    [TestMethod]
     public void Object_keys_returns_insertion_ordered_entries()
     {
         var runtime = BuildEnv("https://a.example.com/");

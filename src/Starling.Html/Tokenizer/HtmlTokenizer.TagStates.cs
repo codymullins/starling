@@ -106,19 +106,20 @@ public sealed partial class HtmlTokenizer
     {
         switch (state)
         {
-            case TokenizerState.TagOpen:                  StepTagOpen(c); break;
-            case TokenizerState.EndTagOpen:               StepEndTagOpen(c); break;
-            case TokenizerState.TagName:                  StepTagName(c); break;
-            case TokenizerState.BeforeAttributeName:      StepBeforeAttrName(c); break;
-            case TokenizerState.AttributeName:            StepAttrName(c); break;
-            case TokenizerState.AfterAttributeName:       StepAfterAttrName(c); break;
-            case TokenizerState.BeforeAttributeValue:     StepBeforeAttrValue(c); break;
+            case TokenizerState.TagOpen: StepTagOpen(c); break;
+            case TokenizerState.EndTagOpen: StepEndTagOpen(c); break;
+            case TokenizerState.TagName: StepTagName(c); break;
+            case TokenizerState.BeforeAttributeName: StepBeforeAttrName(c); break;
+            case TokenizerState.AttributeName: StepAttrName(c); break;
+            case TokenizerState.AfterAttributeName: StepAfterAttrName(c); break;
+            case TokenizerState.BeforeAttributeValue: StepBeforeAttrValue(c); break;
             case TokenizerState.AttributeValueDoubleQuoted: StepAttrValueDQ(c); break;
             case TokenizerState.AttributeValueSingleQuoted: StepAttrValueSQ(c); break;
-            case TokenizerState.AttributeValueUnquoted:   StepAttrValueUnq(c); break;
+            case TokenizerState.AttributeValueUnquoted: StepAttrValueUnq(c); break;
             case TokenizerState.AfterAttributeValueQuoted: StepAfterAttrValueQ(c); break;
-            case TokenizerState.SelfClosingStartTag:      StepSelfClosing(c); break;
-            default: throw new InvalidOperationException(
+            case TokenizerState.SelfClosingStartTag: StepSelfClosing(c); break;
+            default:
+                throw new InvalidOperationException(
                 $"DispatchTagState invoked for unrelated state '{state}'.");
         }
     }

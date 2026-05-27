@@ -163,7 +163,8 @@ public sealed record JsBigIntPlaceholder(System.Numerics.BigInteger Value)
     public JsBigIntPlaceholder(string digits)
         : this(System.Numerics.BigInteger.Parse(digits,
             System.Globalization.NumberStyles.Integer,
-            System.Globalization.CultureInfo.InvariantCulture)) { }
+            System.Globalization.CultureInfo.InvariantCulture))
+    { }
 
     /// <summary>Back-compat decimal-string view of <see cref="Value"/>.
     /// Used by the disassembler.</summary>

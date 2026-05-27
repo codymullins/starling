@@ -4,7 +4,6 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Avalonia.Media.Imaging;
 using Starling.Gui.Theme;
 
 namespace Starling.Gui.Chrome;
@@ -95,7 +94,9 @@ public sealed class Sidebar : Grid
             Child = Icons.Make("M3 11 L7 5 L10 9 L13 4", Colors.White, 13, 1.6),
             BoxShadow = new BoxShadows(new BoxShadow
             {
-                Blur = 2, OffsetX = 0, OffsetY = 1,
+                Blur = 2,
+                OffsetX = 0,
+                OffsetY = 1,
                 Color = Color.FromArgb(0x4D, t.Accent.R, t.Accent.G, t.Accent.B),
             }),
         };
@@ -218,7 +219,9 @@ public sealed class Sidebar : Grid
             BoxShadow = active
                 ? new BoxShadows(new BoxShadow
                 {
-                    Blur = 2, OffsetX = 0, OffsetY = 1,
+                    Blur = 2,
+                    OffsetX = 0,
+                    OffsetY = 1,
                     Color = Color.FromArgb(0x14, 0, 0, 0),
                 })
                 : default,
@@ -285,7 +288,8 @@ public sealed class Sidebar : Grid
     /// <summary>1.5px accent ring stand-in for a loading spinner.</summary>
     private static Control Spinner(ThemeTokens t) => new Ellipse
     {
-        Width = 16, Height = 16,
+        Width = 16,
+        Height = 16,
         Stroke = new SolidColorBrush(t.Accent),
         StrokeThickness = 1.5,
         VerticalAlignment = VerticalAlignment.Center,

@@ -342,7 +342,7 @@ internal sealed class GridLayout
             case CssKeyword { Name: "auto" }:
                 into.Add(new Track(TrackKind.Auto, 0));
                 break;
-            // "none" and anything else: contribute no tracks.
+                // "none" and anything else: contribute no tracks.
         }
     }
 

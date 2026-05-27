@@ -17,14 +17,14 @@ namespace Starling.Bench;
 public class EndToEndBench
 {
     private string _html = string.Empty;
-    private string _css  = string.Empty;
+    private string _css = string.Empty;
     private static readonly Size Viewport = new(1024, 768);
 
     [GlobalSetup]
     public void Setup()
     {
         _html = File.ReadAllText(Fixtures.NginxHtmlPath);
-        _css  = File.ReadAllText(Fixtures.NginxCssPath);
+        _css = File.ReadAllText(Fixtures.NginxCssPath);
     }
 
     [Benchmark]

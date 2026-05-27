@@ -2,7 +2,6 @@ using Starling.Common.Diagnostics;
 using Starling.Common.Image;
 using Starling.Css.Cascade;
 using Starling.Layout.Box;
-using Starling.Layout.Text;
 using Starling.Layout.Tree;
 using Starling.Paint;
 using Starling.Paint.Backend;

@@ -157,7 +157,7 @@ public static class UrangeParser
             // Wildcard form: hex? e.g. "A?" → U+A0-AF, "?" → U+0-F.
             // Build start (replace ? with 0) and end (replace ? with F).
             var startHex = hexPart + new string('0', wildcardCount);
-            var endHex   = hexPart + new string('F', wildcardCount);
+            var endHex = hexPart + new string('F', wildcardCount);
             if (!TryParseHex(startHex, out var start)) return null;
             if (!TryParseHex(endHex, out var end)) return null;
             if (end > MaxCodePoint) return null;
