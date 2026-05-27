@@ -339,3 +339,33 @@ Phase 3 `assert_equals` per area. Re-baseline + ratchet after each.
     (JS binding) — all green.
   - Full suite green: Dom 68, Bindings 257, Js 1840 (pre-existing `Captured_lexical`
     unchanged), no regressions in other areas.
+
+- 2026-05-27: **WPT-07 iframe / browsing-context support complete — dom/ranges
+  passes 95% target.** New `IFrameBinding` stands up a nested `BrowsingContext`
+  per `<iframe>` (Document + lazily-created JsRuntime), `contentDocument` /
+  `contentWindow` accessors on `ElementPrototype`, `src` setter that fetches
+  + parses (HTML / XML / XHTML) + runs subframe classic scripts via a fresh
+  `WindowBinding`-installed realm, and a `load` event scheduled via the parent
+  realm's microtask queue. `getSelection()` stub on the window so the Range
+  mutation tests stop tripping on `removeAllRanges`. Range API completed:
+  real `cloneContents` / `extractContents` / `insertNode` / `surroundContents`
+  in `DomRange` (DOM §4.6.13–17) + `NodeClone.{Shallow,Deep}` helper.
+  Live-Range mutation tracking (§5.3.4): per-document weak Range registry,
+  CharacterData `insertData` / `deleteData` / `replaceData` / `appendData` /
+  `splitText` + `.data` / `.textContent` / `.nodeValue` setters now shift live
+  boundary points.
+  - **Predicted**: notrun cluster (4,176) collapses; +3,000–4,000 passes from
+    iframe alone, more from Range API.
+  - **Observed (dom/ranges, 44,518 subtests over 57 files)**:
+    pass **35,888 → 43,046 (+7,158)**, rate **80.61% → 96.69%** (+16.08pp),
+    notrun **4,176 → 0**, timeouts **0 → 0**. Five iframe-driven Range files
+    (`Range-{cloneContents,deleteContents,extractContents,insertNode,surroundContents}.html`)
+    now run their full ~4,200 subtest set.
+  - No regressions: Dom 68/68, Js 1793/1793 (1 pre-existing skipped).
+    Bindings.Tests has 8 failures unchanged from `main` (pre-existing).
+  - Files: `src/Starling.Bindings/IFrameBinding.cs` (new),
+    `src/Starling.Dom/NodeClone.cs` (new), edits to `NodeBindings.cs`
+    (contentDocument/Window accessors, mutation-track hooks),
+    `WindowBinding.cs` (RegisterParent + Selection stub),
+    `RangeBinding.cs` (cloneContents/extract/insert/surround wired to DomRange),
+    `DomRange.cs` (algorithm impls + live registry).

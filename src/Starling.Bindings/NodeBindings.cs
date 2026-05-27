@@ -342,7 +342,12 @@ public static class NodeBindings
         EventTargetBinding.DefineMethod(realm, nodeProto, "appendData", (thisV, args) =>
         {
             if (DomWrappers.UnwrapNode(thisV) is CharacterData cd)
-                cd.Data += args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+            {
+                var s = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+                var at = cd.Data.Length;
+                cd.Data += s;
+                Starling.Dom.DomRange.OnReplaceData(cd, at, 0, s.Length);
+            }
             return JsValue.Undefined;
         }, length: 1);
         EventTargetBinding.DefineMethod(realm, nodeProto, "insertData", (thisV, args) =>
@@ -352,6 +357,7 @@ public static class NodeBindings
             var s = args.Length > 1 ? JsValue.ToStringValue(args[1]) : "";
             offset = Math.Max(0, Math.Min(offset, cd.Data.Length));
             cd.Data = cd.Data[..offset] + s + cd.Data[offset..];
+            Starling.Dom.DomRange.OnReplaceData(cd, offset, 0, s.Length);
             return JsValue.Undefined;
         }, length: 2);
         EventTargetBinding.DefineMethod(realm, nodeProto, "deleteData", (thisV, args) =>
@@ -362,6 +368,7 @@ public static class NodeBindings
             offset = Math.Max(0, Math.Min(offset, cd.Data.Length));
             count = Math.Max(0, Math.Min(count, cd.Data.Length - offset));
             cd.Data = cd.Data[..offset] + cd.Data[(offset + count)..];
+            Starling.Dom.DomRange.OnReplaceData(cd, offset, count, 0);
             return JsValue.Undefined;
         }, length: 2);
         EventTargetBinding.DefineMethod(realm, nodeProto, "replaceData", (thisV, args) =>
@@ -373,18 +380,22 @@ public static class NodeBindings
             offset = Math.Max(0, Math.Min(offset, cd.Data.Length));
             count = Math.Max(0, Math.Min(count, cd.Data.Length - offset));
             cd.Data = cd.Data[..offset] + s + cd.Data[(offset + count)..];
+            Starling.Dom.DomRange.OnReplaceData(cd, offset, count, s.Length);
             return JsValue.Undefined;
         }, length: 3);
-        // Text.splitText(offset) — splits text node at offset.
+        // Text.splitText(offset) — splits text node at offset. Live-Range
+        // adjustment per DOM §5.3.4 "split a Text node": the second half
+        // moves to a new node, so ranges whose container is the original
+        // text with offset > splitOffset must re-target the new node.
         EventTargetBinding.DefineMethod(realm, nodeProto, "splitText", (thisV, args) =>
         {
             if (DomWrappers.UnwrapNode(thisV) is not Text text) return JsValue.Null;
             var offset = args.Length > 0 ? (int)JsValue.ToNumber(args[0]) : 0;
             offset = Math.Max(0, Math.Min(offset, text.Data.Length));
-            // Create new text node; owner document is set by InsertBefore via SetOwnerDocumentRecursive.
             var newText = (text.OwnerDocument ?? new Document()).CreateTextNode(text.Data[offset..]);
             text.Data = text.Data[..offset];
             text.ParentNode?.InsertBefore(newText, text.NextSibling);
+            Starling.Dom.DomRange.OnSplitText(text, newText, offset);
             return JsValue.Object(DomWrappers.Wrap(realm, newText));
         }, length: 1);
         // Text.wholeText — concatenation of adjacent text nodes. Simple approximation.
@@ -494,6 +505,26 @@ public static class NodeBindings
             (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.String(e.TagName.ToUpperInvariant()) : JsValue.String(""));
         EventTargetBinding.DefineAccessor(realm, elProto, "localName",
             (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.String(e.LocalName) : JsValue.String(""));
+
+        // WPT-07: HTMLIFrameElement.contentDocument / contentWindow live on
+        // ElementPrototype (same shape as HTMLInputElement.value, below) so
+        // every wrapper goes through one accessor that branches on
+        // LocalName. Non-iframe elements get null, matching real browsers'
+        // IDL behavior.
+        EventTargetBinding.DefineAccessor(realm, elProto, "contentDocument", (thisV, _) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is not { } e || !IFrameBinding.IsFrameElement(e))
+                return JsValue.Null;
+            var ctx = IFrameBinding.EnsureContext(e);
+            return JsValue.Object(DomWrappers.Wrap(realm, ctx.Document));
+        });
+        EventTargetBinding.DefineAccessor(realm, elProto, "contentWindow", (thisV, _) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is not { } e || !IFrameBinding.IsFrameElement(e))
+                return JsValue.Null;
+            var ctx = IFrameBinding.EnsureContext(e);
+            return JsValue.Object(IFrameBinding.EnsureContentWindow(realm, ctx));
+        });
         EventTargetBinding.DefineAccessor(realm, elProto, "id",
             (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.String(e.Id) : JsValue.String(""),
             (thisV, args) =>
@@ -1783,12 +1814,19 @@ public static class NodeBindings
         var cdProto = new JsObject(realm.NodePrototype!);
         realm.CharacterDataPrototype = cdProto;
 
+        // CharacterData.data setter is spec-equivalent to replaceData(0, length, value)
+        // — so live Ranges adjust the same way.
         EventTargetBinding.DefineAccessor(realm, cdProto, "data",
             (thisV, _) => DomWrappers.UnwrapAs<CharacterData>(thisV) is { } cd ? JsValue.String(cd.Data) : JsValue.String(""),
             (thisV, args) =>
             {
                 if (DomWrappers.UnwrapAs<CharacterData>(thisV) is { } cd)
-                    cd.Data = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+                {
+                    var s = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+                    var oldLen = cd.Data.Length;
+                    cd.Data = s;
+                    Starling.Dom.DomRange.OnReplaceData(cd, 0, oldLen, s.Length);
+                }
                 return JsValue.Undefined;
             });
         EventTargetBinding.DefineAccessor(realm, cdProto, "length",
@@ -1798,7 +1836,12 @@ public static class NodeBindings
             (thisV, args) =>
             {
                 if (DomWrappers.UnwrapAs<CharacterData>(thisV) is { } cd)
-                    cd.Data = args.Length > 0 && !args[0].IsNullish ? JsValue.ToStringValue(args[0]) : "";
+                {
+                    var s = args.Length > 0 && !args[0].IsNullish ? JsValue.ToStringValue(args[0]) : "";
+                    var oldLen = cd.Data.Length;
+                    cd.Data = s;
+                    Starling.Dom.DomRange.OnReplaceData(cd, 0, oldLen, s.Length);
+                }
                 return JsValue.Undefined;
             });
         EventTargetBinding.DefineAccessor(realm, cdProto, "textContent",
@@ -1806,7 +1849,12 @@ public static class NodeBindings
             (thisV, args) =>
             {
                 if (DomWrappers.UnwrapAs<CharacterData>(thisV) is { } cd)
-                    cd.Data = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+                {
+                    var s = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+                    var oldLen = cd.Data.Length;
+                    cd.Data = s;
+                    Starling.Dom.DomRange.OnReplaceData(cd, 0, oldLen, s.Length);
+                }
                 return JsValue.Undefined;
             });
 
@@ -1824,11 +1872,17 @@ public static class NodeBindings
             return JsValue.String(cd.Data[offset..end]);
         }, length: 2);
 
-        // DOM §4.8 CharacterData.appendData(data).
+        // DOM §4.8 CharacterData.appendData(data). Routed through the
+        // replace-data primitive so live Ranges adjust per §5.3.4.
         EventTargetBinding.DefineMethod(realm, cdProto, "appendData", (thisV, args) =>
         {
             if (DomWrappers.UnwrapAs<CharacterData>(thisV) is { } cd)
-                cd.Data += args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+            {
+                var data = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+                var pos = cd.Data.Length;
+                cd.Data += data;
+                Starling.Dom.DomRange.OnReplaceData(cd, pos, 0, data.Length);
+            }
             return JsValue.Undefined;
         }, length: 1);
 
@@ -1843,6 +1897,7 @@ public static class NodeBindings
             if (offset < 0 || offset > len)
                 throw DomExceptionBinding.Throw(realm, "IndexSizeError", $"Offset {offset} is outside the data length {len}");
             cd.Data = cd.Data[..offset] + data + cd.Data[offset..];
+            Starling.Dom.DomRange.OnReplaceData(cd, offset, 0, data.Length);
             return JsValue.Undefined;
         }, length: 2);
 
@@ -1857,7 +1912,9 @@ public static class NodeBindings
             if (offset < 0 || offset > len)
                 throw DomExceptionBinding.Throw(realm, "IndexSizeError", $"Offset {offset} is outside the data length {len}");
             var end = Math.Min(offset + Math.Max(0, count), len);
+            var actualCount = end - offset;
             cd.Data = cd.Data[..offset] + cd.Data[end..];
+            Starling.Dom.DomRange.OnReplaceData(cd, offset, actualCount, 0);
             return JsValue.Undefined;
         }, length: 2);
 
@@ -1873,7 +1930,9 @@ public static class NodeBindings
             if (offset < 0 || offset > len)
                 throw DomExceptionBinding.Throw(realm, "IndexSizeError", $"Offset {offset} is outside the data length {len}");
             var end = Math.Min(offset + Math.Max(0, count), len);
+            var actualCount = end - offset;
             cd.Data = cd.Data[..offset] + data + cd.Data[end..];
+            Starling.Dom.DomRange.OnReplaceData(cd, offset, actualCount, data.Length);
             return JsValue.Undefined;
         }, length: 3);
 
@@ -2203,18 +2262,20 @@ public static class NodeBindings
         return JsValue.Number(0);
     }
 
-    /// <summary>If <paramref name="e"/> is a <c>&lt;script&gt;</c> and the
-    /// mutated attribute is <c>src</c> with a non-empty value, notify the
-    /// engine so it can run HTML §4.12.1 "prepare a script" (fetch + execute +
-    /// fire load/error). Scoped strictly to script-element <c>src</c>; every
-    /// other attribute write is untouched.</summary>
+    /// <summary>If <paramref name="e"/> is a <c>&lt;script&gt;</c> or
+    /// <c>&lt;iframe&gt;</c> and the mutated attribute is <c>src</c> with a
+    /// non-empty value, notify the engine / iframe loader. For scripts this
+    /// runs HTML §4.12.1 "prepare a script"; for iframes it triggers
+    /// browsing-context load (WPT-07).</summary>
     private static void MaybeTriggerScriptSrc(JsRealm realm, Element e, string attrName)
     {
         if (!attrName.Equals("src", StringComparison.OrdinalIgnoreCase)) return;
-        if (!e.LocalName.Equals("script", StringComparison.OrdinalIgnoreCase)) return;
         var src = e.GetAttribute("src");
         if (string.IsNullOrWhiteSpace(src)) return;
-        ScriptSrcHook.NotifySrcSet(realm, e);
+        if (e.LocalName.Equals("script", StringComparison.OrdinalIgnoreCase))
+            ScriptSrcHook.NotifySrcSet(realm, e);
+        else if (IFrameBinding.IsFrameElement(e))
+            IFrameBinding.OnSrcSet(realm, e);
     }
 
     private static int NodeTypeFromKind(NodeKind kind) => (int)kind;

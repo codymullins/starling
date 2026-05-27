@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace Starling.Dom;
 
 /// <summary>
@@ -52,6 +54,7 @@ public sealed class DomRange
         StartOffset = 0;
         EndContainer = document;
         EndOffset = 0;
+        Register(document);
     }
 
     private DomRange(Node startContainer, int startOffset, Node endContainer, int endOffset)
@@ -60,6 +63,136 @@ public sealed class DomRange
         StartOffset = startOffset;
         EndContainer = endContainer;
         EndOffset = endOffset;
+        if ((startContainer.OwnerDocument ?? startContainer as Document) is { } d) Register(d);
+    }
+
+    // ---- Live-range registry (§5.3.4 mutation algorithms) -------------------
+    //
+    // Per-document weak list of ranges. CharacterData mutations call
+    // OnReplaceData on the modified node, and each registered range whose
+    // boundary points into that node is shifted per the spec.
+
+    private static readonly ConditionalWeakTable<Document, List<WeakReference<DomRange>>> LiveRanges = new();
+
+    private void Register(Document doc)
+    {
+        var list = LiveRanges.GetValue(doc, _ => new List<WeakReference<DomRange>>());
+        lock (list) list.Add(new WeakReference<DomRange>(this));
+    }
+
+    /// <summary>DOM §5.3.4 — when a CharacterData node has data replaced at
+    /// <paramref name="offset"/> (deleting <paramref name="count"/> code
+    /// units, inserting <paramref name="insertedLength"/>), adjust any live
+    /// Range whose boundary points into the node.</summary>
+    public static void OnReplaceData(CharacterData node, int offset, int count, int insertedLength)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        var doc = node.OwnerDocument;
+        if (doc is null || !LiveRanges.TryGetValue(doc, out var list)) return;
+        List<WeakReference<DomRange>>? snapshot;
+        lock (list) snapshot = new List<WeakReference<DomRange>>(list);
+        foreach (var wr in snapshot)
+        {
+            if (!wr.TryGetTarget(out var range)) continue;
+            range.ShiftForCharacterDataReplace(node, offset, count, insertedLength);
+        }
+        // Compact dead refs occasionally.
+        lock (list) list.RemoveAll(w => !w.TryGetTarget(out _));
+    }
+
+    /// <summary>DOM §5.3.4 "split a Text node" — after splitting
+    /// <paramref name="original"/> at <paramref name="offset"/>, half of the
+    /// data is now in <paramref name="newText"/>. Adjust ranges whose
+    /// boundary points fell past the split point.</summary>
+    public static void OnSplitText(Text original, Text newText, int offset)
+    {
+        ArgumentNullException.ThrowIfNull(original);
+        ArgumentNullException.ThrowIfNull(newText);
+        var doc = original.OwnerDocument;
+        if (doc is null || !LiveRanges.TryGetValue(doc, out var list)) return;
+        List<WeakReference<DomRange>> snapshot;
+        lock (list) snapshot = new List<WeakReference<DomRange>>(list);
+        var parent = original.ParentNode;
+        var originalIndex = parent is null ? -1 : IndexOf(original);
+        foreach (var wr in snapshot)
+        {
+            if (!wr.TryGetTarget(out var range)) continue;
+            // Boundary on original past offset → move to newText with shifted offset.
+            if (ReferenceEquals(range.StartContainer, original) && range.StartOffset > offset)
+            {
+                range.StartContainer = newText;
+                range.StartOffset -= offset;
+            }
+            if (ReferenceEquals(range.EndContainer, original) && range.EndOffset > offset)
+            {
+                range.EndContainer = newText;
+                range.EndOffset -= offset;
+            }
+            // Boundary on parent past original's index → shift by 1 (newText inserted after).
+            if (parent is not null)
+            {
+                if (ReferenceEquals(range.StartContainer, parent) && range.StartOffset > originalIndex)
+                    range.StartOffset++;
+                if (ReferenceEquals(range.EndContainer, parent) && range.EndOffset > originalIndex)
+                    range.EndOffset++;
+            }
+        }
+    }
+
+    /// <summary>DOM §5.3.4 — when <paramref name="node"/> is being removed
+    /// from <paramref name="oldParent"/>, ranges whose boundary points were
+    /// inside or just past the node collapse / shift accordingly.</summary>
+    public static void OnNodeRemoved(Node node, Node oldParent, int oldIndex)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        var doc = oldParent.OwnerDocument ?? oldParent as Document;
+        if (doc is null || !LiveRanges.TryGetValue(doc, out var list)) return;
+        List<WeakReference<DomRange>> snapshot;
+        lock (list) snapshot = new List<WeakReference<DomRange>>(list);
+        foreach (var wr in snapshot)
+        {
+            if (!wr.TryGetTarget(out var range)) continue;
+            range.ShiftForNodeRemoval(node, oldParent, oldIndex);
+        }
+    }
+
+    private void ShiftForCharacterDataReplace(CharacterData node, int offset, int count, int insertedLength)
+    {
+        // §5.3.4 "replace data": for each live range:
+        // * start: if startContainer === node and offset < startOffset <= offset+count → startOffset = offset
+        // * start: if startContainer === node and startOffset > offset+count → startOffset += insertedLength - count
+        // * end: same with endOffset
+        if (ReferenceEquals(StartContainer, node))
+        {
+            if (StartOffset > offset && StartOffset <= offset + count) StartOffset = offset;
+            else if (StartOffset > offset + count) StartOffset += insertedLength - count;
+        }
+        if (ReferenceEquals(EndContainer, node))
+        {
+            if (EndOffset > offset && EndOffset <= offset + count) EndOffset = offset;
+            else if (EndOffset > offset + count) EndOffset += insertedLength - count;
+        }
+    }
+
+    private void ShiftForNodeRemoval(Node removed, Node parent, int oldIndex)
+    {
+        // §5.3.4 "remove": for each range whose container is an inclusive
+        // descendant of removed, set container to parent, offset to oldIndex.
+        if (IsInclusiveAncestor(removed, StartContainer))
+        {
+            StartContainer = parent;
+            StartOffset = oldIndex;
+        }
+        if (IsInclusiveAncestor(removed, EndContainer))
+        {
+            EndContainer = parent;
+            EndOffset = oldIndex;
+        }
+        // For ranges whose container is the parent and whose offset is greater
+        // than oldIndex, decrease by 1 (the removed child shifted everything
+        // after it down).
+        if (ReferenceEquals(StartContainer, parent) && StartOffset > oldIndex) StartOffset--;
+        if (ReferenceEquals(EndContainer, parent) && EndOffset > oldIndex) EndOffset--;
     }
 
     // -----------------------------------------------------------------------
@@ -421,6 +554,422 @@ public sealed class DomRange
             scd.Data = scd.Data[..so];
 
         Collapse(true);
+    }
+
+    // -----------------------------------------------------------------------
+    // §4.6.13 cloneContents / §4.6.14 extractContents / §4.6.16 insertNode /
+    // §4.6.17 surroundContents
+    //
+    // The spec algorithms are mechanical but long. Comments below name the
+    // spec step each block implements so the implementation stays scrutable.
+
+    /// <summary>DOM §4.6.13 — clone the range's contents into a new
+    /// DocumentFragment without modifying the source tree.</summary>
+    public DocumentFragment CloneContents()
+    {
+        var doc = StartContainer.OwnerDocument ?? (StartContainer as Document) ?? new Document();
+        var fragment = doc.CreateDocumentFragment();
+        if (Collapsed) return fragment;
+
+        var sn = StartContainer; var so = StartOffset;
+        var en = EndContainer; var eo = EndOffset;
+
+        // §4.6.13 step 4 — same CharacterData container.
+        if (ReferenceEquals(sn, en) && sn is CharacterData cd0)
+        {
+            var clone = (CharacterData)NodeClone.Shallow(cd0);
+            clone.Data = SafeSubstring(cd0.Data, so, eo - so);
+            fragment.AppendChild(clone);
+            return fragment;
+        }
+
+        // §4.6.13 step 5–6 — common ancestor.
+        var commonAncestor = sn;
+        while (!IsInclusiveAncestor(commonAncestor, en))
+            commonAncestor = commonAncestor.ParentNode ?? throw new InvalidOperationException("range nodes have no common ancestor");
+
+        // §4.6.13 step 7–10 — partially contained children + contained children.
+        Node? firstPartial = null;
+        if (!IsInclusiveAncestor(sn, en))
+            firstPartial = FirstChildPartiallyContaining(commonAncestor, sn);
+        Node? lastPartial = null;
+        if (!IsInclusiveAncestor(en, sn))
+            lastPartial = LastChildPartiallyContaining(commonAncestor, en);
+
+        var contained = new List<Node>();
+        for (var c = commonAncestor.FirstChild; c is not null; c = c.NextSibling)
+            if (IsContainedInRange(c)) contained.Add(c);
+
+        // §4.6.13 step 12 — doctype contained → HierarchyRequestError.
+        foreach (var c in contained)
+            if (c is DocumentType)
+                throw DomRangeException.Create("HierarchyRequestError",
+                    "cloneContents: doctype in range");
+
+        // §4.6.13 step 13 — first partial is CharacterData → clone + substring.
+        if (firstPartial is CharacterData fcd)
+        {
+            var clone = (CharacterData)NodeClone.Shallow(fcd);
+            clone.Data = SafeSubstring(fcd.Data, so, fcd.Data.Length - so);
+            fragment.AppendChild(clone);
+        }
+        else if (firstPartial is not null)
+        {
+            // §4.6.13 step 14 — first partial is element-ish; recurse on a subrange.
+            var clone = NodeClone.Shallow(firstPartial);
+            fragment.AppendChild(clone);
+            var subrange = new DomRange(sn, so, firstPartial, NodeLength(firstPartial));
+            var sub = subrange.CloneContents();
+            // Move subfragment's children into clone.
+            MoveAllChildren(sub, clone);
+        }
+
+        // §4.6.13 step 15 — fully-contained children deep-cloned.
+        foreach (var c in contained)
+            fragment.AppendChild(NodeClone.Deep(c));
+
+        // §4.6.13 step 16 — last partial is CharacterData.
+        if (lastPartial is CharacterData lcd)
+        {
+            var clone = (CharacterData)NodeClone.Shallow(lcd);
+            clone.Data = SafeSubstring(lcd.Data, 0, eo);
+            fragment.AppendChild(clone);
+        }
+        else if (lastPartial is not null)
+        {
+            // §4.6.13 step 17.
+            var clone = NodeClone.Shallow(lastPartial);
+            fragment.AppendChild(clone);
+            var subrange = new DomRange(lastPartial, 0, en, eo);
+            var sub = subrange.CloneContents();
+            MoveAllChildren(sub, clone);
+        }
+        return fragment;
+    }
+
+    /// <summary>DOM §4.6.14 — extract the range's contents into a new
+    /// DocumentFragment, mutating the source tree to remove what was
+    /// extracted. After: the range is collapsed to (originalStart).</summary>
+    public DocumentFragment ExtractContents()
+    {
+        var doc = StartContainer.OwnerDocument ?? (StartContainer as Document) ?? new Document();
+        var fragment = doc.CreateDocumentFragment();
+        if (Collapsed) return fragment;
+
+        var sn = StartContainer; var so = StartOffset;
+        var en = EndContainer; var eo = EndOffset;
+
+        // §4.6.14 step 4 — same CharacterData container.
+        if (ReferenceEquals(sn, en) && sn is CharacterData cd0)
+        {
+            var clone = (CharacterData)NodeClone.Shallow(cd0);
+            clone.Data = SafeSubstring(cd0.Data, so, eo - so);
+            fragment.AppendChild(clone);
+            cd0.Data = SafeSubstring(cd0.Data, 0, so) + SafeSubstring(cd0.Data, eo, cd0.Data.Length - eo);
+            Collapse(true);
+            return fragment;
+        }
+
+        // §4.6.14 step 5–10 — common ancestor + partials + contained.
+        var commonAncestor = sn;
+        while (!IsInclusiveAncestor(commonAncestor, en))
+            commonAncestor = commonAncestor.ParentNode ?? throw new InvalidOperationException("range nodes have no common ancestor");
+
+        Node? firstPartial = null;
+        if (!IsInclusiveAncestor(sn, en))
+            firstPartial = FirstChildPartiallyContaining(commonAncestor, sn);
+        Node? lastPartial = null;
+        if (!IsInclusiveAncestor(en, sn))
+            lastPartial = LastChildPartiallyContaining(commonAncestor, en);
+
+        var contained = new List<Node>();
+        for (var c = commonAncestor.FirstChild; c is not null; c = c.NextSibling)
+            if (IsContainedInRange(c)) contained.Add(c);
+
+        foreach (var c in contained)
+            if (c is DocumentType)
+                throw DomRangeException.Create("HierarchyRequestError",
+                    "extractContents: doctype in range");
+
+        // §4.6.14 step 12 — compute new boundary post-extraction. With a
+        // descendant boundary, the new start is the common ancestor at the
+        // index of where the start "fell into" it.
+        Node newNode; int newOffset;
+        if (IsInclusiveAncestor(sn, en))
+        {
+            newNode = sn;
+            newOffset = so;
+        }
+        else
+        {
+            // ancestor of sn in commonAncestor's children that contains sn
+            var reference = sn;
+            while (reference.ParentNode is { } p && !ReferenceEquals(p, commonAncestor))
+                reference = p;
+            newNode = commonAncestor;
+            newOffset = IndexOf(reference) + 1;
+        }
+
+        // §4.6.14 step 13 — first partial is CharacterData.
+        if (firstPartial is CharacterData fcd)
+        {
+            var clone = (CharacterData)NodeClone.Shallow(fcd);
+            clone.Data = SafeSubstring(fcd.Data, so, fcd.Data.Length - so);
+            fragment.AppendChild(clone);
+            fcd.Data = SafeSubstring(fcd.Data, 0, so);
+        }
+        else if (firstPartial is not null)
+        {
+            // §4.6.14 step 14.
+            var clone = NodeClone.Shallow(firstPartial);
+            fragment.AppendChild(clone);
+            var subrange = new DomRange(sn, so, firstPartial, NodeLength(firstPartial));
+            var sub = subrange.ExtractContents();
+            MoveAllChildren(sub, clone);
+        }
+
+        // §4.6.14 step 15 — append fully-contained nodes (no cloning).
+        foreach (var c in contained) fragment.AppendChild(c);
+
+        // §4.6.14 step 16 — last partial is CharacterData.
+        if (lastPartial is CharacterData lcd)
+        {
+            var clone = (CharacterData)NodeClone.Shallow(lcd);
+            clone.Data = SafeSubstring(lcd.Data, 0, eo);
+            fragment.AppendChild(clone);
+            lcd.Data = SafeSubstring(lcd.Data, eo, lcd.Data.Length - eo);
+        }
+        else if (lastPartial is not null)
+        {
+            var clone = NodeClone.Shallow(lastPartial);
+            fragment.AppendChild(clone);
+            var subrange = new DomRange(lastPartial, 0, en, eo);
+            var sub = subrange.ExtractContents();
+            MoveAllChildren(sub, clone);
+        }
+
+        // §4.6.14 step 18 — collapse.
+        StartContainer = newNode; StartOffset = newOffset;
+        EndContainer = newNode; EndOffset = newOffset;
+        return fragment;
+    }
+
+    /// <summary>DOM §4.6.16 insertNode — insert <paramref name="node"/> at
+    /// the range's start point. The range adjusts so it spans the inserted
+    /// content's leading edge to its original end.</summary>
+    public void InsertNode(Node node)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+
+        // §4.6.16 step 1 — invalid insertion target.
+        var reference = StartContainer;
+        if (reference is ProcessingInstruction or Comment
+            || (reference is Text t && t.ParentNode is null)
+            || ReferenceEquals(node, reference))
+            throw DomRangeException.Create("HierarchyRequestError",
+                "insertNode: invalid insertion point");
+
+        // Determine the eventual parent (Text container's parent, or the
+        // start container itself).
+        var prospectiveParent = reference is Text txt0 ? txt0.ParentNode! : reference;
+
+        // §4.2.3 pre-insertion validity: inserting a Document or DocumentType
+        // into a non-Document parent is forbidden; ditto inserting a
+        // bare-Document anywhere.
+        if (node is Document)
+            throw DomRangeException.Create("HierarchyRequestError",
+                "insertNode: Document cannot be inserted as a child");
+        if (node is DocumentType && prospectiveParent is not Document)
+            throw DomRangeException.Create("HierarchyRequestError",
+                "insertNode: DocumentType cannot be inserted outside a Document");
+
+        // Descendant guard: inserting an inclusive-ancestor would create a
+        // cycle. (Spec defers this to the pre-insertion validity check; we
+        // surface it as the spec-named throw so the runtime catch picks it
+        // up as a DOMException rather than a host InvalidOperationException.)
+        if (IsInclusiveAncestor(node, prospectiveParent))
+            throw DomRangeException.Create("HierarchyRequestError",
+                "insertNode: node is an ancestor of the insertion point");
+
+        // §4.6.16 step 3 — figure out the parent we'll insert into.
+        Node parent;
+        Node? insertBefore;
+        if (reference is Text txt)
+        {
+            parent = txt.ParentNode!;
+            // Split the text node at the start offset so the original Text's
+            // characters survive past the insertion (spec step 4).
+            var doc = txt.OwnerDocument ?? (parent.OwnerDocument ?? (parent as Document))
+                ?? throw new InvalidOperationException("text insertion without owner document");
+            var tail = doc.CreateTextNode(SafeSubstring(txt.Data, StartOffset, txt.Data.Length - StartOffset));
+            txt.Data = SafeSubstring(txt.Data, 0, StartOffset);
+            if (txt.NextSibling is { } ns)
+                parent.InsertBefore(tail, ns);
+            else
+                parent.AppendChild(tail);
+            insertBefore = tail;
+        }
+        else
+        {
+            parent = reference;
+            insertBefore = ChildAt(reference, StartOffset);
+        }
+
+        // §4.6.16 step 8 — ensure the reference sibling isn't node itself.
+        if (ReferenceEquals(node, insertBefore)) insertBefore = node.NextSibling;
+
+        // Spec step 8.4 — detach if already in tree.
+        if (node.ParentNode is not null) node.RemoveFromParent();
+
+        // §4.6.16 step 9–10 — insert + adjust the range end if it was collapsed.
+        var newOffsetBase = insertBefore is not null
+            ? IndexOf(insertBefore)
+            : ChildCount(parent);
+
+        int inserted = node is DocumentFragment df ? ChildCount(df) : 1;
+        try
+        {
+            if (insertBefore is not null) parent.InsertBefore(node, insertBefore);
+            else parent.AppendChild(node);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // Re-route Node's host-level guards to a spec-named DOM error so
+            // the binding catches it as a DOMException.
+            throw DomRangeException.Create("HierarchyRequestError", ex.Message);
+        }
+
+        if (Collapsed)
+        {
+            EndContainer = parent;
+            EndOffset = newOffsetBase + inserted;
+        }
+    }
+
+    /// <summary>DOM §4.6.17 surroundContents — wrap the range's contents in
+    /// <paramref name="newParent"/>. Equivalent to <c>extract → set children
+    /// of newParent → insertNode(newParent) → selectNode(newParent)</c>.</summary>
+    public void SurroundContents(Node newParent)
+    {
+        ArgumentNullException.ThrowIfNull(newParent);
+
+        // §4.6.17 step 1 — partial CharacterData isn't surroundable; reject.
+        foreach (var n in PartiallyContainedNodes())
+            if (n is not CharacterData)
+                throw DomRangeException.Create("InvalidStateError",
+                    "surroundContents: range partially contains non-text nodes");
+
+        // §4.6.17 step 2 — newParent must not be Document/DocumentType/DocumentFragment.
+        if (newParent is Document or DocumentType or DocumentFragment)
+            throw DomRangeException.Create("InvalidNodeTypeError",
+                "surroundContents: newParent is not a valid wrapper");
+
+        // §4.6.17 step 5 implicitly relies on pre-insertion validity, which
+        // rejects parents that aren't {Document, DocumentFragment, Element}.
+        // Document/DF were filtered above, so what's left is: must be Element.
+        if (newParent is not Element)
+            throw DomRangeException.Create("HierarchyRequestError",
+                "surroundContents: newParent cannot have children");
+
+        // §4.6.17 step 3 — extract contents.
+        var fragment = ExtractContents();
+
+        // §4.6.17 step 4 — clear newParent.
+        while (newParent.FirstChild is { } c) c.RemoveFromParent();
+
+        // §4.6.17 step 5 — insert newParent at the range start (which now
+        // equals the range end since extract collapses).
+        InsertNode(newParent);
+
+        // §4.6.17 step 6 — move extracted contents into newParent.
+        MoveAllChildren(fragment, newParent);
+
+        // §4.6.17 step 7 — select newParent.
+        SelectNode(newParent);
+    }
+
+    // -----------------------------------------------------------------------
+    // Step helpers
+
+    private static string SafeSubstring(string s, int start, int length)
+    {
+        if (length <= 0) return string.Empty;
+        if (start < 0) { length += start; start = 0; }
+        if (start >= s.Length) return string.Empty;
+        var avail = s.Length - start;
+        return s.Substring(start, Math.Min(length, avail));
+    }
+
+    private static Node? ChildAt(Node parent, int index)
+    {
+        var i = 0;
+        for (var c = parent.FirstChild; c is not null; c = c.NextSibling)
+        {
+            if (i == index) return c;
+            i++;
+        }
+        return null;
+    }
+
+    private static void MoveAllChildren(Node source, Node target)
+    {
+        while (source.FirstChild is { } c)
+        {
+            c.RemoveFromParent();
+            target.AppendChild(c);
+        }
+    }
+
+    /// <summary>The first child of <paramref name="ancestor"/> whose subtree
+    /// contains <paramref name="boundary"/> (used for "first partially
+    /// contained child" in §4.6.13/14).</summary>
+    private static Node? FirstChildPartiallyContaining(Node ancestor, Node boundary)
+    {
+        for (var c = ancestor.FirstChild; c is not null; c = c.NextSibling)
+            if (IsInclusiveAncestor(c, boundary)) return c;
+        return null;
+    }
+
+    private static Node? LastChildPartiallyContaining(Node ancestor, Node boundary)
+    {
+        for (var c = ancestor.LastChild; c is not null; c = c.PreviousSibling)
+            if (IsInclusiveAncestor(c, boundary)) return c;
+        return null;
+    }
+
+    /// <summary>A node is "contained" in this range when both its boundary
+    /// points fall strictly inside the range (DOM §4.6 "node containment").</summary>
+    private bool IsContainedInRange(Node n)
+    {
+        // start-of-range &lt;= start-of-node AND end-of-node &lt;= end-of-range
+        if (ComparePoints(StartContainer, StartOffset,
+                n.ParentNode ?? n, n.ParentNode is null ? 0 : IndexOf(n)) > 0)
+            return false;
+        if (ComparePoints(n.ParentNode ?? n, n.ParentNode is null ? NodeLength(n) : IndexOf(n) + 1,
+                EndContainer, EndOffset) > 0)
+            return false;
+        return true;
+    }
+
+    /// <summary>Nodes whose subtree crosses one of the range boundaries
+    /// (used by surroundContents to reject partially-selected non-text
+    /// nodes).</summary>
+    private IEnumerable<Node> PartiallyContainedNodes()
+    {
+        // A node is partially contained iff it's an inclusive ancestor of
+        // start or end but not both. Walk ancestors of start and end up to
+        // the common ancestor.
+        var seen = new HashSet<Node>(ReferenceEqualityComparer.Instance);
+        var commonAncestor = StartContainer;
+        while (!IsInclusiveAncestor(commonAncestor, EndContainer))
+            commonAncestor = commonAncestor.ParentNode ?? throw new InvalidOperationException("range has no common ancestor");
+
+        for (var n = StartContainer; n is not null && !ReferenceEquals(n, commonAncestor); n = n.ParentNode)
+            if (!IsInclusiveAncestor(n, EndContainer) && seen.Add(n))
+                yield return n;
+        for (var n = EndContainer; n is not null && !ReferenceEquals(n, commonAncestor); n = n.ParentNode)
+            if (!IsInclusiveAncestor(n, StartContainer) && seen.Add(n))
+                yield return n;
     }
 
     // -----------------------------------------------------------------------

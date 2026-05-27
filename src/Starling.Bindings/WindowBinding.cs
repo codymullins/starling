@@ -182,6 +182,11 @@ public static class WindowBinding
 
         // 11) Selection API §3 — Selection constructor + window/document.getSelection.
         SelectionBinding.Install(realm);
+
+        // 12) WPT-07: stash parent-realm env so iframes inside this realm
+        //    can fetch their src through the same HTTP client + resolve
+        //    relative URLs against the document URL.
+        IFrameBinding.RegisterParent(realm, initialUrl, options.HttpClient);
     }
 
     /// <summary>Resolve the runtime that backs the given realm. Returns null

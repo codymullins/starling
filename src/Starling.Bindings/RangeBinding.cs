@@ -186,14 +186,34 @@ public static class RangeBinding
             r.DeleteContents();
             return JsValue.Undefined;
         }, length: 0);
-        // Stub methods — return null/empty fragment to avoid crashes
-        foreach (var stubName in new[] { "extractContents", "cloneContents" })
+        EventTargetBinding.DefineMethod(realm, rangeProto, "cloneContents", (thisV, _) =>
         {
-            var name = stubName;
-            EventTargetBinding.DefineMethod(realm, rangeProto, name, (_, _) => JsValue.Null, length: 0);
-        }
-        EventTargetBinding.DefineMethod(realm, rangeProto, "insertNode", (_, _) => JsValue.Undefined, length: 1);
-        EventTargetBinding.DefineMethod(realm, rangeProto, "surroundContents", (_, _) => JsValue.Undefined, length: 1);
+            var r = RequireRange(realm, thisV, "cloneContents");
+            try { return JsValue.Object(DomWrappers.Wrap(realm, r.CloneContents())); }
+            catch (DomRangeException ex) { throw DomExceptionBinding.Throw(realm, ex.DomName, ex.Message); }
+        }, length: 0);
+        EventTargetBinding.DefineMethod(realm, rangeProto, "extractContents", (thisV, _) =>
+        {
+            var r = RequireRange(realm, thisV, "extractContents");
+            try { return JsValue.Object(DomWrappers.Wrap(realm, r.ExtractContents())); }
+            catch (DomRangeException ex) { throw DomExceptionBinding.Throw(realm, ex.DomName, ex.Message); }
+        }, length: 0);
+        EventTargetBinding.DefineMethod(realm, rangeProto, "insertNode", (thisV, args) =>
+        {
+            var r = RequireRange(realm, thisV, "insertNode");
+            if (args.Length == 0 || DomWrappers.UnwrapNode(args[0]) is not { } node)
+                throw new JsThrow(realm.NewTypeError("insertNode: requires a Node argument"));
+            try { r.InsertNode(node); return JsValue.Undefined; }
+            catch (DomRangeException ex) { throw DomExceptionBinding.Throw(realm, ex.DomName, ex.Message); }
+        }, length: 1);
+        EventTargetBinding.DefineMethod(realm, rangeProto, "surroundContents", (thisV, args) =>
+        {
+            var r = RequireRange(realm, thisV, "surroundContents");
+            if (args.Length == 0 || DomWrappers.UnwrapNode(args[0]) is not { } node)
+                throw new JsThrow(realm.NewTypeError("surroundContents: requires a Node argument"));
+            try { r.SurroundContents(node); return JsValue.Undefined; }
+            catch (DomRangeException ex) { throw DomExceptionBinding.Throw(realm, ex.DomName, ex.Message); }
+        }, length: 1);
 
         // ----- Range constructor (§4.6: new Range())
         // The constructor takes the document for the current realm from the global.
