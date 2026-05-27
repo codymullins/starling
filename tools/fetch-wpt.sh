@@ -19,7 +19,7 @@ REPO="https://github.com/web-platform-tests/wpt.git"
 # Directories to materialize. `resources` (testharness.js et al.) and `common`
 # are required by virtually every testharness test; the rest is the conformance
 # subset we measure. Override with WPT_DIRS. Keep cone-mode prefixes (dir paths).
-WPT_DIRS="${WPT_DIRS:-resources common dom domparsing css/css-syntax css/selectors css/cssom encoding url html/dom}"
+WPT_DIRS="${WPT_DIRS:-resources common dom domparsing css/css-syntax css/selectors css/cssom encoding url html/dom selection}"
 
 root="$(git rev-parse --show-toplevel)"
 dst="$root/testdata/wpt/suite"

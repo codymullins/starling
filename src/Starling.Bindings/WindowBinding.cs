@@ -179,6 +179,9 @@ public static class WindowBinding
 
         // 10) WPT-02: DOM §4.6 Range + document.createRange().
         RangeBinding.Install(realm);
+
+        // 11) Selection API §3 — Selection constructor + window/document.getSelection.
+        SelectionBinding.Install(realm);
     }
 
     /// <summary>Resolve the runtime that backs the given realm. Returns null

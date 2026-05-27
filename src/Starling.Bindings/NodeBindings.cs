@@ -1259,7 +1259,12 @@ public static class NodeBindings
         });
         EventTargetBinding.DefineAccessor(realm, docProto, "defaultView", (thisV, _) =>
         {
-            if (DomWrappers.UnwrapDocument(thisV) is null) return JsValue.Null;
+            if (DomWrappers.UnwrapDocument(thisV) is not { } d) return JsValue.Null;
+            // Spec: createHTMLDocument / createDocument produce Documents without
+            // a defaultView. Only the realm's own document is associated with
+            // the window (the realm's global object).
+            if (!ReferenceEquals(DomWrappers.UnwrapDocument(realm.GlobalObject.Get("document")), d))
+                return JsValue.Null;
             return JsValue.Object(realm.GlobalObject);
         });
         EventTargetBinding.DefineAccessor(realm, docProto, "readyState", (thisV, _) =>

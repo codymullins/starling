@@ -220,22 +220,18 @@ public static class RangeBinding
         realm.GlobalObject.DefineOwnProperty("Range",
             PropertyDescriptor.Data(JsValue.Object(rangeCtor), writable: true, enumerable: false, configurable: true));
 
-        // ----- document.createRange() + document.getSelection() on Document prototype
+        // ----- document.createRange() on Document prototype
         EventTargetBinding.DefineMethod(realm, realm.DocumentPrototype, "createRange", (thisV, _) =>
         {
             var doc = DomWrappers.UnwrapDocument(thisV)
                 ?? throw new JsThrow(realm.NewTypeError("createRange: called on non-Document"));
             return JsValue.Object(WrapRange(realm, new DomRange(doc)));
         }, length: 0);
-        // document.getSelection() — stub (no live Selection model yet)
-        EventTargetBinding.DefineMethod(realm, realm.DocumentPrototype, "getSelection",
-            (_, _) => JsValue.Null, length: 0);
+        // document.getSelection() + window.getSelection() are installed by
+        // SelectionBinding.Install — keep RangeBinding focused on Range/StaticRange.
 
         // ----- StaticRange constructor (DOM §StaticRange) — minimal stub
         InstallStaticRange(realm, rangeProto);
-
-        // ----- Selection stub (window.getSelection() → null is simplest)
-        InstallSelectionStub(realm);
     }
 
     // -----------------------------------------------------------------------
@@ -281,18 +277,6 @@ public static class RangeBinding
 
         realm.GlobalObject.DefineOwnProperty("StaticRange",
             PropertyDescriptor.Data(JsValue.Object(staticRangeCtor), writable: true, enumerable: false, configurable: true));
-    }
-
-    // -----------------------------------------------------------------------
-    // Selection stub
-
-    private static void InstallSelectionStub(JsRealm realm)
-    {
-        // window.getSelection() is called by many DOM tests; return null as the
-        // most conservative fallback (no selection active). A real Selection
-        // implementation is deferred to WPT-XX.
-        EventTargetBinding.DefineMethod(realm, realm.GlobalObject, "getSelection",
-            (_, _) => JsValue.Null, length: 0);
     }
 
     // -----------------------------------------------------------------------
