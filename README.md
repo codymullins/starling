@@ -58,6 +58,26 @@ You'll need:
 - A Six Labors license key for the paint backend — a **free community license**
   takes a couple of minutes. See [Six Labors license](#six-labors-license) below.
 
+**Clone the repo with its submodules.** Starling pulls in the regular expression
+engine from a sibling repository under `lib/`, so a plain `git clone` will leave
+that directory empty and the build will fail. Use `--recurse-submodules`:
+
+```bash
+git clone --recurse-submodules https://github.com/starling-browser/starling.git
+cd starling
+```
+
+If you already cloned without that flag, fetch the submodules now:
+
+```bash
+git submodule update --init --recursive
+```
+
+After a `git pull` that moves a submodule pointer, run the same command again to
+sync the working tree.
+
+**Build and test.**
+
 ```bash
 dotnet restore
 dotnet build
