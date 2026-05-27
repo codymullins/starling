@@ -108,9 +108,10 @@ jobs:
   # testdata/golden/live/example.com.png is pinned to one rasteriser.
   network-tests:
     name: network-tests (live HTTPS smoke)
-    # License-gated build + live network: skip for fork PRs (no secrets); the
-    # gated fork-ci.yml validates fork builds after review.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # Temporarily disabled on CI/PRs: live third-party hosts make this job
+    # flaky enough to drown out real signal. Re-enable when we have a
+    # stable mirror or move the live smoke to a scheduled job.
+    if: false
     runs-on: ubuntu-24.04
     env:
       STARLING_ALLOW_NETWORK: "1"
