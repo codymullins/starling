@@ -1467,8 +1467,10 @@ public static class NodeBindings
         {
             if (DomWrappers.UnwrapDocument(thisV) is not { } d)
                 throw new JsThrow(realm.NewTypeError("createCDATASection called on non-Document"));
-            var cdata = d.CreateCDataSection(args.Length > 0 ? JsValue.ToStringValue(args[0]) : "");
-            return JsValue.Object(DomWrappers.Wrap(realm, cdata));
+            var data = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+            if (data.Contains("]]>", StringComparison.Ordinal))
+                throw DomExceptionBinding.Throw(realm, "InvalidCharacterError", "CDATA section data must not contain ']]>'");
+            return JsValue.Object(DomWrappers.Wrap(realm, d.CreateCDataSection(data)));
         }, length: 1);
         EventTargetBinding.DefineMethod(realm, docProto, "createDocumentFragment", (thisV, _) =>
         {
@@ -1476,37 +1478,6 @@ public static class NodeBindings
                 throw new JsThrow(realm.NewTypeError("createDocumentFragment called on non-Document"));
             return JsValue.Object(DomWrappers.Wrap(realm, d.CreateDocumentFragment()));
         }, length: 0);
-        // DOM §4.5 — document.createAttribute(localName).
-        EventTargetBinding.DefineMethod(realm, docProto, "createAttribute", (thisV, args) =>
-        {
-            if (DomWrappers.UnwrapDocument(thisV) is null || args.Length == 0)
-                throw new JsThrow(realm.NewTypeError("createAttribute requires a localName"));
-            var localName = JsValue.ToStringValue(args[0]);
-            if (!IsValidName(localName))
-                throw DomExceptionBinding.Throw(realm, "InvalidCharacterError", $"'{localName}' is not a valid attribute name");
-            var attr = new Attr(localName, "");
-            return JsValue.Object(DomWrappers.WrapAttr(realm, attr));
-        }, length: 1);
-        // DOM §4.5 — document.createAttributeNS(namespace, qualifiedName).
-        EventTargetBinding.DefineMethod(realm, docProto, "createAttributeNS", (thisV, args) =>
-        {
-            if (DomWrappers.UnwrapDocument(thisV) is null || args.Length < 2)
-                throw new JsThrow(realm.NewTypeError("createAttributeNS requires (namespace, qualifiedName)"));
-            var ns = args[0].IsNullish ? null : JsValue.ToStringValue(args[0]);
-            var qname = JsValue.ToStringValue(args[1]);
-            ValidateQualifiedName(realm, ns, qname);
-            return JsValue.Object(DomWrappers.WrapAttr(realm, new Attr(qname, "", ns)));
-        }, length: 2);
-        // DOM §4.5 — document.createCDATASection(data).
-        EventTargetBinding.DefineMethod(realm, docProto, "createCDATASection", (thisV, args) =>
-        {
-            if (DomWrappers.UnwrapDocument(thisV) is not { } d)
-                throw new JsThrow(realm.NewTypeError("createCDATASection called on non-Document"));
-            var data = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
-            if (data.Contains("]]>", StringComparison.Ordinal))
-                throw DomExceptionBinding.Throw(realm, "InvalidCharacterError", "CDATA section data must not contain ']]>'");
-            return JsValue.Object(DomWrappers.Wrap(realm, new CData(data)));
-        }, length: 1);
         // DOM §4.5 — document.adoptNode(node): moves a node from its document into this one.
         EventTargetBinding.DefineMethod(realm, docProto, "adoptNode", (thisV, args) =>
         {
