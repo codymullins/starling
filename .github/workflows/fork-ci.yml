@@ -50,6 +50,12 @@ jobs:
           # explicitly.
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
+          # lib/starling-regexp is a submodule; the build fails without it.
+          # NOTE: the PR's .gitmodules controls submodule URLs — a fork could
+          # in principle redirect to a hostile repo. The required-reviewer
+          # gate above must include eyeballing .gitmodules changes, same as
+          # any other PR file that influences the build.
+          submodules: recursive
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
