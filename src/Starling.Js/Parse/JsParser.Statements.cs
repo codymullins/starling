@@ -122,24 +122,24 @@ public sealed partial class JsParser
     {
         switch (_current.Kind)
         {
-            case JsTokenKind.LBrace:    return ParseBlock();
+            case JsTokenKind.LBrace: return ParseBlock();
             case JsTokenKind.Semicolon: return ParseEmpty();
-            case JsTokenKind.If:        return ParseIf();
-            case JsTokenKind.While:     return ParseWhile();
-            case JsTokenKind.Do:        return ParseDoWhile();
-            case JsTokenKind.For:       return ParseFor();
-            case JsTokenKind.Return:    return ParseReturn();
-            case JsTokenKind.Break:     return ParseBreak();
-            case JsTokenKind.Continue:  return ParseContinue();
-            case JsTokenKind.Throw:     return ParseThrow();
-            case JsTokenKind.Try:       return ParseTry();
-            case JsTokenKind.Switch:    return ParseSwitch();
-            case JsTokenKind.Debugger:  return ParseDebugger();
-            case JsTokenKind.Function:  return ParseFunctionDeclaration();
-            case JsTokenKind.Class:     return ParseClassDeclarationWithExtendsTracking();
-            case JsTokenKind.Var:       return ParseVar("var");
-            case JsTokenKind.Const:     return ParseVar("const");
-            case JsTokenKind.With:      return ParseWith();
+            case JsTokenKind.If: return ParseIf();
+            case JsTokenKind.While: return ParseWhile();
+            case JsTokenKind.Do: return ParseDoWhile();
+            case JsTokenKind.For: return ParseFor();
+            case JsTokenKind.Return: return ParseReturn();
+            case JsTokenKind.Break: return ParseBreak();
+            case JsTokenKind.Continue: return ParseContinue();
+            case JsTokenKind.Throw: return ParseThrow();
+            case JsTokenKind.Try: return ParseTry();
+            case JsTokenKind.Switch: return ParseSwitch();
+            case JsTokenKind.Debugger: return ParseDebugger();
+            case JsTokenKind.Function: return ParseFunctionDeclaration();
+            case JsTokenKind.Class: return ParseClassDeclarationWithExtendsTracking();
+            case JsTokenKind.Var: return ParseVar("var");
+            case JsTokenKind.Const: return ParseVar("const");
+            case JsTokenKind.With: return ParseWith();
         }
         // 'let' is contextual; treat as variable decl when followed by an
         // identifier or pattern starter, else expression statement.

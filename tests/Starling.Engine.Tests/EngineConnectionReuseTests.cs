@@ -20,9 +20,14 @@ public sealed class EngineConnectionReuseTests
     public async Task Same_origin_document_and_resources_reuse_one_connection()
     {
         // index.html pulls a same-origin stylesheet and script: 3 GETs to the
-        // same origin (document, css, js), issued sequentially across the
-        // engine's fetch phases. With one shared keep-alive pool they ride a
-        // single TCP connection.
+        // same origin (document, css, js). The document is fetched first and
+        // its connection returns to the pool, then the stylesheet and script
+        // fetches run in parallel (Engine.cs intentionally overlaps them to
+        // shorten the critical path). With one shared keep-alive pool at
+        // least one of those parallel fetches reuses the document's
+        // connection — so fewer connections are accepted than requests are
+        // served. Before the shared-pool fix every fetcher built its own pool
+        // and accepted = served = 3.
         var routes = new Dictionary<string, (string ContentType, string Body)>
         {
             ["/index.html"] = ("text/html",
@@ -46,8 +51,9 @@ public sealed class EngineConnectionReuseTests
 
             result.IsOk.Should().BeTrue(result.IsErr ? result.Error.Message : "");
             server.RequestsServed.Should().Be(3, "document + stylesheet + script were fetched");
-            server.ConnectionsAccepted.Should().Be(1,
-                "all three same-origin requests must reuse a single keep-alive connection");
+            server.ConnectionsAccepted.Should().BeLessThan(server.RequestsServed,
+                "the shared keep-alive pool must let at least one same-origin " +
+                "request reuse an existing connection instead of dialing fresh");
         }
         finally
         {

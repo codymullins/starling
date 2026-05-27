@@ -226,18 +226,42 @@ public sealed record DensityTokens
 
     public static readonly DensityTokens Comfy = new()
     {
-        Row = 36, RowSm = 30, RowXs = 24,
-        Pad = 14, PadSm = 10, Gap = 10, GapSm = 6,
-        R = 12, RMd = 10, RSm = 7, RPill = 999,
-        FsXs = 11, FsSm = 12, FsMd = 13, FsLg = 14, FsXl = 16,
+        Row = 36,
+        RowSm = 30,
+        RowXs = 24,
+        Pad = 14,
+        PadSm = 10,
+        Gap = 10,
+        GapSm = 6,
+        R = 12,
+        RMd = 10,
+        RSm = 7,
+        RPill = 999,
+        FsXs = 11,
+        FsSm = 12,
+        FsMd = 13,
+        FsLg = 14,
+        FsXl = 16,
     };
 
     public static readonly DensityTokens Compact = new()
     {
-        Row = 28, RowSm = 24, RowXs = 20,
-        Pad = 10, PadSm = 7, Gap = 7, GapSm = 4,
-        R = 9, RMd = 7, RSm = 5, RPill = 999,
-        FsXs = 10, FsSm = 11, FsMd = 12, FsLg = 13, FsXl = 14,
+        Row = 28,
+        RowSm = 24,
+        RowXs = 20,
+        Pad = 10,
+        PadSm = 7,
+        Gap = 7,
+        GapSm = 4,
+        R = 9,
+        RMd = 7,
+        RSm = 5,
+        RPill = 999,
+        FsXs = 10,
+        FsSm = 11,
+        FsMd = 12,
+        FsLg = 13,
+        FsXl = 14,
     };
 
     public static DensityTokens For(DensityMode mode)
@@ -245,11 +269,21 @@ public sealed record DensityTokens
 
     public DensityTokens Scaled(double scale) => new()
     {
-        Row = Row * scale, RowSm = RowSm * scale, RowXs = RowXs * scale,
-        Pad = Pad * scale, PadSm = PadSm * scale,
-        Gap = Gap * scale, GapSm = GapSm * scale,
-        R = R * scale, RMd = RMd * scale, RSm = RSm * scale, RPill = RPill,
-        FsXs = FsXs * scale, FsSm = FsSm * scale, FsMd = FsMd * scale,
-        FsLg = FsLg * scale, FsXl = FsXl * scale,
+        Row = Row * scale,
+        RowSm = RowSm * scale,
+        RowXs = RowXs * scale,
+        Pad = Pad * scale,
+        PadSm = PadSm * scale,
+        Gap = Gap * scale,
+        GapSm = GapSm * scale,
+        R = R * scale,
+        RMd = RMd * scale,
+        RSm = RSm * scale,
+        RPill = RPill,
+        FsXs = FsXs * scale,
+        FsSm = FsSm * scale,
+        FsMd = FsMd * scale,
+        FsLg = FsLg * scale,
+        FsXl = FsXl * scale,
     };
 }

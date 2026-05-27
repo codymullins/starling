@@ -19,22 +19,23 @@ public sealed partial class HtmlTokenizer
     {
         switch (state)
         {
-            case TokenizerState.MarkupDeclarationOpen:        StepMarkupDeclarationOpen(c); break;
-            case TokenizerState.CommentStart:                 StepCommentStart(c); break;
-            case TokenizerState.CommentStartDash:             StepCommentStartDash(c); break;
-            case TokenizerState.Comment:                      StepComment(c); break;
-            case TokenizerState.CommentLessThanSign:          StepCommentLt(c); break;
-            case TokenizerState.CommentLessThanSignBang:      StepCommentLtBang(c); break;
-            case TokenizerState.CommentLessThanSignBangDash:  StepCommentLtBangDash(c); break;
+            case TokenizerState.MarkupDeclarationOpen: StepMarkupDeclarationOpen(c); break;
+            case TokenizerState.CommentStart: StepCommentStart(c); break;
+            case TokenizerState.CommentStartDash: StepCommentStartDash(c); break;
+            case TokenizerState.Comment: StepComment(c); break;
+            case TokenizerState.CommentLessThanSign: StepCommentLt(c); break;
+            case TokenizerState.CommentLessThanSignBang: StepCommentLtBang(c); break;
+            case TokenizerState.CommentLessThanSignBangDash: StepCommentLtBangDash(c); break;
             case TokenizerState.CommentLessThanSignBangDashDash: StepCommentLtBangDashDash(c); break;
-            case TokenizerState.CommentEndDash:               StepCommentEndDash(c); break;
-            case TokenizerState.CommentEnd:                   StepCommentEnd(c); break;
-            case TokenizerState.CommentEndBang:               StepCommentEndBang(c); break;
-            case TokenizerState.BogusComment:                 StepBogusComment(c); break;
-            case TokenizerState.CdataSection:                 StepCdataSection(c); break;
-            case TokenizerState.CdataSectionBracket:          StepCdataSectionBracket(c); break;
-            case TokenizerState.CdataSectionEnd:              StepCdataSectionEnd(c); break;
-            default: throw new InvalidOperationException(
+            case TokenizerState.CommentEndDash: StepCommentEndDash(c); break;
+            case TokenizerState.CommentEnd: StepCommentEnd(c); break;
+            case TokenizerState.CommentEndBang: StepCommentEndBang(c); break;
+            case TokenizerState.BogusComment: StepBogusComment(c); break;
+            case TokenizerState.CdataSection: StepCdataSection(c); break;
+            case TokenizerState.CdataSectionBracket: StepCdataSectionBracket(c); break;
+            case TokenizerState.CdataSectionEnd: StepCdataSectionEnd(c); break;
+            default:
+                throw new InvalidOperationException(
                 $"DispatchCommentState invoked for unrelated state '{state}'.");
         }
     }

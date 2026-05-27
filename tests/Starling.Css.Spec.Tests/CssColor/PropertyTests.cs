@@ -34,9 +34,9 @@ public sealed class PropertyTests
     [SpecFact]
     public void Parses_color()
     {
-        ParseSingle("color", "red").Should().BeEquivalentTo(new { R = (byte)255, G = (byte)0,   B = (byte)0,   A = (byte)255 });
-        ParseSingle("color", "#00ff00").Should().BeEquivalentTo(new { R = (byte)0,   G = (byte)255, B = (byte)0,   A = (byte)255 });
-        ParseSingle("color", "rgb(0 0 255)").Should().BeEquivalentTo(new { R = (byte)0,   G = (byte)0,   B = (byte)255, A = (byte)255 });
+        ParseSingle("color", "red").Should().BeEquivalentTo(new { R = (byte)255, G = (byte)0, B = (byte)0, A = (byte)255 });
+        ParseSingle("color", "#00ff00").Should().BeEquivalentTo(new { R = (byte)0, G = (byte)255, B = (byte)0, A = (byte)255 });
+        ParseSingle("color", "rgb(0 0 255)").Should().BeEquivalentTo(new { R = (byte)0, G = (byte)0, B = (byte)255, A = (byte)255 });
     }
 
     /// <summary>Spec: <see href="https://drafts.csswg.org/css-color-4/#propdef-opacity"/>

@@ -61,28 +61,28 @@ public static class ChromeKit
     /// <summary>A chrome (sans) label bound to the active type mode.</summary>
     public static TextBlock Sans(ThemeManager tm, string text, double fontSize, Color color,
         FontWeight weight = FontWeight.Normal) => new()
-    {
-        Text = text,
-        FontFamily = string.IsNullOrEmpty(tm.ChromeFont) ? FontFamily.Default : new FontFamily(tm.ChromeFont),
-        FontSize = fontSize,
-        FontWeight = weight,
-        Foreground = new SolidColorBrush(color),
-        TextTrimming = TextTrimming.CharacterEllipsis,
-        VerticalAlignment = VerticalAlignment.Center,
-    };
+        {
+            Text = text,
+            FontFamily = string.IsNullOrEmpty(tm.ChromeFont) ? FontFamily.Default : new FontFamily(tm.ChromeFont),
+            FontSize = fontSize,
+            FontWeight = weight,
+            Foreground = new SolidColorBrush(color),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
 
     /// <summary>A monospace label — timestamps, paths, sizes, code.</summary>
     public static TextBlock Mono(ThemeManager tm, string text, double fontSize, Color color,
         FontWeight weight = FontWeight.Normal) => new()
-    {
-        Text = text,
-        FontFamily = new FontFamily(tm.MonoFont),
-        FontSize = fontSize,
-        FontWeight = weight,
-        Foreground = new SolidColorBrush(color),
-        TextTrimming = TextTrimming.CharacterEllipsis,
-        VerticalAlignment = VerticalAlignment.Center,
-    };
+        {
+            Text = text,
+            FontFamily = new FontFamily(tm.MonoFont),
+            FontSize = fontSize,
+            FontWeight = weight,
+            Foreground = new SolidColorBrush(color),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
 
     /// <summary>
     /// Wires pointer enter/exit on a control so hover styling can be applied.

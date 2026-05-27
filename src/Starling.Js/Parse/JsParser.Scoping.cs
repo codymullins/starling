@@ -287,7 +287,7 @@ public sealed partial class JsParser
             case WithStatement ws:
                 CollectVarNames(ws.Body, into);
                 break;
-            // FunctionDeclaration / ClassDeclaration: do NOT descend (own scope).
+                // FunctionDeclaration / ClassDeclaration: do NOT descend (own scope).
         }
     }
 

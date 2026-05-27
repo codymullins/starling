@@ -7,7 +7,7 @@ internal static class Fixtures
     public static string RepoRoot => _repoRoot.Value;
 
     public static string NginxHtmlPath => Path.Combine(RepoRoot, "testdata", "snapshots", "nginx.org", "index.html");
-    public static string NginxCssPath  => Path.Combine(RepoRoot, "testdata", "snapshots", "nginx.org", "css", "style_en.css");
+    public static string NginxCssPath => Path.Combine(RepoRoot, "testdata", "snapshots", "nginx.org", "css", "style_en.css");
 
     private static string LocateRepoRoot()
     {

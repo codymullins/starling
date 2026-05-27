@@ -20,7 +20,6 @@ using Starling.Common.Diagnostics;
 using Starling.Css.Media;
 using Starling.Engine;
 using Starling.Paint.Backend;
-using Starling.Gui;
 using Starling.Html;
 using Starling.Telemetry;
 using EngineSize = SixLabors.ImageSharp.Size;
@@ -238,27 +237,27 @@ public sealed class MainWindow : Window, IBrowserController
         }
 
         var nw = Strip(WindowDecorationsElementRole.ResizeNW);
-        var n  = Strip(WindowDecorationsElementRole.ResizeN);
+        var n = Strip(WindowDecorationsElementRole.ResizeN);
         var ne = Strip(WindowDecorationsElementRole.ResizeNE);
-        var w  = Strip(WindowDecorationsElementRole.ResizeW);
-        var e  = Strip(WindowDecorationsElementRole.ResizeE);
+        var w = Strip(WindowDecorationsElementRole.ResizeW);
+        var e = Strip(WindowDecorationsElementRole.ResizeE);
         var sw = Strip(WindowDecorationsElementRole.ResizeSW);
-        var s  = Strip(WindowDecorationsElementRole.ResizeS);
+        var s = Strip(WindowDecorationsElementRole.ResizeS);
         var se = Strip(WindowDecorationsElementRole.ResizeSE);
 
         Grid.SetRow(inner, 1); Grid.SetColumn(inner, 1);
         Grid.SetRow(nw, 0); Grid.SetColumn(nw, 0);
-        Grid.SetRow(n,  0); Grid.SetColumn(n,  1);
+        Grid.SetRow(n, 0); Grid.SetColumn(n, 1);
         Grid.SetRow(ne, 0); Grid.SetColumn(ne, 2);
-        Grid.SetRow(w,  1); Grid.SetColumn(w,  0);
-        Grid.SetRow(e,  1); Grid.SetColumn(e,  2);
+        Grid.SetRow(w, 1); Grid.SetColumn(w, 0);
+        Grid.SetRow(e, 1); Grid.SetColumn(e, 2);
         Grid.SetRow(sw, 2); Grid.SetColumn(sw, 0);
-        Grid.SetRow(s,  2); Grid.SetColumn(s,  1);
+        Grid.SetRow(s, 2); Grid.SetColumn(s, 1);
         Grid.SetRow(se, 2); Grid.SetColumn(se, 2);
 
         grid.Children.Add(inner);
         grid.Children.Add(nw); grid.Children.Add(n); grid.Children.Add(ne);
-        grid.Children.Add(w);  grid.Children.Add(e);
+        grid.Children.Add(w); grid.Children.Add(e);
         grid.Children.Add(sw); grid.Children.Add(s); grid.Children.Add(se);
         return grid;
     }
@@ -644,7 +643,7 @@ public sealed class MainWindow : Window, IBrowserController
         _statusBar.SetHint($"{opLabel} → {elapsedMs} ms");
         _statusBar.SetInfo(
             view: $"{page.Viewport.Width}×{page.Viewport.Height}",
-            doc:  $"{(int)page.DocumentHeight} px",
+            doc: $"{(int)page.DocumentHeight} px",
             hist: HistoryLabel());
     }
 

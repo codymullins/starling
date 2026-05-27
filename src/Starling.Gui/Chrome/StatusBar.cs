@@ -29,7 +29,8 @@ public sealed class StatusBar : Border
 
         _stateDot = new Ellipse
         {
-            Width = 6, Height = 6,
+            Width = 6,
+            Height = 6,
             Fill = new SolidColorBrush(t.Accent),
             VerticalAlignment = VerticalAlignment.Center,
         };
@@ -72,7 +73,7 @@ public sealed class StatusBar : Border
         };
 
         _viewValue = MonoVal(tm, t);
-        _docValue  = MonoVal(tm, t);
+        _docValue = MonoVal(tm, t);
         _histValue = MonoVal(tm, t);
 
         var grid = new Grid
@@ -81,10 +82,10 @@ public sealed class StatusBar : Border
             VerticalAlignment = VerticalAlignment.Stretch,
         };
         grid.Children.Add(stateCell); Grid.SetColumn(stateCell, 0);
-        grid.Children.Add(hintCell);  Grid.SetColumn(hintCell, 1);
-        grid.Children.Add(KvCell(tm, t, "View", _viewValue, leftRule: true));   Grid.SetColumn(grid.Children[^1], 2);
-        grid.Children.Add(KvCell(tm, t, "Doc",  _docValue,  leftRule: true));   Grid.SetColumn(grid.Children[^1], 3);
-        grid.Children.Add(KvCell(tm, t, "Hist", _histValue, leftRule: true));   Grid.SetColumn(grid.Children[^1], 4);
+        grid.Children.Add(hintCell); Grid.SetColumn(hintCell, 1);
+        grid.Children.Add(KvCell(tm, t, "View", _viewValue, leftRule: true)); Grid.SetColumn(grid.Children[^1], 2);
+        grid.Children.Add(KvCell(tm, t, "Doc", _docValue, leftRule: true)); Grid.SetColumn(grid.Children[^1], 3);
+        grid.Children.Add(KvCell(tm, t, "Hist", _histValue, leftRule: true)); Grid.SetColumn(grid.Children[^1], 4);
 
         Background = new SolidColorBrush(t.Panel);
         BorderBrush = new SolidColorBrush(t.Rule());

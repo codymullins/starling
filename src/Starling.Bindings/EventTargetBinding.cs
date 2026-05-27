@@ -243,11 +243,16 @@ public static class EventTargetBinding
             TryGetHostEvent(t, out var e) && e is MouseEvent m && m.RelatedTarget is { } rt ? JsValue.Object(DomWrappers.Wrap(realm, rt)) : JsValue.Null);
         DefineSubtypeCtor(realm, mouseEvProto, "MouseEvent", (type, init) => new MouseEvent(type, ReadInit(init))
         {
-            ClientX = NumOf(init, "clientX"), ClientY = NumOf(init, "clientY"),
-            ScreenX = NumOf(init, "screenX"), ScreenY = NumOf(init, "screenY"),
-            Button = (short)NumOf(init, "button"), Detail = (int)NumOf(init, "detail"),
-            CtrlKey = BoolOf(init, "ctrlKey"), ShiftKey = BoolOf(init, "shiftKey"),
-            AltKey = BoolOf(init, "altKey"), MetaKey = BoolOf(init, "metaKey"),
+            ClientX = NumOf(init, "clientX"),
+            ClientY = NumOf(init, "clientY"),
+            ScreenX = NumOf(init, "screenX"),
+            ScreenY = NumOf(init, "screenY"),
+            Button = (short)NumOf(init, "button"),
+            Detail = (int)NumOf(init, "detail"),
+            CtrlKey = BoolOf(init, "ctrlKey"),
+            ShiftKey = BoolOf(init, "shiftKey"),
+            AltKey = BoolOf(init, "altKey"),
+            MetaKey = BoolOf(init, "metaKey"),
             RelatedTarget = init.IsObject ? ResolveHost(init.AsObject.Get("relatedTarget")) : null,
         });
 
@@ -263,9 +268,13 @@ public static class EventTargetBinding
         DefineAccessor(realm, kbdEvProto, "metaKey", (t, _) => KbdBool(t, k => k.MetaKey));
         DefineSubtypeCtor(realm, kbdEvProto, "KeyboardEvent", (type, init) => new KeyboardEvent(type, ReadInit(init))
         {
-            Key = StrOf(init, "key"), Code = StrOf(init, "code"), Repeat = BoolOf(init, "repeat"),
-            CtrlKey = BoolOf(init, "ctrlKey"), ShiftKey = BoolOf(init, "shiftKey"),
-            AltKey = BoolOf(init, "altKey"), MetaKey = BoolOf(init, "metaKey"),
+            Key = StrOf(init, "key"),
+            Code = StrOf(init, "code"),
+            Repeat = BoolOf(init, "repeat"),
+            CtrlKey = BoolOf(init, "ctrlKey"),
+            ShiftKey = BoolOf(init, "shiftKey"),
+            AltKey = BoolOf(init, "altKey"),
+            MetaKey = BoolOf(init, "metaKey"),
             Detail = (int)NumOf(init, "detail"),
         });
 

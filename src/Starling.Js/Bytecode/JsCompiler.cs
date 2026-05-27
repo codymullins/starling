@@ -869,15 +869,15 @@ public sealed partial class JsCompiler
         switch (s)
         {
             case VariableDeclaration vd:
-            {
-                // TDZ — a captured let/const reserves its function-lifetime cell
-                // in the uninitialized (sentinel) state so a read before the
-                // declaration's initializer throws ReferenceError even through a
-                // closure. `var` keeps the undefined-seeded cell.
-                var lexical = vd.Kind is "let" or "const";
-                foreach (var d in vd.Declarations) PreallocateCapturedInPattern(d.Id, lexical);
-                return;
-            }
+                {
+                    // TDZ — a captured let/const reserves its function-lifetime cell
+                    // in the uninitialized (sentinel) state so a read before the
+                    // declaration's initializer throws ReferenceError even through a
+                    // closure. `var` keeps the undefined-seeded cell.
+                    var lexical = vd.Kind is "let" or "const";
+                    foreach (var d in vd.Declarations) PreallocateCapturedInPattern(d.Id, lexical);
+                    return;
+                }
             // ClassDeclaration: block-scoped class TDZ is deferred; the class
             // name still binds on the global object (EmitClassDeclaration), so
             // it is not preallocated as a captured lexical cell here.
@@ -1005,16 +1005,16 @@ public sealed partial class JsCompiler
                 case VariableDeclaration vd when vd.Kind is "let" or "const":
                     foreach (var d in vd.Declarations) HoistLexicalPattern(d.Id);
                     break;
-                // ClassDeclaration also introduces a lexical binding, but its
-                // block-scoped TDZ is deferred together with global-lexical TDZ
-                // (the class-decl lowering still binds the name on the global
-                // object — see EmitClassDeclaration). Not hoisted here so reads
-                // resolve through that existing path without regressing the
-                // passing class suite.
-                //
-                // A labeled declaration is only ever a (var-hoisted) function
-                // declaration per Annex B; lexical declarations cannot be
-                // labeled, so labels need no lexical hoisting.
+                    // ClassDeclaration also introduces a lexical binding, but its
+                    // block-scoped TDZ is deferred together with global-lexical TDZ
+                    // (the class-decl lowering still binds the name on the global
+                    // object — see EmitClassDeclaration). Not hoisted here so reads
+                    // resolve through that existing path without regressing the
+                    // passing class suite.
+                    //
+                    // A labeled declaration is only ever a (var-hoisted) function
+                    // declaration per Annex B; lexical declarations cannot be
+                    // labeled, so labels need no lexical hoisting.
             }
         }
     }
@@ -2539,15 +2539,15 @@ public sealed partial class JsCompiler
                 EmitArrowFunction(arrow);
                 return;
             case PrivateInExpression pin:
-            {
-                // §13.10 `#x in obj` — resolve the private name to its mangled
-                // slot key (validates it is declared in an enclosing class),
-                // evaluate the operand, then run the brand check.
-                var mangled = ResolvePrivateName(pin.Name, pin.Start);
-                EmitExpression(pin.Object);
-                _b.EmitU16(Opcode.PrivateIn, _b.AddConstant(mangled));
-                return;
-            }
+                {
+                    // §13.10 `#x in obj` — resolve the private name to its mangled
+                    // slot key (validates it is declared in an enclosing class),
+                    // evaluate the operand, then run the brand check.
+                    var mangled = ResolvePrivateName(pin.Name, pin.Start);
+                    EmitExpression(pin.Object);
+                    _b.EmitU16(Opcode.PrivateIn, _b.AddConstant(mangled));
+                    return;
+                }
             case YieldExpression yld:
                 EmitYield(yld);
                 return;
@@ -4949,13 +4949,26 @@ public sealed partial class JsCompiler
 
     private static Opcode BinaryOpToOpcode(string op) => op switch
     {
-        "+" => Opcode.Add, "-" => Opcode.Sub, "*" => Opcode.Mul,
-        "/" => Opcode.Div, "%" => Opcode.Mod, "**" => Opcode.Pow,
-        "|" => Opcode.BitOr, "&" => Opcode.BitAnd, "^" => Opcode.BitXor,
-        "<<" => Opcode.Shl, ">>" => Opcode.Shr, ">>>" => Opcode.Ushr,
-        "==" => Opcode.Eq, "!=" => Opcode.NEq,
-        "===" => Opcode.StrictEq, "!==" => Opcode.StrictNEq,
-        "<" => Opcode.Lt, "<=" => Opcode.LtEq, ">" => Opcode.Gt, ">=" => Opcode.GtEq,
+        "+" => Opcode.Add,
+        "-" => Opcode.Sub,
+        "*" => Opcode.Mul,
+        "/" => Opcode.Div,
+        "%" => Opcode.Mod,
+        "**" => Opcode.Pow,
+        "|" => Opcode.BitOr,
+        "&" => Opcode.BitAnd,
+        "^" => Opcode.BitXor,
+        "<<" => Opcode.Shl,
+        ">>" => Opcode.Shr,
+        ">>>" => Opcode.Ushr,
+        "==" => Opcode.Eq,
+        "!=" => Opcode.NEq,
+        "===" => Opcode.StrictEq,
+        "!==" => Opcode.StrictNEq,
+        "<" => Opcode.Lt,
+        "<=" => Opcode.LtEq,
+        ">" => Opcode.Gt,
+        ">=" => Opcode.GtEq,
         "instanceof" => Opcode.Instanceof,
         "in" => Opcode.In,
         _ => throw new NotSupportedException($"binary op '{op}'"),
@@ -4963,17 +4976,28 @@ public sealed partial class JsCompiler
 
     private static Opcode UnaryOpToOpcode(string op) => op switch
     {
-        "-" => Opcode.Neg, "+" => Opcode.UnaryPlus, "!" => Opcode.Not,
-        "~" => Opcode.BitNot, "typeof" => Opcode.TypeOf,
+        "-" => Opcode.Neg,
+        "+" => Opcode.UnaryPlus,
+        "!" => Opcode.Not,
+        "~" => Opcode.BitNot,
+        "typeof" => Opcode.TypeOf,
         _ => throw new NotSupportedException($"unary op '{op}'"),
     };
 
     private static Opcode CompoundOpToBinaryOpcode(string op) => op switch
     {
-        "+=" => Opcode.Add, "-=" => Opcode.Sub, "*=" => Opcode.Mul,
-        "/=" => Opcode.Div, "%=" => Opcode.Mod, "**=" => Opcode.Pow,
-        "|=" => Opcode.BitOr, "&=" => Opcode.BitAnd, "^=" => Opcode.BitXor,
-        "<<=" => Opcode.Shl, ">>=" => Opcode.Shr, ">>>=" => Opcode.Ushr,
+        "+=" => Opcode.Add,
+        "-=" => Opcode.Sub,
+        "*=" => Opcode.Mul,
+        "/=" => Opcode.Div,
+        "%=" => Opcode.Mod,
+        "**=" => Opcode.Pow,
+        "|=" => Opcode.BitOr,
+        "&=" => Opcode.BitAnd,
+        "^=" => Opcode.BitXor,
+        "<<=" => Opcode.Shl,
+        ">>=" => Opcode.Shr,
+        ">>>=" => Opcode.Ushr,
         _ => throw new NotSupportedException($"compound op '{op}'"),
     };
 

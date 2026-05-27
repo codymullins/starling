@@ -259,37 +259,37 @@ public static class CssGradientParser
                 into.Add(new CssColorStop(color));
                 return true;
             case CssValueList list:
-            {
-                CssColor? color = null;
-                CssGradientStopPosition? firstPos = null;
-                CssGradientStopPosition? secondPos = null;
-                foreach (var item in list.Values)
                 {
-                    switch (item)
+                    CssColor? color = null;
+                    CssGradientStopPosition? firstPos = null;
+                    CssGradientStopPosition? secondPos = null;
+                    foreach (var item in list.Values)
                     {
-                        case CssColor c when color is null:
-                            color = c;
-                            break;
-                        case CssLength or CssPercentage when TryStopPosition(item, out var p):
-                            if (firstPos is null) firstPos = p; else secondPos = p;
-                            break;
-                        case CssLength:
-                            // Relative-unit position we can't resolve at parse
-                            // time — keep the stop but drop the position (auto).
-                            break;
-                        default:
-                            return false;
+                        switch (item)
+                        {
+                            case CssColor c when color is null:
+                                color = c;
+                                break;
+                            case CssLength or CssPercentage when TryStopPosition(item, out var p):
+                                if (firstPos is null) firstPos = p; else secondPos = p;
+                                break;
+                            case CssLength:
+                                // Relative-unit position we can't resolve at parse
+                                // time — keep the stop but drop the position (auto).
+                                break;
+                            default:
+                                return false;
+                        }
                     }
+                    if (color is null)
+                        return false;
+                    // CSS Images 4 two-position color-stop shorthand: `red 10% 40%`
+                    // expands to two stops with the same color.
+                    into.Add(new CssColorStop(color, firstPos));
+                    if (secondPos is not null)
+                        into.Add(new CssColorStop(color, secondPos));
+                    return true;
                 }
-                if (color is null)
-                    return false;
-                // CSS Images 4 two-position color-stop shorthand: `red 10% 40%`
-                // expands to two stops with the same color.
-                into.Add(new CssColorStop(color, firstPos));
-                if (secondPos is not null)
-                    into.Add(new CssColorStop(color, secondPos));
-                return true;
-            }
             default:
                 return false;
         }

@@ -26,23 +26,24 @@ public sealed partial class HtmlTokenizer
     {
         switch (state)
         {
-            case TokenizerState.Doctype:                                StepDoctype(c); break;
-            case TokenizerState.BeforeDoctypeName:                      StepBeforeDoctypeName(c); break;
-            case TokenizerState.DoctypeName:                            StepDoctypeName(c); break;
-            case TokenizerState.AfterDoctypeName:                       StepAfterDoctypeName(c); break;
-            case TokenizerState.AfterDoctypePublicKeyword:              StepAfterDoctypePublicKw(c); break;
-            case TokenizerState.BeforeDoctypePublicIdentifier:          StepBeforeDoctypePublicId(c); break;
-            case TokenizerState.DoctypePublicIdentifierDoubleQuoted:    StepDoctypePublicIdDQ(c); break;
-            case TokenizerState.DoctypePublicIdentifierSingleQuoted:    StepDoctypePublicIdSQ(c); break;
-            case TokenizerState.AfterDoctypePublicIdentifier:           StepAfterDoctypePublicId(c); break;
+            case TokenizerState.Doctype: StepDoctype(c); break;
+            case TokenizerState.BeforeDoctypeName: StepBeforeDoctypeName(c); break;
+            case TokenizerState.DoctypeName: StepDoctypeName(c); break;
+            case TokenizerState.AfterDoctypeName: StepAfterDoctypeName(c); break;
+            case TokenizerState.AfterDoctypePublicKeyword: StepAfterDoctypePublicKw(c); break;
+            case TokenizerState.BeforeDoctypePublicIdentifier: StepBeforeDoctypePublicId(c); break;
+            case TokenizerState.DoctypePublicIdentifierDoubleQuoted: StepDoctypePublicIdDQ(c); break;
+            case TokenizerState.DoctypePublicIdentifierSingleQuoted: StepDoctypePublicIdSQ(c); break;
+            case TokenizerState.AfterDoctypePublicIdentifier: StepAfterDoctypePublicId(c); break;
             case TokenizerState.BetweenDoctypePublicAndSystemIdentifiers: StepBetweenDoctypePublicSystem(c); break;
-            case TokenizerState.AfterDoctypeSystemKeyword:              StepAfterDoctypeSystemKw(c); break;
-            case TokenizerState.BeforeDoctypeSystemIdentifier:          StepBeforeDoctypeSystemId(c); break;
-            case TokenizerState.DoctypeSystemIdentifierDoubleQuoted:    StepDoctypeSystemIdDQ(c); break;
-            case TokenizerState.DoctypeSystemIdentifierSingleQuoted:    StepDoctypeSystemIdSQ(c); break;
-            case TokenizerState.AfterDoctypeSystemIdentifier:           StepAfterDoctypeSystemId(c); break;
-            case TokenizerState.BogusDoctype:                           StepBogusDoctype(c); break;
-            default: throw new InvalidOperationException(
+            case TokenizerState.AfterDoctypeSystemKeyword: StepAfterDoctypeSystemKw(c); break;
+            case TokenizerState.BeforeDoctypeSystemIdentifier: StepBeforeDoctypeSystemId(c); break;
+            case TokenizerState.DoctypeSystemIdentifierDoubleQuoted: StepDoctypeSystemIdDQ(c); break;
+            case TokenizerState.DoctypeSystemIdentifierSingleQuoted: StepDoctypeSystemIdSQ(c); break;
+            case TokenizerState.AfterDoctypeSystemIdentifier: StepAfterDoctypeSystemId(c); break;
+            case TokenizerState.BogusDoctype: StepBogusDoctype(c); break;
+            default:
+                throw new InvalidOperationException(
                 $"DispatchDoctypeState invoked for unrelated state '{state}'.");
         }
     }

@@ -246,8 +246,8 @@ public sealed partial class JsParser
                 case ExportLocalDeclaration { Declaration: Statement decl }:
                     AddVarLex(decl);
                     break;
-                // nested `var` (inside blocks/loops) also contributes — pick those
-                // up via CollectVarNames below.
+                    // nested `var` (inside blocks/loops) also contributes — pick those
+                    // up via CollectVarNames below.
             }
         }
         foreach (var stmt in body)

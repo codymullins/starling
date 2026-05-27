@@ -17,7 +17,6 @@ using Starling.Css.Properties;
 using Starling.Css.Selectors;
 using Starling.Dom.Events;
 using Starling.Engine;
-using Starling.Gui; // linked BoxHitTester.cs lives in this namespace
 using AvColor = Avalonia.Media.Color;
 using DomElement = Starling.Dom.Element;
 using DomNode = Starling.Dom.Node;
@@ -1249,11 +1248,18 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         if (!string.IsNullOrEmpty(e.KeySymbol)) return e.KeySymbol!;
         return e.Key switch
         {
-            Key.Enter => "Enter", Key.Tab => "Tab", Key.Back => "Backspace",
-            Key.Delete => "Delete", Key.Escape => "Escape",
-            Key.Left => "ArrowLeft", Key.Right => "ArrowRight",
-            Key.Up => "ArrowUp", Key.Down => "ArrowDown",
-            Key.Home => "Home", Key.End => "End", Key.Space => " ",
+            Key.Enter => "Enter",
+            Key.Tab => "Tab",
+            Key.Back => "Backspace",
+            Key.Delete => "Delete",
+            Key.Escape => "Escape",
+            Key.Left => "ArrowLeft",
+            Key.Right => "ArrowRight",
+            Key.Up => "ArrowUp",
+            Key.Down => "ArrowDown",
+            Key.Home => "Home",
+            Key.End => "End",
+            Key.Space => " ",
             _ => e.Key.ToString(),
         };
     }

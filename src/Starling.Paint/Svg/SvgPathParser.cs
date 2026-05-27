@@ -45,150 +45,150 @@ internal static class SvgPathParser
             switch (char.ToUpperInvariant(cmd))
             {
                 case 'M':
-                {
-                    // First pair is a moveto; subsequent pairs are implicit linetos.
-                    if (!tok.TryReadFloat(out var x) || !tok.TryReadFloat(out var y)) return Done(pb, any);
-                    var p = rel ? current + new Vector2(x, y) : new Vector2(x, y);
-                    if (open) pb.StartFigure();
-                    pb.MoveTo(ToPoint(p));
-                    current = start = p;
-                    open = true;
-                    lastCmd = 'M';
-                    // implicit linetos
-                    while (tok.TryReadFloat(out var lx))
                     {
-                        if (!tok.TryReadFloat(out var ly)) break;
-                        var lp = rel ? current + new Vector2(lx, ly) : new Vector2(lx, ly);
-                        pb.LineTo(ToPoint(lp));
-                        current = lp; any = true; lastCmd = 'L';
+                        // First pair is a moveto; subsequent pairs are implicit linetos.
+                        if (!tok.TryReadFloat(out var x) || !tok.TryReadFloat(out var y)) return Done(pb, any);
+                        var p = rel ? current + new Vector2(x, y) : new Vector2(x, y);
+                        if (open) pb.StartFigure();
+                        pb.MoveTo(ToPoint(p));
+                        current = start = p;
+                        open = true;
+                        lastCmd = 'M';
+                        // implicit linetos
+                        while (tok.TryReadFloat(out var lx))
+                        {
+                            if (!tok.TryReadFloat(out var ly)) break;
+                            var lp = rel ? current + new Vector2(lx, ly) : new Vector2(lx, ly);
+                            pb.LineTo(ToPoint(lp));
+                            current = lp; any = true; lastCmd = 'L';
+                        }
+                        break;
                     }
-                    break;
-                }
                 case 'L':
-                {
-                    while (tok.TryReadFloat(out var x))
                     {
-                        if (!tok.TryReadFloat(out var y)) break;
-                        var p = rel ? current + new Vector2(x, y) : new Vector2(x, y);
-                        pb.LineTo(ToPoint(p));
-                        current = p; any = true;
+                        while (tok.TryReadFloat(out var x))
+                        {
+                            if (!tok.TryReadFloat(out var y)) break;
+                            var p = rel ? current + new Vector2(x, y) : new Vector2(x, y);
+                            pb.LineTo(ToPoint(p));
+                            current = p; any = true;
+                        }
+                        lastCmd = 'L';
+                        break;
                     }
-                    lastCmd = 'L';
-                    break;
-                }
                 case 'H':
-                {
-                    while (tok.TryReadFloat(out var x))
                     {
-                        var p = new Vector2(rel ? current.X + x : x, current.Y);
-                        pb.LineTo(ToPoint(p));
-                        current = p; any = true;
+                        while (tok.TryReadFloat(out var x))
+                        {
+                            var p = new Vector2(rel ? current.X + x : x, current.Y);
+                            pb.LineTo(ToPoint(p));
+                            current = p; any = true;
+                        }
+                        lastCmd = 'H';
+                        break;
                     }
-                    lastCmd = 'H';
-                    break;
-                }
                 case 'V':
-                {
-                    while (tok.TryReadFloat(out var y))
                     {
-                        var p = new Vector2(current.X, rel ? current.Y + y : y);
-                        pb.LineTo(ToPoint(p));
-                        current = p; any = true;
+                        while (tok.TryReadFloat(out var y))
+                        {
+                            var p = new Vector2(current.X, rel ? current.Y + y : y);
+                            pb.LineTo(ToPoint(p));
+                            current = p; any = true;
+                        }
+                        lastCmd = 'V';
+                        break;
                     }
-                    lastCmd = 'V';
-                    break;
-                }
                 case 'C':
-                {
-                    while (tok.TryReadFloat(out var x1))
                     {
-                        if (!tok.TryReadFloat(out var y1) ||
-                            !tok.TryReadFloat(out var x2) || !tok.TryReadFloat(out var y2) ||
-                            !tok.TryReadFloat(out var x) || !tok.TryReadFloat(out var y)) break;
-                        var c1 = rel ? current + new Vector2(x1, y1) : new Vector2(x1, y1);
-                        var c2 = rel ? current + new Vector2(x2, y2) : new Vector2(x2, y2);
-                        var p = rel ? current + new Vector2(x, y) : new Vector2(x, y);
-                        pb.AddCubicBezier(ToPoint(current), ToPoint(c1), ToPoint(c2), ToPoint(p));
-                        lastCubicCtrl = c2; current = p; any = true;
+                        while (tok.TryReadFloat(out var x1))
+                        {
+                            if (!tok.TryReadFloat(out var y1) ||
+                                !tok.TryReadFloat(out var x2) || !tok.TryReadFloat(out var y2) ||
+                                !tok.TryReadFloat(out var x) || !tok.TryReadFloat(out var y)) break;
+                            var c1 = rel ? current + new Vector2(x1, y1) : new Vector2(x1, y1);
+                            var c2 = rel ? current + new Vector2(x2, y2) : new Vector2(x2, y2);
+                            var p = rel ? current + new Vector2(x, y) : new Vector2(x, y);
+                            pb.AddCubicBezier(ToPoint(current), ToPoint(c1), ToPoint(c2), ToPoint(p));
+                            lastCubicCtrl = c2; current = p; any = true;
+                        }
+                        lastCmd = 'C';
+                        break;
                     }
-                    lastCmd = 'C';
-                    break;
-                }
                 case 'S':
-                {
-                    while (tok.TryReadFloat(out var x2))
                     {
-                        if (!tok.TryReadFloat(out var y2) ||
-                            !tok.TryReadFloat(out var x) || !tok.TryReadFloat(out var y)) break;
-                        // Reflect previous cubic control point if last was C/S.
-                        var c1 = (lastCmd is 'C' or 'S')
-                            ? current + (current - lastCubicCtrl)
-                            : current;
-                        var c2 = rel ? current + new Vector2(x2, y2) : new Vector2(x2, y2);
-                        var p = rel ? current + new Vector2(x, y) : new Vector2(x, y);
-                        pb.AddCubicBezier(ToPoint(current), ToPoint(c1), ToPoint(c2), ToPoint(p));
-                        lastCubicCtrl = c2; current = p; any = true; lastCmd = 'S';
+                        while (tok.TryReadFloat(out var x2))
+                        {
+                            if (!tok.TryReadFloat(out var y2) ||
+                                !tok.TryReadFloat(out var x) || !tok.TryReadFloat(out var y)) break;
+                            // Reflect previous cubic control point if last was C/S.
+                            var c1 = (lastCmd is 'C' or 'S')
+                                ? current + (current - lastCubicCtrl)
+                                : current;
+                            var c2 = rel ? current + new Vector2(x2, y2) : new Vector2(x2, y2);
+                            var p = rel ? current + new Vector2(x, y) : new Vector2(x, y);
+                            pb.AddCubicBezier(ToPoint(current), ToPoint(c1), ToPoint(c2), ToPoint(p));
+                            lastCubicCtrl = c2; current = p; any = true; lastCmd = 'S';
+                        }
+                        lastCmd = 'S';
+                        break;
                     }
-                    lastCmd = 'S';
-                    break;
-                }
                 case 'Q':
-                {
-                    while (tok.TryReadFloat(out var x1))
                     {
-                        if (!tok.TryReadFloat(out var y1) ||
-                            !tok.TryReadFloat(out var x) || !tok.TryReadFloat(out var y)) break;
-                        var c = rel ? current + new Vector2(x1, y1) : new Vector2(x1, y1);
-                        var p = rel ? current + new Vector2(x, y) : new Vector2(x, y);
-                        pb.AddQuadraticBezier(ToPoint(current), ToPoint(c), ToPoint(p));
-                        lastQuadCtrl = c; current = p; any = true;
+                        while (tok.TryReadFloat(out var x1))
+                        {
+                            if (!tok.TryReadFloat(out var y1) ||
+                                !tok.TryReadFloat(out var x) || !tok.TryReadFloat(out var y)) break;
+                            var c = rel ? current + new Vector2(x1, y1) : new Vector2(x1, y1);
+                            var p = rel ? current + new Vector2(x, y) : new Vector2(x, y);
+                            pb.AddQuadraticBezier(ToPoint(current), ToPoint(c), ToPoint(p));
+                            lastQuadCtrl = c; current = p; any = true;
+                        }
+                        lastCmd = 'Q';
+                        break;
                     }
-                    lastCmd = 'Q';
-                    break;
-                }
                 case 'T':
-                {
-                    while (tok.TryReadFloat(out var x))
                     {
-                        if (!tok.TryReadFloat(out var y)) break;
-                        var c = (lastCmd is 'Q' or 'T')
-                            ? current + (current - lastQuadCtrl)
-                            : current;
-                        var p = rel ? current + new Vector2(x, y) : new Vector2(x, y);
-                        pb.AddQuadraticBezier(ToPoint(current), ToPoint(c), ToPoint(p));
-                        lastQuadCtrl = c; current = p; any = true; lastCmd = 'T';
+                        while (tok.TryReadFloat(out var x))
+                        {
+                            if (!tok.TryReadFloat(out var y)) break;
+                            var c = (lastCmd is 'Q' or 'T')
+                                ? current + (current - lastQuadCtrl)
+                                : current;
+                            var p = rel ? current + new Vector2(x, y) : new Vector2(x, y);
+                            pb.AddQuadraticBezier(ToPoint(current), ToPoint(c), ToPoint(p));
+                            lastQuadCtrl = c; current = p; any = true; lastCmd = 'T';
+                        }
+                        lastCmd = 'T';
+                        break;
                     }
-                    lastCmd = 'T';
-                    break;
-                }
                 case 'A':
-                {
-                    while (tok.TryReadFloat(out var rx))
                     {
-                        if (!tok.TryReadFloat(out var ry) ||
-                            !tok.TryReadFloat(out var xRot) ||
-                            !tok.TryReadFlag(out var largeArc) ||
-                            !tok.TryReadFlag(out var sweep) ||
-                            !tok.TryReadFloat(out var x) || !tok.TryReadFloat(out var y)) break;
-                        var p = rel ? current + new Vector2(x, y) : new Vector2(x, y);
-                        AppendArc(pb, current, p, rx, ry, xRot, largeArc, sweep);
-                        current = p; any = true;
+                        while (tok.TryReadFloat(out var rx))
+                        {
+                            if (!tok.TryReadFloat(out var ry) ||
+                                !tok.TryReadFloat(out var xRot) ||
+                                !tok.TryReadFlag(out var largeArc) ||
+                                !tok.TryReadFlag(out var sweep) ||
+                                !tok.TryReadFloat(out var x) || !tok.TryReadFloat(out var y)) break;
+                            var p = rel ? current + new Vector2(x, y) : new Vector2(x, y);
+                            AppendArc(pb, current, p, rx, ry, xRot, largeArc, sweep);
+                            current = p; any = true;
+                        }
+                        lastCmd = 'A';
+                        break;
                     }
-                    lastCmd = 'A';
-                    break;
-                }
                 case 'Z':
-                {
-                    if (open)
                     {
-                        pb.CloseFigure();
-                        current = start;
-                        open = false;
-                        any = true;
+                        if (open)
+                        {
+                            pb.CloseFigure();
+                            current = start;
+                            open = false;
+                            any = true;
+                        }
+                        lastCmd = 'Z';
+                        break;
                     }
-                    lastCmd = 'Z';
-                    break;
-                }
                 default:
                     // Unknown command: stop parsing gracefully.
                     return Done(pb, any);

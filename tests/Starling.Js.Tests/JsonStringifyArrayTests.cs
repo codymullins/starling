@@ -16,16 +16,20 @@ namespace Starling.Js.Tests;
 [TestClass]
 public class JsonStringifyArrayTests
 {
-    [TestMethod] public void Stringify_array_literal()
+    [TestMethod]
+    public void Stringify_array_literal()
         => Eval("JSON.stringify([1,2,3]);").AsString.Should().Be("[1,2,3]");
 
-    [TestMethod] public void Stringify_map_result()
+    [TestMethod]
+    public void Stringify_map_result()
         => Eval("JSON.stringify([1,2,3].map(function(x){return x*2;}));").AsString.Should().Be("[2,4,6]");
 
-    [TestMethod] public void Stringify_nested_array_of_objects()
+    [TestMethod]
+    public void Stringify_nested_array_of_objects()
         => Eval("JSON.stringify([{a:1},{a:2}]);").AsString.Should().Be("[{\"a\":1},{\"a\":2}]");
 
-    [TestMethod] public void Stringify_parse_roundtrip()
+    [TestMethod]
+    public void Stringify_parse_roundtrip()
         => Eval("JSON.stringify(JSON.parse('[1,[2,3],4]'));").AsString.Should().Be("[1,[2,3],4]");
 
     private static JsValue Eval(string src)

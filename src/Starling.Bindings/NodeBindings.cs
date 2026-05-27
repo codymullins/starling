@@ -980,13 +980,13 @@ public static class NodeBindings
             switch (position.ToLowerInvariant())
             {
                 case "beforebegin":
-                {
-                    var parent = e.ParentNode;
-                    if (parent is null) return JsValue.Undefined; // no-op per spec
-                    var context = parent as Element ?? e;
-                    parent.InsertBefore(ParseFragment(context, markup), e);
-                    break;
-                }
+                    {
+                        var parent = e.ParentNode;
+                        if (parent is null) return JsValue.Undefined; // no-op per spec
+                        var context = parent as Element ?? e;
+                        parent.InsertBefore(ParseFragment(context, markup), e);
+                        break;
+                    }
                 case "afterbegin":
                     e.InsertBefore(ParseFragment(e, markup), e.FirstChild);
                     break;
@@ -994,13 +994,13 @@ public static class NodeBindings
                     e.AppendChild(ParseFragment(e, markup));
                     break;
                 case "afterend":
-                {
-                    var parent = e.ParentNode;
-                    if (parent is null) return JsValue.Undefined; // no-op per spec
-                    var context = parent as Element ?? e;
-                    parent.InsertBefore(ParseFragment(context, markup), e.NextSibling);
-                    break;
-                }
+                    {
+                        var parent = e.ParentNode;
+                        if (parent is null) return JsValue.Undefined; // no-op per spec
+                        var context = parent as Element ?? e;
+                        parent.InsertBefore(ParseFragment(context, markup), e.NextSibling);
+                        break;
+                    }
                 default:
                     throw new JsThrow(realm.NewTypeError(
                         $"insertAdjacentHTML: '{position}' is not a valid position"));

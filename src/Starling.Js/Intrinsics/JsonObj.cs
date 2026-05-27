@@ -458,25 +458,25 @@ public static class JsonObj
                 case JsValueKind.String:
                     return QuoteJsonString(value.AsString);
                 case JsValueKind.Number:
-                {
-                    var d = value.AsNumber;
-                    if (double.IsNaN(d) || double.IsInfinity(d)) return "null";
-                    return NumberToJsonString(d);
-                }
+                    {
+                        var d = value.AsNumber;
+                        if (double.IsNaN(d) || double.IsInfinity(d)) return "null";
+                        return NumberToJsonString(d);
+                    }
                 case JsValueKind.BigInt:
                     throw new JsThrow(_realm.NewTypeError("Do not know how to serialize a BigInt"));
                 case JsValueKind.Object:
-                {
-                    if (AbstractOperations.IsCallable(value)) return null;
-                    var obj = value.AsObject;
-                    // §25.5.2: serialize as a JSON array when IsArray(value) — that
-                    // is any real Array exotic object, not only the JsonArray that
-                    // JSON.parse builds. Without the JsArray arm, `[1,2,3]` and
-                    // `.map(...)` results stringified as objects ({"0":1,…}).
-                    if (obj is JsArray or JsonArray)
-                        return SerializeArray(obj);
-                    return SerializeObject(obj);
-                }
+                    {
+                        if (AbstractOperations.IsCallable(value)) return null;
+                        var obj = value.AsObject;
+                        // §25.5.2: serialize as a JSON array when IsArray(value) — that
+                        // is any real Array exotic object, not only the JsonArray that
+                        // JSON.parse builds. Without the JsArray arm, `[1,2,3]` and
+                        // `.map(...)` results stringified as objects ({"0":1,…}).
+                        if (obj is JsArray or JsonArray)
+                            return SerializeArray(obj);
+                        return SerializeObject(obj);
+                    }
                 case JsValueKind.Undefined:
                 default:
                     return null;

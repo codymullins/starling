@@ -28,16 +28,17 @@ public sealed partial class HtmlTokenizer
     {
         switch (state)
         {
-            case TokenizerState.Rcdata:               StepRcdata(c); break;
-            case TokenizerState.RcdataLessThanSign:   StepRcdataLt(c); break;
-            case TokenizerState.RcdataEndTagOpen:     StepRcdataEndTagOpen(c); break;
-            case TokenizerState.RcdataEndTagName:     StepRcdataEndTagName(c); break;
-            case TokenizerState.Rawtext:              StepRawtext(c); break;
-            case TokenizerState.RawtextLessThanSign:  StepRawtextLt(c); break;
-            case TokenizerState.RawtextEndTagOpen:    StepRawtextEndTagOpen(c); break;
-            case TokenizerState.RawtextEndTagName:    StepRawtextEndTagName(c); break;
-            case TokenizerState.Plaintext:            StepPlaintext(c); break;
-            default: throw new InvalidOperationException(
+            case TokenizerState.Rcdata: StepRcdata(c); break;
+            case TokenizerState.RcdataLessThanSign: StepRcdataLt(c); break;
+            case TokenizerState.RcdataEndTagOpen: StepRcdataEndTagOpen(c); break;
+            case TokenizerState.RcdataEndTagName: StepRcdataEndTagName(c); break;
+            case TokenizerState.Rawtext: StepRawtext(c); break;
+            case TokenizerState.RawtextLessThanSign: StepRawtextLt(c); break;
+            case TokenizerState.RawtextEndTagOpen: StepRawtextEndTagOpen(c); break;
+            case TokenizerState.RawtextEndTagName: StepRawtextEndTagName(c); break;
+            case TokenizerState.Plaintext: StepPlaintext(c); break;
+            default:
+                throw new InvalidOperationException(
                 $"DispatchRawState invoked for unrelated state '{state}'.");
         }
     }

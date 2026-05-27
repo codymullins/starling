@@ -447,28 +447,28 @@ internal sealed class BoxTreeBuilder
             case CssString s:
                 return s.Value;
             case CssValueList list:
-            {
-                var sb = new System.Text.StringBuilder();
-                var any = false;
-                foreach (var part in list.Values)
                 {
-                    switch (part)
+                    var sb = new System.Text.StringBuilder();
+                    var any = false;
+                    foreach (var part in list.Values)
                     {
-                        case CssString ps:
-                            sb.Append(ps.Value);
-                            any = true;
-                            break;
-                        case CssKeyword { Name: "normal" or "none" }:
-                            break;
-                        // counter()/counters()/attr()-already-resolved-string handled above;
-                        // unresolved attr() (absent attribute, no fallback) and
-                        // counter()/quotes are deferred → contribute nothing.
-                        default:
-                            break;
+                        switch (part)
+                        {
+                            case CssString ps:
+                                sb.Append(ps.Value);
+                                any = true;
+                                break;
+                            case CssKeyword { Name: "normal" or "none" }:
+                                break;
+                            // counter()/counters()/attr()-already-resolved-string handled above;
+                            // unresolved attr() (absent attribute, no fallback) and
+                            // counter()/quotes are deferred → contribute nothing.
+                            default:
+                                break;
+                        }
                     }
+                    return any ? sb.ToString() : null;
                 }
-                return any ? sb.ToString() : null;
-            }
             // Bare attr() that resolved to nothing, or counter()/url() image
             // content: deferred / unsupported → no generated text.
             default:
