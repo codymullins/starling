@@ -50,6 +50,9 @@ var gui = builder.AddProject<Projects.Starling_Gui>("gui")
 // Headless CLI. Pre-baked to render the bundled hello.html fixture; the args
 // are absolute paths because Aspire's default cwd for a project resource is
 // the csproj directory (src/Starling.Headless/), not the repo root.
+// WithExplicitStart keeps the resource visible in the dashboard but skips it
+// on `aspire run` — start it on demand from the dashboard when you want to
+// exercise the headless render path.
 var headless = builder.AddProject<Projects.Starling_Headless>("headless")
     .WithArgs(
         "render",
@@ -57,6 +60,7 @@ var headless = builder.AddProject<Projects.Starling_Headless>("headless")
         "-o", Path.Combine(Path.GetTempPath(), "starling-headless-out.png"))
     .WithEnvironment("STARLING_PAINT_BACKEND", paintBackend)
     .WithEnvironment("STARLING_JS_ENGINE", jsEngine)
+    .WithExplicitStart()
     .WithOtlpExporter();
 
 // wgpu-native (Rust) honors RUST_LOG for tracing. Forward it through so we
