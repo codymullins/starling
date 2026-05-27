@@ -5,24 +5,18 @@ using SixLabors.ImageSharp;
 namespace Starling.Engine.Tests;
 
 /// <summary>
-/// Regression for the bookmark-click URL bar flicker.
-///
-/// Symptom: clicking bookmark B while on A makes the URL bar flicker
-/// B → A → B, or (when the deferred phase mutates nothing) stick on A.
-///
-/// Cause: <see cref="BrowserSession.NavigateInteractiveAsync"/> calls
-/// <c>History.Navigate(url)</c> only after <c>LayoutPageAsync</c> returns,
-/// while <c>onFirstPaint</c> fires from inside <c>LayoutPageAsync</c>. So
-/// at first-paint time <c>History.Current</c> still names the previous
-/// page. The shell's first-paint handler must read the page's own URL
-/// (<see cref="LaidOutPage.Url"/>) — the only source that's already
-/// correct mid-navigation.
+/// Pins the contract that <see cref="LaidOutPage.Url"/> and
+/// <see cref="NavigationHistory.Current"/> both name the new page by the
+/// time first-paint fires. <see cref="BrowserSession.NavigateInteractiveAsync"/>
+/// commits to history at first-paint (the navigation-commit point), so the
+/// shell can read either source when refreshing the URL bar without
+/// flickering back to the previous page.
 /// </summary>
 [TestClass]
 public class BrowserSessionFirstPaintHistoryTests
 {
     [TestMethod]
-    public async Task First_paint_page_carries_navigations_url_even_while_history_is_stale()
+    public async Task First_paint_observes_the_new_url_in_both_page_and_history()
     {
         // Include an inline script so the engine takes the progressive
         // (first-paint + deferred) path — onFirstPaint only fires when the
@@ -60,17 +54,17 @@ public class BrowserSessionFirstPaintHistoryTests
             });
         second.IsOk.Should().BeTrue(second.IsErr ? second.Error.Message : "");
 
-        // History is still stale at first-paint — Navigate(url) runs only
-        // after LayoutPageAsync returns. Pin that so future refactors don't
-        // quietly reorder it (and so this test documents the contract).
-        historyAtFirstPaint.Should().Be(firstUrl,
-            "History.Navigate runs only after LayoutPageAsync settles");
+        // History commits at first-paint — the navigation-commit point —
+        // so the shell can read History.Current here without flickering
+        // back to the previous URL. Pin that so future refactors don't
+        // quietly defer the commit back to the post-settle path.
+        historyAtFirstPaint.Should().Be(secondUrl,
+            "History commits at first-paint, not after the deferred phase");
 
-        // The page reliably carries the navigation's target URL at first-paint.
-        // The GUI shell uses this in ApplyShownPage to refresh the URL bar;
-        // reading History.Current there caused the flicker.
+        // The page also carries the navigation's target URL at first-paint;
+        // either source is safe for the URL bar.
         pageUrlAtFirstPaint.Should().Be(secondUrl,
-            "LaidOutPage.Url is the URL bar's source of truth at first-paint");
+            "LaidOutPage.Url names the new page at first-paint");
     }
 
     private static byte[] BuildResponse(byte[] body, string contentType)

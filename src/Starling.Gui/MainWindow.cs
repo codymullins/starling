@@ -634,10 +634,9 @@ public sealed class MainWindow : Window, IBrowserController
         _lastShownPage = page;
         _urlBar.SetSecurity(MapSecurity(page.Security));
         Title = string.IsNullOrWhiteSpace(page.Title) ? string.Empty : page.Title;
-        // Use the page's own URL, not _session.History.Current: at first-paint
-        // time History hasn't been advanced yet (BrowserSession.NavigateInteractiveAsync
-        // commits history only after LayoutPageAsync returns), so reading
-        // History.Current here would stomp the bar with the previous URL.
+        // Read the URL from the page itself rather than History.Current —
+        // page.Url is the navigation's own target, immune to interleaving
+        // from a parallel nav that might race the URL bar update.
         if (_urlBar.Address.Text != page.Url)
             _urlBar.Address.Text = page.Url;
 

@@ -59,6 +59,14 @@ public sealed class BrowserSession : IDisposable
     /// Same flow as <see cref="NavigateAsync"/> but returns a laid-out page
     /// the caller can walk for interactive rendering, instead of saving a PNG.
     /// </summary>
+    /// <remarks>
+    /// History commits at navigation-commit time — first paint on the
+    /// progressive (scripted) path, or successful settle on the snapshot
+    /// (script-free) path — not after the deferred phase finishes. That way
+    /// a navigation the user already saw is recorded in history even if a
+    /// later click cancels its deferred phase, matching browser behaviour
+    /// and keeping Back/Forward from "skipping" a page the user visited.
+    /// </remarks>
     public async Task<Result<LaidOutPage, RenderError>> NavigateInteractiveAsync(
         string url,
         RenderOptions options,
@@ -67,9 +75,23 @@ public sealed class BrowserSession : IDisposable
     {
         return await TrackAsync("navigate", url, async () =>
         {
-            var result = await _engine.LayoutPageAsync(url, options, ct, sharedHttp: _http, onFirstPaint: onFirstPaint).ConfigureAwait(false);
-            if (result.IsOk)
+            var committed = false;
+            void Commit()
+            {
+                if (committed) return;
+                committed = true;
                 History.Navigate(url);
+            }
+            void OnCommit(LaidOutPage page)
+            {
+                Commit();
+                onFirstPaint?.Invoke(page);
+            }
+            var result = await _engine.LayoutPageAsync(url, options, ct, sharedHttp: _http, onFirstPaint: OnCommit).ConfigureAwait(false);
+            // Script-free pages skip the progressive path: OnCommit never
+            // fires, so commit on a successful settle instead. Cancelled or
+            // failed loads that never first-painted stay out of history.
+            if (result.IsOk) Commit();
             return result;
         }).ConfigureAwait(false);
     }
