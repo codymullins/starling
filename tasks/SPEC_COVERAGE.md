@@ -125,7 +125,7 @@ tests that have started passing — when one does, promote it from
 | CSS Writing Modes 4 | https://www.w3.org/TR/css-writing-modes-4/ | 🟢 | `CssWritingModes4/` — writing-mode/direction/text-orientation/unicode-bidi parse + cascade/inheritance (`wp:spec-css-writing-modes-4`); vertical layout not yet implemented | `wp:spec-css-writing-modes-4` |
 | CSS Overflow 3 | https://www.w3.org/TR/css-overflow-3/ | 🟢 | `CssOverflow3/` — overflow shorthand + overflow-x/y + overflow-clip-margin + scrollbar-gutter parse + cascade (`wp:spec-css-overflow-3`); clip/scroll behavior partially in layout, gutter reservation not implemented | `wp:spec-css-overflow-3` |
 | CSS Containment 2 | https://www.w3.org/TR/css-contain-2/ | 🟢 | `CssContain2/` — contain (none/strict/content/size/layout/style/paint/inline-size + combos) + content-visibility parse + cascade (`wp:spec-css-contain-2`); containment layout effects not implemented | `wp:spec-css-contain-2` |
-| CSS Container Queries 1 | https://www.w3.org/TR/css-contain-3/ | 🔴 | — | `wp:spec-css-contain-3` |
+| CSS Container Queries 1 | https://www.w3.org/TR/css-contain-3/ | 🟢 | `CssContain3/`, `src/Starling.Css/Container/` — `@container` at-rule parse: optional name + condition (incl. range syntax) + conditional rules; container-type/name props (`wp:spec-css-contain-3`); query evaluation against container size not implemented | `wp:spec-css-contain-3` |
 | CSS Anchor Positioning 1 | https://www.w3.org/TR/css-anchor-position-1/ | 🔴 | — | `wp:spec-css-anchor-position-1` |
 
 ## Visual / paint
@@ -195,7 +195,7 @@ tests that have started passing — when one does, promote it from
 | `@page` | css-page-3 | 🚫 v1-deferred (print) |
 | `@scope` | css-cascade-6 | 🟢 `CssScope1/ScopeRuleTests` |
 | `@starting-style` | css-transitions-2 | 🔴 |
-| `@container` | css-contain-3 | 🔴 |
+| `@container` | css-contain-3 | 🟢 `CssContain3/ContainerRuleTests` |
 
 ---
 
@@ -208,9 +208,9 @@ stale — the matrix has always held more rows than that.
 |---|---|
 | Specs catalogued | 67 |
 | ✅ Implemented | 3 |
-| 🟢 In progress | 51 |
+| 🟢 In progress | 52 |
 | 🟡 Scaffolded only | 0 |
-| 🔴 Not started (in scope, no work yet) | 8 |
+| 🔴 Not started (in scope, no work yet) | 7 |
 | 🚫 v1-deferred (the seven buckets) | 5 rows + MathML Core + print specs |
 
 In-scope total: **62 specs** (67 rows − 5 deferred rows). The two non-row
