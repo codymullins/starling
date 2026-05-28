@@ -24,6 +24,8 @@ architecture to make WASM a first-class citizen, hitting the DOM directly rather
 than as a guest behind a JS bridge. And part of it, honestly, is just wanting to
 find out whether it can be done.
 
+[Read about our approach](/docs/approach.md)
+
 ## Project Status
 
 _Last updated: 2026-05-25_
