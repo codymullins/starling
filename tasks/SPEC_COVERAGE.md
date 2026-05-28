@@ -105,7 +105,7 @@ tests that have started passing — when one does, promote it from
 | CSS Text 4 | https://www.w3.org/TR/css-text-4/ | 🟢 | `CssText4/` — L4 property additions (word-break/overflow-wrap/line-break/hyphens/text-wrap/text-align-last/tab-size) parse + cascade (`wp:spec-css-text-4`); layout behaviors (balance/pretty wrapping) not implemented | `wp:spec-css-text-4` |
 | CSS Text Decoration 3 | https://www.w3.org/TR/css-text-decor-3/ | 🟢 | `Starling.Css.Spec.Tests/CssTextDecor3/`, `Starling.Paint.Tests` — line/style/color/thickness + text-shadow painted (`wp:M5-css-15`); skip-ink/underline-position deferred | `wp:spec-css-text-decor-3` |
 | CSS Text Decoration 4 | https://www.w3.org/TR/css-text-decor-4/ | 🟢 | `CssTextDecor4/` — L4 thickness/underline-offset/underline-position + shorthand-with-thickness parse (`wp:spec-css-text-decor-4`); spelling/grammar-error painting not implemented | `wp:spec-css-text-decor-4` |
-| CSS Inline 3 | https://www.w3.org/TR/css-inline-3/ | 🔴 | — | `wp:spec-css-inline-3` |
+| CSS Inline 3 | https://www.w3.org/TR/css-inline-3/ | 🟢 | `CssInline3/` — vertical-align (keywords + length/percentage) + baseline-source parse + cascade (`wp:spec-css-inline-3`); baseline-shift layout not implemented | `wp:spec-css-inline-3` |
 
 ## Layout
 
@@ -123,7 +123,7 @@ tests that have started passing — when one does, promote it from
 | CSS Multicol 1 | https://www.w3.org/TR/css-multicol-1/ | 🟢 | `CssMulticol1/` — column-count/width, columns + column-rule shorthands, column-span/fill parse + cascade (`wp:spec-css-multicol-1`); column fragmentation layout not implemented | `wp:spec-css-multicol-1` |
 | CSS Logical Properties 1 | https://www.w3.org/TR/css-logical-1/ | 🟢 | `LogicalPropertyTests` | `wp:spec-css-logical-1` |
 | CSS Writing Modes 4 | https://www.w3.org/TR/css-writing-modes-4/ | 🟢 | `CssWritingModes4/` — writing-mode/direction/text-orientation/unicode-bidi parse + cascade/inheritance (`wp:spec-css-writing-modes-4`); vertical layout not yet implemented | `wp:spec-css-writing-modes-4` |
-| CSS Overflow 3 | https://www.w3.org/TR/css-overflow-3/ | 🔴 | — | `wp:spec-css-overflow-3` |
+| CSS Overflow 3 | https://www.w3.org/TR/css-overflow-3/ | 🟢 | `CssOverflow3/` — overflow shorthand + overflow-x/y + overflow-clip-margin + scrollbar-gutter parse + cascade (`wp:spec-css-overflow-3`); clip/scroll behavior partially in layout, gutter reservation not implemented | `wp:spec-css-overflow-3` |
 | CSS Containment 2 | https://www.w3.org/TR/css-contain-2/ | 🟢 | `CssContain2/` — contain (none/strict/content/size/layout/style/paint/inline-size + combos) + content-visibility parse + cascade (`wp:spec-css-contain-2`); containment layout effects not implemented | `wp:spec-css-contain-2` |
 | CSS Container Queries 1 | https://www.w3.org/TR/css-contain-3/ | 🔴 | — | `wp:spec-css-contain-3` |
 | CSS Anchor Positioning 1 | https://www.w3.org/TR/css-anchor-position-1/ | 🔴 | — | `wp:spec-css-anchor-position-1` |
@@ -135,7 +135,7 @@ tests that have started passing — when one does, promote it from
 | CSS Backgrounds & Borders 3 | https://www.w3.org/TR/css-backgrounds-3/ | 🟢 | `CssBackgrounds3/` (`BorderRadiusTests`, `BoxShadowTests`, `BackgroundShorthandTests`), `Starling.Paint.Tests/RoundedRectAndShadowTests` — border-radius painted + box-shadow (`wp:M5-css-14`); `background` shorthand single+multi-layer expansion done (`wp:spec-css-backgrounds-3`); inset shadow deferred | `wp:spec-css-backgrounds-3` |
 | CSS Backgrounds & Borders 4 | https://www.w3.org/TR/css-backgrounds-4/ | 🔴 | — | `wp:spec-css-backgrounds-4` |
 | CSS Images 3 | https://www.w3.org/TR/css-images-3/ | 🟢 | `CssImages3/`, `Starling.Paint.Tests/GradientPaintTests` — linear/radial gradients parsed + painted (`wp:M5-css-13`); conic + `object-fit` deferred | `wp:spec-css-images-3` |
-| CSS Images 4 (`image-set()`, `cross-fade()`) | https://www.w3.org/TR/css-images-4/ | 🔴 | — | `wp:spec-css-images-4` |
+| CSS Images 4 (`image-set()`, `cross-fade()`) | https://www.w3.org/TR/css-images-4/ | 🟢 | `CssImages4/` — image-set()/cross-fade() parse as function values in background-image (`wp:spec-css-images-4`); resolution selection + cross-fade compositing not implemented | `wp:spec-css-images-4` |
 | CSS Masking 1 | https://www.w3.org/TR/css-masking-1/ | 🟢 | `CssMasking1/` — clip-path (none/url/basic-shapes/geometry-box) + mask-image/mode/repeat/position/size/clip/origin/composite parse (`wp:spec-css-masking-1`); `mask` shorthand + painting not implemented | `wp:spec-css-masking-1` |
 | CSS Filter Effects 1 | https://www.w3.org/TR/filter-effects-1/ | 🟢 | `CssFilterEffects1/` — filter/backdrop-filter functions (blur/brightness/contrast/grayscale/sepia/saturate/hue-rotate/invert/opacity/drop-shadow/url) parse as functions (`wp:spec-css-filter-effects-1`); typed filter model + painting not implemented | `wp:spec-css-filter-effects-1` |
 | CSS Compositing 1 | https://www.w3.org/TR/compositing-1/ | 🟢 | `CssCompositing1/` — mix-blend-mode/background-blend-mode/isolation parse + cascade (`wp:spec-css-compositing-1`); clean comma-list split pending (parser keeps comma artifact); blending not painted | `wp:spec-css-compositing-1` |
@@ -165,7 +165,7 @@ tests that have started passing — when one does, promote it from
 | Spec | URL | Status | Folder | Tracking WP |
 |---|---|---|---|---|
 | CSS Animations 1 | https://www.w3.org/TR/css-animations-1/ | 🟢 | `AnimationEngineTests`, `KeyframesParserTests` | `wp:spec-css-animations-1` |
-| CSS Animations 2 | https://www.w3.org/TR/css-animations-2/ | 🔴 | — | `wp:spec-css-animations-2` |
+| CSS Animations 2 | https://www.w3.org/TR/css-animations-2/ | 🟢 | `CssAnimations2/` — animation-timeline + animation-range-start/end parse + cascade (`wp:spec-css-animations-2`); scroll/view-timeline driving not implemented | `wp:spec-css-animations-2` |
 | CSS Transitions 1 | https://www.w3.org/TR/css-transitions-1/ | ✅ | `TransitionEngineTests`, `TransitionEngineSpecTests` | — |
 | CSS Easing 1 | https://www.w3.org/TR/css-easing-1/ | 🟢 | `TimingFunctionTests` — `linear()` multi-stop untested | `wp:spec-css-easing-1` |
 | Web Animations 1 | https://www.w3.org/TR/web-animations-1/ | 🔴 | belongs to `Starling.Cssom.Spec.Tests/` | `wp:spec-web-animations-1` |
@@ -208,9 +208,9 @@ stale — the matrix has always held more rows than that.
 |---|---|
 | Specs catalogued | 67 |
 | ✅ Implemented | 3 |
-| 🟢 In progress | 43 |
+| 🟢 In progress | 47 |
 | 🟡 Scaffolded only | 0 |
-| 🔴 Not started (in scope, no work yet) | 16 |
+| 🔴 Not started (in scope, no work yet) | 12 |
 | 🚫 v1-deferred (the seven buckets) | 5 rows + MathML Core + print specs |
 
 In-scope total: **62 specs** (67 rows − 5 deferred rows). The two non-row
