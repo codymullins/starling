@@ -96,7 +96,7 @@ tests that have started passing — when one does, promote it from
 | Spec | URL | Status | Folder | Tracking WP |
 |---|---|---|---|---|
 | CSS Color 4 | https://www.w3.org/TR/css-color-4/ | ✅ | `CssColor4/` (124 SpecFact: hex/named/`transparent`/`currentColor`, `rgb`/`hsl`/`hwb` legacy+modern, `lab`/`lch`/`oklab`/`oklch`, `color()` srgb/display-p3/rec2020, `none` channels, §13.1 gamut mapping) | — |
-| CSS Color 5 (color-mix, relative) | https://www.w3.org/TR/css-color-5/ | 🟢 | `CssColor5/` — relative color syntax `rgb(from …)`/`oklch(from …)` done (`wp:spec-css-color-5-relative`); `color-mix()` still untested | `wp:spec-css-color-5-relative` |
+| CSS Color 5 (color-mix, relative) | https://www.w3.org/TR/css-color-5/ | ✅ | `CssColor5/` (8 SpecFact): relative color syntax `rgb(from …)`/`oklch(from …)` (§4) + `color-mix()` (§6: srgb/oklch spaces, percentage normalization, in-gamut result) | — |
 | CSS Color HDR 6 | https://www.w3.org/TR/css-color-hdr/ | 🚫 | v1-deferred 2026-05-27 | — |
 | CSS Color Adjust 1 (`color-scheme`, `forced-colors`) | https://www.w3.org/TR/css-color-adjust-1/ | 🚫 | v1-deferred 2026-05-27 | — |
 | CSS Fonts 4 | https://www.w3.org/TR/css-fonts-4/ | ✅ | `CssFonts4/` (113 SpecFact): font-family/weight/style(incl. `oblique <angle>`)/stretch(%)/size/line-height, `font` shorthand (+ system keywords), font-feature-settings + size-adjust + font-variation-settings, @font-face descriptors | — |
@@ -207,21 +207,21 @@ stale — the matrix has always held more rows than that.
 | | Count |
 |---|---|
 | Specs catalogued | 67 |
-| ✅ Implemented | 20 |
-| 🟢 In progress | 42 |
+| ✅ Implemented | 21 |
+| 🟢 In progress | 41 |
 | 🟡 Scaffolded only | 0 |
 | 🔴 Not started (in scope, no work yet) | 0 |
 | 🚫 v1-deferred (the seven buckets) | 5 rows + MathML Core + print specs |
 
 In-scope total: **62 specs** (67 rows − 5 deferred rows). The two non-row
 deferrals (MathML Core, print specs) are not catalogued as CSS spec rows. So
-the v1 work ahead is **20 done (✅), 42 in progress (🟢), 0 not-started (🔴)**.
+the v1 work ahead is **21 done (✅), 41 in progress (🟢), 0 not-started (🔴)**.
 Every in-scope spec has landed `[Spec]` coverage at the parse / cascade / model
 level; the 15 ✅ are fully conformant (Position 3, Flexbox 1, Transitions 1,
 Counter Styles 3, Syntax 3, Values 4, Cascade 5, Custom Properties 1, Nesting 1,
 Color 4, Logical 1, Transforms 1, Animations 1, Box Model 3, Overscroll Behavior 1,
-Easing 1, Fonts 4, Conditional 5, Compositing 1, Pseudo 4). The remaining lift to drive the
-42 🟢 → ✅ is the behavior/paint layer + JS-OM bindings + the per-spec gaps the
+Easing 1, Fonts 4, Conditional 5, Compositing 1, Pseudo 4, Color 5). The remaining lift to drive the
+41 🟢 → ✅ is the behavior/paint layer + JS-OM bindings + the per-spec gaps the
 conformance suites surfaced — many of which cluster on a single **per-property
 value-validation** fix (rejecting invalid keywords/values), tracked in
 `tasks/spec/wp-spec-css-v1-*.md`.
