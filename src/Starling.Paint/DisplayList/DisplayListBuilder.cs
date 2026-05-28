@@ -371,7 +371,7 @@ public sealed class DisplayListBuilder
         // tall sidebar nav lists, overflow:auto code blocks — the overflowing
         // entries simply don't reach the rasterizer.
         var childCull = cull;
-        ComputedStyle? overflowStyle = paintsBox ? EffectiveStyle(box, styleOverride) : null;
+        ComputedStyle? overflowStyle = box.Kind != BoxKind.AnonymousBlock ? EffectiveStyle(box, styleOverride) : null;
         var clipsOverflow = overflowStyle is not null && ClipsOverflow(overflowStyle);
         if (clipsOverflow)
         {
