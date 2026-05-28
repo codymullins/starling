@@ -168,14 +168,14 @@ tests that have started passing — when one does, promote it from
 | CSS Animations 2 | https://www.w3.org/TR/css-animations-2/ | 🟢 | `CssAnimations2/` — animation-timeline + animation-range-start/end parse + cascade (`wp:spec-css-animations-2`); scroll/view-timeline driving not implemented | `wp:spec-css-animations-2` |
 | CSS Transitions 1 | https://www.w3.org/TR/css-transitions-1/ | ✅ | `TransitionEngineTests`, `TransitionEngineSpecTests` | — |
 | CSS Easing 1 | https://www.w3.org/TR/css-easing-1/ | 🟢 | `TimingFunctionTests` — `linear()` multi-stop untested | `wp:spec-css-easing-1` |
-| Web Animations 1 | https://www.w3.org/TR/web-animations-1/ | 🔴 | belongs to `Starling.Cssom.Spec.Tests/` | `wp:spec-web-animations-1` |
+| Web Animations 1 | https://www.w3.org/TR/web-animations-1/ | 🟢 | `WebAnimations1/`, `src/Starling.Css/WebAnimations/` — §4 timing model (`EffectTiming`→`ComputeProgress`→`ComputedTiming`: phases, active duration, simple/directed/eased iteration progress, fill, alternate/reverse) reusing existing `TimingFunction` easing (`wp:spec-web-animations-1`); JS WAAPI (`Element.animate`/`Animation`/`KeyframeEffect`) not implemented | `wp:spec-web-animations-1` |
 
 ## OM / scripting (`Starling.Cssom.Spec.Tests` family — to be created)
 
 | Spec | URL | Status | Folder | Tracking WP |
 |---|---|---|---|---|
 | CSSOM | https://drafts.csswg.org/cssom/ | 🟢 | `CssCssom1/`, `src/Starling.Css/Cssom/` — CSSStyleDeclaration §6.4 (setProperty/getPropertyValue/priority/removeProperty/item/length/cssText) behavioral tests (`wp:spec-cssom`); CSSStyleSheet/CSSRule OM + live bindings surface partially covered | `wp:spec-cssom` |
-| CSSOM View | https://drafts.csswg.org/cssom-view/ | 🔴 | — | `wp:spec-cssom-view` |
+| CSSOM View | https://drafts.csswg.org/cssom-view/ | 🟢 | `CssomView1/`, `src/Starling.Css/CssomView/` — `DOMRectReadOnly`/`DOMRect` geometry with spec-correct edge derivation (negative-dimension flipping) (`wp:spec-cssom-view`); existing `getBoundingClientRect` (bindings) not yet returning this type; scroll offsets + `matchMedia` not wired | `wp:spec-cssom-view` |
 | CSS Properties & Values API L1 (`@property`) | https://www.w3.org/TR/css-properties-values-api-1/ | 🟢 | `CssPropertiesValues1/`, `src/Starling.Css/PropertiesValues/` — `@property` at-rule parse + **engine collection** (`StyleEngine.RegisteredProperties`, last-wins across sheets) (`wp:spec-css-properties-values-api-1`); typed computed-value coercion, registered initial-value substitution, `inherits` override + JS registerProperty not implemented | `wp:spec-css-properties-values-api-1` |
 | CSS Typed OM 1 | https://www.w3.org/TR/css-typed-om-1/ | 🟢 | `CssTypedOm1/`, `src/Starling.Css/TypedOm/` — `CSSStyleValue`/`CSSNumericValue`/`CSSUnitValue`/`CSSKeywordValue`/`CSSUnparsedValue` model + `CSSStyleValue.parse()` (`wp:spec-css-typed-om-1`); numeric math ops (`add`/`mul`) + JS `attributeStyleMap`/`computedStyleMap` bindings not implemented | `wp:spec-css-typed-om-1` |
 | CSS Houdini Paint API | https://www.w3.org/TR/css-paint-api-1/ | 🚫 | v1-deferred 2026-05-27 | — |
@@ -208,13 +208,13 @@ stale — the matrix has always held more rows than that.
 |---|---|
 | Specs catalogued | 67 |
 | ✅ Implemented | 4 |
-| 🟢 In progress | 55 |
+| 🟢 In progress | 57 |
 | 🟡 Scaffolded only | 0 |
-| 🔴 Not started (in scope, no work yet) | 3 |
+| 🔴 Not started (in scope, no work yet) | 1 |
 | 🚫 v1-deferred (the seven buckets) | 5 rows + MathML Core + print specs |
 
 In-scope total: **62 specs** (67 rows − 5 deferred rows). The two non-row
 deferrals (MathML Core, print specs) are not catalogued as CSS spec rows. So
-the v1 work ahead is **4 done (✅), 58 to go** — of which 55 are 🟢 (parse +
-cascade conformance landed; behavior/OM layer remains) and 3 are 🔴 (JS-OM
-subsystems: cssom-view, web-animations, font-loading).
+the v1 work ahead is **4 done (✅), 58 to go** — of which 57 are 🟢 (parse +
+cascade conformance landed; behavior/OM layer remains) and 1 is 🔴
+(font-loading — in progress this session).
