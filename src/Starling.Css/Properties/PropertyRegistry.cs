@@ -171,6 +171,14 @@ public static class PropertyRegistry
             // Gap
             PropertyId.RowGap or PropertyId.ColumnGap => new CssKeyword("normal"),
 
+            // CSS Multicol 1 §3-§5 initial values.
+            PropertyId.ColumnCount or PropertyId.ColumnWidth => new CssKeyword("auto"),
+            PropertyId.ColumnRuleWidth => new CssKeyword("medium"),
+            PropertyId.ColumnRuleStyle => new CssKeyword("none"),
+            PropertyId.ColumnRuleColor => new CssKeyword("currentColor"),
+            PropertyId.ColumnSpan => new CssKeyword("none"),
+            PropertyId.ColumnFill => new CssKeyword("balance"),
+
             // Sizing
             PropertyId.AspectRatio => new CssKeyword("auto"),
             PropertyId.ObjectFit => new CssKeyword("fill"),
@@ -370,6 +378,37 @@ public static class PropertyRegistry
                         foreach (var item in Box(PropertyId.BorderTopWidth, PropertyId.BorderRightWidth, PropertyId.BorderBottomWidth, PropertyId.BorderLeftWidth, [value], important))
                             yield return item;
                     }
+                }
+                break;
+            // CSS Multicol 1 §7.1 — `columns: <'column-width'> || <'column-count'>`.
+            // Each component is `auto` or a length (width) / integer (count).
+            case "columns":
+                {
+                    CssValue? colWidth = null, colCount = null;
+                    foreach (var value in values)
+                    {
+                        if (value is CssNumber) colCount = value;
+                        else if (value is CssLength) colWidth = value;
+                        else if (value is CssKeyword { Name: "auto" }) { /* applies to whichever is unset */ }
+                        else colWidth ??= value;
+                    }
+                    yield return new PropertyDeclaration(PropertyId.ColumnWidth, colWidth ?? new CssKeyword("auto"), important);
+                    yield return new PropertyDeclaration(PropertyId.ColumnCount, colCount ?? new CssKeyword("auto"), important);
+                }
+                break;
+            // CSS Multicol 1 §6 — `column-rule: <'column-rule-width'> || <'column-rule-style'> || <'column-rule-color'>`.
+            case "column-rule":
+                {
+                    CssValue? rColor = null, rStyle = null, rWidth = null;
+                    foreach (var value in values)
+                    {
+                        if (IsBorderStyle(value)) rStyle = value;
+                        else if (IsColorLike(value)) rColor = value;
+                        else rWidth = value;
+                    }
+                    yield return new PropertyDeclaration(PropertyId.ColumnRuleColor, rColor ?? new CssKeyword("currentColor"), important);
+                    yield return new PropertyDeclaration(PropertyId.ColumnRuleStyle, rStyle ?? new CssKeyword("none"), important);
+                    yield return new PropertyDeclaration(PropertyId.ColumnRuleWidth, rWidth ?? new CssKeyword("medium"), important);
                 }
                 break;
             // CSS Basic UI 4 §3.4 — `outline: <'outline-color'> || <'outline-style'> || <'outline-width'>`.
@@ -1385,6 +1424,8 @@ public static class PropertyRegistry
         ["scroll-padding"] = [PropertyId.ScrollPaddingTop, PropertyId.ScrollPaddingRight, PropertyId.ScrollPaddingBottom, PropertyId.ScrollPaddingLeft],
         ["overscroll-behavior"] = [PropertyId.OverscrollBehaviorX, PropertyId.OverscrollBehaviorY],
         ["outline"] = [PropertyId.OutlineColor, PropertyId.OutlineStyle, PropertyId.OutlineWidth],
+        ["columns"] = [PropertyId.ColumnWidth, PropertyId.ColumnCount],
+        ["column-rule"] = [PropertyId.ColumnRuleColor, PropertyId.ColumnRuleStyle, PropertyId.ColumnRuleWidth],
         ["text-decoration"] = [PropertyId.TextDecorationLine, PropertyId.TextDecorationStyle, PropertyId.TextDecorationColor, PropertyId.TextDecorationThickness],
         ["list-style"] = [PropertyId.ListStyleType, PropertyId.ListStylePosition, PropertyId.ListStyleImage],
         ["transition"] = [PropertyId.TransitionProperty, PropertyId.TransitionDuration, PropertyId.TransitionTimingFunction, PropertyId.TransitionDelay],

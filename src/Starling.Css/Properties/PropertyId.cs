@@ -100,6 +100,15 @@ public enum PropertyId
     RowGap,
     ColumnGap,
 
+    // Multi-column (CSS Multicol 1)
+    ColumnCount,
+    ColumnWidth,
+    ColumnRuleWidth,
+    ColumnRuleStyle,
+    ColumnRuleColor,
+    ColumnSpan,
+    ColumnFill,
+
     // Sizing
     AspectRatio,
     ObjectFit,
