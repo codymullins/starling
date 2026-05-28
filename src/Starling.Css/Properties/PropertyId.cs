@@ -113,6 +113,10 @@ public enum PropertyId
     AspectRatio,
     ObjectFit,
     ObjectPosition,
+    ContainIntrinsicWidth,
+    ContainIntrinsicHeight,
+    ContainIntrinsicInlineSize,
+    ContainIntrinsicBlockSize,
 
     // Visual effects
     Transform,

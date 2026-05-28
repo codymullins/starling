@@ -183,6 +183,9 @@ public static class PropertyRegistry
             PropertyId.AspectRatio => new CssKeyword("auto"),
             PropertyId.ObjectFit => new CssKeyword("fill"),
             PropertyId.ObjectPosition => new CssKeyword("50% 50%"),
+            // CSS Sizing 4 §4 — contain-intrinsic-size longhands, initial `none`.
+            PropertyId.ContainIntrinsicWidth or PropertyId.ContainIntrinsicHeight
+                or PropertyId.ContainIntrinsicInlineSize or PropertyId.ContainIntrinsicBlockSize => new CssKeyword("none"),
 
             // Visual effects
             PropertyId.Transform or PropertyId.Translate or PropertyId.Scale or PropertyId.Rotate => new CssKeyword("none"),
@@ -383,6 +386,12 @@ public static class PropertyRegistry
                             yield return item;
                     }
                 }
+                break;
+            // CSS Sizing 4 §4 — `contain-intrinsic-size: [ none | <length> ]{1,2}`
+            // sets width then height (one value applies to both).
+            case "contain-intrinsic-size":
+                yield return new PropertyDeclaration(PropertyId.ContainIntrinsicWidth, values[0], important);
+                yield return new PropertyDeclaration(PropertyId.ContainIntrinsicHeight, values.Count > 1 ? values[1] : values[0], important);
                 break;
             // CSS Multicol 1 §7.1 — `columns: <'column-width'> || <'column-count'>`.
             // Each component is `auto` or a length (width) / integer (count).
