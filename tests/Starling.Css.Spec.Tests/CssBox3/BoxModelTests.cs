@@ -335,10 +335,7 @@ public sealed class BoxModelTests
     // -----------------------------------------------------------------------
 
     [Spec("css-box-3", "https://www.w3.org/TR/css-box-3/#propdef-padding", section: "4")]
-    [PendingFact(
-        "negative padding values are accepted by the parser instead of being " +
-        "rejected; CSS Box Model 3 §4 requires padding to be non-negative",
-        trackingWp: "wp:spec-css-box-3")]
+    [SpecFact]
     public void Padding_negative_shorthand_is_rejected()
     {
         // Spec: padding values must be non-negative. A negative value makes the
@@ -351,10 +348,7 @@ public sealed class BoxModelTests
     }
 
     [Spec("css-box-3", "https://www.w3.org/TR/css-box-3/#propdef-padding-top", section: "4")]
-    [PendingFact(
-        "negative padding-top is accepted by the parser instead of being rejected; " +
-        "CSS Box Model 3 §4 requires padding to be non-negative",
-        trackingWp: "wp:spec-css-box-3")]
+    [SpecFact]
     public void Padding_top_negative_longhand_is_rejected()
     {
         var decls = Expand("padding-top: -5px;");

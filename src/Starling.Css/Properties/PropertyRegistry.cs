@@ -364,6 +364,10 @@ public static class PropertyRegistry
                     yield return item;
                 break;
             case "padding":
+                // CSS Box Model 3 §4: padding must be non-negative — a negative
+                // component makes the whole shorthand invalid (dropped).
+                if (values.Any(IsNegativeLengthValue))
+                    break;
                 foreach (var item in Box(PropertyId.PaddingTop, PropertyId.PaddingRight, PropertyId.PaddingBottom, PropertyId.PaddingLeft, values, important))
                     yield return item;
                 break;
@@ -697,10 +701,51 @@ public static class PropertyRegistry
 
             default:
                 if (TryGetPropertyId(name, out var id))
-                    yield return new PropertyDeclaration(id, values.Count == 1 ? values[0] : new CssValueList(values), important);
+                {
+                    var value = values.Count == 1 ? values[0] : new CssValueList(values);
+                    // Drop declarations whose value is invalid for the property
+                    // (CSS Syntax 3 §8.2). Validation is permissive by default —
+                    // see IsValidLonghandValue — so only properties with an
+                    // explicit rule reject anything.
+                    if (values.Count == 1 && !IsValidLonghandValue(id, value))
+                        break;
+                    yield return new PropertyDeclaration(id, value, important);
+                }
                 break;
         }
     }
+
+    // Per-property value validation. Permissive by default (returns true): only
+    // properties with an explicit rule reject values, so adding a rule never
+    // changes behavior for any other property. CSS-wide keywords always pass.
+    private static bool IsValidLonghandValue(PropertyId id, CssValue value)
+    {
+        if (value is CssKeyword { Name: "inherit" or "initial" or "unset" or "revert" or "revert-layer" })
+            return true;
+        return id switch
+        {
+            // CSS Overscroll Behavior 1 §2: auto | contain | none.
+            PropertyId.OverscrollBehaviorX or PropertyId.OverscrollBehaviorY
+                => value is CssKeyword { Name: "auto" or "contain" or "none" },
+            // CSS Box Model 3 §4: padding longhands must be non-negative.
+            PropertyId.PaddingTop or PropertyId.PaddingRight or PropertyId.PaddingBottom or PropertyId.PaddingLeft
+                or PropertyId.PaddingInlineStart or PropertyId.PaddingInlineEnd
+                or PropertyId.PaddingBlockStart or PropertyId.PaddingBlockEnd
+                => !IsNegativeLengthValue(value),
+            _ => true,
+        };
+    }
+
+    // True when the value is a statically-negative length / number / percentage.
+    // calc() and keywords are not statically negative, so they pass.
+    private static bool IsNegativeLengthValue(CssValue value) => value switch
+    {
+        CssLength l => l.Value < 0,
+        CssNumber n => n.Value < 0,
+        CssPercentage p => p.Value < 0,
+        CssDimension d => d.Value < 0,
+        _ => false,
+    };
 
     private static IEnumerable<PropertyDeclaration> Box(
         PropertyId top,
