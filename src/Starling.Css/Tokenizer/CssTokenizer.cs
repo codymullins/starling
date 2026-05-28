@@ -74,7 +74,12 @@ public sealed class CssTokenizer
         {
             Read();
             if (IsName(Peek()) || StartsValidEscape())
-                return new CssToken(CssTokenType.Hash, ConsumeName());
+            {
+                // §4.3.6: type flag is "id" iff the value would start an ident
+                // sequence (decided before consuming the name).
+                var hashIsId = WouldStartIdentifier();
+                return new CssToken(CssTokenType.Hash, ConsumeName(), HashIsId: hashIsId);
+            }
             return new CssToken(CssTokenType.Delim, Delimiter: '#');
         }
         if (c == '\\' && StartsValidEscape())

@@ -795,23 +795,18 @@ public sealed class TokenizerTests
     /// Selectors parser and serializer both rely on this distinction.
     /// </summary>
     [Spec("css-syntax-3", "https://www.w3.org/TR/css-syntax-3/#hash-token-diagram", section: "4.3.6")]
-    [PendingFact("CssToken has no IsId / type-flag field for hash tokens; §4.3.6 id vs unrestricted distinction is not exposed", trackingWp: "wp:spec-css-syntax-3")]
+    [SpecFact]
     public void Hash_id_type_flag_set_for_ident_start_value()
     {
-        // §4.3.6: '#' followed by a name-start code point → type flag = "id"
-        // '#' followed by a digit → type flag = "unrestricted"
-        // The impl produces Hash tokens for both but does not expose the flag.
+        // §4.3.6: '#' followed by a name-start code point → type flag = "id";
+        // '#' followed by a digit → type flag = "unrestricted".
         var idHash = Tok("#main")[0];
         var unrestrictedHash = Tok("#1abc")[0];
 
-        // Both are Hash tokens (already tested above)
         idHash.Type.Should().Be(CssTokenType.Hash);
         unrestrictedHash.Type.Should().Be(CssTokenType.Hash);
 
-        // The type flag should be accessible — currently it is NOT.
-        // When this field is added, uncomment the assertions below:
-        // idHash.IsId.Should().BeTrue();
-        // unrestrictedHash.IsId.Should().BeFalse();
-        throw new AssertInconclusiveException("CssToken.IsId field does not exist; §4.3.6 type flag not implemented");
+        idHash.HashIsId.Should().BeTrue();
+        unrestrictedHash.HashIsId.Should().BeFalse();
     }
 }

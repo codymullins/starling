@@ -7,7 +7,11 @@ public readonly record struct CssToken(
     string Unit = "",
     char Delimiter = '\0',
     bool HasSign = false,
-    bool IsInteger = false)
+    bool IsInteger = false,
+    // CSS Syntax 3 §4.3.6 — a hash token's type flag: true = "id" (the value
+    // would start an ident sequence, e.g. #main), false = "unrestricted"
+    // (e.g. #1abc). Only meaningful when Type == Hash.
+    bool HashIsId = false)
 {
     public override string ToString() => Type switch
     {
