@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Starling.Common.Diagnostics;
 using Starling.Css.Animations;
+using Starling.Css.CounterStyle;
 using Starling.Css.Media;
 using Starling.Css.Parser;
 using Starling.Css.Properties;
@@ -30,6 +31,13 @@ public sealed class StyleEngine
     // positional pseudo-classes (the UA sheet's one `:first-child` is
     // already handled via SharingKey.PreviousElementSiblingTag).
     private bool _sharingDisabled;
+
+    /// <summary>Resolver built from every <c>@counter-style</c> rule in the
+    /// attached stylesheets (CSS Counter Styles 3 §3). Holds the predefined
+    /// styles plus any author-defined ones. Use
+    /// <see cref="CounterStyleResolver.Render(string, int)"/> to turn a counter
+    /// integer into its marker text.</summary>
+    public CounterStyleResolver CounterStyles { get; private set; } = CounterStyleResolver.Default;
 
     public StyleEngine(bool includeUserAgentStyleSheet = true, IDiagnostics? diagnostics = null)
     {
@@ -84,6 +92,7 @@ public sealed class StyleEngine
         if (!_sharingDisabled && SheetUsesUnshareableSelectors(index))
             _sharingDisabled = true;
         RegisterKeyframesFromSheet(sheet);
+        RebuildCounterStyles();
     }
 
     public void RemoveStyleSheet(StyleSheet sheet)
@@ -94,6 +103,16 @@ public sealed class StyleEngine
         // Re-evaluate whether sharing can be re-enabled after removal.
         _sharingDisabled = _sheetIndexes.Values.Any(SheetUsesUnshareableSelectors);
         UnregisterKeyframesFromSheet(sheet);
+        RebuildCounterStyles();
+    }
+
+    private void RebuildCounterStyles()
+    {
+        // CSS Counter Styles 3 §3: later @counter-style definitions of a name
+        // win. Collect across all sheets in add order so the resolver's
+        // last-wins map matches the cascade.
+        var rules = _sheets.SelectMany(CounterStyleParser.ParseAll);
+        CounterStyles = new CounterStyleResolver(rules);
     }
 
     private void RegisterKeyframesFromSheet(StyleSheet sheet)

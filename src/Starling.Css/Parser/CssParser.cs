@@ -151,7 +151,12 @@ public sealed class CssParser
             return new AtRule(name, prelude, [], []);
 
         _position++;
-        if (name.Equals("font-face", StringComparison.OrdinalIgnoreCase))
+        // @font-face (CSS Fonts 3 §4) and @counter-style (CSS Counter Styles 3
+        // §3) both hold a declaration list (their "descriptors") rather than
+        // nested rules. Parse the body as declarations so the strongly-typed
+        // parsers downstream see the descriptors.
+        if (name.Equals("font-face", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("counter-style", StringComparison.OrdinalIgnoreCase))
         {
             var declarations = ParseDeclarationList();
             ConsumeIf(CssTokenType.RightBrace);
