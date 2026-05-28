@@ -22,7 +22,9 @@ public static class CounterStyleParser
         ArgumentNullException.ThrowIfNull(sheet);
         foreach (var rule in sheet.Rules)
         {
-            if (rule is AtRule { Name: "counter-style" } atRule && TryParse(atRule, out var counterStyle))
+            if (rule is AtRule atRule &&
+                string.Equals(atRule.Name, "counter-style", StringComparison.OrdinalIgnoreCase) &&
+                TryParse(atRule, out var counterStyle))
                 yield return counterStyle!;
         }
     }
