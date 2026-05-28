@@ -152,6 +152,8 @@ public enum PropertyId
     ScrollPaddingLeft,
     OverscrollBehaviorX,
     OverscrollBehaviorY,
+    ScrollbarWidth,
+    ScrollbarColor,
 
     // Forms / UI
     AccentColor,

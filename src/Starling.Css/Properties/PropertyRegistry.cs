@@ -42,6 +42,9 @@ public static class PropertyRegistry
         PropertyId.PointerEvents,
         PropertyId.CaretColor,
         PropertyId.ColorScheme,
+        // CSS Scrollbars 1 §3/§4 — scrollbar-width and scrollbar-color are inherited.
+        PropertyId.ScrollbarWidth,
+        PropertyId.ScrollbarColor,
         // CSS Lists 3 §2: list-style-* are inherited so a marker type set on
         // the list container applies to every list item descendant. `quotes`
         // is inherited per CSS Content 3 §5.
@@ -208,6 +211,8 @@ public static class PropertyRegistry
             PropertyId.ScrollMarginTop or PropertyId.ScrollMarginRight or PropertyId.ScrollMarginBottom or PropertyId.ScrollMarginLeft => CssLength.Zero,
             PropertyId.ScrollPaddingTop or PropertyId.ScrollPaddingRight or PropertyId.ScrollPaddingBottom or PropertyId.ScrollPaddingLeft => new CssKeyword("auto"),
             PropertyId.OverscrollBehaviorX or PropertyId.OverscrollBehaviorY => new CssKeyword("auto"),
+            // CSS Scrollbars 1 §3/§4 — both default to `auto`.
+            PropertyId.ScrollbarWidth or PropertyId.ScrollbarColor => new CssKeyword("auto"),
 
             // Forms / UI
             PropertyId.AccentColor or PropertyId.CaretColor => new CssKeyword("auto"),
