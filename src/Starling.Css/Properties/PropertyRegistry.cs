@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using Starling.Css.Parser;
 using Starling.Css.Values;
 
@@ -5,10 +6,13 @@ namespace Starling.Css.Properties;
 
 public static class PropertyRegistry
 {
-    private static readonly Dictionary<string, PropertyId> Names =
-        Enum.GetValues<PropertyId>().ToDictionary(ToCssName, id => id, StringComparer.OrdinalIgnoreCase);
+    // Build-once / read-many name→id table, read on every declaration parse:
+    // FrozenDictionary per the repo C# performance policy (hot lookup path).
+    private static readonly FrozenDictionary<string, PropertyId> Names =
+        Enum.GetValues<PropertyId>().ToFrozenDictionary(ToCssName, id => id, StringComparer.OrdinalIgnoreCase);
 
-    private static readonly HashSet<PropertyId> Inherited =
+    // Build-once / read-many inheritance set, read on every cascade: FrozenSet.
+    private static readonly FrozenSet<PropertyId> Inherited = FrozenSet.ToFrozenSet<PropertyId>(
     [
         PropertyId.Color,
         PropertyId.FontFamily,
@@ -52,7 +56,7 @@ public static class PropertyRegistry
         PropertyId.ListStylePosition,
         PropertyId.ListStyleImage,
         PropertyId.Quotes,
-    ];
+    ]);
 
     public static IReadOnlyList<PropertyId> All { get; } = Enum.GetValues<PropertyId>();
 
