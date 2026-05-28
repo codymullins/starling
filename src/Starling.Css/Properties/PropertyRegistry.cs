@@ -710,6 +710,36 @@ public static class PropertyRegistry
                     yield return item;
                 break;
 
+            // CSS Display 3 §2.1: the two-value `display` syntax
+            // (<display-outside> <display-inside>) is normalized to its
+            // single-keyword legacy equivalent.
+            case "display" when values.Count == 2
+                && values[0] is CssKeyword o && values[1] is CssKeyword inr:
+                {
+                    var (a, b) = (o.Name, inr.Name);
+                    // Accept either order of outer/inner.
+                    var outer = a is "block" or "inline" or "run-in" ? a : b;
+                    var inner = outer == a ? b : a;
+                    var normalized = (outer, inner) switch
+                    {
+                        ("block", "flow") => "block",
+                        ("block", "flow-root") => "flow-root",
+                        ("inline", "flow") => "inline",
+                        ("inline", "flow-root") => "inline-block",
+                        ("block", "flex") => "flex",
+                        ("inline", "flex") => "inline-flex",
+                        ("block", "grid") => "grid",
+                        ("inline", "grid") => "inline-grid",
+                        ("block", "table") => "table",
+                        ("inline", "table") => "inline-table",
+                        _ => null,
+                    };
+                    if (normalized is not null)
+                        yield return new PropertyDeclaration(PropertyId.Display, new CssKeyword(normalized), important);
+                    else
+                        yield return new PropertyDeclaration(PropertyId.Display, new CssValueList(values), important);
+                }
+                break;
             // CSS Compositing 1 §5.2: `background-blend-mode` is a comma-separated
             // list of blend keywords (one per background layer). Split on the
             // top-level comma artifacts so the value is one clean entry per layer.

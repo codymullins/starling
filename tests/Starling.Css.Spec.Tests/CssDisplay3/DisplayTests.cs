@@ -253,8 +253,7 @@ public sealed class DisplayTests
     // ---------------------------------------------------------------------------
 
     [Spec("css-display-3", "https://www.w3.org/TR/css-display-3/#valdef-display-run-in", section: "2")]
-    [PendingFact("run-in display type is not implemented in the Starling layout engine", trackingWp: "wp:spec-css-display-3")]
-    public void Parses_run_in()
+    [SpecFact]    public void Parses_run_in()
     {
         var decl = ParseDisplay("run-in");
         decl.Id.Should().Be(PropertyId.Display);
@@ -266,8 +265,7 @@ public sealed class DisplayTests
     // ---------------------------------------------------------------------------
 
     [Spec("css-display-3", "https://www.w3.org/TR/css-display-3/#typedef-display-outside", section: "2.1")]
-    [PendingFact("Two-value display syntax 'block flow' is not yet supported; the parser stores a CssValueList rather than normalising to a single keyword", trackingWp: "wp:spec-css-display-3")]
-    public void Two_value_block_flow_parses()
+    [SpecFact]    public void Two_value_block_flow_parses()
     {
         // CSS Display 3 §2.1: `block flow` is the canonical two-value form for `display: block`.
         var decl = ParseDisplay("block flow");
@@ -277,8 +275,7 @@ public sealed class DisplayTests
     }
 
     [Spec("css-display-3", "https://www.w3.org/TR/css-display-3/#typedef-display-outside", section: "2.1")]
-    [PendingFact("Two-value display syntax 'inline flow-root' is not yet supported; would map to legacy 'inline-block'", trackingWp: "wp:spec-css-display-3")]
-    public void Two_value_inline_flow_root_maps_to_inline_block()
+    [SpecFact]    public void Two_value_inline_flow_root_maps_to_inline_block()
     {
         // CSS Display 3 §2.1: `inline flow-root` ≡ legacy `inline-block`.
         var decl = ParseDisplay("inline flow-root");
@@ -287,8 +284,7 @@ public sealed class DisplayTests
     }
 
     [Spec("css-display-3", "https://www.w3.org/TR/css-display-3/#typedef-display-outside", section: "2.1")]
-    [PendingFact("Two-value display syntax 'block flex' is not yet supported; would map to legacy 'flex'", trackingWp: "wp:spec-css-display-3")]
-    public void Two_value_block_flex_maps_to_flex()
+    [SpecFact]    public void Two_value_block_flex_maps_to_flex()
     {
         // CSS Display 3 §2.1: `block flex` ≡ legacy `flex`.
         var decl = ParseDisplay("block flex");
@@ -297,8 +293,7 @@ public sealed class DisplayTests
     }
 
     [Spec("css-display-3", "https://www.w3.org/TR/css-display-3/#typedef-display-outside", section: "2.1")]
-    [PendingFact("Two-value display syntax 'inline flex' is not yet supported; would map to legacy 'inline-flex'", trackingWp: "wp:spec-css-display-3")]
-    public void Two_value_inline_flex_maps_to_inline_flex()
+    [SpecFact]    public void Two_value_inline_flex_maps_to_inline_flex()
     {
         // CSS Display 3 §2.1: `inline flex` ≡ legacy `inline-flex`.
         var decl = ParseDisplay("inline flex");
@@ -307,8 +302,7 @@ public sealed class DisplayTests
     }
 
     [Spec("css-display-3", "https://www.w3.org/TR/css-display-3/#typedef-display-outside", section: "2.1")]
-    [PendingFact("Two-value display syntax 'block grid' is not yet supported; would map to legacy 'grid'", trackingWp: "wp:spec-css-display-3")]
-    public void Two_value_block_grid_maps_to_grid()
+    [SpecFact]    public void Two_value_block_grid_maps_to_grid()
     {
         // CSS Display 3 §2.1: `block grid` ≡ legacy `grid`.
         var decl = ParseDisplay("block grid");
@@ -317,8 +311,7 @@ public sealed class DisplayTests
     }
 
     [Spec("css-display-3", "https://www.w3.org/TR/css-display-3/#typedef-display-outside", section: "2.1")]
-    [PendingFact("Two-value display syntax 'inline grid' is not yet supported; would map to legacy 'inline-grid'", trackingWp: "wp:spec-css-display-3")]
-    public void Two_value_inline_grid_maps_to_inline_grid()
+    [SpecFact]    public void Two_value_inline_grid_maps_to_inline_grid()
     {
         // CSS Display 3 §2.1: `inline grid` ≡ legacy `inline-grid`.
         var decl = ParseDisplay("inline grid");
