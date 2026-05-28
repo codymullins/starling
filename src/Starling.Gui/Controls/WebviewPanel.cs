@@ -18,6 +18,7 @@ using Starling.Css.Selectors;
 using Starling.Dom.Events;
 using Starling.Engine;
 using AvColor = Avalonia.Media.Color;
+using DomDocument = Starling.Dom.Document;
 using DomElement = Starling.Dom.Element;
 using DomNode = Starling.Dom.Node;
 using EngineSize = SixLabors.ImageSharp.Size;
@@ -70,6 +71,14 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     private DomElement? _hoverAnchor;
     private Dictionary<DomElement, ComputedStyle>? _hoverOverrides;
 
+    // Per-element scroll offsets for `overflow: scroll | auto` containers
+    // (the in-page sidebar nav, code blocks, etc.). The painter translates
+    // each container's subtree by -offset on every frame; the wheel handler
+    // mutates entries and triggers a repaint. Keyed by DomElement (stable
+    // across in-place relayouts), reset when the Document changes.
+    private readonly Dictionary<DomElement, (double X, double Y)> _scrollOffsets = new();
+    private DomDocument? _scrollOffsetsDocument;
+
     private (double X, double Y)? _selectAnchor;
     private bool _selecting;
     private string _selectionText = string.Empty;
@@ -111,7 +120,7 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         _onLinkActivated = onLinkActivated;
         _onStatus = onStatus;
         _relayout = relayout;
-        _relayoutTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        _relayoutTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
         _relayoutTimer.Tick += (_, _) => RelayoutToViewport();
 
         _pageImage = new Image
@@ -163,6 +172,12 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         _pageCanvas.KeyDown += OnPageKeyDown;
         _pageCanvas.KeyUp += OnPageKeyUp;
         _pageCanvas.TextInput += OnPageTextInput;
+        // Wheel-handling tunnels through the ScrollViewer host: if the
+        // pointer is over an `overflow: scroll | auto` subtree with room to
+        // scroll in the wheel direction, consume the delta locally so the
+        // outer ScrollViewer doesn't also scroll the page. Otherwise let it
+        // bubble normally.
+        _pageCanvas.PointerWheelChanged += OnPageWheel;
 
         // ~60 Hz live-page pump (started only while a page has a JS context).
         _liveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
@@ -191,6 +206,13 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         // resize, sidebar/DevTools toggle) — schedule a debounced re-layout so
         // the page reflows to the new width instead of staying at its old one.
         _scroll.ScrollChanged += OnScrollChanged;
+
+        // ScrollChanged alone misses bare window resizes that don't move the
+        // scroll offset — Avalonia coalesces a same-offset layout pass into a
+        // zero-delta ScrollChanged (or skips it). Listening to SizeChanged on
+        // the ScrollViewer catches the resize directly and triggers the same
+        // debounced relayout so the page reflows to the new viewport width.
+        _scroll.SizeChanged += (_, _) => ScheduleRelayout();
 
         _findEntry = new TextBox
         {
@@ -289,6 +311,16 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         ClearFindHighlight();
         _hoverAnchor = null;
         _hoverOverrides = null;
+
+        // Per-element scroll offsets survive in-place relayouts (window resize
+        // keeps the same Document) but reset on navigation. Tracking the
+        // Document reference lets us distinguish the two without an explicit
+        // signal from MainWindow.
+        if (!ReferenceEquals(_scrollOffsetsDocument, page.Document))
+        {
+            _scrollOffsets.Clear();
+            _scrollOffsetsDocument = page.Document;
+        }
 
         _currentScale = GetRenderScale();
 
@@ -447,6 +479,104 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         return (p.X, p.Y);
     }
 
+    /// <summary>
+    /// Wrap <see cref="BoxHitTester.HitTest(Starling.Layout.Box.BlockBox,double,double,double,double,Func{DomElement,(double,double)}?)"/>
+    /// with the current viewport (page scroll) and per-element scroll-offset
+    /// state so hit-testing sees the same coordinate space the painter uses.
+    /// </summary>
+    private BoxHitTester.HitResult HitTestPage(double x, double y)
+    {
+        if (_currentPage is null) return default;
+        Func<DomElement, (double X, double Y)>? lookup = _scrollOffsets.Count == 0
+            ? null
+            : el => _scrollOffsets.TryGetValue(el, out var off) ? off : (0d, 0d);
+        return BoxHitTester.HitTest(_currentPage.Root, x, y, _scroll.Offset.X, _scroll.Offset.Y, lookup);
+    }
+
+    // Wheel handler: walks the ancestor chain at the pointer to find the
+    // deepest `overflow: scroll | auto` box with room to scroll in the wheel
+    // direction. When found, the box's scroll offset is updated and the page
+    // repainted; the event is marked Handled so the outer ScrollViewer does
+    // not also scroll. Falls through to the outer ScrollViewer otherwise.
+    private void OnPageWheel(object? sender, PointerWheelEventArgs e)
+    {
+        if (_currentPage is null) return;
+        var doc = PointerToDocSpace(e);
+        if (doc is null) return;
+
+        var hit = HitTestPage(doc.Value.X, doc.Value.Y);
+        if (hit.Box is null) return;
+
+        // Wheel deltas in Avalonia are in "lines" (positive = up/right, the
+        // direction the content moves). Multiply to a sensible CSS-px step;
+        // 40 px per line is the platform-default ballpark.
+        const double LinePx = 40d;
+        var dx = -e.Delta.X * LinePx;
+        var dy = -e.Delta.Y * LinePx;
+
+        if (!TryScrollContainer(hit.Box, dx, dy)) return;
+        e.Handled = true;
+        RenderViewportRegion();
+    }
+
+    /// <summary>
+    /// Walk from <paramref name="box"/> up the parent chain looking for a
+    /// scroll container that can absorb a wheel delta of (<paramref name="dx"/>,
+    /// <paramref name="dy"/>) — i.e. its content overflows its frame in the
+    /// requested direction and its current offset isn't already pinned at the
+    /// extreme. Returns true when an offset was updated.
+    /// </summary>
+    private bool TryScrollContainer(LayoutBox box, double dx, double dy)
+    {
+        for (var node = (LayoutBox?)box; node is not null; node = node.Parent)
+        {
+            var style = node.Style;
+            if (style is null || node.Element is not { } el) continue;
+            var scrollsX = IsScrollAxisKeyword(style.Get(PropertyId.OverflowX));
+            var scrollsY = IsScrollAxisKeyword(style.Get(PropertyId.OverflowY));
+            if (!scrollsX && !scrollsY) continue;
+
+            var contentSize = ContentExtent(node);
+            var visibleW = Math.Max(0, node.Frame.Width - node.Padding.Horizontal - node.Border.Horizontal);
+            var visibleH = Math.Max(0, node.Frame.Height - node.Padding.Vertical - node.Border.Vertical);
+            var maxX = scrollsX ? Math.Max(0, contentSize.W - visibleW) : 0;
+            var maxY = scrollsY ? Math.Max(0, contentSize.H - visibleH) : 0;
+            if (maxX <= 0 && maxY <= 0) continue;
+
+            _scrollOffsets.TryGetValue(el, out var current);
+            var newX = Math.Clamp(current.X + (scrollsX ? dx : 0), 0, maxX);
+            var newY = Math.Clamp(current.Y + (scrollsY ? dy : 0), 0, maxY);
+            if (newX == current.X && newY == current.Y) continue; // hit the rail, keep looking
+            _scrollOffsets[el] = (newX, newY);
+            return true;
+        }
+        return false;
+    }
+
+    private static bool IsScrollAxisKeyword(Starling.Css.Values.CssValue? value)
+        => value is Starling.Css.Values.CssKeyword { Name: var n }
+            && (n.Equals("scroll", StringComparison.OrdinalIgnoreCase)
+             || n.Equals("auto", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Bounding extent of <paramref name="box"/>'s in-flow descendants in its
+    /// own content-box coordinates — i.e. how far the scrolled content
+    /// reaches. Children whose frames poke past the box's visible width/height
+    /// give us the scroll-extent maxima.
+    /// </summary>
+    private static (double W, double H) ContentExtent(LayoutBox box)
+    {
+        double maxX = 0, maxY = 0;
+        foreach (var child in box.Children)
+        {
+            var right = child.Frame.X + child.Frame.Width;
+            var bottom = child.Frame.Y + child.Frame.Height;
+            if (right > maxX) maxX = right;
+            if (bottom > maxY) maxY = bottom;
+        }
+        return (maxX, maxY);
+    }
+
     private void OnPointerMoved(object? sender, PointerEventArgs e)
     {
         if (_currentPage is null) return;
@@ -459,7 +589,7 @@ internal sealed class WebviewPanel : UserControl, IDisposable
             return;
         }
 
-        UpdateHover(BoxHitTester.HitTest(_currentPage.Root, doc.Value.X, doc.Value.Y));
+        UpdateHover(HitTestPage(doc.Value.X, doc.Value.Y));
     }
 
     /// <summary>Applies the cursor and CSS <c>:hover</c> state for a hit, and
@@ -542,7 +672,7 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     /// </summary>
     private (bool Handled, string Detail) PerformClick((double X, double Y) doc)
     {
-        var hit = BoxHitTester.HitTest(_currentPage!.Root, doc.X, doc.Y);
+        var hit = HitTestPage(doc.X, doc.Y);
 
         if (FindFocusableInput(hit.Box) is { } field)
         {
@@ -1141,7 +1271,7 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     {
         if (_currentPage is null) return new InputResult(false, "no page is loaded");
 
-        var hit = BoxHitTester.HitTest(_currentPage.Root, x, y);
+        var hit = HitTestPage(x, y);
         UpdateHover(hit);
         DispatchMouseMove((x, y), FindClickTarget(hit.Box));
 
@@ -1406,8 +1536,11 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         // that run inside a live navigation keep their (non-stopped) parent and nest.
         if (Activity.Current is { IsStopped: true })
             Activity.Current = null;
+        Func<DomElement, (double X, double Y)>? scrollLookup = _scrollOffsets.Count == 0
+            ? null
+            : el => _scrollOffsets.TryGetValue(el, out var off) ? off : (0d, 0d);
         using (_diag.Span("gui", "render"))
-            rendered = _renderer.Render(_currentPage.Root, (float)_currentScale, styleOverride, _currentPage.ImageResolver, viewport, _currentPage.DisplayListVersion);
+            rendered = _renderer.Render(_currentPage.Root, (float)_currentScale, styleOverride, _currentPage.ImageResolver, viewport, _currentPage.DisplayListVersion, scrollLookup);
         WriteableBitmap bmp;
         using (rendered)
             bmp = BitmapBridge.ToWriteableBitmap(rendered, _currentScale);

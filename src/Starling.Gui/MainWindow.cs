@@ -714,7 +714,17 @@ public sealed class MainWindow : Window, IBrowserController
         if (_busy) return null;
         try
         {
-            return _session.RelayoutCurrent(page, BuildOptionsFor(viewport));
+            var relaid = _session.RelayoutCurrent(page, BuildOptionsFor(viewport));
+            // The webview will swap to `relaid`; keep _lastShownPage in sync so
+            // tools that screenshot/inspect the current view (browser_screenshot,
+            // browser_inspect, status-bar info) see the reflowed page rather than
+            // the navigation-time one.
+            _lastShownPage = relaid;
+            _statusBar.SetInfo(
+                view: $"{relaid.Viewport.Width}×{relaid.Viewport.Height}",
+                doc: $"{(int)relaid.DocumentHeight} px",
+                hist: HistoryLabel());
+            return relaid;
         }
         catch (Exception ex)
         {
@@ -856,6 +866,32 @@ public sealed class MainWindow : Window, IBrowserController
 
     public Task<BrowserControlResult> TypeTextFromToolAsync(string text, bool submit, CancellationToken ct)
         => InputTool("type", () => _webview.TypeText(text, submit));
+
+    public Task<BrowserControlResult> ResizeFromToolAsync(double width, double height, CancellationToken ct)
+    {
+        if (!double.IsFinite(width) || !double.IsFinite(height) || width <= 0 || height <= 0)
+            return Task.FromResult(Snapshot(success: false,
+                error: $"browser_resize requires positive finite width/height; got {width}x{height}."));
+        try
+        {
+            // Setting Width/Height has no effect while the window is maximized
+            // or full-screen — drop back to Normal first so the assignment sticks
+            // and the WebviewPanel sees a Bounds change that triggers reflow.
+            if (WindowState != WindowState.Normal)
+                WindowState = WindowState.Normal;
+
+            var w = Math.Max(width, MinWidth);
+            var h = Math.Max(height, MinHeight);
+            Width = w;
+            Height = h;
+            return Task.FromResult(Snapshot(success: true, detail: $"resized to {w}x{h} DIPs"));
+        }
+        catch (Exception ex)
+        {
+            _diag.Log(DiagLevel.Warn, "gui", $"resize failed: {ex.Message}");
+            return Task.FromResult(Snapshot(success: false, error: $"resize failed: {ex.Message}"));
+        }
+    }
 
     // Shared shell for the synthetic-input tools: guards page presence, runs the
     // panel action on the (already UI-thread) call, and maps its InputResult onto

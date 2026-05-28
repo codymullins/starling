@@ -1,3 +1,4 @@
+using Starling.Css.Cascade;
 using Starling.Css.Properties;
 using Starling.Css.Values;
 using Starling.Layout.Box;
@@ -50,18 +51,80 @@ public static class BoxHitTester
     /// empty result when the point misses every painted box.
     /// </summary>
     public static HitResult HitTest(BlockBox root, double x, double y)
+        => HitTest(root, x, y, viewportX: 0, viewportY: 0, scrollOffsets: null);
+
+    /// <summary>
+    /// Hit-tests <paramref name="root"/> at the given page-coordinate point.
+    /// The walk mirrors the painter so the result matches what the user sees:
+    /// <c>position: fixed</c> subtrees are anchored to the viewport
+    /// (<paramref name="viewportX"/>, <paramref name="viewportY"/> = the page
+    /// scroll offset), and <c>overflow: scroll | auto</c> containers translate
+    /// their descendants by their per-element scroll offset from
+    /// <paramref name="scrollOffsets"/>. Both transformations match
+    /// <see cref="Starling.Paint.DisplayList.DisplayListBuilder"/> so a click
+    /// on a painted pixel lands on the box that painted that pixel.
+    /// </summary>
+    public static HitResult HitTest(BlockBox root, double x, double y, double viewportX, double viewportY, Func<DomElement, (double X, double Y)>? scrollOffsets)
     {
         ArgumentNullException.ThrowIfNull(root);
-        var hit = FindDeepest(root, x, y, originX: 0, originY: 0);
-        if (hit is null)
+
+        // CSS positioning §9.9: `position: fixed` (and absolute) subtrees paint
+        // in their own stacking layer, ABOVE in-flow siblings. The flat
+        // tree-order walk below would always prefer later siblings (typically
+        // the main content area), so clicks on the painted-on-top fixed
+        // sidebar would steal-into the main-frame underneath. Collect every
+        // fixed subtree once and test them in reverse paint order before
+        // falling back to the in-flow walk; the first hit wins.
+        var fixedRoots = new List<(Box Root, double OriginX, double OriginY)>();
+        CollectFixedRoots(root, originX: 0, originY: 0, fixedRoots);
+        for (var i = fixedRoots.Count - 1; i >= 0; i--)
+        {
+            var fr = fixedRoots[i];
+            var hit = FindDeepest(fr.Root, x, y, fr.OriginX, fr.OriginY, viewportX, viewportY, scrollOffsets);
+            if (hit is not null)
+                return new HitResult(hit, FindLinkAnchor(hit));
+        }
+
+        var inflowHit = FindDeepest(root, x, y, originX: 0, originY: 0, viewportX, viewportY, scrollOffsets);
+        if (inflowHit is null)
             return new HitResult(null, null);
-        return new HitResult(hit, FindLinkAnchor(hit));
+        return new HitResult(inflowHit, FindLinkAnchor(inflowHit));
     }
 
-    private static Box? FindDeepest(Box box, double x, double y, double originX, double originY)
+    /// <summary>
+    /// Walks the box tree once to find every <c>position: fixed</c> subtree
+    /// root, recording the page-coord origin its parent would have passed to a
+    /// <see cref="FindDeepest"/> recursion so the fixed pass can resume from
+    /// exactly the spot the in-flow pass would have started from.
+    /// </summary>
+    private static void CollectFixedRoots(Box box, double originX, double originY, List<(Box Root, double OriginX, double OriginY)> sink)
+    {
+        if (IsFixedPositioned(box))
+            sink.Add((box, originX, originY));
+
+        var frameX = originX + box.Frame.X;
+        var frameY = originY + box.Frame.Y;
+        var contentX = frameX + box.Border.Left + box.Padding.Left;
+        var contentY = frameY + box.Border.Top + box.Padding.Top;
+        foreach (var child in box.Children)
+            CollectFixedRoots(child, contentX, contentY, sink);
+    }
+
+    private static Box? FindDeepest(Box box, double x, double y, double originX, double originY, double viewportX, double viewportY, Func<DomElement, (double X, double Y)>? scrollOffsets)
     {
         var frameX = originX + box.Frame.X;
         var frameY = originY + box.Frame.Y;
+
+        // Mirror the painter: `position: fixed` boxes are anchored to the
+        // viewport, so layout placed them in viewport-relative coords. The
+        // painter rebases them by the viewport origin (= page scroll); the
+        // hit-test does the same so a click on the painted-to-viewport box
+        // matches its (newly translated) frame.
+        if (IsFixedPositioned(box))
+        {
+            frameX += viewportX;
+            frameY += viewportY;
+        }
 
         var insideSelf = x >= frameX && x < frameX + box.Frame.Width
             && y >= frameY && y < frameY + box.Frame.Height;
@@ -87,16 +150,41 @@ public static class BoxHitTester
         var contentX = frameX + box.Border.Left + box.Padding.Left;
         var contentY = frameY + box.Border.Top + box.Padding.Top;
 
+        // `overflow: scroll | auto` containers translate their children by
+        // (-X, -Y) at paint time so the scrolled-to portion lines up with the
+        // container's box. Same translation in hit-test space so the painted
+        // children remain clickable at their painted positions.
+        if (scrollOffsets is not null && box.Element is { } el && IsScrollContainer(box))
+        {
+            var off = scrollOffsets(el);
+            contentX -= off.X;
+            contentY -= off.Y;
+        }
+
         // Last child wins ties — later siblings paint on top.
         for (var i = box.Children.Count - 1; i >= 0; i--)
         {
-            var childHit = FindDeepest(box.Children[i], x, y, contentX, contentY);
+            var childHit = FindDeepest(box.Children[i], x, y, contentX, contentY, viewportX, viewportY, scrollOffsets);
             if (childHit is not null)
                 return childHit;
         }
 
         return insideSelf ? box : null;
     }
+
+    private static bool IsFixedPositioned(Box box)
+        => box.Style?.Get(PropertyId.Position) is CssKeyword k
+           && k.Name.Equals("fixed", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsScrollContainer(Box box)
+        => box.Style is { } style
+           && (IsScrollKeyword(style.Get(PropertyId.OverflowX))
+            || IsScrollKeyword(style.Get(PropertyId.OverflowY)));
+
+    private static bool IsScrollKeyword(CssValue? value)
+        => value is CssKeyword { Name: var n }
+           && (n.Equals("scroll", StringComparison.OrdinalIgnoreCase)
+            || n.Equals("auto", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Walks a box's ancestors looking for an enclosing <c>&lt;a&gt;</c>. The

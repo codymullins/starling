@@ -32,7 +32,8 @@ public sealed class BrowserTools : IMcpToolGroup
             or "browser_inspect"
             or "browser_click"
             or "browser_move"
-            or "browser_type" => true,
+            or "browser_type"
+            or "browser_resize" => true,
         _ => false,
     };
 
@@ -62,6 +63,10 @@ public sealed class BrowserTools : IMcpToolGroup
             "browser_type" => await _browser.TypeTextAsync(
                 McpArgumentReader.ReadString(arguments, "text"),
                 McpArgumentReader.ReadBool(arguments, "submit"),
+                ct).ConfigureAwait(false),
+            "browser_resize" => await _browser.ResizeAsync(
+                McpArgumentReader.ReadDouble(arguments, "width"),
+                McpArgumentReader.ReadDouble(arguments, "height"),
                 ct).ConfigureAwait(false),
             _ => throw new ArgumentException($"Unknown browser tool: {name}", nameof(name)),
         };
@@ -180,6 +185,18 @@ public sealed class BrowserTools : IMcpToolGroup
                 "submit": { "type": "boolean", "description": "Press Enter after typing to submit the owning form. Defaults to false." }
               },
               "required": ["text"]
+            }
+          },
+          {
+            "name": "browser_resize",
+            "description": "Resize the visible Starling browser window. Width and height are device-independent pixels (DIPs). The window's min size is honored — smaller requests clamp up. If the window is maximized/fullscreen it is restored first. The page reflows to the new viewport; the applied size is returned in `detail`.",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "width": { "type": "number", "description": "Window width in DIPs. Clamped to the window's MinWidth." },
+                "height": { "type": "number", "description": "Window height in DIPs. Clamped to the window's MinHeight." }
+              },
+              "required": ["width", "height"]
             }
           }
         ]

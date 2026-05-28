@@ -53,6 +53,9 @@ public sealed class BrowserControlBridge
     public Task<BrowserControlResult> TypeTextAsync(string text, bool submit, CancellationToken ct)
         => InvokeAsync(controller => controller.TypeTextFromToolAsync(text, submit, ct), ct);
 
+    public Task<BrowserControlResult> ResizeAsync(double width, double height, CancellationToken ct)
+        => InvokeAsync(controller => controller.ResizeFromToolAsync(width, height, ct), ct);
+
     private async Task<BrowserControlResult> InvokeAsync(
         Func<IBrowserController, Task<BrowserControlResult>> action,
         CancellationToken ct)
