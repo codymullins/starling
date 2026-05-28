@@ -86,7 +86,7 @@ tests that have started passing — when one does, promote it from
 | CSS Values & Units L4 | https://www.w3.org/TR/css-values-4/ | ✅ | `CssValues4/` (130 SpecFact: keywords/numbers/percentages/all unit dims + conversions/calc fold incl. time+frequency/math fns) | — |
 | CSS Cascade & Inheritance L5 | https://www.w3.org/TR/css-cascade-5/ | ✅ | `CssCascade5/` (47 SpecFact: specificity/origin+importance/@layer incl. nested sub-layer ordering §6.4.2/CSS-wide keywords/`all`/inheritance via `Compute`) | — |
 | CSS Custom Properties L1 | https://www.w3.org/TR/css-variables-1/ | ✅ | `CssVariables1/` (21 SpecFact) — `--*` token-stream preservation, `var()` substitution + nested/partial/comma fallback in shorthands, §3.3 cycle detection, §3.2 IACVT (inherited→parent / non-inherited→initial), empty-value semantics | — |
-| CSS Conditional L5 (`@media`, `@supports`) | https://www.w3.org/TR/css-conditional-5/ | 🟢 | `CssConditional5/` (81 SpecFact: media types/modifiers/features/range syntax/`and`/`or`; `@supports` prop/`not`/`and`/`or`/`selector()`) | 2 gaps → `wp:spec-css-conditional-5`: `@supports` accepts invalid property values + `selector()` accepts invalid selectors (no value/selector validation) |
+| CSS Conditional L5 (`@media`, `@supports`) | https://www.w3.org/TR/css-conditional-5/ | ✅ | `CssConditional5/` (83 SpecFact): media types/modifiers/features/range syntax/`and`/`or`; `@supports` prop/`not`/`and`/`or`/`selector()` incl. invalid-value + invalid-selector rejection | — |
 | CSS Nesting L1 | https://www.w3.org/TR/css-nesting-1/ | ✅ | `CssNesting1/` (27 SpecFact: `&` descendant/compound/pseudo/`:is()`-semantics, implicit nesting w/ combinators, nested `@media`/`@supports`, 3-deep, decl-ordering, specificity, `@layer` interaction) | — |
 | Selectors L4 | https://www.w3.org/TR/selectors-4/ | 🟢 | `Selectors4/` (89 SpecFact: all attr operators + `i` flag, 4 combinators, full structural/`nth` suite incl. `of S`, `:is`/`:where`/`:not`/`:has`) | 7 gaps → `wp:spec-selectors-4`: form-validation pseudos (`:valid`/`:invalid`/`:in-range`/`:out-of-range`/`:autofill`/`:user-*`), `:lang()` comma-list, `:focus-visible` heuristic |
 | CSS Scoping (`@scope`) | https://www.w3.org/TR/css-cascade-6/#scoped-styles | 🟢 | `CssScope1/`, `src/Starling.Css/Scope/` — `@scope (start) [to (end)]` at-rule parse: bounds + scoped inner rules (`wp:spec-css-scope-1`); scoping proximity cascade step not implemented | `wp:spec-css-scope-1` |
@@ -207,21 +207,21 @@ stale — the matrix has always held more rows than that.
 | | Count |
 |---|---|
 | Specs catalogued | 67 |
-| ✅ Implemented | 17 |
-| 🟢 In progress | 45 |
+| ✅ Implemented | 18 |
+| 🟢 In progress | 44 |
 | 🟡 Scaffolded only | 0 |
 | 🔴 Not started (in scope, no work yet) | 0 |
 | 🚫 v1-deferred (the seven buckets) | 5 rows + MathML Core + print specs |
 
 In-scope total: **62 specs** (67 rows − 5 deferred rows). The two non-row
 deferrals (MathML Core, print specs) are not catalogued as CSS spec rows. So
-the v1 work ahead is **17 done (✅), 45 in progress (🟢), 0 not-started (🔴)**.
+the v1 work ahead is **18 done (✅), 44 in progress (🟢), 0 not-started (🔴)**.
 Every in-scope spec has landed `[Spec]` coverage at the parse / cascade / model
 level; the 15 ✅ are fully conformant (Position 3, Flexbox 1, Transitions 1,
 Counter Styles 3, Syntax 3, Values 4, Cascade 5, Custom Properties 1, Nesting 1,
 Color 4, Logical 1, Transforms 1, Animations 1, Box Model 3, Overscroll Behavior 1,
-Easing 1, Fonts 4). The remaining lift to drive the
-45 🟢 → ✅ is the behavior/paint layer + JS-OM bindings + the per-spec gaps the
+Easing 1, Fonts 4, Conditional 5). The remaining lift to drive the
+44 🟢 → ✅ is the behavior/paint layer + JS-OM bindings + the per-spec gaps the
 conformance suites surfaced — many of which cluster on a single **per-property
 value-validation** fix (rejecting invalid keywords/values), tracked in
 `tasks/spec/wp-spec-css-v1-*.md`.
