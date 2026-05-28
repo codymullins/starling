@@ -112,9 +112,9 @@ tests that have started passing — when one does, promote it from
 | Spec | URL | Status | Folder | Tracking WP |
 |---|---|---|---|---|
 | CSS 2.2 (block/inline/floats/margin-collapse) | https://www.w3.org/TR/CSS22/ | 🟢 | `Starling.Layout.Tests` (partial; `[Spec("css2", ...)]` for §10.1/§10.5) | `wp:spec-css-22-layout` |
-| CSS Display 3 | https://www.w3.org/TR/css-display-3/ | 🟢 | legacy — gaps in `display: contents`, `flow-root` | `wp:spec-css-display-3` |
+| CSS Display 3 | https://www.w3.org/TR/css-display-3/ | 🟢 | `CssDisplay3/` (64 SpecFact): all display values parse+compute, UA defaults, two-value syntax normalization (`block flex`→`flex` etc.) | 3 gaps → `wp:spec-css-display-3`: UA `tr`/`td`/`tbody` use block/inline-block approximations + `run-in` — need a table formatting context |
 | CSS Box Model 3 | https://www.w3.org/TR/css-box-3/ | ✅ | `CssBox3/` (57 SpecFact): margin/padding 1-4-value shorthands + longhands + units/auto/negative-margin/%, box-sizing, initial/inheritance, negative-padding rejection (§4) | — |
-| CSS Sizing 3 | https://www.w3.org/TR/css-sizing-3/ | 🟢 | legacy — intrinsic sizing untested; percentage-vs-indefinite-CB covered (`LayoutEngineTests.Percentage_height_*`, `[Spec("css-sizing-3", §5.1)]`) | `wp:spec-css-sizing-3` |
+| CSS Sizing 3 | https://www.w3.org/TR/css-sizing-3/ | 🟢 | `CssSizing3/` (55 SpecFact): width/height/min/max parse+compute, intrinsic keywords (`min-content`/`max-content`/`fit-content`/`stretch`) parse | 5 gaps → `wp:spec-css-sizing-3`: intrinsic keywords not resolved in the layout engine |
 | CSS Sizing 4 (`contain-intrinsic-size`) | https://www.w3.org/TR/css-sizing-4/ | 🟢 | `CssSizing4/` — aspect-ratio + contain-intrinsic-width/height/size longhands & shorthand parse (`wp:spec-css-sizing-4`); size-containment placeholder behavior not implemented | `wp:spec-css-sizing-4` |
 | CSS Position 3 | https://www.w3.org/TR/css-position-3/ | ✅ | `Starling.Layout.Tests/Position` | — |
 | CSS Flexbox 1 | https://www.w3.org/TR/css-flexbox-1/ | ✅ | `Starling.Layout.Tests/Flex`, `FlexPropertyTests`; definite-cross-size covered (`LayoutEngineTests.Percentage_height_threads_through_flex_item_cross_size`, `[Spec("css-flexbox-1", §9.8)]`) | — |
@@ -153,10 +153,10 @@ tests that have started passing — when one does, promote it from
 | Spec | URL | Status | Folder | Tracking WP |
 |---|---|---|---|---|
 | CSS Basic UI 4 | https://www.w3.org/TR/css-ui-4/ | 🟢 | `CssUi4/` — outline (shorthand + longhands)/outline-offset/resize/text-overflow/caret-color/accent-color/appearance/cursor parse + cascade (`wp:spec-css-ui-4`); outline painting + text-overflow rendering not implemented | `wp:spec-css-ui-4` |
-| CSS Pseudo 4 | https://www.w3.org/TR/css-pseudo-4/ | 🟢 | `PseudoElementTests` (legacy) — `::backdrop`, `::marker`, `::file-selector-button` untested | `wp:spec-css-pseudo-4` |
+| CSS Pseudo 4 | https://www.w3.org/TR/css-pseudo-4/ | ✅ | `CssPseudo4/` (63 SpecFact): all named pseudo-elements (`::`+legacy `:`), compound-ordering errors, pseudo-class chaining, specificity, match-context filtering, `::part()`/`::slotted()` functional kinds | — |
 | CSS Lists 3 | https://www.w3.org/TR/css-lists-3/ | 🟢 | `CssLists3/`, `Starling.Layout.Tests/ListMarkerTests` — list-style-type markers (disc/decimal/alpha/roman…) (`wp:M5-css-16`); marker `inside`/image deferred | `wp:spec-css-lists-3` |
 | CSS Counter Styles 3 (`@counter-style`) | https://www.w3.org/TR/css-counter-styles-3/ | ✅ | `CssCounterStyles3/` (25 tests), `src/Starling.Css/CounterStyle/` — `@counter-style` at-rule + all systems (cyclic/fixed/symbolic/alphabetic/numeric/additive/extends) + every descriptor incl. multi-range + `infinite` bounds + predefined styles; engine-wired (`StyleEngine.CounterStyles`) + consumed by layout (`ListMarker`). (`<image>` symbols render as marker images — that painting is a CSS Lists 3 / layout concern, not counter-string generation.) | — |
-| CSS Generated Content 3 | https://www.w3.org/TR/css-content-3/ | 🟢 | `CssContent3/`, `Starling.Layout.Tests/GeneratedContentLayoutTests` — `content` on `::before`/`::after` (string/attr()) (`wp:M5-css-16`); counters/quotes deferred | `wp:spec-css-content-3` |
+| CSS Generated Content 3 | https://www.w3.org/TR/css-content-3/ | 🟢 | `CssContent3/` (38 SpecFact): `content` (string/attr/url/quote-keywords/counter()) + `quotes` parse/cascade/inheritance, `::before`/`::after` | 2 gaps → `wp:spec-css-content-3`: open/close-quote glyph rendering + counter() compute-time evaluation |
 | CSS Speech 1 | https://www.w3.org/TR/css-speech-1/ | 🚫 | v1-deferred 2026-05-27 | — |
 | CSS Ruby 1 | https://www.w3.org/TR/css-ruby-1/ | 🚫 | v1-deferred 2026-05-27 | — |
 
@@ -207,21 +207,21 @@ stale — the matrix has always held more rows than that.
 | | Count |
 |---|---|
 | Specs catalogued | 67 |
-| ✅ Implemented | 19 |
-| 🟢 In progress | 43 |
+| ✅ Implemented | 20 |
+| 🟢 In progress | 42 |
 | 🟡 Scaffolded only | 0 |
 | 🔴 Not started (in scope, no work yet) | 0 |
 | 🚫 v1-deferred (the seven buckets) | 5 rows + MathML Core + print specs |
 
 In-scope total: **62 specs** (67 rows − 5 deferred rows). The two non-row
 deferrals (MathML Core, print specs) are not catalogued as CSS spec rows. So
-the v1 work ahead is **19 done (✅), 43 in progress (🟢), 0 not-started (🔴)**.
+the v1 work ahead is **20 done (✅), 42 in progress (🟢), 0 not-started (🔴)**.
 Every in-scope spec has landed `[Spec]` coverage at the parse / cascade / model
 level; the 15 ✅ are fully conformant (Position 3, Flexbox 1, Transitions 1,
 Counter Styles 3, Syntax 3, Values 4, Cascade 5, Custom Properties 1, Nesting 1,
 Color 4, Logical 1, Transforms 1, Animations 1, Box Model 3, Overscroll Behavior 1,
-Easing 1, Fonts 4, Conditional 5, Compositing 1). The remaining lift to drive the
-43 🟢 → ✅ is the behavior/paint layer + JS-OM bindings + the per-spec gaps the
+Easing 1, Fonts 4, Conditional 5, Compositing 1, Pseudo 4). The remaining lift to drive the
+42 🟢 → ✅ is the behavior/paint layer + JS-OM bindings + the per-spec gaps the
 conformance suites surfaced — many of which cluster on a single **per-property
 value-validation** fix (rejecting invalid keywords/values), tracked in
 `tasks/spec/wp-spec-css-v1-*.md`.
