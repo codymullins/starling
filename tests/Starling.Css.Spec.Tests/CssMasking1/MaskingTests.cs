@@ -218,13 +218,22 @@ public sealed class MaskingTests
 
     // ----- mask shorthand (§7.5) ----------------------------------------
 
-    [PendingFact("mask shorthand not implemented — no `mask` PropertyId or shorthand expander; " +
-                 "only the mask-* longhands exist",
-                 trackingWp: "wp:spec-css-masking-1")]
+    [Spec("css-masking-1", "https://www.w3.org/TR/css-masking-1/#the-mask", section: "7.5")]
+    [SpecFact]
     public void Mask_shorthand_sets_longhands()
     {
         // mask: url(m.svg) luminance 10px 20px / cover no-repeat content-box border-box add;
         // → mask-image/-mode/-position/-size/-repeat/-origin/-clip/-composite per §7.5.
-        throw new NotImplementedException();
+        var decls = Expand("mask: url(m.svg) luminance 10px 20px / cover no-repeat content-box border-box add");
+
+        decls.Single(d => d.Id == PropertyId.MaskImage).Value.Should().BeOfType<CssUrl>();
+        decls.Single(d => d.Id == PropertyId.MaskMode).Value.Should().Be(new CssKeyword("luminance"));
+        decls.Single(d => d.Id == PropertyId.MaskRepeat).Value.Should().Be(new CssKeyword("no-repeat"));
+        decls.Single(d => d.Id == PropertyId.MaskOrigin).Value.Should().Be(new CssKeyword("content-box"));
+        decls.Single(d => d.Id == PropertyId.MaskClip).Value.Should().Be(new CssKeyword("border-box"));
+        decls.Single(d => d.Id == PropertyId.MaskComposite).Value.Should().Be(new CssKeyword("add"));
+        decls.Single(d => d.Id == PropertyId.MaskSize).Value.Should().Be(new CssKeyword("cover"));
+        // Position carries the two length components (10px 20px).
+        decls.Single(d => d.Id == PropertyId.MaskPosition).Value.Should().BeOfType<CssValueList>();
     }
 }

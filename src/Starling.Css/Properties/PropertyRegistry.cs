@@ -380,6 +380,10 @@ public static class PropertyRegistry
                 foreach (var item in ExpandBackground(values, important))
                     yield return item;
                 break;
+            case "mask":
+                foreach (var item in ExpandMask(values, important))
+                    yield return item;
+                break;
             case "border":
                 foreach (var value in values)
                 {
@@ -858,6 +862,69 @@ public static class PropertyRegistry
             clip);
         return (layer, color);
     }
+
+    /// <summary>
+    /// CSS Masking 1 §7.5 — the <c>mask</c> shorthand sets the eight mask-* longhands.
+    /// Single-layer support: classifies each component and resets omitted longhands to
+    /// their initial value. The optional <c>&lt;position&gt; [ / &lt;size&gt; ]?</c> is
+    /// slash-separated; two geometry-box keywords set mask-origin then mask-clip.
+    /// </summary>
+    private static IEnumerable<PropertyDeclaration> ExpandMask(List<CssValue> values, bool important)
+    {
+        CssValue? image = null, mode = null, repeat = null, composite = null;
+        var boxes = new List<CssValue>();
+        var positionValues = new List<CssValue>();
+        var sizeValues = new List<CssValue>();
+        var afterSlash = false;
+
+        foreach (var v in values)
+        {
+            if (v is CssKeyword { Name: "/" }) { afterSlash = true; continue; }
+            if (afterSlash)
+            {
+                if (IsBackgroundSizeComponent(v)) { sizeValues.Add(v); continue; }
+                afterSlash = false;
+            }
+
+            if (image is null && IsBackgroundImage(v))
+                image = v;
+            else if (mode is null && v is CssKeyword mk && IsMaskModeKeyword(mk.Name))
+                mode = v;
+            else if (repeat is null && v is CssKeyword rk && IsBackgroundRepeatKeyword(rk.Name))
+                repeat = v;
+            else if (composite is null && v is CssKeyword ck && IsMaskCompositeKeyword(ck.Name))
+                composite = v;
+            else if (v is CssKeyword bk && IsMaskGeometryBoxKeyword(bk.Name))
+                boxes.Add(v);
+            else if (v is CssLength or CssPercentage or CssNumber
+                || (v is CssKeyword pk && IsBackgroundPositionKeyword(pk.Name)))
+                positionValues.Add(v);
+        }
+
+        var size = sizeValues.Count switch { 0 => new CssKeyword("auto"), 1 => sizeValues[0], _ => new CssValueList(sizeValues) };
+        CssValue position = positionValues.Count switch { 0 => new CssKeyword("0% 0%"), 1 => positionValues[0], _ => new CssValueList(positionValues) };
+        var origin = boxes.Count > 0 ? boxes[0] : new CssKeyword("border-box");
+        var clip = boxes.Count > 1 ? boxes[1] : (boxes.Count == 1 ? boxes[0] : new CssKeyword("border-box"));
+
+        yield return new PropertyDeclaration(PropertyId.MaskImage, image ?? new CssKeyword("none"), important);
+        yield return new PropertyDeclaration(PropertyId.MaskMode, mode ?? new CssKeyword("match-source"), important);
+        yield return new PropertyDeclaration(PropertyId.MaskPosition, position, important);
+        yield return new PropertyDeclaration(PropertyId.MaskSize, size, important);
+        yield return new PropertyDeclaration(PropertyId.MaskRepeat, repeat ?? new CssKeyword("repeat"), important);
+        yield return new PropertyDeclaration(PropertyId.MaskOrigin, origin, important);
+        yield return new PropertyDeclaration(PropertyId.MaskClip, clip, important);
+        yield return new PropertyDeclaration(PropertyId.MaskComposite, composite ?? new CssKeyword("add"), important);
+    }
+
+    private static bool IsMaskModeKeyword(string name)
+        => name is "alpha" or "luminance" or "match-source";
+
+    private static bool IsMaskCompositeKeyword(string name)
+        => name is "add" or "subtract" or "intersect" or "exclude";
+
+    private static bool IsMaskGeometryBoxKeyword(string name)
+        => name is "border-box" or "padding-box" or "content-box"
+            or "fill-box" or "stroke-box" or "view-box" or "no-clip";
 
     private static bool IsBackgroundImage(CssValue v)
         => v is CssUrl
@@ -1450,6 +1517,7 @@ public static class PropertyRegistry
         ["scroll-padding"] = [PropertyId.ScrollPaddingTop, PropertyId.ScrollPaddingRight, PropertyId.ScrollPaddingBottom, PropertyId.ScrollPaddingLeft],
         ["overscroll-behavior"] = [PropertyId.OverscrollBehaviorX, PropertyId.OverscrollBehaviorY],
         ["outline"] = [PropertyId.OutlineColor, PropertyId.OutlineStyle, PropertyId.OutlineWidth],
+        ["mask"] = [PropertyId.MaskImage, PropertyId.MaskMode, PropertyId.MaskPosition, PropertyId.MaskSize, PropertyId.MaskRepeat, PropertyId.MaskOrigin, PropertyId.MaskClip, PropertyId.MaskComposite],
         ["columns"] = [PropertyId.ColumnWidth, PropertyId.ColumnCount],
         ["column-rule"] = [PropertyId.ColumnRuleColor, PropertyId.ColumnRuleStyle, PropertyId.ColumnRuleWidth],
         ["text-decoration"] = [PropertyId.TextDecorationLine, PropertyId.TextDecorationStyle, PropertyId.TextDecorationColor, PropertyId.TextDecorationThickness],
