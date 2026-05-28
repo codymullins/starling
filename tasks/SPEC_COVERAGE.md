@@ -85,7 +85,7 @@ tests that have started passing — when one does, promote it from
 | CSS Syntax L3 | https://www.w3.org/TR/css-syntax-3/ | 🟢 | `Starling.Css.Tests/CssTokenizerTests`, `CssParserTests` (legacy unit) — needs `Starling.Css.Spec.Tests/CssSyntax3/` | `wp:spec-css-syntax-3` |
 | CSS Values & Units L4 | https://www.w3.org/TR/css-values-4/ | 🟢 | legacy — needs `Starling.Css.Spec.Tests/CssValues4/` | `wp:spec-css-values-4` |
 | CSS Cascade & Inheritance L5 | https://www.w3.org/TR/css-cascade-5/ | 🟢 | legacy — needs `Starling.Css.Spec.Tests/CssCascade5/` | `wp:spec-css-cascade-5` |
-| CSS Custom Properties L1 | https://www.w3.org/TR/css-variables-1/ | 🟡 | `Starling.Css.Spec.Tests/CssVariables1/` | `wp:spec-css-variables-1` |
+| CSS Custom Properties L1 | https://www.w3.org/TR/css-variables-1/ | 🟢 | `Starling.Css.Spec.Tests/CssVariables1/` — `--*` token-stream preservation, `var()` substitution + nested fallback, §3.3 cycle detection done (`wp:spec-css-variables-1`) | `wp:spec-css-variables-1` |
 | CSS Conditional L5 (`@media`, `@supports`) | https://www.w3.org/TR/css-conditional-5/ | 🟢 | legacy | `wp:spec-css-conditional-5` |
 | CSS Nesting L1 | https://www.w3.org/TR/css-nesting-1/ | 🟢 | `Starling.Css.Tests/NestingTests` (legacy) | `wp:spec-css-nesting-1` |
 | Selectors L4 | https://www.w3.org/TR/selectors-4/ | 🟢 | legacy — needs `Selectors4/` | `wp:spec-selectors-4` |
@@ -96,7 +96,7 @@ tests that have started passing — when one does, promote it from
 | Spec | URL | Status | Folder | Tracking WP |
 |---|---|---|---|---|
 | CSS Color 4 | https://www.w3.org/TR/css-color-4/ | 🟢 | legacy (`ColorFunctionTests`, `GamutMappingTests`) | `wp:spec-css-color-4` |
-| CSS Color 5 (color-mix, relative) | https://www.w3.org/TR/css-color-5/ | 🟡 | `CssColor5/` | `wp:spec-css-color-5-relative` |
+| CSS Color 5 (color-mix, relative) | https://www.w3.org/TR/css-color-5/ | 🟢 | `CssColor5/` — relative color syntax `rgb(from …)`/`oklch(from …)` done (`wp:spec-css-color-5-relative`); `color-mix()` still untested | `wp:spec-css-color-5-relative` |
 | CSS Color HDR 6 | https://www.w3.org/TR/css-color-hdr/ | 🚫 | v1-deferred 2026-05-27 | — |
 | CSS Color Adjust 1 (`color-scheme`, `forced-colors`) | https://www.w3.org/TR/css-color-adjust-1/ | 🚫 | v1-deferred 2026-05-27 | — |
 | CSS Fonts 4 | https://www.w3.org/TR/css-fonts-4/ | 🟢 | legacy (`FontFaceParserTests`) — gaps in `font-variation-settings`, `font-feature-settings`, `size-adjust` | `wp:spec-css-fonts-4` |
@@ -132,7 +132,7 @@ tests that have started passing — when one does, promote it from
 
 | Spec | URL | Status | Folder | Tracking WP |
 |---|---|---|---|---|
-| CSS Backgrounds & Borders 3 | https://www.w3.org/TR/css-backgrounds-3/ | 🟢 | `CssBackgrounds3/` (`BorderRadiusTests`, `BoxShadowTests`), `Starling.Paint.Tests/RoundedRectAndShadowTests` — border-radius painted + box-shadow (`wp:M5-css-14`); inset shadow deferred | `wp:spec-css-backgrounds-3` |
+| CSS Backgrounds & Borders 3 | https://www.w3.org/TR/css-backgrounds-3/ | 🟢 | `CssBackgrounds3/` (`BorderRadiusTests`, `BoxShadowTests`, `BackgroundShorthandTests`), `Starling.Paint.Tests/RoundedRectAndShadowTests` — border-radius painted + box-shadow (`wp:M5-css-14`); `background` shorthand single+multi-layer expansion done (`wp:spec-css-backgrounds-3`); inset shadow deferred | `wp:spec-css-backgrounds-3` |
 | CSS Backgrounds & Borders 4 | https://www.w3.org/TR/css-backgrounds-4/ | 🔴 | — | `wp:spec-css-backgrounds-4` |
 | CSS Images 3 | https://www.w3.org/TR/css-images-3/ | 🟢 | `CssImages3/`, `Starling.Paint.Tests/GradientPaintTests` — linear/radial gradients parsed + painted (`wp:M5-css-13`); conic + `object-fit` deferred | `wp:spec-css-images-3` |
 | CSS Images 4 (`image-set()`, `cross-fade()`) | https://www.w3.org/TR/css-images-4/ | 🔴 | — | `wp:spec-css-images-4` |
@@ -208,8 +208,8 @@ stale — the matrix has always held more rows than that.
 |---|---|
 | Specs catalogued | 67 |
 | ✅ Implemented | 3 |
-| 🟢 In progress | 25 |
-| 🟡 Scaffolded only | 2 |
+| 🟢 In progress | 27 |
+| 🟡 Scaffolded only | 0 |
 | 🔴 Not started (in scope, no work yet) | 32 |
 | 🚫 v1-deferred (the seven buckets) | 5 rows + MathML Core + print specs |
 
