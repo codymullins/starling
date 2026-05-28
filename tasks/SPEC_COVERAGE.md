@@ -174,7 +174,7 @@ tests that have started passing — when one does, promote it from
 
 | Spec | URL | Status | Folder | Tracking WP |
 |---|---|---|---|---|
-| CSSOM | https://drafts.csswg.org/cssom/ | 🔴 | — | `wp:spec-cssom` |
+| CSSOM | https://drafts.csswg.org/cssom/ | 🟢 | `CssCssom1/`, `src/Starling.Css/Cssom/` — CSSStyleDeclaration §6.4 (setProperty/getPropertyValue/priority/removeProperty/item/length/cssText) behavioral tests (`wp:spec-cssom`); CSSStyleSheet/CSSRule OM + live bindings surface partially covered | `wp:spec-cssom` |
 | CSSOM View | https://drafts.csswg.org/cssom-view/ | 🔴 | — | `wp:spec-cssom-view` |
 | CSS Properties & Values API L1 (`@property`) | https://www.w3.org/TR/css-properties-values-api-1/ | 🔴 | — | `wp:spec-css-properties-values-api-1` |
 | CSS Typed OM 1 | https://www.w3.org/TR/css-typed-om-1/ | 🔴 | — | `wp:spec-css-typed-om-1` |
@@ -208,9 +208,9 @@ stale — the matrix has always held more rows than that.
 |---|---|
 | Specs catalogued | 67 |
 | ✅ Implemented | 3 |
-| 🟢 In progress | 48 |
+| 🟢 In progress | 49 |
 | 🟡 Scaffolded only | 0 |
-| 🔴 Not started (in scope, no work yet) | 11 |
+| 🔴 Not started (in scope, no work yet) | 10 |
 | 🚫 v1-deferred (the seven buckets) | 5 rows + MathML Core + print specs |
 
 In-scope total: **62 specs** (67 rows − 5 deferred rows). The two non-row
