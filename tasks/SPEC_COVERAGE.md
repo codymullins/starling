@@ -126,7 +126,7 @@ tests that have started passing — when one does, promote it from
 | CSS Overflow 3 | https://www.w3.org/TR/css-overflow-3/ | 🟢 | `CssOverflow3/` — overflow shorthand + overflow-x/y + overflow-clip-margin + scrollbar-gutter parse + cascade (`wp:spec-css-overflow-3`); clip/scroll behavior partially in layout, gutter reservation not implemented | `wp:spec-css-overflow-3` |
 | CSS Containment 2 | https://www.w3.org/TR/css-contain-2/ | 🟢 | `CssContain2/` — contain (none/strict/content/size/layout/style/paint/inline-size + combos) + content-visibility parse + cascade (`wp:spec-css-contain-2`); containment layout effects not implemented | `wp:spec-css-contain-2` |
 | CSS Container Queries 1 | https://www.w3.org/TR/css-contain-3/ | 🟢 | `CssContain3/`, `src/Starling.Css/Container/` — `@container` at-rule parse: optional name + condition (incl. range syntax) + conditional rules; container-type/name props (`wp:spec-css-contain-3`); query evaluation against container size not implemented | `wp:spec-css-contain-3` |
-| CSS Anchor Positioning 1 | https://www.w3.org/TR/css-anchor-position-1/ | 🔴 | — | `wp:spec-css-anchor-position-1` |
+| CSS Anchor Positioning 1 | https://www.w3.org/TR/css-anchor-position-1/ | 🟢 | `CssAnchorPosition1/` — anchor-name/position-anchor/position-area/anchor-scope parse + cascade (`wp:spec-css-anchor-position-1`); anchor() value fn + anchor-relative layout not implemented | `wp:spec-css-anchor-position-1` |
 
 ## Visual / paint
 
@@ -146,7 +146,7 @@ tests that have started passing — when one does, promote it from
 | CSS Scrollbars 1 | https://www.w3.org/TR/css-scrollbars-1/ | 🟢 | `CssScrollbars1/` — scrollbar-width/scrollbar-color properties parse + cascade/inheritance (`wp:spec-css-scrollbars-1`); scrollbar painting not implemented | `wp:spec-css-scrollbars-1` |
 | CSS Overscroll Behavior 1 | https://www.w3.org/TR/css-overscroll-1/ | 🟢 | `CssOverscroll1/` — overscroll-behavior-x/y + shorthand parse + cascade (`wp:spec-css-overscroll-1`); invalid-keyword rejection pending (no per-property value validation) | `wp:spec-css-overscroll-1` |
 | CSS View Transitions 1 | https://www.w3.org/TR/css-view-transitions-1/ | 🔴 | — | `wp:spec-css-view-transitions-1` |
-| CSS Scroll-Driven Animations 1 | https://www.w3.org/TR/scroll-animations-1/ | 🔴 | — | `wp:spec-scroll-animations-1` |
+| CSS Scroll-Driven Animations 1 | https://www.w3.org/TR/scroll-animations-1/ | 🟢 | `CssScrollAnimations1/` — scroll-timeline-name/axis + view-timeline-name/axis/inset + timeline-scope + shorthands parse + cascade (`wp:spec-scroll-animations-1`); scroll-progress timeline driving not implemented | `wp:spec-scroll-animations-1` |
 
 ## UI / interaction
 
@@ -208,9 +208,9 @@ stale — the matrix has always held more rows than that.
 |---|---|
 | Specs catalogued | 67 |
 | ✅ Implemented | 3 |
-| 🟢 In progress | 52 |
+| 🟢 In progress | 54 |
 | 🟡 Scaffolded only | 0 |
-| 🔴 Not started (in scope, no work yet) | 7 |
+| 🔴 Not started (in scope, no work yet) | 5 |
 | 🚫 v1-deferred (the seven buckets) | 5 rows + MathML Core + print specs |
 
 In-scope total: **62 specs** (67 rows − 5 deferred rows). The two non-row
