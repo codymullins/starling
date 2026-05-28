@@ -100,7 +100,7 @@ tests that have started passing — when one does, promote it from
 | CSS Color HDR 6 | https://www.w3.org/TR/css-color-hdr/ | 🚫 | v1-deferred 2026-05-27 | — |
 | CSS Color Adjust 1 (`color-scheme`, `forced-colors`) | https://www.w3.org/TR/css-color-adjust-1/ | 🚫 | v1-deferred 2026-05-27 | — |
 | CSS Fonts 4 | https://www.w3.org/TR/css-fonts-4/ | 🟢 | legacy (`FontFaceParserTests`) — gaps in `font-variation-settings`, `font-feature-settings`, `size-adjust` | `wp:spec-css-fonts-4` |
-| CSS Font Loading 3 (`document.fonts`) | https://www.w3.org/TR/css-font-loading-3/ | 🔴 | — | `wp:spec-css-font-loading-3` |
+| CSS Font Loading 3 (`document.fonts`) | https://www.w3.org/TR/css-font-loading-3/ | 🟢 | `CssFontLoading3/`, `src/Starling.Css/FontLoading/` — `FontFace` (incl. `FromRule(@font-face)`) + `FontFaceLoadStatus`, `FontFaceSet` (add/delete/has/count/status/`check()`) (`wp:spec-css-font-loading-3`); real async load + `ready`/events + `document.fonts` JS binding remain (async fetch lives in `Starling.Engine.FontFaceFetcher`) | `wp:spec-css-font-loading-3` |
 | CSS Text 3 | https://www.w3.org/TR/css-text-3/ | 🟢 | `Starling.Layout.Tests/CssText3InlineTests`, `Starling.Css.Spec.Tests/CssText3/` — white-space pre*/transform/spacing/indent/tab-size/wrap applied (`wp:M5-css-12`) | `wp:spec-css-text-3` |
 | CSS Text 4 | https://www.w3.org/TR/css-text-4/ | 🟢 | `CssText4/` — L4 property additions (word-break/overflow-wrap/line-break/hyphens/text-wrap/text-align-last/tab-size) parse + cascade (`wp:spec-css-text-4`); layout behaviors (balance/pretty wrapping) not implemented | `wp:spec-css-text-4` |
 | CSS Text Decoration 3 | https://www.w3.org/TR/css-text-decor-3/ | 🟢 | `Starling.Css.Spec.Tests/CssTextDecor3/`, `Starling.Paint.Tests` — line/style/color/thickness + text-shadow painted (`wp:M5-css-15`); skip-ink/underline-position deferred | `wp:spec-css-text-decor-3` |
@@ -208,13 +208,14 @@ stale — the matrix has always held more rows than that.
 |---|---|
 | Specs catalogued | 67 |
 | ✅ Implemented | 4 |
-| 🟢 In progress | 57 |
+| 🟢 In progress | 58 |
 | 🟡 Scaffolded only | 0 |
-| 🔴 Not started (in scope, no work yet) | 1 |
+| 🔴 Not started (in scope, no work yet) | 0 |
 | 🚫 v1-deferred (the seven buckets) | 5 rows + MathML Core + print specs |
 
 In-scope total: **62 specs** (67 rows − 5 deferred rows). The two non-row
 deferrals (MathML Core, print specs) are not catalogued as CSS spec rows. So
-the v1 work ahead is **4 done (✅), 58 to go** — of which 57 are 🟢 (parse +
-cascade conformance landed; behavior/OM layer remains) and 1 is 🔴
-(font-loading — in progress this session).
+the v1 work ahead is **4 done (✅), 58 in progress (🟢), 0 not-started (🔴)**.
+Every in-scope spec now has landed `[Spec]` coverage at the parse / cascade /
+model level. The remaining lift to drive the 58 🟢 → ✅ is the behavior/paint
+layer + JS-OM bindings, tracked in `tasks/spec/wp-spec-css-v1-*.md`.
