@@ -237,8 +237,9 @@ Parallel review track for targeted module audits. Each package records
 ## Spec conformance (ongoing — CSS-V1)
 
 Driving every in-scope CSS spec to ✅ per `tasks/SPEC_COVERAGE.md`. The
-parse/cascade + at-rule-parse tier is largely done (matrix: 🔴 down to 4, all
-JS-OM). These three packages cover the remaining work to reach ✅.
+parse/cascade + at-rule-parse + OM-model tier is **done — 🔴 is now 0** (every
+in-scope spec ≥ 🟢, 4 at ✅). These packages cover the remaining lift (behavior/
+paint layer + JS bindings) to drive the 58 🟢 → ✅.
 
 | ID | Status | Owner | Subsystem |
 |---|---|---|---|

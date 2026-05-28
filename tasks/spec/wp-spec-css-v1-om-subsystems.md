@@ -22,27 +22,33 @@ Bindings.Tests work, **not** fresh-base worktree fan-out (see memory
 
 ## The four specs + current state
 
-1. **CSSOM View** (`cssom-view`) — geometry OM. `getBoundingClientRect` already
-   exists (`src/Starling.Bindings/NodeBindings.cs`, `Starling.Engine/BoxLayoutHost.cs`,
-   `ILayoutHost.cs`). Remaining: scroll offsets (`scrollX/Y`, `scrollTop/Left`,
-   `scrollWidth/Height`, `clientWidth/Height`), `DOMRect`/`getClientRects`,
-   `Element.scrollIntoView`, `Window.matchMedia` (the media evaluator exists —
-   wire it to a `MediaQueryList`). **Most tractable** — write `[Spec("cssom-view")]`
-   behavioral tests in the project that drives the JS host + layout.
+All four now have a landed model/parse slice (🟢, audited + integrated this
+session via sonnet subagents). What remains for each is the JS-binding /
+behavioral layer.
 
-2. **Web Animations 1** (`web-animations-1`) — the WAAPI object model
-   (`Animation`, `KeyframeEffect`, `Element.animate`, `getAnimations`). The
-   animation *engine* exists (`AnimationEngineTests`) but not the OM. Needs JS
-   bindings over the existing engine.
+1. **CSSOM View** (`cssom-view`) — 🟢 model: `DOMRectReadOnly`/`DOMRect`
+   geometry (spec-correct edge derivation) in `src/Starling.Css/CssomView/`.
+   Remaining: have `getBoundingClientRect` (`src/Starling.Bindings/NodeBindings.cs`,
+   `Starling.Engine/BoxLayoutHost.cs`, `ILayoutHost.cs`) return this type; scroll
+   offsets (`scrollX/Y`, `scrollTop/Left`, `scrollWidth/Height`,
+   `clientWidth/Height`), `getClientRects`, `Element.scrollIntoView`,
+   `Window.matchMedia` → `MediaQueryList` (the media evaluator exists).
 
-3. **CSS Typed OM 1** (`css-typed-om-1`) — 🟢 DONE (model): `CSSStyleValue`/
+2. **Web Animations 1** (`web-animations-1`) — 🟢 model: the §4 timing model
+   (`EffectTiming`→`ComputeProgress`→`ComputedTiming`) in
+   `src/Starling.Css/WebAnimations/`. Remaining: the JS WAAPI OM (`Animation`,
+   `KeyframeEffect`, `Element.animate`, `getAnimations`) over the existing engine.
+
+3. **CSS Typed OM 1** (`css-typed-om-1`) — 🟢 model: `CSSStyleValue`/
    `CSSNumericValue`/`CSSUnitValue`/`CSSKeywordValue`/`CSSUnparsedValue` +
    `CSSStyleValue.parse()` in `src/Starling.Css/TypedOm/`. Remaining: numeric
    math ops + JS `attributeStyleMap`/`computedStyleMap` bindings.
 
-4. **CSS Font Loading 3** (`css-font-loading-3`) — `document.fonts`
-   (`FontFaceSet`, `FontFace`, `.load()`, `.ready`, `.check()`). Unimplemented;
-   needs JS bindings over `@font-face` parsing + the font subsystem.
+4. **CSS Font Loading 3** (`css-font-loading-3`) — 🟢 model: `FontFace`
+   (incl. `FromRule(@font-face)`) + `FontFaceSet` (add/delete/has/count/status/
+   `check()`) in `src/Starling.Css/FontLoading/`. Remaining: real async load +
+   `ready`/events + `document.fonts` JS binding (async fetch already lives in
+   `Starling.Engine.FontFaceFetcher`).
 
 ## Approach
 
