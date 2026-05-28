@@ -729,7 +729,7 @@ public static class PropertyRegistry
     // Per-property value validation. Permissive by default (returns true): only
     // properties with an explicit rule reject values, so adding a rule never
     // changes behavior for any other property. CSS-wide keywords always pass.
-    private static bool IsValidLonghandValue(PropertyId id, CssValue value)
+    internal static bool IsValidLonghandValue(PropertyId id, CssValue value)
     {
         if (value is CssKeyword { Name: "inherit" or "initial" or "unset" or "revert" or "revert-layer" })
             return true;

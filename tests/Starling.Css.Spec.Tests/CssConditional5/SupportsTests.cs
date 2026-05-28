@@ -76,9 +76,7 @@ public sealed class SupportsTests
     /// that yields at least one parsed longhand, even with bogus value tokens.</para>
     /// </summary>
     [Spec("css-conditional-5", "https://www.w3.org/TR/css-conditional-5/#at-supports-ext")]
-    [PendingFact(
-        "SupportsEvaluator accepts any value for a known property without full value validation; should return false for invalid values",
-        trackingWp: "wp:spec-css-conditional-5")]
+    [SpecFact]
     public void Known_property_invalid_value_is_not_supported()
     {
         // The spec requires that `@supports (color: not-a-valid-color-ever-12345)` evaluates to false
@@ -335,9 +333,7 @@ public sealed class SupportsTests
     /// This probes whether the implementation rejects a genuinely invalid selector.</para>
     /// </summary>
     [Spec("css-conditional-5", "https://www.w3.org/TR/css-conditional-5/#supports-selector")]
-    [PendingFact(
-        "selector() with a syntax error should return false; the selector parser may not reject all invalid forms yet",
-        trackingWp: "wp:spec-css-conditional-5")]
+    [SpecFact]
     public void Selector_function_invalid_selector_is_false()
     {
         // A bare `&` is not valid outside nesting context; the parser should fail on it.

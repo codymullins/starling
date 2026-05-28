@@ -2,6 +2,7 @@ using Starling.Css.Parser;
 using Starling.Css.Properties;
 using Starling.Css.Selectors;
 using Starling.Css.Tokenizer;
+using Starling.Css.Values;
 
 namespace Starling.Css.Cascade;
 
@@ -111,15 +112,35 @@ public static class SupportsEvaluator
             return true;
 
         // Try the property registry — yields longhands for shorthands like `margin`.
+        // CSS Conditional 5 §2.2: the declaration is "supported" only when the
+        // value is actually valid for the property, not merely tokenizable.
         try
         {
             var decl = new CssDeclaration(name, valueTokens, false);
-            return PropertyRegistry.Parse(decl).Any();
+            var parsed = PropertyRegistry.Parse(decl).ToList();
+            return parsed.Count > 0 && parsed.All(IsSupportedValue);
         }
         catch
         {
             return false;
         }
+    }
+
+    // CSS Conditional 5 §2.2: a declaration is supported only when its value is
+    // valid for the property. Permissive by default (via the registry's
+    // longhand validator); `color` is additionally checked here — and only here,
+    // not on the normal parse path — so that dynamic forms like attr()/color-mix()
+    // still parse normally while `@supports (color: <garbage>)` reports false.
+    private static bool IsSupportedValue(PropertyDeclaration d)
+    {
+        if (d.Id == PropertyId.Color)
+            return d.Value is CssColor
+                || d.Value is CssKeyword
+                {
+                    Name: "currentcolor" or "transparent"
+                        or "inherit" or "initial" or "unset" or "revert" or "revert-layer"
+                };
+        return PropertyRegistry.IsValidLonghandValue(d.Id, d.Value);
     }
 
     private static bool EvaluateFunction(CssFunction fn)
@@ -141,6 +162,10 @@ public static class SupportsEvaluator
 
     private static bool EvaluateSelectorTest(IReadOnlyList<CssComponentValue> values)
     {
+        // The nesting selector `&` is only valid inside a style rule; in a
+        // standalone `selector()` test it is not a valid selector, so reject it.
+        if (values.Any(v => v is CssTokenValue { Token: { Type: CssTokenType.Delim, Delimiter: '&' } }))
+            return false;
         try
         {
             var list = SelectorParser.ParseSelectorList(values);
