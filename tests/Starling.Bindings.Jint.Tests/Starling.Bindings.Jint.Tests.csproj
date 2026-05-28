@@ -9,6 +9,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Starling.Bindings.Jint\Starling.Bindings.Jint.csproj" />
+    <ProjectReference Include="..\Starling.Spec.Common\Starling.Spec.Common.csproj" />
     <ProjectReference Include="..\..\src\Starling.Dom\Starling.Dom.csproj" />
     <ProjectReference Include="..\..\src\Starling.Html\Starling.Html.csproj" />
     <ProjectReference Include="..\..\src\Starling.Net\Starling.Net.csproj" />
