@@ -1,0 +1,26 @@
+# Codecov config. The coverage checks are informational only — they post the
+# numbers on each pull request but never fail the build. Starling is early and
+# coverage will swing a lot, so a hard gate would just be noise for now.
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+        informational: true
+    patch:
+      default:
+        informational: true
+
+# The pull-request comment is the per-PR coverage summary.
+comment:
+  layout: "reach, diff, flags, files"
+  require_changes: false
+
+# Coverage comes from the engine code under src/. Drop everything that is not
+# product code so the numbers track the engine, not the harness.
+ignore:
+  - "tests/**"
+  - "bench/**"
+  - "tools/**"
+  - "lib/**"

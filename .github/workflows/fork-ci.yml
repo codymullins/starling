@@ -71,9 +71,18 @@ jobs:
           SIXLABORS_LICENSE_KEY: ${{ secrets.SIXLABORS_LICENSE_KEY }}
         run: dotnet build --no-restore -c Release
       - name: Test (unit)
-        run: dotnet test --no-build -c Release --logger "trx;LogFileName=test.trx"
+        # Mirrors ci.yml: collect cobertura coverage for the Codecov upload.
+        run: dotnet test --no-build -c Release --logger "trx;LogFileName=test.trx" --collect:"Code Coverage;Format=cobertura"
       - name: Test (golden-image)
         run: dotnet test --no-build -c Release --filter Category=GoldenImage
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        if: always()
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: '**/*.cobertura.xml'
+          flags: unittests
+          fail_ci_if_error: false
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()

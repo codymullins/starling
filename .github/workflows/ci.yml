@@ -37,7 +37,12 @@ jobs:
       - name: Build
         run: dotnet build --no-restore -c Release
       - name: Test (unit)
-        run: dotnet test --no-build -c Release --logger "trx;LogFileName=test.trx"
+        # Collect line/branch coverage as cobertura for the Codecov upload
+        # below. dotnet test runs these MTP test apps through the VSTest bridge,
+        # so the VSTest-style --collect is the data collector that fires (the
+        # native MTP --coverage flag is ignored in this mode). The collector
+        # ships with the MSTest meta-package, so no extra dependency is needed.
+        run: dotnet test --no-build -c Release --logger "trx;LogFileName=test.trx" --collect:"Code Coverage;Format=cobertura"
       - name: Test (Jint alt-engine — Engine suite under STARLING_JS_ENGINE=jint)
         # The default test run above exercises the in-house Starling.Js backend.
         # Jint is a runtime-selectable alternative (a temporary compat crutch);
@@ -49,6 +54,17 @@ jobs:
         run: dotnet test tests/Starling.Engine.Tests/Starling.Engine.Tests.csproj --no-build -c Release --logger "trx;LogFileName=test-jint.trx"
       - name: Test (golden-image)
         run: dotnet test --no-build -c Release --filter Category=GoldenImage
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        # Coverage comes from the unit step above. Upload it even if a later
+        # test step failed so the report still lands. A Codecov outage must not
+        # fail the build, so fail_ci_if_error stays false.
+        if: always()
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: '**/*.cobertura.xml'
+          flags: unittests
+          fail_ci_if_error: false
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()

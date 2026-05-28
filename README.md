@@ -31,6 +31,7 @@ _Last updated: 2026-05-25_
 | Area | Status |
 |---|---|
 | [Overall](browser-plan/00_INDEX.md) | [![Experimental](https://img.shields.io/badge/status-experimental-red)](browser-plan/13_MILESTONES.md) |
+| [Code coverage](https://codecov.io/gh/starling-browser/starling) | [![codecov](https://codecov.io/gh/starling-browser/starling/graph/badge.svg)](https://codecov.io/gh/starling-browser/starling) |
 | [ECMAScript](browser-plan/09_JS_ENGINE.md) | [![Test262](https://img.shields.io/badge/Test262_language-95%25-brightgreen)](tests/Starling.Js.Test262.Tests/README.md) |
 | [Web Platform](browser-plan/12_TESTING.md) | [![WPT](https://img.shields.io/badge/WPT-25%25-orange)](tests/Starling.Wpt.Tests/README.md) |
 | [DOM](browser-plan/05_DOM.md) | [![DOM](https://img.shields.io/badge/DOM-partial-yellow)](tests/Starling.Dom.Tests/README.md) |
