@@ -284,6 +284,13 @@ public static class PropertyRegistry
             // CSS Animations 2 §3 — scroll/view timeline + range.
             PropertyId.AnimationTimeline => new CssKeyword("auto"),
             PropertyId.AnimationRangeStart or PropertyId.AnimationRangeEnd => new CssKeyword("normal"),
+            // CSS Scroll-Driven Animations 1 §2-§4.
+            PropertyId.ScrollTimelineName or PropertyId.ViewTimelineName or PropertyId.TimelineScope => new CssKeyword("none"),
+            PropertyId.ScrollTimelineAxis or PropertyId.ViewTimelineAxis => new CssKeyword("block"),
+            PropertyId.ViewTimelineInset => new CssKeyword("auto"),
+            // CSS Anchor Positioning 1 §2-§5.
+            PropertyId.AnchorName or PropertyId.PositionArea or PropertyId.AnchorScope => new CssKeyword("none"),
+            PropertyId.PositionAnchor => new CssKeyword("auto"),
 
             // Generated content + lists
             // CSS Content 3 §2.1 — `content` initial is `normal` (computes to
@@ -403,6 +410,16 @@ public static class PropertyRegistry
                             yield return item;
                     }
                 }
+                break;
+            // CSS Scroll-Driven Animations 1 §3.1 — `scroll-timeline: <name> <axis>?`.
+            case "scroll-timeline":
+                yield return new PropertyDeclaration(PropertyId.ScrollTimelineName, values[0], important);
+                yield return new PropertyDeclaration(PropertyId.ScrollTimelineAxis, values.Count > 1 ? values[1] : new CssKeyword("block"), important);
+                break;
+            // CSS Scroll-Driven Animations 1 §4.1 — `view-timeline: <name> <axis>?`.
+            case "view-timeline":
+                yield return new PropertyDeclaration(PropertyId.ViewTimelineName, values[0], important);
+                yield return new PropertyDeclaration(PropertyId.ViewTimelineAxis, values.Count > 1 ? values[1] : new CssKeyword("block"), important);
                 break;
             // CSS Sizing 4 §4 — `contain-intrinsic-size: [ none | <length> ]{1,2}`
             // sets width then height (one value applies to both).
@@ -1518,6 +1535,8 @@ public static class PropertyRegistry
         ["overscroll-behavior"] = [PropertyId.OverscrollBehaviorX, PropertyId.OverscrollBehaviorY],
         ["outline"] = [PropertyId.OutlineColor, PropertyId.OutlineStyle, PropertyId.OutlineWidth],
         ["mask"] = [PropertyId.MaskImage, PropertyId.MaskMode, PropertyId.MaskPosition, PropertyId.MaskSize, PropertyId.MaskRepeat, PropertyId.MaskOrigin, PropertyId.MaskClip, PropertyId.MaskComposite],
+        ["scroll-timeline"] = [PropertyId.ScrollTimelineName, PropertyId.ScrollTimelineAxis],
+        ["view-timeline"] = [PropertyId.ViewTimelineName, PropertyId.ViewTimelineAxis],
         ["columns"] = [PropertyId.ColumnWidth, PropertyId.ColumnCount],
         ["column-rule"] = [PropertyId.ColumnRuleColor, PropertyId.ColumnRuleStyle, PropertyId.ColumnRuleWidth],
         ["text-decoration"] = [PropertyId.TextDecorationLine, PropertyId.TextDecorationStyle, PropertyId.TextDecorationColor, PropertyId.TextDecorationThickness],

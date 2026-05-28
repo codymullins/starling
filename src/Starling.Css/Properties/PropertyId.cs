@@ -289,6 +289,20 @@ public enum PropertyId
     AnimationRangeStart,
     AnimationRangeEnd,
 
+    // Scroll-driven animations (CSS Scroll-Driven Animations 1)
+    ScrollTimelineName,
+    ScrollTimelineAxis,
+    ViewTimelineName,
+    ViewTimelineAxis,
+    ViewTimelineInset,
+    TimelineScope,
+
+    // Anchor positioning (CSS Anchor Positioning 1)
+    AnchorName,
+    PositionAnchor,
+    PositionArea,
+    AnchorScope,
+
     // Visual effects (appended): box shadow
     BoxShadow,
     // Generated content + lists (CSS Content 3, CSS Lists 3)
