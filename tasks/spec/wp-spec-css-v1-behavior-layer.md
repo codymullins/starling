@@ -37,6 +37,32 @@ These have parsers but are not consumed by `StyleEngine`/layout. The seam is the
   conditionally apply the inner rules.
 - **`@view-transition`** (`ViewTransitionParser`) — hook `navigation` to the
   navigation/paint path (depends on view-transition capture).
+- **`@container`** size queries already EVALUATE (`StyleEngine.ContainerQueryMatches`);
+  what remains is **named-container matching** (the lookup only reports size, not
+  `container-name` — needs the engine to expose ancestor container-names) and
+  **`style()` queries**.
+
+## Scoped next step — intrinsic block sizing (Sizing 3, fully analyzed)
+
+`width: min-content | max-content | fit-content | fit-content(<len>)` all PARSE
+(stored as `CssKeyword`/`CssFunctionValue`) but `BlockLayout.ContentWidth`
+(BlockLayout.cs ~439) sends unknown width keywords through the `_ => null` arm of
+`ResolveLength`, i.e. they currently fill like `auto` (correct only for
+`stretch`). To resolve them:
+- Reuse the flex pattern (`FlexLayout.NaturalWidth`): lay the box out at a huge
+  width with `measure: true`, then read its content extent — that is
+  **max-content**; lay out at width 0 for **min-content**; `fit-content` =
+  `clamp(min-content, stretch, max-content)`.
+- The hard part is **re-entrancy**: `ContentWidth` runs during layout, so the
+  intrinsic measure must use a non-re-entrant measurement helper (don't re-trigger
+  width resolution). Add `BlockLayout.MeasureIntrinsicWidth(box, mode)` and call it
+  from `ContentWidth` only when `width` is an intrinsic keyword.
+- Tests MUST live in `Starling.Layout.Tests` (assert box dimensions) — the
+  `Starling.Css.Spec.Tests/CssSizing3/` project references only `Starling.Css` and
+  cannot exercise layout, so its current `Layout_resolves_*` PendingFacts are
+  parse-only placeholders. Add `[Spec("css-sizing-3")]` behavioral tests in the
+  layout project, then this drives sizing-3 (and intrinsic sizing for flex/grid)
+  toward ✅. Verify the full 211-test layout suite stays green (core width path).
 
 ## Behavior areas (each → per-spec ✅)
 
