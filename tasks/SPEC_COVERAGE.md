@@ -113,7 +113,7 @@ tests that have started passing — when one does, promote it from
 |---|---|---|---|---|
 | CSS 2.2 (block/inline/floats/margin-collapse) | https://www.w3.org/TR/CSS22/ | 🟢 | `Starling.Layout.Tests` (partial; `[Spec("css2", ...)]` for §10.1/§10.5) | `wp:spec-css-22-layout` |
 | CSS Display 3 | https://www.w3.org/TR/css-display-3/ | 🟢 | legacy — gaps in `display: contents`, `flow-root` | `wp:spec-css-display-3` |
-| CSS Box Model 3 | https://www.w3.org/TR/css-box-3/ | 🟢 | `CssBox3/` (55 SpecFact): margin/padding 1-4-value shorthands + longhands + units/auto/negative/%, box-sizing, initial/inheritance | 2 gaps → `wp:spec-css-box-3`: negative `padding` not rejected (value validation) |
+| CSS Box Model 3 | https://www.w3.org/TR/css-box-3/ | ✅ | `CssBox3/` (57 SpecFact): margin/padding 1-4-value shorthands + longhands + units/auto/negative-margin/%, box-sizing, initial/inheritance, negative-padding rejection (§4) | — |
 | CSS Sizing 3 | https://www.w3.org/TR/css-sizing-3/ | 🟢 | legacy — intrinsic sizing untested; percentage-vs-indefinite-CB covered (`LayoutEngineTests.Percentage_height_*`, `[Spec("css-sizing-3", §5.1)]`) | `wp:spec-css-sizing-3` |
 | CSS Sizing 4 (`contain-intrinsic-size`) | https://www.w3.org/TR/css-sizing-4/ | 🟢 | `CssSizing4/` — aspect-ratio + contain-intrinsic-width/height/size longhands & shorthand parse (`wp:spec-css-sizing-4`); size-containment placeholder behavior not implemented | `wp:spec-css-sizing-4` |
 | CSS Position 3 | https://www.w3.org/TR/css-position-3/ | ✅ | `Starling.Layout.Tests/Position` | — |
@@ -144,7 +144,7 @@ tests that have started passing — when one does, promote it from
 | CSS Transforms 2 (3D, individual props) | https://www.w3.org/TR/css-transforms-2/ | 🟢 | `CssTransforms2/` — individual translate/scale/rotate, 3D transform functions, perspective/perspective-origin, transform-style, backface-visibility parse (`wp:spec-css-transforms-2`); 3D matrix resolution + rendering not implemented | `wp:spec-css-transforms-2` |
 | CSS Scroll Snap 1 | https://www.w3.org/TR/css-scroll-snap-1/ | 🟢 | `CssScrollSnap1/` — scroll-snap-type/align/stop + scroll-margin/padding parse + cascade (`wp:spec-css-scroll-snap-1`); snap positioning behavior not implemented | `wp:spec-css-scroll-snap-1` |
 | CSS Scrollbars 1 | https://www.w3.org/TR/css-scrollbars-1/ | 🟢 | `CssScrollbars1/` — scrollbar-width/scrollbar-color properties parse + cascade/inheritance (`wp:spec-css-scrollbars-1`); scrollbar painting not implemented | `wp:spec-css-scrollbars-1` |
-| CSS Overscroll Behavior 1 | https://www.w3.org/TR/css-overscroll-1/ | 🟢 | `CssOverscroll1/` — overscroll-behavior-x/y + shorthand parse + cascade (`wp:spec-css-overscroll-1`); invalid-keyword rejection pending (no per-property value validation) | `wp:spec-css-overscroll-1` |
+| CSS Overscroll Behavior 1 | https://www.w3.org/TR/css-overscroll-1/ | ✅ | `CssOverscroll1/` (16 SpecFact): overscroll-behavior-x/y + shorthand parse + cascade + invalid-keyword rejection (auto/contain/none) | — |
 | CSS View Transitions 1 | https://www.w3.org/TR/css-view-transitions-1/ | 🟢 | `CssViewTransitions1/`, `src/Starling.Css/ViewTransitions/` — `@view-transition` at-rule parse (navigation/types descriptors) (`wp:spec-css-view-transitions-1`); transition capture/animation + JS startViewTransition not implemented | `wp:spec-css-view-transitions-1` |
 | CSS Scroll-Driven Animations 1 | https://www.w3.org/TR/scroll-animations-1/ | 🟢 | `CssScrollAnimations1/` — scroll-timeline-name/axis + view-timeline-name/axis/inset + timeline-scope + shorthands parse + cascade (`wp:spec-scroll-animations-1`); scroll-progress timeline driving not implemented | `wp:spec-scroll-animations-1` |
 
@@ -207,20 +207,21 @@ stale — the matrix has always held more rows than that.
 | | Count |
 |---|---|
 | Specs catalogued | 67 |
-| ✅ Implemented | 13 |
-| 🟢 In progress | 49 |
+| ✅ Implemented | 15 |
+| 🟢 In progress | 47 |
 | 🟡 Scaffolded only | 0 |
 | 🔴 Not started (in scope, no work yet) | 0 |
 | 🚫 v1-deferred (the seven buckets) | 5 rows + MathML Core + print specs |
 
 In-scope total: **62 specs** (67 rows − 5 deferred rows). The two non-row
 deferrals (MathML Core, print specs) are not catalogued as CSS spec rows. So
-the v1 work ahead is **13 done (✅), 49 in progress (🟢), 0 not-started (🔴)**.
+the v1 work ahead is **15 done (✅), 47 in progress (🟢), 0 not-started (🔴)**.
 Every in-scope spec has landed `[Spec]` coverage at the parse / cascade / model
-level; the 13 ✅ are fully conformant (Position 3, Flexbox 1, Transitions 1,
+level; the 15 ✅ are fully conformant (Position 3, Flexbox 1, Transitions 1,
 Counter Styles 3, Syntax 3, Values 4, Cascade 5, Custom Properties 1, Nesting 1,
-Color 4, Logical 1, Transforms 1, Animations 1). The remaining lift to drive the
-49 🟢 → ✅ is the behavior/paint layer + JS-OM bindings + the per-spec gaps the
+Color 4, Logical 1, Transforms 1, Animations 1, Box Model 3, Overscroll Behavior 1).
+The remaining lift to drive the
+47 🟢 → ✅ is the behavior/paint layer + JS-OM bindings + the per-spec gaps the
 conformance suites surfaced — many of which cluster on a single **per-property
 value-validation** fix (rejecting invalid keywords/values), tracked in
 `tasks/spec/wp-spec-css-v1-*.md`.
