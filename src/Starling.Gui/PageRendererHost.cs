@@ -54,7 +54,7 @@ internal sealed class PageRendererHost : IDisposable
     /// <c>root.Frame</c> (the legacy full-page behavior; the CPU rasterizer
     /// handles arbitrarily large surfaces).
     /// </summary>
-    public RenderedBitmap Render(BlockBox root, float scale = 1.0f, Func<Box, ComputedStyle?>? styleOverride = null, IImageResolver? images = null, LayoutRect? viewport = null, int pageVersion = 0)
+    public RenderedBitmap Render(BlockBox root, float scale = 1.0f, Func<Box, ComputedStyle?>? styleOverride = null, IImageResolver? images = null, LayoutRect? viewport = null, int pageVersion = 0, Func<Starling.Dom.Element, (double X, double Y)>? scrollOffsets = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(root);
@@ -66,9 +66,9 @@ internal sealed class PageRendererHost : IDisposable
             // (headless screenshots, very tall pages) bypasses the cache and
             // paints everything, preserving byte-identical legacy output.
             if (viewport is { } v)
-                return _cached.Render(root, v, scale, pageVersion, styleOverride, images);
+                return _cached.Render(root, v, scale, pageVersion, styleOverride, images, scrollOffsets);
 
-            PaintList displayList = new DisplayListBuilder().Build(root, viewport: null, styleOverride, images);
+            PaintList displayList = new DisplayListBuilder().Build(root, viewport: null, styleOverride, images, scrollOffsets);
             var surfaceSize = new LayoutSize(
                 Math.Max(1, root.Frame.Width),
                 Math.Max(1, root.Frame.Height));

@@ -559,6 +559,15 @@ public sealed class StyleEngine
                 layerIndex: LayerOrder.UnlayeredIndex);
         }
 
+        // CSS Logical Properties 1 §3.2: logical and physical properties
+        // that resolve to the same physical edge cascade as if they were
+        // the same property — declaration order across the pair determines
+        // the winner. We assume LTR + horizontal-tb writing mode (the only
+        // mode the layout pipeline currently reads). Copy each logical
+        // bucket's candidates into the physical bucket so winner selection
+        // sees both spellings, then drop the logical bucket.
+        MergeLogicalIntoPhysical(allCandidates);
+
         // Pick winners for each property.
         var winners = new Dictionary<PropertyId, CascadedValue>();
         foreach (var kvp in allCandidates)
@@ -1387,6 +1396,57 @@ public sealed class StyleEngine
                 return decl.Value;
         }
         return PropertyRegistry.InitialValue(pending.Longhand);
+    }
+
+    private static readonly Dictionary<PropertyId, PropertyId> LogicalToPhysicalLtrHorizontalTb = new()
+    {
+        [PropertyId.PaddingInlineStart] = PropertyId.PaddingLeft,
+        [PropertyId.PaddingInlineEnd] = PropertyId.PaddingRight,
+        [PropertyId.PaddingBlockStart] = PropertyId.PaddingTop,
+        [PropertyId.PaddingBlockEnd] = PropertyId.PaddingBottom,
+        [PropertyId.MarginInlineStart] = PropertyId.MarginLeft,
+        [PropertyId.MarginInlineEnd] = PropertyId.MarginRight,
+        [PropertyId.MarginBlockStart] = PropertyId.MarginTop,
+        [PropertyId.MarginBlockEnd] = PropertyId.MarginBottom,
+        [PropertyId.InsetInlineStart] = PropertyId.Left,
+        [PropertyId.InsetInlineEnd] = PropertyId.Right,
+        [PropertyId.InsetBlockStart] = PropertyId.Top,
+        [PropertyId.InsetBlockEnd] = PropertyId.Bottom,
+        [PropertyId.BorderInlineStartWidth] = PropertyId.BorderLeftWidth,
+        [PropertyId.BorderInlineEndWidth] = PropertyId.BorderRightWidth,
+        [PropertyId.BorderBlockStartWidth] = PropertyId.BorderTopWidth,
+        [PropertyId.BorderBlockEndWidth] = PropertyId.BorderBottomWidth,
+        [PropertyId.BorderInlineStartStyle] = PropertyId.BorderLeftStyle,
+        [PropertyId.BorderInlineEndStyle] = PropertyId.BorderRightStyle,
+        [PropertyId.BorderBlockStartStyle] = PropertyId.BorderTopStyle,
+        [PropertyId.BorderBlockEndStyle] = PropertyId.BorderBottomStyle,
+        [PropertyId.BorderInlineStartColor] = PropertyId.BorderLeftColor,
+        [PropertyId.BorderInlineEndColor] = PropertyId.BorderRightColor,
+        [PropertyId.BorderBlockStartColor] = PropertyId.BorderTopColor,
+        [PropertyId.BorderBlockEndColor] = PropertyId.BorderBottomColor,
+        [PropertyId.BorderStartStartRadius] = PropertyId.BorderTopLeftRadius,
+        [PropertyId.BorderStartEndRadius] = PropertyId.BorderTopRightRadius,
+        [PropertyId.BorderEndStartRadius] = PropertyId.BorderBottomLeftRadius,
+        [PropertyId.BorderEndEndRadius] = PropertyId.BorderBottomRightRadius,
+        [PropertyId.InlineSize] = PropertyId.Width,
+        [PropertyId.BlockSize] = PropertyId.Height,
+        [PropertyId.MinInlineSize] = PropertyId.MinWidth,
+        [PropertyId.MinBlockSize] = PropertyId.MinHeight,
+        [PropertyId.MaxInlineSize] = PropertyId.MaxWidth,
+        [PropertyId.MaxBlockSize] = PropertyId.MaxHeight,
+    };
+
+    private static void MergeLogicalIntoPhysical(Dictionary<PropertyId, List<CascadedValue>> allCandidates)
+    {
+        foreach (var (logical, physical) in LogicalToPhysicalLtrHorizontalTb)
+        {
+            if (!allCandidates.TryGetValue(logical, out var logicalList) || logicalList.Count == 0)
+                continue;
+            if (!allCandidates.TryGetValue(physical, out var physicalList))
+                allCandidates[physical] = physicalList = new List<CascadedValue>();
+            physicalList.AddRange(logicalList);
+            allCandidates.Remove(logical);
+        }
     }
 
     private sealed record CascadedValue(

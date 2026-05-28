@@ -72,6 +72,16 @@ public static class UaStyleSheet
         }
         a { color: blue; text-decoration: underline; }
         b, strong { font-weight: 700; }
+
+        /* HTML §15.3.13: <details>/<summary> defaults. Each is block-level, and
+           a closed <details> renders only its <summary> child — every other
+           descendant is hidden until the element is opened. Without this rule
+           authoring frameworks that rely on `<details>` for collapsible nav
+           groups (Astro Starlight, Docusaurus, MkDocs Material, etc.) end up
+           rendering every collapsed sub-tree at once because the children
+           inherit the parent's flow. */
+        details, summary { display: block; }
+        details:not([open]) > :not(summary) { display: none; }
         i, em, cite { font-style: italic; }
         pre { white-space: pre; font-family: monospace; }
 

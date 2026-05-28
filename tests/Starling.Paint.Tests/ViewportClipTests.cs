@@ -159,6 +159,40 @@ public sealed class ViewportClipTests
     }
 
     [TestMethod]
+    public void Fixed_positioned_box_is_translated_by_viewport_offset()
+    {
+        // A page taller than the viewport with a `position: fixed` bar pinned
+        // to the top. Layout writes its frame in viewport-relative coords
+        // (Y=0 against the initial containing block). When we render a
+        // viewport scrolled down by 1000 px the painter must shift the fixed
+        // subtree by the viewport origin so the bar stays at the top of the
+        // visible region — i.e. its emitted page-Y is 1000, inside the cull
+        // rect, instead of 0 (off-screen, culled).
+        var html = """
+            <body style="margin:0">
+              <div style="position:fixed;top:0;left:0;width:800px;height:50px;background-color:rgb(255,0,0)"></div>
+              <div style="height:3000px;background-color:rgb(200,200,200)"></div>
+            </body>
+            """;
+        var document = HtmlParser.Parse(html);
+        var styleEngine = new StyleEngine();
+        var engine = new LayoutEngine(styleEngine, DefaultTextMeasurer.Instance);
+        var root = engine.LayoutDocument(document, new LayoutSize(800, 600));
+
+        var viewport = new LayoutRect(0, 1000, 800, 600);
+        var dl = new DisplayListBuilder().Build(root, viewport);
+
+        // The fixed bar's FillRect should land at page-Y 1000 (= viewport.Y),
+        // not 0, since the painter rebased the fixed subtree onto the
+        // viewport origin.
+        var redRect = dl.Items.OfType<FillRect>().FirstOrDefault(f =>
+            f.Color.R == 255 && f.Color.G == 0 && f.Color.B == 0);
+        redRect.Should().NotBeNull("the fixed red bar must survive culling at the scrolled viewport");
+        redRect!.Bounds.Y.Should().Be(1000, "fixed-position translation should rebase Y to the viewport origin");
+        redRect.Bounds.Height.Should().Be(50);
+    }
+
+    [TestMethod]
     public void Null_viewport_emits_every_item_unchanged()
     {
         var root = LayoutTallPage(blocks: 20, blockHeightPx: 100);

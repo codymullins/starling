@@ -1,6 +1,7 @@
 using Starling.Css.Cascade;
 using Starling.Css.Properties;
 using Starling.Css.Values;
+using Starling.Dom;
 using Starling.Layout;
 using Starling.Layout.Box;
 using Starling.Layout.Text;
@@ -31,6 +32,30 @@ public sealed class DisplayListBuilder
     /// large page unwinds between sibling boxes instead of running to completion.</summary>
     private readonly CancellationToken _abort;
 
+    /// <summary>
+    /// Page-coordinate origin of the current viewport (the scroll offset), or
+    /// null when no viewport is set (full-page paint). Used to anchor
+    /// <c>position: fixed</c> subtrees to the viewport instead of the page —
+    /// the layout pass writes their frame in viewport-relative coordinates
+    /// against the initial containing block, and the painter translates that
+    /// by (viewport.X, viewport.Y) so the box paints at the right page coord
+    /// for the current scroll position.
+    /// </summary>
+    private double _viewportX;
+    private double _viewportY;
+    private bool _hasViewport;
+
+    /// <summary>
+    /// Lookup that, for a given Element, returns its current local scroll
+    /// offset inside an <c>overflow: scroll | auto</c> container. The painter
+    /// emits a translation transform of <c>(-X, -Y)</c> around the container's
+    /// children so the scrolled-to portion lands inside the container's
+    /// (cull-clipped) frame. Null when the host doesn't track per-element
+    /// scrolling (tests / headless renders), in which case every container is
+    /// painted at offset (0, 0).
+    /// </summary>
+    private Func<Element, (double X, double Y)>? _scrollOffsets;
+
     public DisplayListBuilder() : this(CancellationToken.None) { }
 
     public DisplayListBuilder(CancellationToken abort)
@@ -48,7 +73,7 @@ public sealed class DisplayListBuilder
     /// <see cref="Box.Style"/>.
     /// </summary>
     public DisplayList Build(BlockBox root, Func<Box, ComputedStyle?>? styleOverride = null, IImageResolver? images = null)
-        => Build(root, viewport: null, styleOverride, images);
+        => Build(root, viewport: null, styleOverride, images, scrollOffsets: null);
 
     /// <summary>
     /// Builds a display list, optionally culling to a page-coordinate
@@ -60,13 +85,24 @@ public sealed class DisplayListBuilder
     /// so the cost stays O(items on screen). When null, every item is emitted
     /// (the full-page behavior the headless screenshot path relies on).
     /// </summary>
-    public DisplayList Build(BlockBox root, Rect? viewport, Func<Box, ComputedStyle?>? styleOverride = null, IImageResolver? images = null)
+    public DisplayList Build(BlockBox root, Rect? viewport, Func<Box, ComputedStyle?>? styleOverride = null, IImageResolver? images = null, Func<Element, (double X, double Y)>? scrollOffsets = null)
     {
         ArgumentNullException.ThrowIfNull(root);
         var list = new DisplayList();
         Rect? cull = viewport is { } v
             ? new Rect(v.X - OverdrawMargin, v.Y - OverdrawMargin, v.Width + 2 * OverdrawMargin, v.Height + 2 * OverdrawMargin)
             : null;
+        if (viewport is { } vp)
+        {
+            _viewportX = vp.X;
+            _viewportY = vp.Y;
+            _hasViewport = true;
+        }
+        else
+        {
+            _hasViewport = false;
+        }
+        _scrollOffsets = scrollOffsets;
         Visit(box: root, list, originX: 0, originY: 0, current: Matrix2D.Identity, cull, styleOverride, images, slice: null);
         return list;
     }
@@ -142,6 +178,11 @@ public sealed class DisplayListBuilder
            || style.Get(PropertyId.Visibility) is not CssKeyword k
            || k.Name.Equals("visible", StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsFixedPositioned(Box box, Func<Box, ComputedStyle?>? styleOverride)
+        => EffectiveStyle(box, styleOverride) is { } style
+           && style.Get(PropertyId.Position) is CssKeyword k
+           && k.Name.Equals("fixed", StringComparison.OrdinalIgnoreCase);
+
     private void Visit(Box box, DisplayList list, double originX, double originY, Matrix2D current, Rect? cull, Func<Box, ComputedStyle?>? styleOverride, IImageResolver? images, LayerSlice? slice)
     {
         // Host abort (Stop button, navigation supersede). One check per visited
@@ -157,6 +198,21 @@ public sealed class DisplayListBuilder
 
         var frameX = originX + box.Frame.X;
         var frameY = originY + box.Frame.Y;
+
+        // `position: fixed` anchors the box to the initial containing block (the
+        // viewport). Layout writes the resolved frame in viewport-relative
+        // coordinates — e.g. `inset-block-start: 0` becomes Y=0 in the page —
+        // but when the user scrolls the painter is asked for a viewport whose
+        // page-Y is non-zero. Adding the viewport origin here shifts the entire
+        // fixed subtree onto the page coords the painter is sampling, so the
+        // box stays glued to the viewport edge regardless of scroll position.
+        // Skipped when no viewport is set (full-page screenshots) so headless
+        // captures keep their pre-existing "fixed boxes at Y=0" output.
+        if (_hasViewport && IsFixedPositioned(box, styleOverride))
+        {
+            frameX += _viewportX;
+            frameY += _viewportY;
+        }
 
         // CSS `transform` is applied around the box's transform-origin (default
         // 50% 50% 0). Layout is unaffected: the box keeps its frame coordinates
@@ -305,8 +361,94 @@ public sealed class DisplayListBuilder
         // coords, so push our padding+border origin.
         var contentOriginX = frameX + box.Border.Left + box.Padding.Left;
         var contentOriginY = frameY + box.Border.Top + box.Padding.Top;
+
+        // A scroll container (`overflow: hidden | clip | scroll | auto` on
+        // either axis) clips its descendants to its border box. We approximate
+        // that here by tightening the cull rect to the intersection with the
+        // box's frame before recursing, so anything wholly outside the box is
+        // dropped from the display list. Items straddling the edge still paint
+        // fully (cull is binary, not a scissor), but for the dominant case —
+        // tall sidebar nav lists, overflow:auto code blocks — the overflowing
+        // entries simply don't reach the rasterizer.
+        var childCull = cull;
+        ComputedStyle? overflowStyle = paintsBox ? EffectiveStyle(box, styleOverride) : null;
+        var clipsOverflow = overflowStyle is not null && ClipsOverflow(overflowStyle);
+        if (clipsOverflow)
+        {
+            var clipRect = new Rect(frameX, frameY, box.Frame.Width, box.Frame.Height);
+            childCull = cull is { } c ? IntersectRect(c, clipRect) : clipRect;
+        }
+
+        // `overflow: scroll | auto` containers carry a per-element scroll
+        // offset maintained by the shell (wheel handler in WebviewPanel). The
+        // painter translates this subtree by `(-X, -Y)` so the user-scrolled
+        // position lands inside the (already clip-tightened) container frame.
+        // The childCull stays in unscrolled page coords; the cull check
+        // applies the composed matrix to each item before comparing, so the
+        // visible band picks itself out automatically.
+        (double X, double Y) scrollOffset = default;
+        if (overflowStyle is not null
+            && box.Element is { } scrollElement
+            && _scrollOffsets is { } offsets
+            && ScrollsOverflow(overflowStyle))
+        {
+            scrollOffset = offsets(scrollElement);
+        }
+
+        if (scrollOffset.X != 0 || scrollOffset.Y != 0)
+        {
+            var scrollMatrix = Matrix2D.Translate(-scrollOffset.X, -scrollOffset.Y);
+            var composed = current.Multiply(scrollMatrix);
+            var scratch = new DisplayList();
+            foreach (var child in box.Children)
+                Visit(child, scratch, contentOriginX, contentOriginY, composed, childCull, styleOverride, images, slice);
+            if (scratch.Items.Count > 0)
+            {
+                list.Add(new PushTransform(scrollMatrix));
+                foreach (var item in scratch.Items)
+                    list.Add(item);
+                list.Add(PopTransform.Instance);
+            }
+            return;
+        }
+
         foreach (var child in box.Children)
-            Visit(child, list, contentOriginX, contentOriginY, current, cull, styleOverride, images, slice);
+            Visit(child, list, contentOriginX, contentOriginY, current, childCull, styleOverride, images, slice);
+    }
+
+    private static bool ScrollsOverflow(ComputedStyle style)
+        => OverflowKeywordScrolls(style.Get(PropertyId.OverflowX))
+        || OverflowKeywordScrolls(style.Get(PropertyId.OverflowY));
+
+    private static bool OverflowKeywordScrolls(CssValue? value) => value switch
+    {
+        CssKeyword { Name: var n } =>
+            n.Equals("scroll", StringComparison.OrdinalIgnoreCase) ||
+            n.Equals("auto", StringComparison.OrdinalIgnoreCase),
+        _ => false,
+    };
+
+    private static bool ClipsOverflow(ComputedStyle style)
+        => OverflowKeywordClips(style.Get(PropertyId.OverflowX))
+        || OverflowKeywordClips(style.Get(PropertyId.OverflowY));
+
+    private static bool OverflowKeywordClips(CssValue? value) => value switch
+    {
+        CssKeyword { Name: var n } =>
+            n.Equals("hidden", StringComparison.OrdinalIgnoreCase) ||
+            n.Equals("clip", StringComparison.OrdinalIgnoreCase) ||
+            n.Equals("scroll", StringComparison.OrdinalIgnoreCase) ||
+            n.Equals("auto", StringComparison.OrdinalIgnoreCase),
+        _ => false,
+    };
+
+    private static Rect IntersectRect(Rect a, Rect b)
+    {
+        var x = Math.Max(a.X, b.X);
+        var y = Math.Max(a.Y, b.Y);
+        var right = Math.Min(a.Right, b.Right);
+        var bottom = Math.Min(a.Bottom, b.Bottom);
+        return new Rect(x, y, Math.Max(0, right - x), Math.Max(0, bottom - y));
     }
 
     /// <summary>

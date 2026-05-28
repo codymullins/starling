@@ -67,6 +67,23 @@ public sealed record PopTransform : DisplayItem
 }
 
 /// <summary>
+/// Pushes an axis-aligned page-coordinate clip rectangle onto the backend's
+/// clip stack. Subsequent draw items are masked to the intersection of every
+/// clip currently on the stack. Used by <see cref="DisplayListBuilder"/> to
+/// implement <c>overflow: hidden</c>/<c>clip</c>/<c>scroll</c>/<c>auto</c> —
+/// the box's border-box clip is opened on descent and closed
+/// (<see cref="PopClip"/>) on ascent so content that overflows the box never
+/// paints outside it.
+/// </summary>
+public sealed record PushClip(Rect Bounds) : DisplayItem;
+
+/// <summary>Pops the most recent <see cref="PushClip"/> off the backend clip stack.</summary>
+public sealed record PopClip : DisplayItem
+{
+    public static PopClip Instance { get; } = new();
+}
+
+/// <summary>
 /// Fills <paramref name="Bounds"/> with a CSS <c>&lt;gradient&gt;</c>
 /// (<see href="https://www.w3.org/TR/css-images-3/#gradients">CSS Images 3 §3</see>).
 /// The backend maps the gradient's color stops onto an ImageSharp gradient

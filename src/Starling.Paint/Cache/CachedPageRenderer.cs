@@ -1,7 +1,10 @@
 using Starling.Common.Diagnostics;
 using Starling.Common.Image;
 using Starling.Css.Cascade;
+using Starling.Css.Properties;
+using Starling.Dom;
 using Starling.Layout.Box;
+using Starling.Layout.Compositor;
 using Starling.Layout.Tree;
 using Starling.Paint.Backend;
 using Starling.Paint.DisplayList;
@@ -25,6 +28,11 @@ internal sealed class CachedPageRenderer
     private readonly IPaintBackend _backend;
     private readonly IDiagnostics _diag;
     private readonly PictureCache _cache;
+    // Memoized "this layout has at least one position: fixed subtree" answer.
+    // Tree walks for the check are O(boxes), so re-using the result across
+    // every scroll frame of the same laid-out page is worth the int+bool.
+    private int _fixedScanVersion = -1;
+    private bool _hasFixed;
 
     public CachedPageRenderer(IPaintBackend backend, IDiagnostics? diagnostics = null, PictureCache? cache = null)
     {
@@ -50,11 +58,28 @@ internal sealed class CachedPageRenderer
         float scale,
         int pageVersion,
         Func<Box, ComputedStyle?>? styleOverride = null,
-        IImageResolver? images = null)
+        IImageResolver? images = null,
+        Func<Element, (double X, double Y)>? scrollOffsets = null)
     {
         ArgumentNullException.ThrowIfNull(root);
 
         var device = PictureCache.ToDeviceRect(viewport, scale);
+
+        // Pages with `position: fixed` subtrees, or with `overflow: scroll |
+        // auto` containers whose offsets the user can change at any moment,
+        // can't reuse cached strips: the cached pixels bake one scroll/offset
+        // configuration in, but those subtrees need to repaint at the current
+        // configuration every frame. The painter handles the per-frame
+        // positioning (viewport translation for fixed, scroll-offset
+        // translation for overflow containers); we just need to bypass the
+        // strip-reuse path so each frame is a fresh seed-and-serve. Detect
+        // once per laid-out page (pageVersion-keyed) since the box tree only
+        // changes on relayout.
+        if (HasFixedOrScrollSubtree(root, pageVersion))
+        {
+            _cache.Invalidate();
+            return SeedAndServe(root, viewport, scale, pageVersion, device, styleOverride, images, scrollOffsets);
+        }
 
         if (_cache.TryServe(viewport, scale, pageVersion, out var hit))
             return Compose(hit, device.Width, device.Height);
@@ -64,7 +89,7 @@ internal sealed class CachedPageRenderer
         // Full miss: one strip equal to the whole device rect. Paint it, seed,
         // and serve from the now-complete cache.
         if (strips.Count == 1 && strips[0].Equals(device))
-            return SeedAndServe(root, viewport, scale, pageVersion, device, styleOverride, images);
+            return SeedAndServe(root, viewport, scale, pageVersion, device, styleOverride, images, scrollOffsets);
 
         // Partial: paint each newly-exposed strip, then slide the cache window onto
         // the new viewport — retaining the still-visible overlap and dropping the
@@ -76,7 +101,7 @@ internal sealed class CachedPageRenderer
         {
             foreach (var strip in strips)
             {
-                var bmp = PaintStrip(root, strip, scale, styleOverride, images);
+                var bmp = PaintStrip(root, strip, scale, styleOverride, images, scrollOffsets);
                 // Track the raster's real device rect (origin + actual size); a
                 // fractional scale's ceil can differ from the requested strip.
                 painted.Add((new DeviceRect(strip.X, strip.Y, bmp.Width, bmp.Height), bmp));
@@ -86,7 +111,7 @@ internal sealed class CachedPageRenderer
             {
                 // Stale key slipped past the strip computation — reseed wholesale.
                 _cache.Invalidate();
-                return SeedAndServe(root, viewport, scale, pageVersion, device, styleOverride, images);
+                return SeedAndServe(root, viewport, scale, pageVersion, device, styleOverride, images, scrollOffsets);
             }
         }
         finally
@@ -104,9 +129,10 @@ internal sealed class CachedPageRenderer
         int pageVersion,
         DeviceRect device,
         Func<Box, ComputedStyle?>? styleOverride,
-        IImageResolver? images)
+        IImageResolver? images,
+        Func<Element, (double X, double Y)>? scrollOffsets)
     {
-        using var full = PaintStrip(root, device, scale, styleOverride, images);
+        using var full = PaintStrip(root, device, scale, styleOverride, images, scrollOffsets);
         // Reset against the raster's real device rect (origin + actual size); a
         // fractional scale's ceil can differ from the request by a pixel.
         var seedRect = new DeviceRect(device.X, device.Y, full.Width, full.Height);
@@ -134,12 +160,39 @@ internal sealed class CachedPageRenderer
         DeviceRect strip,
         float scale,
         Func<Box, ComputedStyle?>? styleOverride,
-        IImageResolver? images)
+        IImageResolver? images,
+        Func<Element, (double X, double Y)>? scrollOffsets)
     {
         var pageViewport = new LayoutRect(strip.X / scale, strip.Y / scale, strip.Width / scale, strip.Height / scale);
-        PaintList list = new DisplayListBuilder().Build(root, pageViewport, styleOverride, images);
+        PaintList list = new DisplayListBuilder().Build(root, pageViewport, styleOverride, images, scrollOffsets);
         return _backend.Render(list, pageViewport, scale);
     }
+
+    private bool HasFixedOrScrollSubtree(BlockBox root, int pageVersion)
+    {
+        if (_fixedScanVersion == pageVersion) return _hasFixed;
+        _hasFixed = ContainsFixedOrScrollHint(root);
+        _fixedScanVersion = pageVersion;
+        return _hasFixed;
+    }
+
+    private static bool ContainsFixedOrScrollHint(Box box)
+    {
+        if ((box.Hints & LayerHint.Fixed) != LayerHint.None) return true;
+        if (box.Style is { } style && IsScrollContainer(style)) return true;
+        foreach (var child in box.Children)
+            if (ContainsFixedOrScrollHint(child)) return true;
+        return false;
+    }
+
+    private static bool IsScrollContainer(ComputedStyle style)
+        => IsScrollKeyword(style.Get(PropertyId.OverflowX))
+        || IsScrollKeyword(style.Get(PropertyId.OverflowY));
+
+    private static bool IsScrollKeyword(Starling.Css.Values.CssValue? value)
+        => value is Starling.Css.Values.CssKeyword { Name: var n }
+            && (n.Equals("scroll", StringComparison.OrdinalIgnoreCase)
+             || n.Equals("auto", StringComparison.OrdinalIgnoreCase));
 
     private static RenderedBitmap Compose(CacheBlit blit, int outWidth, int outHeight)
     {
