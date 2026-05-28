@@ -138,7 +138,7 @@ tests that have started passing — when one does, promote it from
 | CSS Images 4 (`image-set()`, `cross-fade()`) | https://www.w3.org/TR/css-images-4/ | 🟢 | `CssImages4/` — image-set()/cross-fade() parse as function values in background-image (`wp:spec-css-images-4`); resolution selection + cross-fade compositing not implemented | `wp:spec-css-images-4` |
 | CSS Masking 1 | https://www.w3.org/TR/css-masking-1/ | 🟢 | `CssMasking1/` — clip-path (none/url/basic-shapes/geometry-box) + mask-image/mode/repeat/position/size/clip/origin/composite parse (`wp:spec-css-masking-1`); `mask` shorthand + painting not implemented | `wp:spec-css-masking-1` |
 | CSS Filter Effects 1 | https://www.w3.org/TR/filter-effects-1/ | 🟢 | `CssFilterEffects1/` — filter/backdrop-filter functions (blur/brightness/contrast/grayscale/sepia/saturate/hue-rotate/invert/opacity/drop-shadow/url) parse as functions (`wp:spec-css-filter-effects-1`); typed filter model + painting not implemented | `wp:spec-css-filter-effects-1` |
-| CSS Compositing 1 | https://www.w3.org/TR/compositing-1/ | 🟢 | `CssCompositing1/` — mix-blend-mode/background-blend-mode/isolation parse + cascade (`wp:spec-css-compositing-1`); clean comma-list split pending (parser keeps comma artifact); blending not painted | `wp:spec-css-compositing-1` |
+| CSS Compositing 1 | https://www.w3.org/TR/compositing-1/ | ✅ | `CssCompositing1/` (15 SpecFact): mix-blend-mode (all keywords) + background-blend-mode (clean comma-separated per-layer list) + isolation, parse + cascade | — |
 | CSS Shapes 1 | https://www.w3.org/TR/css-shapes-1/ | 🟢 | `CssShapes1/` — shape-outside (none/basic-shape/shape-box)/shape-margin/shape-image-threshold parse + cascade (`wp:spec-css-shapes-1`); float-area shaping not implemented | `wp:spec-css-shapes-1` |
 | CSS Transforms 1 | https://www.w3.org/TR/css-transforms-1/ | ✅ | `CssTransforms1/` (71 SpecFact): translate/scale/rotate/skew/matrix functions + matrix composition, transform-origin, transform-box, computed-matrix equivalences | — |
 | CSS Transforms 2 (3D, individual props) | https://www.w3.org/TR/css-transforms-2/ | 🟢 | `CssTransforms2/` — individual translate/scale/rotate, 3D transform functions, perspective/perspective-origin, transform-style, backface-visibility parse (`wp:spec-css-transforms-2`); 3D matrix resolution + rendering not implemented | `wp:spec-css-transforms-2` |
@@ -207,21 +207,21 @@ stale — the matrix has always held more rows than that.
 | | Count |
 |---|---|
 | Specs catalogued | 67 |
-| ✅ Implemented | 18 |
-| 🟢 In progress | 44 |
+| ✅ Implemented | 19 |
+| 🟢 In progress | 43 |
 | 🟡 Scaffolded only | 0 |
 | 🔴 Not started (in scope, no work yet) | 0 |
 | 🚫 v1-deferred (the seven buckets) | 5 rows + MathML Core + print specs |
 
 In-scope total: **62 specs** (67 rows − 5 deferred rows). The two non-row
 deferrals (MathML Core, print specs) are not catalogued as CSS spec rows. So
-the v1 work ahead is **18 done (✅), 44 in progress (🟢), 0 not-started (🔴)**.
+the v1 work ahead is **19 done (✅), 43 in progress (🟢), 0 not-started (🔴)**.
 Every in-scope spec has landed `[Spec]` coverage at the parse / cascade / model
 level; the 15 ✅ are fully conformant (Position 3, Flexbox 1, Transitions 1,
 Counter Styles 3, Syntax 3, Values 4, Cascade 5, Custom Properties 1, Nesting 1,
 Color 4, Logical 1, Transforms 1, Animations 1, Box Model 3, Overscroll Behavior 1,
-Easing 1, Fonts 4, Conditional 5). The remaining lift to drive the
-44 🟢 → ✅ is the behavior/paint layer + JS-OM bindings + the per-spec gaps the
+Easing 1, Fonts 4, Conditional 5, Compositing 1). The remaining lift to drive the
+43 🟢 → ✅ is the behavior/paint layer + JS-OM bindings + the per-spec gaps the
 conformance suites surfaced — many of which cluster on a single **per-property
 value-validation** fix (rejecting invalid keywords/values), tracked in
 `tasks/spec/wp-spec-css-v1-*.md`.
