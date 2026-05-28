@@ -106,6 +106,8 @@ public static class PropertyRegistry
             PropertyId.BackgroundColor => CssColor.Transparent,
             PropertyId.BackgroundImage => new CssKeyword("none"),
             PropertyId.BackgroundPosition => new CssKeyword("0% 0%"),
+            // CSS Backgrounds 4 §3 — background-position-x/y longhands, initial 0%.
+            PropertyId.BackgroundPositionX or PropertyId.BackgroundPositionY => new CssPercentage(0),
             PropertyId.BackgroundSize => new CssKeyword("auto"),
             PropertyId.BackgroundRepeat => new CssKeyword("repeat"),
             // CSS Backgrounds 3 §3 — initial values for attachment/origin/clip.

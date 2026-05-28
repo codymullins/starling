@@ -50,6 +50,8 @@ public enum PropertyId
     BackgroundColor,
     BackgroundImage,
     BackgroundPosition,
+    BackgroundPositionX,
+    BackgroundPositionY,
     BackgroundSize,
     BackgroundRepeat,
     BackgroundAttachment,

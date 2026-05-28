@@ -133,7 +133,7 @@ tests that have started passing — when one does, promote it from
 | Spec | URL | Status | Folder | Tracking WP |
 |---|---|---|---|---|
 | CSS Backgrounds & Borders 3 | https://www.w3.org/TR/css-backgrounds-3/ | 🟢 | `CssBackgrounds3/` (`BorderRadiusTests`, `BoxShadowTests`, `BackgroundShorthandTests`), `Starling.Paint.Tests/RoundedRectAndShadowTests` — border-radius painted + box-shadow (`wp:M5-css-14`); `background` shorthand single+multi-layer expansion done (`wp:spec-css-backgrounds-3`); inset shadow deferred | `wp:spec-css-backgrounds-3` |
-| CSS Backgrounds & Borders 4 | https://www.w3.org/TR/css-backgrounds-4/ | 🔴 | — | `wp:spec-css-backgrounds-4` |
+| CSS Backgrounds & Borders 4 | https://www.w3.org/TR/css-backgrounds-4/ | 🟢 | `CssBackgrounds4/` — background-position-x/y longhands parse + cascade (`wp:spec-css-backgrounds-4`); broader L4 surface (background-repeat 2-value, clip:text) not yet covered | `wp:spec-css-backgrounds-4` |
 | CSS Images 3 | https://www.w3.org/TR/css-images-3/ | 🟢 | `CssImages3/`, `Starling.Paint.Tests/GradientPaintTests` — linear/radial gradients parsed + painted (`wp:M5-css-13`); conic + `object-fit` deferred | `wp:spec-css-images-3` |
 | CSS Images 4 (`image-set()`, `cross-fade()`) | https://www.w3.org/TR/css-images-4/ | 🟢 | `CssImages4/` — image-set()/cross-fade() parse as function values in background-image (`wp:spec-css-images-4`); resolution selection + cross-fade compositing not implemented | `wp:spec-css-images-4` |
 | CSS Masking 1 | https://www.w3.org/TR/css-masking-1/ | 🟢 | `CssMasking1/` — clip-path (none/url/basic-shapes/geometry-box) + mask-image/mode/repeat/position/size/clip/origin/composite parse (`wp:spec-css-masking-1`); `mask` shorthand + painting not implemented | `wp:spec-css-masking-1` |
@@ -208,9 +208,9 @@ stale — the matrix has always held more rows than that.
 |---|---|
 | Specs catalogued | 67 |
 | ✅ Implemented | 3 |
-| 🟢 In progress | 47 |
+| 🟢 In progress | 48 |
 | 🟡 Scaffolded only | 0 |
-| 🔴 Not started (in scope, no work yet) | 12 |
+| 🔴 Not started (in scope, no work yet) | 11 |
 | 🚫 v1-deferred (the seven buckets) | 5 rows + MathML Core + print specs |
 
 In-scope total: **62 specs** (67 rows − 5 deferred rows). The two non-row
