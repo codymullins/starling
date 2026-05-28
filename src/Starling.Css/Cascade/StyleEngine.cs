@@ -597,7 +597,8 @@ public sealed class StyleEngine
                 allCandidates,
                 customCandidates,
                 ref order,
-                layerIndex: LayerOrder.UnlayeredIndex);
+                layerIndex: LayerOrder.UnlayeredIndex,
+                layerPath: null);
         }
 
         // CSS Logical Properties 1 §3.2: logical and physical properties
@@ -1050,7 +1051,8 @@ public sealed class StyleEngine
                 candidates,
                 customCandidates,
                 ref order,
-                layerIndex);
+                layerIndex,
+                currentLayerPath);
         }
 
         if (styleRule.NestedRulesOrEmpty.Count > 0)
@@ -1256,7 +1258,8 @@ public sealed class StyleEngine
         Dictionary<PropertyId, List<CascadedValue>> candidates,
         Dictionary<string, List<CustomPropertyValue>> customCandidates,
         ref int order,
-        int layerIndex)
+        int layerIndex,
+        string? layerPath = null)
     {
         foreach (var declaration in declarations)
         {
@@ -1270,7 +1273,8 @@ public sealed class StyleEngine
                     inline,
                     specificity,
                     currentOrder,
-                    layerIndex);
+                    layerIndex,
+                    layerPath);
                 if (!customCandidates.TryGetValue(declaration.Name, out var list))
                     customCandidates[declaration.Name] = list = new List<CustomPropertyValue>();
                 list.Add(custom);
@@ -1290,7 +1294,8 @@ public sealed class StyleEngine
                         inline,
                         specificity,
                         currentOrder,
-                        layerIndex);
+                        layerIndex,
+                        layerPath);
                     if (!candidates.TryGetValue(p, out var list))
                         candidates[p] = list = new List<CascadedValue>();
                     list.Add(candidate);
@@ -1307,7 +1312,8 @@ public sealed class StyleEngine
                     inline,
                     specificity,
                     currentOrder,
-                    layerIndex);
+                    layerIndex,
+                    layerPath);
                 if (!candidates.TryGetValue(parsed.Id, out var list))
                     candidates[parsed.Id] = list = new List<CascadedValue>();
                 list.Add(candidate);
@@ -1641,7 +1647,8 @@ public sealed class StyleEngine
         bool Inline,
         Specificity Specificity,
         int Order,
-        int LayerIndex)
+        int LayerIndex,
+        string? LayerPath = null)
     {
         public bool IsStrongerThan(CascadedValue other)
         {
@@ -1650,7 +1657,7 @@ public sealed class StyleEngine
             if (Inline != other.Inline) return Inline;
             // Layer: per spec, layered styles are weaker than unlayered (non-important);
             // for !important the order is inverted.
-            var layer = LayerOrder.Compare(LayerIndex, other.LayerIndex);
+            var layer = LayerOrder.Compare(LayerPath, LayerIndex, other.LayerPath, other.LayerIndex);
             if (layer != 0)
                 return Important ? layer < 0 : layer > 0;
             var specificity = Specificity.CompareTo(other.Specificity);
@@ -1668,14 +1675,15 @@ public sealed class StyleEngine
         bool Inline,
         Specificity Specificity,
         int Order,
-        int LayerIndex)
+        int LayerIndex,
+        string? LayerPath = null)
     {
         public bool IsStrongerThan(CustomPropertyValue other)
         {
             var origin = OriginRank(Origin, Important).CompareTo(OriginRank(other.Origin, other.Important));
             if (origin != 0) return origin > 0;
             if (Inline != other.Inline) return Inline;
-            var layer = LayerOrder.Compare(LayerIndex, other.LayerIndex);
+            var layer = LayerOrder.Compare(LayerPath, LayerIndex, other.LayerPath, other.LayerIndex);
             if (layer != 0)
                 return Important ? layer < 0 : layer > 0;
             var specificity = Specificity.CompareTo(other.Specificity);

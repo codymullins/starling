@@ -373,11 +373,7 @@ public sealed class CascadeAlgorithmTests
     }
 
     [Spec("css-cascade-5", "https://www.w3.org/TR/css-cascade-5/#layering", section: "7")]
-    [PendingFact(
-        "Engine treats rules inside @layer outer but outside a sub-layer as if they are unlayered globally, not unlayered-within-outer. " +
-        "The spec requires that within an outer layer, unlayered declarations beat sub-layered ones. " +
-        "Engine currently returns red (inner sub-layer wins) instead of green (unlayered-within-outer wins).",
-        trackingWp: "wp:spec-css-cascade-5")]
+    [SpecFact]
     public void Nested_layers_are_sub_layers()
     {
         var (_, el) = MakeElement("p");

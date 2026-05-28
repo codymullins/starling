@@ -43,13 +43,31 @@ public sealed class LayerOrder
     // Comparator: returns negative if layer `a` is *weaker* (loses) than `b`,
     // positive if stronger, zero if equal. Unlayered is strongest among non-important;
     // for important the caller must invert.
-    public static int Compare(int aIndex, int bIndex)
+    //
+    // Layer ordering is a tree (CSS Cascade 5 §6.4.2): a layer's own (direct)
+    // declarations are MORE important than any of its nested sub-layers. So when
+    // one layer is an ancestor of the other, the ancestor's direct rules win —
+    // this is NOT captured by the flat declaration-order index, which is only
+    // correct for sibling / unrelated layers.
+    public static int Compare(string? aPath, int aIndex, string? bPath, int bIndex)
     {
         if (aIndex == bIndex) return 0;
-        // Unlayered (-1) wins.
+        // Unlayered (-1) wins over any layered rule.
         if (aIndex == UnlayeredIndex) return 1;
         if (bIndex == UnlayeredIndex) return -1;
-        // Later declared layer wins.
+        // Ancestor's direct rules beat its descendant sub-layers (§6.4.2).
+        if (IsAncestor(aPath, bPath)) return 1;
+        if (IsAncestor(bPath, aPath)) return -1;
+        // Sibling / unrelated layers: later declared (higher index) wins.
         return aIndex.CompareTo(bIndex);
     }
+
+    // True when `ancestor` is a proper layer-path ancestor of `descendant`
+    // (e.g. "outer" is an ancestor of "outer.inner").
+    private static bool IsAncestor(string? ancestor, string? descendant)
+        => !string.IsNullOrEmpty(ancestor)
+            && !string.IsNullOrEmpty(descendant)
+            && descendant.Length > ancestor.Length
+            && descendant.StartsWith(ancestor, StringComparison.Ordinal)
+            && descendant[ancestor.Length] == '.';
 }
