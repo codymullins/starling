@@ -145,7 +145,7 @@ tests that have started passing — when one does, promote it from
 | CSS Scroll Snap 1 | https://www.w3.org/TR/css-scroll-snap-1/ | 🟢 | `CssScrollSnap1/` — scroll-snap-type/align/stop + scroll-margin/padding parse + cascade (`wp:spec-css-scroll-snap-1`); snap positioning behavior not implemented | `wp:spec-css-scroll-snap-1` |
 | CSS Scrollbars 1 | https://www.w3.org/TR/css-scrollbars-1/ | 🟢 | `CssScrollbars1/` — scrollbar-width/scrollbar-color properties parse + cascade/inheritance (`wp:spec-css-scrollbars-1`); scrollbar painting not implemented | `wp:spec-css-scrollbars-1` |
 | CSS Overscroll Behavior 1 | https://www.w3.org/TR/css-overscroll-1/ | 🟢 | `CssOverscroll1/` — overscroll-behavior-x/y + shorthand parse + cascade (`wp:spec-css-overscroll-1`); invalid-keyword rejection pending (no per-property value validation) | `wp:spec-css-overscroll-1` |
-| CSS View Transitions 1 | https://www.w3.org/TR/css-view-transitions-1/ | 🔴 | — | `wp:spec-css-view-transitions-1` |
+| CSS View Transitions 1 | https://www.w3.org/TR/css-view-transitions-1/ | 🟢 | `CssViewTransitions1/`, `src/Starling.Css/ViewTransitions/` — `@view-transition` at-rule parse (navigation/types descriptors) (`wp:spec-css-view-transitions-1`); transition capture/animation + JS startViewTransition not implemented | `wp:spec-css-view-transitions-1` |
 | CSS Scroll-Driven Animations 1 | https://www.w3.org/TR/scroll-animations-1/ | 🟢 | `CssScrollAnimations1/` — scroll-timeline-name/axis + view-timeline-name/axis/inset + timeline-scope + shorthands parse + cascade (`wp:spec-scroll-animations-1`); scroll-progress timeline driving not implemented | `wp:spec-scroll-animations-1` |
 
 ## UI / interaction
@@ -208,9 +208,9 @@ stale — the matrix has always held more rows than that.
 |---|---|
 | Specs catalogued | 67 |
 | ✅ Implemented | 3 |
-| 🟢 In progress | 54 |
+| 🟢 In progress | 55 |
 | 🟡 Scaffolded only | 0 |
-| 🔴 Not started (in scope, no work yet) | 5 |
+| 🔴 Not started (in scope, no work yet) | 4 |
 | 🚫 v1-deferred (the seven buckets) | 5 rows + MathML Core + print specs |
 
 In-scope total: **62 specs** (67 rows − 5 deferred rows). The two non-row
