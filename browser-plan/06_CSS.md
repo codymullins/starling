@@ -2,8 +2,29 @@
 
 ## Scope
 
-**In:** Tokenizer, syntax parser, selector parser+matcher, property parsing for v1 subset, cascade, inheritance, computed values, used values, media queries (subset), @rules, custom properties.
-**Out:** Animations/transitions (M6+), CSS Houdini (no), `@container` (deferred), CSS Nesting (M5+), color functions beyond v1 set (later).
+**v1 target (decided 2026-05-27).** Starling v1 aims for the union of the
+"modern web baseline" set and the formal W3C catalog set. In plain terms: every
+CSS spec a current browser ships, plus the rest of the spec catalog that has
+reached Candidate Recommendation. Seven buckets are out of v1 — a deliberate
+deferral, not a permanent "never." We can re-evaluate any of them after v1. The
+point is that leaving them out is intentional, not an accident:
+
+- CSS Ruby 1
+- CSS Speech 1
+- CSS Color HDR 6
+- CSS Color Adjust 1 (`color-scheme`, `forced-colors`)
+- MathML Core
+- CSS Houdini Paint Worklet (`paint()`)
+- Print specs (CSS Page 3, Paged Media, Generated Content for Paged Media)
+
+Everything else is in v1 scope, including the parts an older plan had deferred:
+Container Queries, Anchor Positioning, View Transitions, Scroll-Driven
+Animations, and the Typed object model.
+
+This scope has an ID: **`CSS-V1`**. "Implement all of `CSS-V1`" is shorthand for
+"drive every in-scope spec to ✅." `tasks/SPEC_COVERAGE.md` is the binding
+per-spec list. This paragraph states the rule. That file states the rows. If
+they ever disagree, that file wins.
 
 ## Spec refs
 

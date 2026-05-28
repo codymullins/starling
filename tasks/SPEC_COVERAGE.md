@@ -1,5 +1,11 @@
 # CSS / Web Specification Coverage
 
+**Scope ID: `CSS-V1`** — the v1 CSS scope. "Implement all of `CSS-V1`" means:
+drive every in-scope spec in this file (the 🔴 and 🟢 rows) to ✅, and leave the
+🚫 rows alone. A spec is ✅ when every `[Spec]`-tagged test for it is `[SpecFact]`
+and passing. The decision behind this scope is in the "Scope decision" note
+below and in `browser-plan/06_CSS.md`.
+
 **This file is the in-repo record of every CSS spec we know about, our
 position on it, and where the conformance tests live.** Agents should read
 this before starting any CSS work and update it when a spec moves between
@@ -13,7 +19,21 @@ Status legend:
 | 🟢 | In progress — a mix of `[SpecFact]` (passing) and `[PendingFact]` (known gaps) |
 | 🟡 | Tracked only — `[PendingFact]` tests exist documenting gaps; nothing passes yet |
 | 🔴 | Not started — no tests reference this spec |
-| 🚫 | Explicitly out of scope per `browser-plan/` |
+| 🚫 | Deferred from v1 per `browser-plan/` — intentional, re-evaluate later |
+
+> ## Scope decision — v1 target, decided 2026-05-27
+>
+> The v1 target is the union of the modern-web baseline set and the formal W3C
+> catalog set (every spec a current browser ships, plus the rest of the catalog
+> at Candidate Recommendation). **Seven buckets are out of v1:** Ruby 1,
+> Speech 1, Color HDR 6, Color Adjust 1, MathML Core, the Houdini Paint Worklet,
+> and all print specs (Page 3, Paged Media, Generated Content for Paged Media).
+> This is a deliberate deferral, not a permanent "never" — any of them can be
+> re-evaluated after v1. Everything else is in v1 scope. The decision brought
+> five specs back in that an older plan had deferred: Container Queries, Anchor
+> Positioning, View Transitions, Scroll-Driven Animations, and the Typed object
+> model. A 🚫 row below means one of the seven deferred buckets — nothing else.
+> See `browser-plan/06_CSS.md` for the rule statement.
 
 Default CI gates on `dotnet test --filter "Status!=Pending"` (skipped tests
 don't fail the build). A separate non-gating CI job runs
@@ -77,12 +97,12 @@ tests that have started passing — when one does, promote it from
 |---|---|---|---|---|
 | CSS Color 4 | https://www.w3.org/TR/css-color-4/ | 🟢 | legacy (`ColorFunctionTests`, `GamutMappingTests`) | `wp:spec-css-color-4` |
 | CSS Color 5 (color-mix, relative) | https://www.w3.org/TR/css-color-5/ | 🟡 | `CssColor5/` | `wp:spec-css-color-5-relative` |
-| CSS Color HDR 6 | https://www.w3.org/TR/css-color-hdr/ | 🔴 | — | `wp:spec-css-color-6` |
-| CSS Color Adjust 1 (`color-scheme`, `forced-colors`) | https://www.w3.org/TR/css-color-adjust-1/ | 🔴 | — | `wp:spec-css-color-adjust-1` |
+| CSS Color HDR 6 | https://www.w3.org/TR/css-color-hdr/ | 🚫 | v1-deferred 2026-05-27 | — |
+| CSS Color Adjust 1 (`color-scheme`, `forced-colors`) | https://www.w3.org/TR/css-color-adjust-1/ | 🚫 | v1-deferred 2026-05-27 | — |
 | CSS Fonts 4 | https://www.w3.org/TR/css-fonts-4/ | 🟢 | legacy (`FontFaceParserTests`) — gaps in `font-variation-settings`, `font-feature-settings`, `size-adjust` | `wp:spec-css-fonts-4` |
 | CSS Font Loading 3 (`document.fonts`) | https://www.w3.org/TR/css-font-loading-3/ | 🔴 | — | `wp:spec-css-font-loading-3` |
 | CSS Text 3 | https://www.w3.org/TR/css-text-3/ | 🟢 | `Starling.Layout.Tests/CssText3InlineTests`, `Starling.Css.Spec.Tests/CssText3/` — white-space pre*/transform/spacing/indent/tab-size/wrap applied (`wp:M5-css-12`) | `wp:spec-css-text-3` |
-| CSS Text 4 | https://www.w3.org/TR/css-text-4/ | 🚫 | deferred (drafts) | — |
+| CSS Text 4 | https://www.w3.org/TR/css-text-4/ | 🔴 | — | `wp:spec-css-text-4` |
 | CSS Text Decoration 3 | https://www.w3.org/TR/css-text-decor-3/ | 🟢 | `Starling.Css.Spec.Tests/CssTextDecor3/`, `Starling.Paint.Tests` — line/style/color/thickness + text-shadow painted (`wp:M5-css-15`); skip-ink/underline-position deferred | `wp:spec-css-text-decor-3` |
 | CSS Text Decoration 4 | https://www.w3.org/TR/css-text-decor-4/ | 🔴 | — | `wp:spec-css-text-decor-4` |
 | CSS Inline 3 | https://www.w3.org/TR/css-inline-3/ | 🔴 | — | `wp:spec-css-inline-3` |
@@ -105,8 +125,8 @@ tests that have started passing — when one does, promote it from
 | CSS Writing Modes 4 | https://www.w3.org/TR/css-writing-modes-4/ | 🔴 | — | `wp:spec-css-writing-modes-4` |
 | CSS Overflow 3 | https://www.w3.org/TR/css-overflow-3/ | 🔴 | — | `wp:spec-css-overflow-3` |
 | CSS Containment 2 | https://www.w3.org/TR/css-contain-2/ | 🔴 | — | `wp:spec-css-contain-2` |
-| CSS Container Queries 1 | https://www.w3.org/TR/css-contain-3/ | 🚫 | deferred per `browser-plan/06_CSS.md` | — |
-| CSS Anchor Positioning 1 | https://www.w3.org/TR/css-anchor-position-1/ | 🚫 | not in scope | — |
+| CSS Container Queries 1 | https://www.w3.org/TR/css-contain-3/ | 🔴 | — | `wp:spec-css-contain-3` |
+| CSS Anchor Positioning 1 | https://www.w3.org/TR/css-anchor-position-1/ | 🔴 | — | `wp:spec-css-anchor-position-1` |
 
 ## Visual / paint
 
@@ -125,8 +145,8 @@ tests that have started passing — when one does, promote it from
 | CSS Scroll Snap 1 | https://www.w3.org/TR/css-scroll-snap-1/ | 🔴 | — | `wp:spec-css-scroll-snap-1` |
 | CSS Scrollbars 1 | https://www.w3.org/TR/css-scrollbars-1/ | 🔴 | — | `wp:spec-css-scrollbars-1` |
 | CSS Overscroll Behavior 1 | https://www.w3.org/TR/css-overscroll-1/ | 🔴 | — | `wp:spec-css-overscroll-1` |
-| CSS View Transitions 1 | https://www.w3.org/TR/css-view-transitions-1/ | 🚫 | not in scope | — |
-| CSS Scroll-Driven Animations 1 | https://www.w3.org/TR/scroll-animations-1/ | 🚫 | not in scope | — |
+| CSS View Transitions 1 | https://www.w3.org/TR/css-view-transitions-1/ | 🔴 | — | `wp:spec-css-view-transitions-1` |
+| CSS Scroll-Driven Animations 1 | https://www.w3.org/TR/scroll-animations-1/ | 🔴 | — | `wp:spec-scroll-animations-1` |
 
 ## UI / interaction
 
@@ -137,8 +157,8 @@ tests that have started passing — when one does, promote it from
 | CSS Lists 3 | https://www.w3.org/TR/css-lists-3/ | 🟢 | `CssLists3/`, `Starling.Layout.Tests/ListMarkerTests` — list-style-type markers (disc/decimal/alpha/roman…) (`wp:M5-css-16`); marker `inside`/image deferred | `wp:spec-css-lists-3` |
 | CSS Counter Styles 3 (`@counter-style`) | https://www.w3.org/TR/css-counter-styles-3/ | 🔴 | — | `wp:spec-css-counter-styles-3` |
 | CSS Generated Content 3 | https://www.w3.org/TR/css-content-3/ | 🟢 | `CssContent3/`, `Starling.Layout.Tests/GeneratedContentLayoutTests` — `content` on `::before`/`::after` (string/attr()) (`wp:M5-css-16`); counters/quotes deferred | `wp:spec-css-content-3` |
-| CSS Speech 1 | https://www.w3.org/TR/css-speech-1/ | 🚫 | not in scope | — |
-| CSS Ruby 1 | https://www.w3.org/TR/css-ruby-1/ | 🚫 | not in scope | — |
+| CSS Speech 1 | https://www.w3.org/TR/css-speech-1/ | 🚫 | v1-deferred 2026-05-27 | — |
+| CSS Ruby 1 | https://www.w3.org/TR/css-ruby-1/ | 🚫 | v1-deferred 2026-05-27 | — |
 
 ## Animation
 
@@ -157,8 +177,8 @@ tests that have started passing — when one does, promote it from
 | CSSOM | https://drafts.csswg.org/cssom/ | 🔴 | — | `wp:spec-cssom` |
 | CSSOM View | https://drafts.csswg.org/cssom-view/ | 🔴 | — | `wp:spec-cssom-view` |
 | CSS Properties & Values API L1 (`@property`) | https://www.w3.org/TR/css-properties-values-api-1/ | 🔴 | — | `wp:spec-css-properties-values-api-1` |
-| CSS Typed OM 1 | https://www.w3.org/TR/css-typed-om-1/ | 🚫 | not in scope | — |
-| CSS Houdini Paint API | https://www.w3.org/TR/css-paint-api-1/ | 🚫 | not in scope | — |
+| CSS Typed OM 1 | https://www.w3.org/TR/css-typed-om-1/ | 🔴 | — | `wp:spec-css-typed-om-1` |
+| CSS Houdini Paint API | https://www.w3.org/TR/css-paint-api-1/ | 🚫 | v1-deferred 2026-05-27 | — |
 
 ## `@`-rule cross-index
 
@@ -172,20 +192,27 @@ tests that have started passing — when one does, promote it from
 | `@keyframes` | css-animations-1 | ✅ `KeyframesParserTests` |
 | `@property` | css-properties-values-api-1 | 🔴 |
 | `@counter-style` | css-counter-styles-3 | 🔴 |
-| `@page` | css-page-3 | 🔴 |
+| `@page` | css-page-3 | 🚫 v1-deferred (print) |
 | `@scope` | css-cascade-6 | 🔴 |
 | `@starting-style` | css-transitions-2 | 🔴 |
-| `@container` | css-contain-3 | 🚫 deferred |
+| `@container` | css-contain-3 | 🔴 |
 
 ---
 
 ## Overall counters (manual until SpecGen lands)
 
+Recounted 2026-05-27 after the scope lock. The old "54 catalogued" line was
+stale — the matrix has always held more rows than that.
+
 | | Count |
 |---|---|
-| Specs catalogued | 54 |
+| Specs catalogued | 67 |
 | ✅ Implemented | 3 |
-| 🟢 In progress | 22 |
+| 🟢 In progress | 25 |
 | 🟡 Scaffolded only | 2 |
-| 🔴 Not started | 20 |
-| 🚫 Out of scope | 7 |
+| 🔴 Not started (in scope, no work yet) | 32 |
+| 🚫 v1-deferred (the seven buckets) | 5 rows + MathML Core + print specs |
+
+In-scope total: **62 specs** (67 rows − 5 deferred rows). The two non-row
+deferrals (MathML Core, print specs) are not catalogued as CSS spec rows. So
+the v1 work ahead is **3 done, 59 to go**.
