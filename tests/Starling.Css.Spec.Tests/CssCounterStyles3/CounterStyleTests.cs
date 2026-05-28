@@ -224,6 +224,31 @@ public sealed class CounterStyleTests
         r.RenderCore("c", 5).Should().Be("5");
     }
 
+    [Spec("css-counter-styles-3", "https://www.w3.org/TR/css-counter-styles-3/#counter-style-range", section: "3.4")]
+    [SpecFact]
+    public void Multiple_comma_separated_range_segments_each_match()
+    {
+        // §3.4: `range` accepts comma-separated segments; a value is in range if
+        // it falls within ANY segment. Here [1 3] and [7 9] are accepted; values
+        // between/after fall back to decimal.
+        var r = ResolverFor("@counter-style m { system: cyclic; symbols: '*'; range: 1 3, 7 9; fallback: decimal; suffix: ''; }");
+        r.RenderCore("m", 2).Should().Be("*");   // in [1,3]
+        r.RenderCore("m", 8).Should().Be("*");   // in [7,9]
+        r.RenderCore("m", 5).Should().Be("5");   // gap between segments → fallback
+        r.RenderCore("m", 10).Should().Be("10"); // past last segment → fallback
+    }
+
+    [Spec("css-counter-styles-3", "https://www.w3.org/TR/css-counter-styles-3/#counter-style-range", section: "3.4")]
+    [SpecFact]
+    public void Range_segment_with_infinite_bound_is_open_ended()
+    {
+        // `infinite` leaves that side unbounded.
+        var r = ResolverFor("@counter-style hi { system: cyclic; symbols: '*'; range: 5 infinite; fallback: decimal; suffix: ''; }");
+        r.RenderCore("hi", 4).Should().Be("4");    // below 5 → fallback
+        r.RenderCore("hi", 5).Should().Be("*");    // at lower bound
+        r.RenderCore("hi", 9999).Should().Be("*"); // open-ended upper
+    }
+
     // --- §7 predefined styles ---
 
     [Spec("css-counter-styles-3", "https://www.w3.org/TR/css-counter-styles-3/#simple-numeric", section: "7.1.1")]

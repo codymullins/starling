@@ -51,6 +51,7 @@ public static class CounterStyleParser
         int? rangeLow = null;
         int? rangeHigh = null;
         var hasRange = false;
+        IReadOnlyList<(int? Low, int? High)> rangeSegments = [];
         var padLength = 0;
         var padSymbol = "";
         var fallback = "decimal";
@@ -78,7 +79,7 @@ public static class CounterStyleParser
                     suffix = ParseSingleSymbol(decl.Value) ?? suffix;
                     break;
                 case "range":
-                    (rangeLow, rangeHigh, hasRange) = ParseRange(decl.Value);
+                    (rangeLow, rangeHigh, hasRange, rangeSegments) = ParseRange(decl.Value);
                     break;
                 case "pad":
                     (padLength, padSymbol) = ParsePad(decl.Value, padLength, padSymbol);
@@ -104,6 +105,7 @@ public static class CounterStyleParser
             RangeLow = rangeLow,
             RangeHigh = rangeHigh,
             HasExplicitRange = hasRange,
+            RangeSegments = rangeSegments,
             PadLength = padLength,
             PadSymbol = padSymbol,
             Fallback = fallback,
@@ -262,15 +264,23 @@ public static class CounterStyleParser
         return null;
     }
 
-    private static (int? Low, int? High, bool HasRange) ParseRange(IReadOnlyList<CssComponentValue> value)
+    private static (int? Low, int? High, bool HasRange, IReadOnlyList<(int? Low, int? High)> Segments) ParseRange(
+        IReadOnlyList<CssComponentValue> value)
     {
-        // range: [[<integer> | infinite]{2}]# | auto. We support a single
-        // bound pair; "auto" leaves both null. "infinite" maps to null on that
-        // side (open-ended).
+        // range: [[<integer> | infinite]{2}]# | auto (§3.4). Comma-separated
+        // segments; each is a [low high] pair. "auto" leaves the range
+        // unbounded. "infinite" maps to null on that side (open-ended).
         var hasAuto = false;
-        int? low = null;
-        int? high = null;
+        var segments = new List<(int? Low, int? High)>();
         var bounds = new List<int?>();
+
+        void FlushSegment()
+        {
+            if (bounds.Count >= 2)
+                segments.Add((bounds[0], bounds[1]));
+            bounds.Clear();
+        }
+
         foreach (var v in value)
         {
             if (v is not CssTokenValue token) continue;
@@ -285,17 +295,18 @@ public static class CounterStyleParser
                 case CssTokenType.Number when token.Token.IsInteger:
                     bounds.Add((int)token.Token.Number);
                     break;
+                case CssTokenType.Comma:
+                    FlushSegment();
+                    break;
             }
         }
-        if (hasAuto)
-            return (null, null, false);
-        if (bounds.Count >= 2)
-        {
-            low = bounds[0];
-            high = bounds[1];
-            return (low, high, true);
-        }
-        return (null, null, false);
+        FlushSegment();
+
+        if (hasAuto || segments.Count == 0)
+            return (null, null, false, []);
+        // RangeLow/RangeHigh mirror the first segment for callers that only
+        // read the single-pair form.
+        return (segments[0].Low, segments[0].High, true, segments);
     }
 
     private static (int Length, string Symbol) ParsePad(

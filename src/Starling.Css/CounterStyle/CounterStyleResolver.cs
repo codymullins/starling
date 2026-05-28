@@ -119,6 +119,7 @@ public sealed class CounterStyleResolver
                 AdditiveSymbols = rule.AdditiveSymbols.Count > 0 ? rule.AdditiveSymbols : baseRule.AdditiveSymbols,
                 RangeLow = rule.HasExplicitRange ? rule.RangeLow : baseRule.RangeLow,
                 RangeHigh = rule.HasExplicitRange ? rule.RangeHigh : baseRule.RangeHigh,
+                RangeSegments = rule.HasExplicitRange ? rule.RangeSegments : baseRule.RangeSegments,
                 HasExplicitRange = rule.HasExplicitRange || baseRule.HasExplicitRange,
                 Fallback = rule.Fallback != "decimal" ? rule.Fallback : baseRule.Fallback,
             };
@@ -174,8 +175,20 @@ public sealed class CounterStyleResolver
         // them (cyclic accepts any; symbolic/alphabetic need value ≥ 1).
         if (rule.HasExplicitRange)
         {
-            if (rule.RangeLow is { } lo && value < lo) return true;
-            if (rule.RangeHigh is { } hi && value > hi) return true;
+            // §3.4: with multiple comma-separated segments, the value is in
+            // range if it falls within ANY segment (open-ended on a null bound).
+            if (rule.RangeSegments.Count > 0)
+            {
+                foreach (var (lo, hi) in rule.RangeSegments)
+                {
+                    var aboveLow = lo is not { } l || value >= l;
+                    var belowHigh = hi is not { } h || value <= h;
+                    if (aboveLow && belowHigh) return false;
+                }
+                return true;
+            }
+            if (rule.RangeLow is { } low && value < low) return true;
+            if (rule.RangeHigh is { } high && value > high) return true;
             return false;
         }
         // Auto range (§3.4): cyclic/numeric/fixed accept all integers;

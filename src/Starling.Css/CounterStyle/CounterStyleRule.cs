@@ -84,6 +84,13 @@ public sealed record CounterStyleRule
     /// so the resolver knows whether to honor the bounds (§3.4).</summary>
     public bool HasExplicitRange { get; init; }
 
+    /// <summary>The full <c>range</c> descriptor as one or more
+    /// comma-separated <c>[low high]</c> segments (§3.4). A null bound is
+    /// open-ended (<c>infinite</c>). A value is in range if it falls within any
+    /// segment. Empty when <c>range</c> is <c>auto</c>. For a single segment this
+    /// mirrors <see cref="RangeLow"/>/<see cref="RangeHigh"/>.</summary>
+    public IReadOnlyList<(int? Low, int? High)> RangeSegments { get; init; } = [];
+
     /// <summary>The <c>pad</c> descriptor's minimum length (§3.5). 0 = no pad.</summary>
     public int PadLength { get; init; }
 
