@@ -291,25 +291,27 @@ public sealed class CssTransforms2Tests
     public void Transform_box_initial_value()
         => PropertyRegistry.InitialValue(PropertyId.TransformBox).Should().Be(new CssKeyword("view-box"));
 
-    // ----- §5 transform-style / backface-visibility (GAPS) -----
+    // ----- §5 transform-style / backface-visibility -----
 
-    [PendingFact(
-        "transform-style is not registered in PropertyId/PropertyRegistry; declaration is dropped on parse.",
-        trackingWp: "wp:spec-css-transforms-2")]
+    [SpecFact]
     [Spec("css-transforms-2", "https://www.w3.org/TR/css-transforms-2/#transform-style-property", section: "5")]
     public void Transform_style_flat_or_preserve3d_parses()
     {
-        var decls = Expand("transform-style: preserve-3d;");
-        decls.Should().NotBeEmpty();
+        Expand("transform-style: flat;").Single(d => d.Id == PropertyId.TransformStyle)
+            .Value.Should().Be(new CssKeyword("flat"));
+        Expand("transform-style: preserve-3d;").Single(d => d.Id == PropertyId.TransformStyle)
+            .Value.Should().Be(new CssKeyword("preserve-3d"));
+        PropertyRegistry.InitialValue(PropertyId.TransformStyle).Should().Be(new CssKeyword("flat"));
     }
 
-    [PendingFact(
-        "backface-visibility is not registered in PropertyId/PropertyRegistry; declaration is dropped on parse.",
-        trackingWp: "wp:spec-css-transforms-2")]
+    [SpecFact]
     [Spec("css-transforms-2", "https://www.w3.org/TR/css-transforms-2/#backface-visibility-property", section: "5")]
     public void Backface_visibility_visible_or_hidden_parses()
     {
-        var decls = Expand("backface-visibility: hidden;");
-        decls.Should().NotBeEmpty();
+        Expand("backface-visibility: hidden;").Single(d => d.Id == PropertyId.BackfaceVisibility)
+            .Value.Should().Be(new CssKeyword("hidden"));
+        Expand("backface-visibility: visible;").Single(d => d.Id == PropertyId.BackfaceVisibility)
+            .Value.Should().Be(new CssKeyword("visible"));
+        PropertyRegistry.InitialValue(PropertyId.BackfaceVisibility).Should().Be(new CssKeyword("visible"));
     }
 }

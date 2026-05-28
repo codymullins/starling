@@ -127,6 +127,8 @@ public enum PropertyId
     Rotate,
     Perspective,
     PerspectiveOrigin,
+    TransformStyle,
+    BackfaceVisibility,
     Filter,
     BackdropFilter,
     MixBlendMode,

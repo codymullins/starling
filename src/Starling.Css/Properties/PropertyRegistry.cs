@@ -193,6 +193,9 @@ public static class PropertyRegistry
             PropertyId.TransformBox => new CssKeyword("view-box"),
             PropertyId.Perspective => new CssKeyword("none"),
             PropertyId.PerspectiveOrigin => new CssKeyword("50% 50%"),
+            // CSS Transforms 2 §5.
+            PropertyId.TransformStyle => new CssKeyword("flat"),
+            PropertyId.BackfaceVisibility => new CssKeyword("visible"),
             PropertyId.Filter or PropertyId.BackdropFilter => new CssKeyword("none"),
             PropertyId.MixBlendMode or PropertyId.BackgroundBlendMode => new CssKeyword("normal"),
             PropertyId.ClipPath => new CssKeyword("none"),
