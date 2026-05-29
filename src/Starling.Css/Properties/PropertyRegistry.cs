@@ -20,6 +20,7 @@ public static class PropertyRegistry
         PropertyId.FontStretch,
         PropertyId.FontStyle,
         PropertyId.FontVariationSettings,
+        PropertyId.FontFeatureSettings,
         PropertyId.FontWeight,
         PropertyId.LineHeight,
         PropertyId.TextAlign,
@@ -125,6 +126,9 @@ public static class PropertyRegistry
             PropertyId.FontStretch => new CssKeyword("normal"),
             PropertyId.FontStyle => new CssKeyword("normal"),
             PropertyId.FontVariationSettings => new CssKeyword("normal"),
+            // CSS Fonts 4 §6.11 (font-feature-settings) / §9.5 (size-adjust).
+            PropertyId.FontFeatureSettings => new CssKeyword("normal"),
+            PropertyId.SizeAdjust => new CssPercentage(100),
             PropertyId.FontWeight => new CssNumber(400),
             PropertyId.LineHeight => new CssKeyword("normal"),
             PropertyId.TextAlign => new CssKeyword("start"),
@@ -364,6 +368,10 @@ public static class PropertyRegistry
                     yield return item;
                 break;
             case "padding":
+                // CSS Box Model 3 §4: padding must be non-negative — a negative
+                // component makes the whole shorthand invalid (dropped).
+                if (values.Any(IsNegativeLengthValue))
+                    break;
                 foreach (var item in Box(PropertyId.PaddingTop, PropertyId.PaddingRight, PropertyId.PaddingBottom, PropertyId.PaddingLeft, values, important))
                     yield return item;
                 break;
@@ -386,6 +394,13 @@ public static class PropertyRegistry
             case "overflow":
                 yield return new PropertyDeclaration(PropertyId.OverflowX, values[0], important);
                 yield return new PropertyDeclaration(PropertyId.OverflowY, values.Count > 1 ? values[1] : values[0], important);
+                break;
+            // CSS Fonts 4 §4.8 — `font` shorthand:
+            // [ <style> || <variant> || <weight> || <stretch> ]? <size> [ / <line-height> ]? <family>
+            // (system font keywords set all longhands from UA metrics).
+            case "font":
+                foreach (var item in ExpandFont(values, important))
+                    yield return item;
                 break;
             case "background":
                 foreach (var item in ExpandBackground(values, important))
@@ -695,12 +710,94 @@ public static class PropertyRegistry
                     yield return item;
                 break;
 
+            // CSS Display 3 §2.1: the two-value `display` syntax
+            // (<display-outside> <display-inside>) is normalized to its
+            // single-keyword legacy equivalent.
+            case "display" when values.Count == 2
+                && values[0] is CssKeyword o && values[1] is CssKeyword inr:
+                {
+                    var (a, b) = (o.Name, inr.Name);
+                    // Accept either order of outer/inner.
+                    var outer = a is "block" or "inline" or "run-in" ? a : b;
+                    var inner = outer == a ? b : a;
+                    var normalized = (outer, inner) switch
+                    {
+                        ("block", "flow") => "block",
+                        ("block", "flow-root") => "flow-root",
+                        ("inline", "flow") => "inline",
+                        ("inline", "flow-root") => "inline-block",
+                        ("block", "flex") => "flex",
+                        ("inline", "flex") => "inline-flex",
+                        ("block", "grid") => "grid",
+                        ("inline", "grid") => "inline-grid",
+                        ("block", "table") => "table",
+                        ("inline", "table") => "inline-table",
+                        _ => null,
+                    };
+                    if (normalized is not null)
+                        yield return new PropertyDeclaration(PropertyId.Display, new CssKeyword(normalized), important);
+                    else
+                        yield return new PropertyDeclaration(PropertyId.Display, new CssValueList(values), important);
+                }
+                break;
+            // CSS Compositing 1 §5.2: `background-blend-mode` is a comma-separated
+            // list of blend keywords (one per background layer). Split on the
+            // top-level comma artifacts so the value is one clean entry per layer.
+            case "background-blend-mode":
+                {
+                    var modes = values.Where(v => v is not CssKeyword { Name: "" or "," }).ToList();
+                    yield return new PropertyDeclaration(PropertyId.BackgroundBlendMode,
+                        modes.Count == 1 ? modes[0] : new CssValueList(modes), important);
+                }
+                break;
+
             default:
                 if (TryGetPropertyId(name, out var id))
-                    yield return new PropertyDeclaration(id, values.Count == 1 ? values[0] : new CssValueList(values), important);
+                {
+                    var value = values.Count == 1 ? values[0] : new CssValueList(values);
+                    // Drop declarations whose value is invalid for the property
+                    // (CSS Syntax 3 §8.2). Validation is permissive by default —
+                    // see IsValidLonghandValue — so only properties with an
+                    // explicit rule reject anything.
+                    if (values.Count == 1 && !IsValidLonghandValue(id, value))
+                        break;
+                    yield return new PropertyDeclaration(id, value, important);
+                }
                 break;
         }
     }
+
+    // Per-property value validation. Permissive by default (returns true): only
+    // properties with an explicit rule reject values, so adding a rule never
+    // changes behavior for any other property. CSS-wide keywords always pass.
+    internal static bool IsValidLonghandValue(PropertyId id, CssValue value)
+    {
+        if (value is CssKeyword { Name: "inherit" or "initial" or "unset" or "revert" or "revert-layer" })
+            return true;
+        return id switch
+        {
+            // CSS Overscroll Behavior 1 §2: auto | contain | none.
+            PropertyId.OverscrollBehaviorX or PropertyId.OverscrollBehaviorY
+                => value is CssKeyword { Name: "auto" or "contain" or "none" },
+            // CSS Box Model 3 §4: padding longhands must be non-negative.
+            PropertyId.PaddingTop or PropertyId.PaddingRight or PropertyId.PaddingBottom or PropertyId.PaddingLeft
+                or PropertyId.PaddingInlineStart or PropertyId.PaddingInlineEnd
+                or PropertyId.PaddingBlockStart or PropertyId.PaddingBlockEnd
+                => !IsNegativeLengthValue(value),
+            _ => true,
+        };
+    }
+
+    // True when the value is a statically-negative length / number / percentage.
+    // calc() and keywords are not statically negative, so they pass.
+    private static bool IsNegativeLengthValue(CssValue value) => value switch
+    {
+        CssLength l => l.Value < 0,
+        CssNumber n => n.Value < 0,
+        CssPercentage p => p.Value < 0,
+        CssDimension d => d.Value < 0,
+        _ => false,
+    };
 
     private static IEnumerable<PropertyDeclaration> Box(
         PropertyId top,
@@ -733,6 +830,75 @@ public static class PropertyRegistry
         yield return new PropertyDeclaration(start, values[0], important);
         yield return new PropertyDeclaration(end, values.Count > 1 ? values[1] : values[0], important);
     }
+
+    private static IEnumerable<PropertyDeclaration> ExpandFont(List<CssValue> values, bool important)
+    {
+        // System font keywords (§4.8.1): set all longhands from UA metrics. We
+        // don't have per-system metrics, so emit a sensible default so the
+        // shorthand isn't a no-op.
+        if (values.Count == 1 && values[0] is CssKeyword sys && IsSystemFontKeyword(sys.Name))
+        {
+            yield return new PropertyDeclaration(PropertyId.FontStyle, new CssKeyword("normal"), important);
+            yield return new PropertyDeclaration(PropertyId.FontWeight, new CssKeyword("normal"), important);
+            yield return new PropertyDeclaration(PropertyId.FontSize, new CssKeyword("medium"), important);
+            yield return new PropertyDeclaration(PropertyId.LineHeight, new CssKeyword("normal"), important);
+            yield return new PropertyDeclaration(PropertyId.FontFamily, new CssKeyword("sans-serif"), important);
+            yield break;
+        }
+
+        // font-size is required and is the pivot: everything before it is the
+        // optional style/variant/weight/stretch run; everything after is the
+        // optional `/ line-height` then the required font-family.
+        var sizeIdx = values.FindIndex(IsFontSizeValue);
+        if (sizeIdx < 0)
+            yield break; // no font-size → invalid shorthand, dropped.
+
+        CssValue? style = null, weight = null, stretch = null;
+        for (var i = 0; i < sizeIdx; i++)
+        {
+            switch (values[i])
+            {
+                case CssKeyword { Name: "italic" or "oblique" } sv: style = sv; break;
+                case CssKeyword { Name: "bold" or "bolder" or "lighter" } wv: weight = wv; break;
+                case CssNumber wn: weight = wn; break; // numeric font-weight
+                case CssKeyword k when IsFontStretchKeyword(k.Name): stretch = k; break;
+                // `normal`, `small-caps` (variant) etc. fall through (defaults).
+            }
+        }
+
+        var idx = sizeIdx + 1;
+        CssValue? lineHeight = null;
+        if (idx < values.Count && values[idx] is CssKeyword { Name: "/" })
+        {
+            idx++;
+            if (idx < values.Count) { lineHeight = values[idx]; idx++; }
+        }
+
+        var familyValues = values.Skip(idx).ToList();
+        if (familyValues.Count == 0)
+            yield break; // font-family is required.
+
+        yield return new PropertyDeclaration(PropertyId.FontStyle, style ?? new CssKeyword("normal"), important);
+        yield return new PropertyDeclaration(PropertyId.FontWeight, weight ?? new CssKeyword("normal"), important);
+        if (stretch is not null)
+            yield return new PropertyDeclaration(PropertyId.FontStretch, stretch, important);
+        yield return new PropertyDeclaration(PropertyId.FontSize, values[sizeIdx], important);
+        yield return new PropertyDeclaration(PropertyId.LineHeight, lineHeight ?? new CssKeyword("normal"), important);
+        yield return new PropertyDeclaration(PropertyId.FontFamily,
+            familyValues.Count == 1 ? familyValues[0] : new CssValueList(familyValues), important);
+    }
+
+    private static bool IsFontSizeValue(CssValue v)
+        => v is CssLength or CssDimension or CssPercentage
+            || (v is CssKeyword k && (k.Name is "xx-small" or "x-small" or "small" or "medium"
+                or "large" or "x-large" or "xx-large" or "xxx-large" or "smaller" or "larger"));
+
+    private static bool IsFontStretchKeyword(string name)
+        => name is "ultra-condensed" or "extra-condensed" or "condensed" or "semi-condensed"
+            or "semi-expanded" or "expanded" or "extra-expanded" or "ultra-expanded";
+
+    private static bool IsSystemFontKeyword(string name)
+        => name is "caption" or "icon" or "menu" or "message-box" or "small-caption" or "status-bar";
 
     private static IEnumerable<PropertyDeclaration> ExpandBackground(List<CssValue> values, bool important)
     {
@@ -1539,6 +1705,7 @@ public static class PropertyRegistry
         ["overscroll-behavior"] = [PropertyId.OverscrollBehaviorX, PropertyId.OverscrollBehaviorY],
         ["outline"] = [PropertyId.OutlineColor, PropertyId.OutlineStyle, PropertyId.OutlineWidth],
         ["mask"] = [PropertyId.MaskImage, PropertyId.MaskMode, PropertyId.MaskPosition, PropertyId.MaskSize, PropertyId.MaskRepeat, PropertyId.MaskOrigin, PropertyId.MaskClip, PropertyId.MaskComposite],
+        ["font"] = [PropertyId.FontStyle, PropertyId.FontWeight, PropertyId.FontStretch, PropertyId.FontSize, PropertyId.LineHeight, PropertyId.FontFamily],
         ["scroll-timeline"] = [PropertyId.ScrollTimelineName, PropertyId.ScrollTimelineAxis],
         ["view-timeline"] = [PropertyId.ViewTimelineName, PropertyId.ViewTimelineAxis],
         ["columns"] = [PropertyId.ColumnWidth, PropertyId.ColumnCount],

@@ -56,7 +56,30 @@ use `SplitTopLevelCommas` — unify on that). Promote
 **Risk.** Parser-level; touches many multi-value properties. Run the FULL suite
 (Css, Css.Spec, Layout, Paint) after.
 
+## Tier 1c — gaps found by the core conformance suites
+
+The comprehensive `[Spec]` suites for the four core parse/cascade specs all
+pass except for these real engine bugs (each a `[PendingFact]` with the spec's
+tracking id). Fixing them flips the PendingFacts → `[SpecFact]` and drives all
+four specs to ✅ (they have no paint/layout layer — these are their last gaps):
+
+- ~~**css-syntax-3** (1): hash `id`/`unrestricted` type flag (§4.3.6)~~ — DONE
+  (`CssToken.HashIsId`); **css-syntax-3 is ✅**.
+- ~~**css-values-4** (4): calc `CalcTime`/`CalcFrequency` add/sub folding +
+  `1e2px` dimension~~ — DONE (folding added; `1e2px` already worked);
+  **css-values-4 is ✅**.
+- ~~**css-cascade-5** (1): nested `@layer` ancestor-direct vs sub-layer (§6.4.2)~~
+  — DONE (path-aware `LayerOrder.Compare`); **css-cascade-5 is ✅**.
+- **selectors-4** (7, OPEN): form-validation pseudo-classes (`:valid`/`:invalid`/
+  `:in-range`/`:out-of-range`/`:autofill`/`:user-valid`/`:user-invalid`) aren't
+  matched; `:lang()` accepts only a single string (not a comma list); and
+  `:focus-visible` is aliased to `:focus` (no keyboard-vs-pointer heuristic).
+  (Several of these depend on form-state/interaction tracking, so they may move
+  with the behavior-layer WP rather than here.)
+
 ## Done when
 
-Both PendingFacts above are `[SpecFact]`; the enumerated specs gain
-invalid-value-rejection SpecFacts; all suites green. Update `tasks/SPEC_COVERAGE.md`.
+Both systemic PendingFacts (1a/1b) are `[SpecFact]`; the enumerated specs gain
+invalid-value-rejection SpecFacts; the Tier-1c gaps are fixed (→ syntax-3,
+values-4, cascade-5, selectors-4 reach ✅); all suites green. Update
+`tasks/SPEC_COVERAGE.md`.

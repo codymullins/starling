@@ -166,7 +166,7 @@ public sealed class OverscrollBehaviorTests
     // it against the accepted value set, so a bogus keyword survives instead of
     // being dropped. Tracked as a gap.
     [Spec("css-overscroll-1", "https://www.w3.org/TR/css-overscroll-1/#propdef-overscroll-behavior-x", section: "3")]
-    [PendingFact("overscroll-behavior-x keeps invalid keyword 'scroll' instead of dropping the declaration", trackingWp: "wp:spec-css-overscroll-1")]
+    [SpecFact]
     public void OverscrollBehaviorX_drops_invalid_keyword()
         => Expand("overscroll-behavior-x: scroll;")
             .Should().NotContain(d => d.Id == PropertyId.OverscrollBehaviorX);

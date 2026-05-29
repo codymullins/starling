@@ -445,6 +445,24 @@ public static class CalcEvaluator
             var a = lA.InDegrees() + (op == CalcOperator.Add ? 1 : -1) * rA.InDegrees();
             return new CalcAngle(a, CssAngleUnit.Degrees);
         }
+        // time + time: preserve the unit when both match, else fold to seconds.
+        if (op is CalcOperator.Add or CalcOperator.Subtract
+            && left is CalcTime lT && right is CalcTime rT)
+        {
+            if (lT.Unit == rT.Unit)
+                return new CalcTime(op == CalcOperator.Add ? lT.Value + rT.Value : lT.Value - rT.Value, lT.Unit);
+            var t = lT.InSeconds() + (op == CalcOperator.Add ? 1 : -1) * rT.InSeconds();
+            return new CalcTime(t, CssTimeUnit.Seconds);
+        }
+        // frequency + frequency: preserve the unit when both match, else fold to hertz.
+        if (op is CalcOperator.Add or CalcOperator.Subtract
+            && left is CalcFrequency lF && right is CalcFrequency rF)
+        {
+            if (lF.Unit == rF.Unit)
+                return new CalcFrequency(op == CalcOperator.Add ? lF.Value + rF.Value : lF.Value - rF.Value, lF.Unit);
+            var f = lF.InHertz() + (op == CalcOperator.Add ? 1 : -1) * rF.InHertz();
+            return new CalcFrequency(f, CssFrequencyUnit.Hertz);
+        }
 
         return new CalcBinary(op, left, right, resultType);
     }

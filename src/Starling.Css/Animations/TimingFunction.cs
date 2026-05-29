@@ -82,8 +82,82 @@ public abstract record TimingFunction
                     return new StepsTimingFunction(count, pos);
                 }
                 return Ease;
+
+            case CssFunctionValue f when string.Equals(f.Name, "linear", StringComparison.OrdinalIgnoreCase):
+                {
+                    var points = ParseLinearStops(f.Arguments);
+                    return points is { Count: >= 2 } ? new LinearEasingFunction(points) : Linear;
+                }
         }
         return Ease;
+    }
+
+    // CSS Easing 1 §4: parse `linear()` stops into (input, output) control
+    // points. Each argument is an output number, optionally followed by one or
+    // two input-position percentages. Missing first/last inputs default to
+    // 0/1; missing interior inputs are evenly distributed; inputs are made
+    // monotonically non-decreasing.
+    private static List<(double Input, double Output)>? ParseLinearStops(IReadOnlyList<CssValue> args)
+    {
+        var outputs = new List<double>();
+        var inputs = new List<double?>();
+        foreach (var arg in args)
+        {
+            switch (arg)
+            {
+                case CssNumber num:
+                    outputs.Add(num.Value);
+                    inputs.Add(null);
+                    break;
+                case CssValueList list when list.Values.Count >= 1 && list.Values[0] is CssNumber outNum:
+                    // A stop with two input positions expands to two control points.
+                    var positions = list.Values.Skip(1).OfType<CssPercentage>().Select(p => p.Value / 100.0).ToList();
+                    if (positions.Count == 0)
+                    {
+                        outputs.Add(outNum.Value);
+                        inputs.Add(null);
+                    }
+                    else
+                    {
+                        foreach (var pos in positions)
+                        {
+                            outputs.Add(outNum.Value);
+                            inputs.Add(pos);
+                        }
+                    }
+                    break;
+                default:
+                    return null; // malformed stop
+            }
+        }
+
+        var n = outputs.Count;
+        if (n == 0) return null;
+        if (inputs[0] is null) inputs[0] = 0.0;
+        if (inputs[n - 1] is null) inputs[n - 1] = 1.0;
+
+        // Evenly distribute runs of missing interior inputs between defined anchors.
+        var i = 0;
+        while (i < n)
+        {
+            if (inputs[i] is not null) { i++; continue; }
+            var j = i;
+            while (j < n && inputs[j] is null) j++;
+            var lo = inputs[i - 1]!.Value;
+            var hi = inputs[j]!.Value;
+            for (var k = i; k < j; k++)
+                inputs[k] = lo + (hi - lo) * (k - (i - 1)) / (j - (i - 1));
+            i = j;
+        }
+        // Monotonic non-decreasing (§4 step 3).
+        for (var k = 1; k < n; k++)
+            if (inputs[k]!.Value < inputs[k - 1]!.Value)
+                inputs[k] = inputs[k - 1];
+
+        var points = new List<(double Input, double Output)>(n);
+        for (var k = 0; k < n; k++)
+            points.Add((inputs[k]!.Value, outputs[k]));
+        return points;
     }
 
     private static bool TryAsNumber(CssValue v, out double n)
@@ -100,6 +174,49 @@ public abstract record TimingFunction
 internal sealed record LinearTimingFunction : TimingFunction
 {
     public override double Evaluate(double t) => t;
+}
+
+/// <summary>
+/// CSS Easing 1 §4 <c>linear()</c> — a piecewise-linear easing defined by
+/// (input, output) control points. <see cref="Evaluate"/> finds the segment
+/// bracketing the input progress and linearly interpolates the output (a
+/// zero-width input segment is a discontinuity that jumps to the later output).
+/// </summary>
+public sealed record LinearEasingFunction : TimingFunction
+{
+    private readonly IReadOnlyList<(double Input, double Output)> _points;
+
+    public LinearEasingFunction(IReadOnlyList<(double Input, double Output)> points) => _points = points;
+
+    public override double Evaluate(double t)
+    {
+        var count = _points.Count;
+        if (count == 0) return t;
+        if (count == 1) return _points[0].Output;
+        if (t <= _points[0].Input) return _points[0].Output;
+        if (t >= _points[count - 1].Input) return _points[count - 1].Output;
+        for (var k = 0; k < count - 1; k++)
+        {
+            var (inK, outK) = _points[k];
+            var (inNext, outNext) = _points[k + 1];
+            if (t > inNext) continue;
+            if (inNext <= inK) return outNext; // zero-width segment → jump
+            var frac = (t - inK) / (inNext - inK);
+            return outK + frac * (outNext - outK);
+        }
+        return _points[count - 1].Output;
+    }
+
+    // Records compare by value; compare the control points element-wise.
+    public bool Equals(LinearEasingFunction? other)
+        => other is not null && _points.SequenceEqual(other._points);
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        foreach (var p in _points) hash.Add(p);
+        return hash.ToHashCode();
+    }
 }
 
 /// <summary>

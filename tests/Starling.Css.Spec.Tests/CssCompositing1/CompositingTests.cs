@@ -110,11 +110,7 @@ public sealed class CompositingTests
     }
 
     [Spec("compositing-1", "https://www.w3.org/TR/compositing-1/#background-blend-mode", section: "5.2")]
-    [PendingFact(
-        "comma separators in a background-blend-mode list are not dropped/split: " +
-        "the value parser keeps the comma as an empty CssKeyword inside the CssValueList " +
-        "instead of producing one clean <blend-mode> entry per background layer",
-        trackingWp: "wp:spec-css-compositing-1")]
+    [SpecFact]
     public void Background_blend_mode_list_splits_cleanly_on_commas()
     {
         var value = ValueOf("background-blend-mode: multiply, screen;", PropertyId.BackgroundBlendMode);

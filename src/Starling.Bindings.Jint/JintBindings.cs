@@ -27,6 +27,7 @@ public static class JintBindings
 
         // J2d — Window/global + companions.
         WindowBinding.Install(ctx);
+        CssBinding.Install(ctx);
         StorageBinding.Install(ctx);
         HistoryBinding.Install(ctx);
         PerformanceBinding.Install(ctx);

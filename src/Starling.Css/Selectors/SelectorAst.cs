@@ -92,6 +92,11 @@ public enum PseudoElement
     FileSelectorButton,
     DetailsContent,
     Cue,
+    // Functional pseudo-elements (CSS Pseudo 4 / Shadow DOM): ::part(<ident>) and
+    // ::slotted(<compound-selector>). Parsed to a dedicated kind; full matching
+    // requires shadow-tree semantics.
+    Part,
+    Slotted,
     Unknown,
 }
 
@@ -110,6 +115,8 @@ public static class PseudoElementHelpers
         "file-selector-button" => PseudoElement.FileSelectorButton,
         "details-content" => PseudoElement.DetailsContent,
         "cue" => PseudoElement.Cue,
+        "part" => PseudoElement.Part,
+        "slotted" => PseudoElement.Slotted,
         _ => PseudoElement.Unknown,
     };
 
@@ -126,6 +133,8 @@ public static class PseudoElementHelpers
         PseudoElement.FileSelectorButton => "file-selector-button",
         PseudoElement.DetailsContent => "details-content",
         PseudoElement.Cue => "cue",
+        PseudoElement.Part => "part",
+        PseudoElement.Slotted => "slotted",
         _ => "unknown",
     };
 }

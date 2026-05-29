@@ -64,6 +64,8 @@ public enum PropertyId
     FontStretch,
     FontStyle,
     FontVariationSettings,
+    FontFeatureSettings,
+    SizeAdjust,
     FontWeight,
     LineHeight,
     TextAlign,

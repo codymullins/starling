@@ -195,6 +195,68 @@ ImageSharp.Drawing 3 + Fonts 3, pure-managed, requires the repo-root
 There is no native graphics shim to build — a fresh checkout's `dotnet build`
 should succeed without any non-.NET prerequisites.
 
+## Coding standards — performance policy for C# code
+
+Target modern .NET and use current platform primitives. Prefer simple,
+allocation-conscious code. Do not introduce unsafe code, pooling, ref returns,
+`stackalloc`, `ValueTask`, or `CollectionsMarshal` unless the code is plausibly
+hot or allocation-heavy.
+
+**Hot paths:**
+
+- Avoid `Substring`; use `AsSpan`.
+- Avoid `ToLower`/`ToUpper` for comparisons; use `StringComparison`.
+- Avoid `ContainsKey` + indexer; use `TryGetValue`.
+- Avoid `ContainsKey` + `Add`; use `TryAdd`.
+- Avoid repeated `Regex` construction; use `[GeneratedRegex]`.
+- Avoid reflection JSON serialization for known DTOs; use `System.Text.Json`
+  source generation.
+- Avoid repeated temporary arrays; use `static readonly` arrays, `ArrayPool<T>`,
+  or `ArrayBufferWriter<T>`.
+- Avoid LINQ chains in tight loops.
+- Avoid closure allocations in loops; use `static` lambdas or explicit loops.
+- Use `FrozenDictionary`/`FrozenSet` for build-once/read-many lookup tables.
+- Use `SearchValues<T>` for repeated delimiter/character-set searches.
+- Use `Span<T>`/`ReadOnlySpan<T>` for synchronous parsing and formatting.
+- Use `Memory<T>`/`ReadOnlyMemory<T>` for async-friendly buffer APIs.
+- Use `System.IO.Pipelines` for high-throughput streaming parsers.
+- Enable and respect .NET performance analyzers.
+
+Always preserve correctness, readability, cancellation behavior, and exception
+semantics. If an optimization makes code meaningfully harder to understand, add
+a short comment explaining the measured or expected benefit.
+
+**.NET 11 / C# 15 preview additions:**
+
+- For async-heavy hot paths, consider testing Runtime Async on `net11.0` with
+  `<Features>runtime-async=on</Features>`. Measure throughput, allocation, stack
+  traces, and library size before adopting broadly. Do not assume every async
+  method becomes faster.
+- When creating collections with collection expressions in C# 15, pass
+  capacity/comparer arguments directly where useful:
+  `List<T> items = [with(capacity: count), .. source];` and
+  `HashSet<string> set = [with(StringComparer.OrdinalIgnoreCase), .. values];`.
+- For process execution, prefer the new .NET 11 Process run-and-capture APIs
+  over hand-wired `OutputDataReceived`/`ErrorDataReceived` code when launching
+  child processes and capturing output.
+- For compression code that already works on byte spans, prefer the new
+  span-based Deflate, ZLib, and GZip encoder/decoder APIs instead of wrapping
+  everything in `Stream` objects.
+- For Base64 encoding/decoding in hot paths, prefer the new
+  `System.Buffers.Text.Base64` span-based APIs over `Convert.ToBase64String` /
+  `Convert.FromBase64String` when avoiding allocations matters.
+- For UTF-8 / UTF-16 validators and parsers, use the new Utf8/Utf16 validation
+  and invalid-subsequence APIs instead of hand-rolled validation loops.
+- For reusable `Utf8JsonWriter` instances, use `Reset` overloads when
+  appropriate instead of allocating a new writer every time.
+- For bitset-style code using `BitArray`, use `BitArray.PopCount()` instead of
+  manually counting true bits.
+- For `MemoryCache`-heavy services, enable `MemoryCache` statistics and
+  OpenTelemetry metrics when cache behavior affects performance decisions.
+- Do not use C# 15 union types as a performance optimization. Use them for
+  modeling correctness/exhaustiveness only, and treat them as preview until the
+  language/runtime surface settles.
+
 ## Decision hierarchy when something's ambiguous
 
 1. **The plan** (`browser-plan/`) — if a doc gives an answer, follow it.

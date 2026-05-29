@@ -597,17 +597,20 @@ public sealed class StyleEngine
                 allCandidates,
                 customCandidates,
                 ref order,
-                layerIndex: LayerOrder.UnlayeredIndex);
+                layerIndex: LayerOrder.UnlayeredIndex,
+                layerPath: null);
         }
 
-        // CSS Logical Properties 1 §3.2: logical and physical properties
-        // that resolve to the same physical edge cascade as if they were
-        // the same property — declaration order across the pair determines
-        // the winner. We assume LTR + horizontal-tb writing mode (the only
-        // mode the layout pipeline currently reads). Copy each logical
-        // bucket's candidates into the physical bucket so winner selection
-        // sees both spellings, then drop the logical bucket.
-        MergeLogicalIntoPhysical(allCandidates);
+        // CSS Logical Properties 1 §3.2: logical and physical properties that
+        // resolve to the same physical edge cascade as if they were the same
+        // property — declaration order across the pair determines the winner.
+        // The flow-relative → physical mapping depends on the element's
+        // computed `writing-mode` + `direction` (CSS Writing Modes §6), so
+        // resolve those first, then copy each logical bucket's candidates into
+        // its physical bucket and drop the logical bucket.
+        var writingMode = ResolveKeywordEarly(PropertyId.WritingMode, allCandidates, parentStyle, "horizontal-tb");
+        var direction = ResolveKeywordEarly(PropertyId.Direction, allCandidates, parentStyle, "ltr");
+        MergeLogicalIntoPhysical(allCandidates, BuildLogicalToPhysical(writingMode, direction));
 
         // Pick winners for each property.
         var winners = new Dictionary<PropertyId, CascadedValue>();
@@ -744,6 +747,45 @@ public sealed class StyleEngine
         }
         // Spec-correct fallback per CSS Containment 3 §3.2 — small viewport.
         return (_mediaContext.ViewportWidthPx, _mediaContext.ViewportHeightPx);
+    }
+
+    // CSS Containment 3 §5: evaluate an `@container` size query against the
+    // element's query container. The optional leading container-name is stripped
+    // (name matching is not yet honored — the nearest container is used); the
+    // remaining condition is a size feature query evaluated against the container
+    // box (reusing the media-feature evaluator with a container-sized context).
+    private bool ContainerQueryMatches(AtRule rule, Element element)
+    {
+        // Split the optional leading <container-name> from the condition.
+        var prelude = rule.Prelude;
+        var conditionStart = 0;
+        for (var i = 0; i < prelude.Count; i++)
+        {
+            if (prelude[i] is CssTokenValue { Token.Type: CssTokenType.Whitespace })
+            {
+                conditionStart = i + 1;
+                continue;
+            }
+            if (prelude[i] is CssTokenValue { Token: { Type: CssTokenType.Ident, Value: var ident } }
+                && !ident.Equals("not", StringComparison.OrdinalIgnoreCase))
+                conditionStart = i + 1; // a leading name; condition follows
+            break;
+        }
+        var condition = prelude.Skip(conditionStart).ToList();
+        if (condition.Count == 0)
+            return false;
+
+        var (cw, ch) = ResolveContainerSize(element);
+        var ctx = _mediaContext with { ViewportWidthPx = cw, ViewportHeightPx = ch };
+        try
+        {
+            var list = MediaQueryParser.ParseList(condition);
+            return MediaQueryEvaluator.Evaluate(list, ctx);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static string ExtractFontFamily(Dictionary<PropertyId, CssValue> values)
@@ -967,6 +1009,24 @@ public sealed class StyleEngine
                             candidateRules);
                     }
                     break;
+                case AtRule { Name: var nameC } atRuleC when nameC.Equals("container", StringComparison.OrdinalIgnoreCase):
+                    if (ContainerQueryMatches(atRuleC, element))
+                    {
+                        GatherFromRules(
+                            atRuleC.Rules,
+                            origin,
+                            element,
+                            candidates,
+                            customCandidates,
+                            context,
+                            ref order,
+                            layerOrder,
+                            currentLayerPath,
+                            parentSelectors,
+                            sheetIndex,
+                            candidateRules);
+                    }
+                    break;
                 case AtRule { Name: var name3 } atRule3 when name3.Equals("layer", StringComparison.OrdinalIgnoreCase):
                     var layerNames = ParseLayerNamesFromPrelude(atRule3.Prelude);
                     if (atRule3.Rules.Count == 0 && atRule3.Declarations.Count == 0)
@@ -1050,7 +1110,8 @@ public sealed class StyleEngine
                 candidates,
                 customCandidates,
                 ref order,
-                layerIndex);
+                layerIndex,
+                currentLayerPath);
         }
 
         if (styleRule.NestedRulesOrEmpty.Count > 0)
@@ -1256,7 +1317,8 @@ public sealed class StyleEngine
         Dictionary<PropertyId, List<CascadedValue>> candidates,
         Dictionary<string, List<CustomPropertyValue>> customCandidates,
         ref int order,
-        int layerIndex)
+        int layerIndex,
+        string? layerPath = null)
     {
         foreach (var declaration in declarations)
         {
@@ -1270,7 +1332,8 @@ public sealed class StyleEngine
                     inline,
                     specificity,
                     currentOrder,
-                    layerIndex);
+                    layerIndex,
+                    layerPath);
                 if (!customCandidates.TryGetValue(declaration.Name, out var list))
                     customCandidates[declaration.Name] = list = new List<CustomPropertyValue>();
                 list.Add(custom);
@@ -1290,7 +1353,8 @@ public sealed class StyleEngine
                         inline,
                         specificity,
                         currentOrder,
-                        layerIndex);
+                        layerIndex,
+                        layerPath);
                     if (!candidates.TryGetValue(p, out var list))
                         candidates[p] = list = new List<CascadedValue>();
                     list.Add(candidate);
@@ -1307,7 +1371,8 @@ public sealed class StyleEngine
                     inline,
                     specificity,
                     currentOrder,
-                    layerIndex);
+                    layerIndex,
+                    layerPath);
                 if (!candidates.TryGetValue(parsed.Id, out var list))
                     candidates[parsed.Id] = list = new List<CascadedValue>();
                 list.Add(candidate);
@@ -1583,47 +1648,119 @@ public sealed class StyleEngine
         return PropertyRegistry.InitialValue(pending.Longhand);
     }
 
-    private static readonly Dictionary<PropertyId, PropertyId> LogicalToPhysicalLtrHorizontalTb = new()
-    {
-        [PropertyId.PaddingInlineStart] = PropertyId.PaddingLeft,
-        [PropertyId.PaddingInlineEnd] = PropertyId.PaddingRight,
-        [PropertyId.PaddingBlockStart] = PropertyId.PaddingTop,
-        [PropertyId.PaddingBlockEnd] = PropertyId.PaddingBottom,
-        [PropertyId.MarginInlineStart] = PropertyId.MarginLeft,
-        [PropertyId.MarginInlineEnd] = PropertyId.MarginRight,
-        [PropertyId.MarginBlockStart] = PropertyId.MarginTop,
-        [PropertyId.MarginBlockEnd] = PropertyId.MarginBottom,
-        [PropertyId.InsetInlineStart] = PropertyId.Left,
-        [PropertyId.InsetInlineEnd] = PropertyId.Right,
-        [PropertyId.InsetBlockStart] = PropertyId.Top,
-        [PropertyId.InsetBlockEnd] = PropertyId.Bottom,
-        [PropertyId.BorderInlineStartWidth] = PropertyId.BorderLeftWidth,
-        [PropertyId.BorderInlineEndWidth] = PropertyId.BorderRightWidth,
-        [PropertyId.BorderBlockStartWidth] = PropertyId.BorderTopWidth,
-        [PropertyId.BorderBlockEndWidth] = PropertyId.BorderBottomWidth,
-        [PropertyId.BorderInlineStartStyle] = PropertyId.BorderLeftStyle,
-        [PropertyId.BorderInlineEndStyle] = PropertyId.BorderRightStyle,
-        [PropertyId.BorderBlockStartStyle] = PropertyId.BorderTopStyle,
-        [PropertyId.BorderBlockEndStyle] = PropertyId.BorderBottomStyle,
-        [PropertyId.BorderInlineStartColor] = PropertyId.BorderLeftColor,
-        [PropertyId.BorderInlineEndColor] = PropertyId.BorderRightColor,
-        [PropertyId.BorderBlockStartColor] = PropertyId.BorderTopColor,
-        [PropertyId.BorderBlockEndColor] = PropertyId.BorderBottomColor,
-        [PropertyId.BorderStartStartRadius] = PropertyId.BorderTopLeftRadius,
-        [PropertyId.BorderStartEndRadius] = PropertyId.BorderTopRightRadius,
-        [PropertyId.BorderEndStartRadius] = PropertyId.BorderBottomLeftRadius,
-        [PropertyId.BorderEndEndRadius] = PropertyId.BorderBottomRightRadius,
-        [PropertyId.InlineSize] = PropertyId.Width,
-        [PropertyId.BlockSize] = PropertyId.Height,
-        [PropertyId.MinInlineSize] = PropertyId.MinWidth,
-        [PropertyId.MinBlockSize] = PropertyId.MinHeight,
-        [PropertyId.MaxInlineSize] = PropertyId.MaxWidth,
-        [PropertyId.MaxBlockSize] = PropertyId.MaxHeight,
-    };
+    // Physical sides indexed 0=Top, 1=Right, 2=Bottom, 3=Left.
+    private static readonly PropertyId[] MarginSides = [PropertyId.MarginTop, PropertyId.MarginRight, PropertyId.MarginBottom, PropertyId.MarginLeft];
+    private static readonly PropertyId[] PaddingSides = [PropertyId.PaddingTop, PropertyId.PaddingRight, PropertyId.PaddingBottom, PropertyId.PaddingLeft];
+    private static readonly PropertyId[] InsetSides = [PropertyId.Top, PropertyId.Right, PropertyId.Bottom, PropertyId.Left];
+    private static readonly PropertyId[] BorderWidthSides = [PropertyId.BorderTopWidth, PropertyId.BorderRightWidth, PropertyId.BorderBottomWidth, PropertyId.BorderLeftWidth];
+    private static readonly PropertyId[] BorderStyleSides = [PropertyId.BorderTopStyle, PropertyId.BorderRightStyle, PropertyId.BorderBottomStyle, PropertyId.BorderLeftStyle];
+    private static readonly PropertyId[] BorderColorSides = [PropertyId.BorderTopColor, PropertyId.BorderRightColor, PropertyId.BorderBottomColor, PropertyId.BorderLeftColor];
 
-    private static void MergeLogicalIntoPhysical(Dictionary<PropertyId, List<CascadedValue>> allCandidates)
+    // CSS Logical Properties 1 §2-§4 / CSS Writing Modes §6: resolve the
+    // flow-relative → physical mapping for a given `writing-mode` + `direction`.
+    // For horizontal-tb + ltr this reproduces the classic LTR table exactly.
+    private static Dictionary<PropertyId, PropertyId> BuildLogicalToPhysical(string writingMode, string direction)
     {
-        foreach (var (logical, physical) in LogicalToPhysicalLtrHorizontalTb)
+        var vertical = writingMode.StartsWith("vertical", StringComparison.OrdinalIgnoreCase)
+            || writingMode.StartsWith("sideways", StringComparison.OrdinalIgnoreCase);
+        var rl = writingMode is "vertical-rl" or "sideways-rl";
+        var ltr = !direction.Equals("rtl", StringComparison.OrdinalIgnoreCase);
+
+        // Block axis: horizontal-tb → top/bottom; vertical-rl → right/left; vertical-lr → left/right.
+        int blockStart, blockEnd;
+        if (!vertical) { blockStart = 0; blockEnd = 2; }
+        else if (rl) { blockStart = 1; blockEnd = 3; }
+        else { blockStart = 3; blockEnd = 1; }
+
+        // Inline axis: horizontal modes run left/right; vertical modes run top/bottom.
+        // `direction` orients start/end along the inline axis.
+        int inlineStart, inlineEnd;
+        if (!vertical) { (inlineStart, inlineEnd) = ltr ? (3, 1) : (1, 3); }
+        else { (inlineStart, inlineEnd) = ltr ? (0, 2) : (2, 0); }
+
+        var map = new Dictionary<PropertyId, PropertyId>
+        {
+            [PropertyId.MarginBlockStart] = MarginSides[blockStart],
+            [PropertyId.MarginBlockEnd] = MarginSides[blockEnd],
+            [PropertyId.MarginInlineStart] = MarginSides[inlineStart],
+            [PropertyId.MarginInlineEnd] = MarginSides[inlineEnd],
+            [PropertyId.PaddingBlockStart] = PaddingSides[blockStart],
+            [PropertyId.PaddingBlockEnd] = PaddingSides[blockEnd],
+            [PropertyId.PaddingInlineStart] = PaddingSides[inlineStart],
+            [PropertyId.PaddingInlineEnd] = PaddingSides[inlineEnd],
+            [PropertyId.InsetBlockStart] = InsetSides[blockStart],
+            [PropertyId.InsetBlockEnd] = InsetSides[blockEnd],
+            [PropertyId.InsetInlineStart] = InsetSides[inlineStart],
+            [PropertyId.InsetInlineEnd] = InsetSides[inlineEnd],
+            [PropertyId.BorderBlockStartWidth] = BorderWidthSides[blockStart],
+            [PropertyId.BorderBlockEndWidth] = BorderWidthSides[blockEnd],
+            [PropertyId.BorderInlineStartWidth] = BorderWidthSides[inlineStart],
+            [PropertyId.BorderInlineEndWidth] = BorderWidthSides[inlineEnd],
+            [PropertyId.BorderBlockStartStyle] = BorderStyleSides[blockStart],
+            [PropertyId.BorderBlockEndStyle] = BorderStyleSides[blockEnd],
+            [PropertyId.BorderInlineStartStyle] = BorderStyleSides[inlineStart],
+            [PropertyId.BorderInlineEndStyle] = BorderStyleSides[inlineEnd],
+            [PropertyId.BorderBlockStartColor] = BorderColorSides[blockStart],
+            [PropertyId.BorderBlockEndColor] = BorderColorSides[blockEnd],
+            [PropertyId.BorderInlineStartColor] = BorderColorSides[inlineStart],
+            [PropertyId.BorderInlineEndColor] = BorderColorSides[inlineEnd],
+            // Corner radii: each logical corner = the physical corner touching both named sides.
+            [PropertyId.BorderStartStartRadius] = CornerRadius(blockStart, inlineStart),
+            [PropertyId.BorderStartEndRadius] = CornerRadius(blockStart, inlineEnd),
+            [PropertyId.BorderEndStartRadius] = CornerRadius(blockEnd, inlineStart),
+            [PropertyId.BorderEndEndRadius] = CornerRadius(blockEnd, inlineEnd),
+            // Sizing: inline-size is width in horizontal modes, height in vertical (block swapped).
+            [PropertyId.InlineSize] = vertical ? PropertyId.Height : PropertyId.Width,
+            [PropertyId.BlockSize] = vertical ? PropertyId.Width : PropertyId.Height,
+            [PropertyId.MinInlineSize] = vertical ? PropertyId.MinHeight : PropertyId.MinWidth,
+            [PropertyId.MinBlockSize] = vertical ? PropertyId.MinWidth : PropertyId.MinHeight,
+            [PropertyId.MaxInlineSize] = vertical ? PropertyId.MaxHeight : PropertyId.MaxWidth,
+            [PropertyId.MaxBlockSize] = vertical ? PropertyId.MaxWidth : PropertyId.MaxHeight,
+        };
+        return map;
+    }
+
+    // The physical corner-radius property at the intersection of two physical
+    // sides (one vertical: Top/Bottom, one horizontal: Left/Right).
+    private static PropertyId CornerRadius(int sideA, int sideB)
+    {
+        var top = sideA == 0 || sideB == 0;
+        var left = sideA == 3 || sideB == 3;
+        var right = sideA == 1 || sideB == 1;
+        if (top) return left ? PropertyId.BorderTopLeftRadius : PropertyId.BorderTopRightRadius;
+        return right ? PropertyId.BorderBottomRightRadius : PropertyId.BorderBottomLeftRadius;
+    }
+
+    // Resolve a keyword-valued, inherited property (writing-mode / direction)
+    // before final winner selection: pick the strongest candidate, else inherit
+    // from the parent, else the given initial keyword.
+    private static string ResolveKeywordEarly(
+        PropertyId id,
+        Dictionary<PropertyId, List<CascadedValue>> allCandidates,
+        ComputedStyle? parentStyle,
+        string initial)
+    {
+        if (allCandidates.TryGetValue(id, out var list) && list.Count > 0)
+        {
+            CascadedValue? best = null;
+            foreach (var c in list)
+                if (best is null || c.IsStrongerThan(best)) best = c;
+            if (best!.Value is CssKeyword k && !IsCssWideKeyword(k.Name))
+                return k.Name;
+        }
+        if (parentStyle is not null && parentStyle.Get(id) is CssKeyword pk)
+            return pk.Name;
+        return initial;
+    }
+
+    private static bool IsCssWideKeyword(string name)
+        => name is "inherit" or "initial" or "unset" or "revert" or "revert-layer";
+
+    private static void MergeLogicalIntoPhysical(
+        Dictionary<PropertyId, List<CascadedValue>> allCandidates,
+        Dictionary<PropertyId, PropertyId> logicalToPhysical)
+    {
+        foreach (var (logical, physical) in logicalToPhysical)
         {
             if (!allCandidates.TryGetValue(logical, out var logicalList) || logicalList.Count == 0)
                 continue;
@@ -1641,7 +1778,8 @@ public sealed class StyleEngine
         bool Inline,
         Specificity Specificity,
         int Order,
-        int LayerIndex)
+        int LayerIndex,
+        string? LayerPath = null)
     {
         public bool IsStrongerThan(CascadedValue other)
         {
@@ -1650,7 +1788,7 @@ public sealed class StyleEngine
             if (Inline != other.Inline) return Inline;
             // Layer: per spec, layered styles are weaker than unlayered (non-important);
             // for !important the order is inverted.
-            var layer = LayerOrder.Compare(LayerIndex, other.LayerIndex);
+            var layer = LayerOrder.Compare(LayerPath, LayerIndex, other.LayerPath, other.LayerIndex);
             if (layer != 0)
                 return Important ? layer < 0 : layer > 0;
             var specificity = Specificity.CompareTo(other.Specificity);
@@ -1668,14 +1806,15 @@ public sealed class StyleEngine
         bool Inline,
         Specificity Specificity,
         int Order,
-        int LayerIndex)
+        int LayerIndex,
+        string? LayerPath = null)
     {
         public bool IsStrongerThan(CustomPropertyValue other)
         {
             var origin = OriginRank(Origin, Important).CompareTo(OriginRank(other.Origin, other.Important));
             if (origin != 0) return origin > 0;
             if (Inline != other.Inline) return Inline;
-            var layer = LayerOrder.Compare(LayerIndex, other.LayerIndex);
+            var layer = LayerOrder.Compare(LayerPath, LayerIndex, other.LayerPath, other.LayerIndex);
             if (layer != 0)
                 return Important ? layer < 0 : layer > 0;
             var specificity = Specificity.CompareTo(other.Specificity);
