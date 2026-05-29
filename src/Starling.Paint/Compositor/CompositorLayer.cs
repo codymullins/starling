@@ -31,7 +31,8 @@ internal sealed class CompositorLayer
         Rect? clip,
         IReadOnlyList<CompositorLayer> children,
         IDiagnostics? diagnostics = null,
-        PictureCache? cache = null)
+        PictureCache? cache = null,
+        long contentHash = 0)
     {
         Items = items;
         Bounds = bounds;
@@ -39,6 +40,7 @@ internal sealed class CompositorLayer
         Opacity = opacity;
         Clip = clip;
         Children = children;
+        ContentHash = contentHash;
         // A persistent cache (keyed by layer identity across frames) is supplied
         // by the compositing session so a transform/opacity-only change re-blits
         // the layer from cache instead of re-rasterizing it (plan Phase 5). When
@@ -78,4 +80,13 @@ internal sealed class CompositorLayer
 
     /// <summary>One picture cache per layer (generalizes the M12-02 single cache).</summary>
     public PictureCache Cache { get; }
+
+    /// <summary>
+    /// 64-bit content hash of this layer's slice (LTF-02), used as the picture
+    /// cache's version key instead of the global page version. The slice excludes
+    /// the layer-root's composite-time transform/opacity, so a transform/opacity-
+    /// only frame hashes identically and re-blits from cache; a content change
+    /// (color/text/size) changes the hash and re-rasters this layer alone.
+    /// </summary>
+    public long ContentHash { get; }
 }

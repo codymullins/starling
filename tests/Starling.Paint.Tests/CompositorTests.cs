@@ -99,11 +99,9 @@ public sealed class CompositorTests
     {
         const int W = 200, H = 200;
         const float scale = 1f;
-        // Two promoted opacity divs (siblings). We render twice with the SAME
-        // page version, so every layer's cache should serve from a HIT on the
-        // second pass — the cache-keying invariant that makes per-layer
-        // isolation possible: a layer whose (pageVersion, scale) is unchanged
-        // re-blits from cache and is never re-rastered.
+        // Two promoted opacity divs (siblings). Each layer's cache is keyed by its
+        // slice CONTENT hash (LTF-02), so an unchanged re-render serves from a HIT
+        // and is never re-rastered — the per-layer isolation invariant.
         var html =
             "<body style=\"margin:0\">" +
             "<div style=\"opacity:0.5;position:absolute;left:0;top:0;width:50px;height:50px;background-color:#ff0000\"></div>" +
@@ -119,23 +117,22 @@ public sealed class CompositorTests
         var tree = new LayerTreeBuilder(styleOverride: null, images: null, diagnostics: diag).Build(root);
         var compositor = new CompositorEngine(backend, diag);
 
-        const int pageVersion = 7;
         // First render seeds each layer's cache (no prior content → no HIT).
-        using (compositor.Render(tree, new LayoutRect(0, 0, W, H), scale, pageVersion)) { }
+        using (compositor.Render(tree, new LayoutRect(0, 0, W, H), scale)) { }
         diag.CountOf("paint.cache.hit").Should().Be(0, "nothing is cached before the first render");
 
-        // Second render at the SAME page version: each promoted layer must serve
-        // from cache (HIT) instead of re-rasterizing — the per-layer isolation
-        // invariant. There are two promoted divs, so two layers serve a HIT.
-        using (compositor.Render(tree, new LayoutRect(0, 0, W, H), scale, pageVersion)) { }
+        // Second render of the SAME (unchanged) content: each promoted layer must
+        // serve from cache (HIT) instead of re-rasterizing. There are two promoted
+        // divs, so two layers serve a HIT.
+        using (compositor.Render(tree, new LayoutRect(0, 0, W, H), scale)) { }
         diag.CountOf("paint.cache.hit").Should().Be(2,
             "both untouched promoted layers re-blit from cache on the unchanged second render");
 
-        // Bumping ONLY page version (the per-layer key) forces a re-raster of
-        // every layer — the cache no longer matches, so no further HITs land.
-        using (compositor.Render(tree, new LayoutRect(0, 0, W, H), scale, pageVersion + 1)) { }
-        diag.CountOf("paint.cache.hit").Should().Be(2,
-            "a changed key invalidates the serve — the re-keyed render is not a HIT");
+        // A third unchanged render keeps hitting — the content-hash key persists
+        // across frames and is no longer tied to a global page version (LTF-02).
+        using (compositor.Render(tree, new LayoutRect(0, 0, W, H), scale)) { }
+        diag.CountOf("paint.cache.hit").Should().Be(4,
+            "the content-keyed cache keeps serving unchanged layers across frames");
     }
 
     [TestMethod]
@@ -162,14 +159,13 @@ public sealed class CompositorTests
         var diag = new RecordingDiagnostics();
         var store = new LayerCacheStore(diag);
         var compositor = new CompositorEngine(backend, diag);
-        const int pageVersion = 5; // content version — stable across the transform change
 
         var root1 = engine.LayoutDocument(doc, new Size(W, H));
         FindByElement(root1, doc.GetElementById("box")!)!.Hints
             .Should().NotBe(Starling.Layout.Compositor.LayerHint.None, "a transformed div is its own layer");
         var tree1 = new LayerTreeBuilder(null, null, diag, store.CacheFor).Build(root1);
         byte[] first;
-        using (var r1 = compositor.Render(tree1, new LayoutRect(0, 0, W, H), scale, pageVersion))
+        using (var r1 = compositor.Render(tree1, new LayoutRect(0, 0, W, H), scale))
             first = (byte[])r1.Rgba.Clone();
         diag.CountOf("paint.cache.hit").Should().Be(0, "nothing is cached before the first render");
 
@@ -179,7 +175,7 @@ public sealed class CompositorTests
         var root2 = engine.LayoutDocument(doc, new Size(W, H));
         var tree2 = new LayerTreeBuilder(null, null, diag, store.CacheFor).Build(root2);
         byte[] second;
-        using (var r2 = compositor.Render(tree2, new LayoutRect(0, 0, W, H), scale, pageVersion))
+        using (var r2 = compositor.Render(tree2, new LayoutRect(0, 0, W, H), scale))
             second = (byte[])r2.Rgba.Clone();
 
         diag.CountOf("paint.cache.hit").Should().Be(2,
@@ -210,12 +206,11 @@ public sealed class CompositorTests
         var diag = new RecordingDiagnostics();
         var store = new LayerCacheStore(diag);
         var compositor = new CompositorEngine(backend, diag);
-        const int pageVersion = 3;
 
         var root1 = engine.LayoutDocument(doc, new Size(W, H));
         var tree1 = new LayerTreeBuilder(null, null, diag, store.CacheFor).Build(root1);
         byte[] first;
-        using (var r1 = compositor.Render(tree1, new LayoutRect(0, 0, W, H), scale, pageVersion))
+        using (var r1 = compositor.Render(tree1, new LayoutRect(0, 0, W, H), scale))
             first = (byte[])r1.Rgba.Clone();
         diag.CountOf("paint.cache.hit").Should().Be(0, "nothing is cached before the first render");
 
@@ -226,7 +221,7 @@ public sealed class CompositorTests
         var root2 = engine.LayoutDocument(doc, new Size(W, H));
         var tree2 = new LayerTreeBuilder(null, null, diag, store.CacheFor).Build(root2);
         byte[] second;
-        using (var r2 = compositor.Render(tree2, new LayoutRect(0, 0, W, H), scale, pageVersion))
+        using (var r2 = compositor.Render(tree2, new LayoutRect(0, 0, W, H), scale))
             second = (byte[])r2.Rgba.Clone();
 
         // Both layers (root + the promoted div) re-blit their pixels from cache:

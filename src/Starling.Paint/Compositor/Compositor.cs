@@ -33,12 +33,14 @@ internal sealed class Compositor
 
     /// <summary>
     /// Renders <paramref name="root"/> (the layer tree's root) into a bitmap
-    /// sized to <paramref name="viewport"/> at <paramref name="scale"/>.
-    /// <paramref name="pageVersion"/> keys each layer's picture cache; bump it to
-    /// force a repaint when a layer's inputs change (a layer whose version is
-    /// unchanged serves from cache, leaving siblings untouched).
+    /// sized to <paramref name="viewport"/> at <paramref name="scale"/>. Each
+    /// layer's picture cache is keyed by its own slice content hash
+    /// (<see cref="CompositorLayer.ContentHash"/>, LTF-02), so a layer whose
+    /// content is unchanged serves from cache — even across a relayout that bumped
+    /// the global page version — while a layer whose slice actually changed
+    /// re-rasters alone, leaving its siblings untouched.
     /// </summary>
-    public RenderedBitmap Render(CompositorLayer root, LayoutRect viewport, float scale, int pageVersion = 0)
+    public RenderedBitmap Render(CompositorLayer root, LayoutRect viewport, float scale)
     {
         ArgumentNullException.ThrowIfNull(root);
         if (viewport.Width <= 0 || viewport.Height <= 0)
@@ -55,7 +57,7 @@ internal sealed class Compositor
         var output = new byte[checked(width * height * 4)];
         FillWhite(output);
 
-        Composite(root, output, width, height, viewport, scale, pageVersion,
+        Composite(root, output, width, height, viewport, scale,
             ancestorTransform: Matrix2D.Identity, ancestorOpacity: 1f, ancestorClip: null);
 
         return new RenderedBitmap(width, height, output);
@@ -68,7 +70,6 @@ internal sealed class Compositor
         int outHeight,
         LayoutRect viewport,
         float scale,
-        int pageVersion,
         Matrix2D ancestorTransform,
         float ancestorOpacity,
         Rect? ancestorClip)
@@ -86,14 +87,14 @@ internal sealed class Compositor
 
         if (layer.Bounds.Width > 0 && layer.Bounds.Height > 0 && effectiveOpacity > 0f)
         {
-            using var local = RenderLayerBitmap(layer, scale, pageVersion);
+            using var local = RenderLayerBitmap(layer, scale);
             BlendLayer(local, layer.Bounds, output, outWidth, outHeight, viewport, scale,
                 effectiveTransform, effectiveOpacity, effectiveClip);
         }
 
         // Children already in paint order (z-index sorted at build time).
         foreach (var child in layer.Children)
-            Composite(child, output, outWidth, outHeight, viewport, scale, pageVersion,
+            Composite(child, output, outWidth, outHeight, viewport, scale,
                 effectiveTransform, effectiveOpacity, effectiveClip);
     }
 
@@ -104,13 +105,17 @@ internal sealed class Compositor
     /// backend call — this is what keeps an untouched sibling layer's pixels
     /// valid while another layer is repainted (bump its pageVersion).
     /// </summary>
-    private RenderedBitmap RenderLayerBitmap(CompositorLayer layer, float scale, int pageVersion)
+    private RenderedBitmap RenderLayerBitmap(CompositorLayer layer, float scale)
     {
+        // Key the cache by the slice's content hash, not the page version: a
+        // transform/opacity-only frame (or an unrelated relayout elsewhere) leaves
+        // this layer's hash unchanged → HIT; only a real content change re-rasters.
+        var key = layer.ContentHash;
         var device = PictureCache.ToDeviceRect(layer.Bounds, scale);
         var w = Math.Max(1, device.Width);
         var h = Math.Max(1, device.Height);
 
-        if (layer.Cache.TryServe(layer.Bounds, scale, pageVersion, out var hit))
+        if (layer.Cache.TryServe(layer.Bounds, scale, key, out var hit))
             return CopyOut(hit, w, h);
 
         PaintList list = layer.Items;
@@ -119,7 +124,7 @@ internal sealed class Compositor
         // unchanged frames serve this layer from cache (HIT).
         var seedRect = PictureCache.ToDeviceRect(layer.Bounds, scale);
         var actual = ToDeviceRect(seedRect, painted.Width, painted.Height);
-        layer.Cache.Reset(actual, scale, pageVersion, painted);
+        layer.Cache.Reset(actual, scale, key, painted);
         return painted;
     }
 

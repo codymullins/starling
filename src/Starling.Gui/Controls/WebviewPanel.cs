@@ -1700,7 +1700,7 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         {
             if (useLayerTree)
             {
-                rendered = _renderer.RenderViaLayerTree(_currentPage!.Root, (float)_currentScale, styleOverride, _currentPage.ImageResolver, viewport, _currentPage.DisplayListVersion);
+                rendered = _renderer.RenderViaLayerTree(_currentPage!.Root, (float)_currentScale, styleOverride, _currentPage.ImageResolver, viewport);
             }
             else
             {

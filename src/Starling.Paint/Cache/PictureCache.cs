@@ -45,7 +45,9 @@ internal sealed class PictureCache
     private byte[]? _pixels;
     private DeviceRect _bounds;
     private float _scale;
-    private int _pageVersion;
+    // 64-bit so the layer compositor can key by a slice content hash (LTF-02);
+    // the flat scroll path passes its int DisplayListVersion, which widens.
+    private long _pageVersion;
 
     /// <summary>Creates an empty cache with the given strip-painting diagnostics sink.</summary>
     /// <param name="diagnostics">Counter sink for hit/miss/partial + strip area.</param>
@@ -66,7 +68,7 @@ internal sealed class PictureCache
     /// the (0,0)-origin output. Bumps <c>paint.cache.hit</c> or
     /// <c>paint.cache.miss</c>.
     /// </summary>
-    public bool TryServe(LayoutRect viewport, float scale, int pageVersion, out CacheBlit blit)
+    public bool TryServe(LayoutRect viewport, float scale, long pageVersion, out CacheBlit blit)
     {
         if (!TryServeRaw(viewport, scale, pageVersion, out blit))
             return false;
@@ -80,7 +82,7 @@ internal sealed class PictureCache
     /// seed/stitch on a MISS/PARTIAL frame, where the frame's outcome counter has
     /// already been recorded and the serve must not also count as a hit.
     /// </summary>
-    public bool TryServeRaw(LayoutRect viewport, float scale, int pageVersion, out CacheBlit blit)
+    public bool TryServeRaw(LayoutRect viewport, float scale, long pageVersion, out CacheBlit blit)
     {
         blit = default;
         var want = ToDeviceRect(viewport, scale);
@@ -109,7 +111,7 @@ internal sealed class PictureCache
     /// key matches but the rect spills past the cached bounds; returns empty when
     /// fully covered (a HIT — caller should have used <see cref="TryServe"/>).
     /// </summary>
-    public IReadOnlyList<DeviceRect> ComputeUncachedStrips(LayoutRect viewport, float scale, int pageVersion)
+    public IReadOnlyList<DeviceRect> ComputeUncachedStrips(LayoutRect viewport, float scale, long pageVersion)
     {
         var want = ToDeviceRect(viewport, scale);
 
@@ -138,7 +140,7 @@ internal sealed class PictureCache
     /// <see cref="Invalidate"/> + a full raster) only when the key is stale; the
     /// retained overlap plus the strips otherwise tile the window completely.
     /// </summary>
-    public bool SlideTo(DeviceRect window, float scale, int pageVersion, IReadOnlyList<(DeviceRect Rect, RenderedBitmap Pixels)> strips)
+    public bool SlideTo(DeviceRect window, float scale, long pageVersion, IReadOnlyList<(DeviceRect Rect, RenderedBitmap Pixels)> strips)
     {
         ArgumentNullException.ThrowIfNull(strips);
 
@@ -188,7 +190,7 @@ internal sealed class PictureCache
     /// on eviction; the caller owns matching <paramref name="rect"/> to the
     /// raster's real dimensions.
     /// </summary>
-    public void Reset(DeviceRect rect, float scale, int pageVersion, RenderedBitmap pixels)
+    public void Reset(DeviceRect rect, float scale, long pageVersion, RenderedBitmap pixels)
     {
         var expected = checked(rect.Width * rect.Height * 4);
         if (pixels.Rgba.Length != expected || pixels.Width != rect.Width || pixels.Height != rect.Height)

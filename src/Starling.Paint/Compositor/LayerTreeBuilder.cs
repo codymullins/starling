@@ -115,8 +115,14 @@ internal sealed class LayerTreeBuilder
             .Select(c => c.Layer)
             .ToList();
 
+        // Content hash of the slice (LTF-02). The slice already excludes this
+        // layer's own transform/opacity (suppressed above / applied at composite),
+        // so a transform/opacity-only frame produces an identical hash and the
+        // layer re-blits from cache; only a real content change re-rasters it.
+        var contentHash = DisplayListContentHash.Compute(slice);
+
         return new CompositorLayer(slice, bounds, transform ?? Matrix2D.Identity, opacity, clip, ordered, _diag,
-            cache: _cacheFor?.Invoke(layerBox));
+            cache: _cacheFor?.Invoke(layerBox), contentHash: contentHash);
     }
 
     /// <summary>
