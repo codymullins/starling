@@ -139,6 +139,55 @@ public sealed class CompositorTests
     }
 
     [TestMethod]
+    public void Transform_only_change_reblits_layer_content_from_persistent_cache()
+    {
+        // Phase 5 for transform (the opacity test's sibling): a promoted, rotated
+        // element's transform is applied at composite time, not baked into the
+        // slice, so changing only the rotation re-blits the cached upright content
+        // and re-composites — no re-raster — while the output changes. (This is the
+        // deterministic core; driving it from the animation clock end to end is the
+        // live-GUI integration tracked in PHASES_1_5_STATUS.)
+        const int W = 160, H = 160;
+        const float scale = 1f;
+        const string baseStyle =
+            "position:absolute;left:40px;top:40px;width:60px;height:60px;" +
+            "background-color:#cc2222;will-change:transform;";
+
+        var doc = HtmlParser.Parse(
+            "<body style=\"margin:0;height:160px;background-color:#eef0ff\">" +
+            $"<div id=box style=\"{baseStyle}transform:rotate(10deg)\"></div></body>");
+        var style = new StyleEngine();
+        var engine = new LayoutEngine(style, DefaultTextMeasurer.Instance);
+        using var backend = new ImageSharpBackend(FontResolver.Default, webFonts: null);
+        var diag = new RecordingDiagnostics();
+        var store = new LayerCacheStore(diag);
+        var compositor = new CompositorEngine(backend, diag);
+        const int pageVersion = 5; // content version — stable across the transform change
+
+        var root1 = engine.LayoutDocument(doc, new Size(W, H));
+        FindByElement(root1, doc.GetElementById("box")!)!.Hints
+            .Should().NotBe(Starling.Layout.Compositor.LayerHint.None, "a transformed div is its own layer");
+        var tree1 = new LayerTreeBuilder(null, null, diag, store.CacheFor).Build(root1);
+        byte[] first;
+        using (var r1 = compositor.Render(tree1, new LayoutRect(0, 0, W, H), scale, pageVersion))
+            first = (byte[])r1.Rgba.Clone();
+        diag.CountOf("paint.cache.hit").Should().Be(0, "nothing is cached before the first render");
+
+        // Change only the rotation — a composite-time property. Re-lay-out so the
+        // new transform reaches the box style, then rebuild against the SAME store.
+        doc.GetElementById("box")!.SetAttribute("style", baseStyle + "transform:rotate(70deg)");
+        var root2 = engine.LayoutDocument(doc, new Size(W, H));
+        var tree2 = new LayerTreeBuilder(null, null, diag, store.CacheFor).Build(root2);
+        byte[] second;
+        using (var r2 = compositor.Render(tree2, new LayoutRect(0, 0, W, H), scale, pageVersion))
+            second = (byte[])r2.Rgba.Clone();
+
+        diag.CountOf("paint.cache.hit").Should().Be(2,
+            "the rotating layer's content (and the page background) re-blit from cache; only the composite transform changed");
+        second.SequenceEqual(first).Should().BeFalse("the new rotation must change the composited output");
+    }
+
+    [TestMethod]
     public void Opacity_only_change_reblits_layer_content_from_persistent_cache()
     {
         // Phase 5: across frames the layer tree is rebuilt, but persistent
@@ -186,6 +235,14 @@ public sealed class CompositorTests
             "the layer content is reused from cache; only the composite-time opacity changed");
         // ...and the composited result actually changed (the div is more transparent).
         second.SequenceEqual(first).Should().BeFalse("the new opacity must change the composited output");
+    }
+
+    private static Box? FindByElement(Box box, Starling.Dom.Element el)
+    {
+        if (ReferenceEquals(box.Element, el)) return box;
+        foreach (var c in box.Children)
+            if (FindByElement(c, el) is { } found) return found;
+        return null;
     }
 
     private sealed class RecordingDiagnostics : IDiagnostics

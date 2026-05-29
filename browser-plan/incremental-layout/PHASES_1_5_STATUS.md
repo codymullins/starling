@@ -109,11 +109,11 @@ rebuilt each frame (cheap — it re-reads the current animated `transform`/
 change is a composite-time `transform`/`opacity` re-blits the layer's pixels from
 cache and never calls the raster backend.
 
-Verified on the CPU backend (`CompositorTests`): after an opacity-only change,
-re-rendering against the same store at the same page version serves **both**
-layers (the page background and the promoted div) from cache — zero re-raster —
-while the composited output reflects the new opacity. This is the plan's Phase 5
-acceptance at the compositor level.
+Verified on the CPU backend (`CompositorTests`): after an opacity-only **or**
+transform-only change, re-rendering against the same store at the same page
+version serves **both** layers (the page background and the promoted div) from
+cache — zero re-raster — while the composited output reflects the new opacity /
+rotation. This is the plan's Phase 5 acceptance at the compositor level.
 
 ### What remains (needs the live GUI + a GPU host to verify)
 The mechanism is wired into `PageRendererHost.RenderViaLayerTree` (the additive
