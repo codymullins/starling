@@ -88,27 +88,51 @@ when fragment *structure* changes and reuse it when only geometry shifted, and
 scope `_renderer.InvalidateCache()` to the changed region. Until then, building
 it would be speculative complexity the plan tells us to avoid.
 
-## Phase 5 — composited layers for animation-only frames: separate track
+## Phase 5 — composited layers for animation-only frames: core mechanism done
 
-The plan files Phase 5 as a separate, lower-priority track that addresses DRAW
-cost, not LAYOUT cost. It is not implemented here, and the reason matters for
-understanding the end-to-end picture.
+Phase 5 addresses DRAW cost, not LAYOUT cost: a `transform`/`opacity` animation
+should re-composite a cached layer rather than re-rasterize it.
 
-Even with incremental layout, the live GUI still repaints the whole viewport
-each animated frame: the picture-cache key folds the animation clock
-(`pageVersion = DisplayListVersion + animClockMs` in `RenderPageBitmap`), and
-each relaid page gets a fresh `DisplayListVersion`, so every frame is a cache
-miss. So the incremental-layout win removes the per-frame *relayout*, but the
-per-frame *repaint* remains until Phase 5.
+### What was already in place
+The substrate existed: `StackingContextResolver` tags layer roots with
+`LayerHint`, `LayerTreeBuilder` slices the box tree into `CompositorLayer`s whose
+`transform`/`opacity` are applied at **composite** time (not baked into the
+slice), and the `Compositor` rasters each layer into a per-layer `PictureCache`.
 
-Concrete approach when this track is picked up (on a GPU-capable host so it can
-be verified): for an animation that touches only `transform`/`opacity`, promote
-the element to a compositor layer (the substrate exists — `LayerHint` is already
-populated by `StackingContextResolver`, and the `Compositor` caches per layer),
-keep the animated property *out* of the picture-cache key, and apply it at
-composite time so a no-layout-change frame serves the cached layer and skips the
-viewport redraw. Acceptance: an animated `transform`/`opacity` frame with no
-layout change serves the layer from cache and skips the redraw.
+### The gap, and the fix (done)
+The caches were created fresh on every `LayerTreeBuilder.Build`, so they never
+survived to serve a later frame — every frame re-rasterized. The fix is a
+persistent `LayerCacheStore` that holds one `PictureCache` per layer keyed by the
+layer root's DOM **element** (stable across re-layouts). The layer tree is still
+rebuilt each frame (cheap — it re-reads the current animated `transform`/
+`opacity`), but each layer reuses its element's cache, so a frame whose only
+change is a composite-time `transform`/`opacity` re-blits the layer's pixels from
+cache and never calls the raster backend.
+
+Verified on the CPU backend (`CompositorTests`): after an opacity-only change,
+re-rendering against the same store at the same page version serves **both**
+layers (the page background and the promoted div) from cache — zero re-raster —
+while the composited output reflects the new opacity. This is the plan's Phase 5
+acceptance at the compositor level.
+
+### What remains (needs the live GUI + a GPU host to verify)
+The mechanism is wired into `PageRendererHost.RenderViaLayerTree` (the additive
+compositor path) with the persistent store. Two integration steps remain, both
+needing the running GUI / WebGPU to verify end to end, so they are not done here:
+
+1. **A live animation clock.** The live GUI (`WebviewPanel`) has no animation
+   timer today — it repaints only on relayout / scroll / hover / resize, so
+   declarative CSS animations don't drive live frames at all (the
+   `animClockMs`-in-the-cache-key path the plan cites is the headless
+   `StarlingEngine.RenderFrame` loop, not the live shell). A timer that ticks
+   the animation/transition engines and requests a repaint is the prerequisite
+   for a live "animation-only frame".
+2. **Route that repaint through `RenderViaLayerTree`** when the page has
+   transform/opacity layers, passing a page version that excludes the animation
+   clock (so the layer content caches across frames) while the re-sampled
+   transform/opacity are applied at composite. The flat path stays the default
+   so the existing goldens are untouched until the compositor path is
+   golden-validated on a GPU host.
 
 ## Benchmarks
 

@@ -30,7 +30,8 @@ internal sealed class CompositorLayer
         float opacity,
         Rect? clip,
         IReadOnlyList<CompositorLayer> children,
-        IDiagnostics? diagnostics = null)
+        IDiagnostics? diagnostics = null,
+        PictureCache? cache = null)
     {
         Items = items;
         Bounds = bounds;
@@ -38,7 +39,12 @@ internal sealed class CompositorLayer
         Opacity = opacity;
         Clip = clip;
         Children = children;
-        Cache = new PictureCache(diagnostics);
+        // A persistent cache (keyed by layer identity across frames) is supplied
+        // by the compositing session so a transform/opacity-only change re-blits
+        // the layer from cache instead of re-rasterizing it (plan Phase 5). When
+        // none is supplied the layer owns a fresh per-call cache (the original
+        // M12-04 behaviour, used by one-shot renders and tests).
+        Cache = cache ?? new PictureCache(diagnostics);
     }
 
     /// <summary>Page-coord union of the painted items in this layer's slice.</summary>

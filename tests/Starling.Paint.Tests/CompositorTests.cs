@@ -138,6 +138,56 @@ public sealed class CompositorTests
             "a changed key invalidates the serve — the re-keyed render is not a HIT");
     }
 
+    [TestMethod]
+    public void Opacity_only_change_reblits_layer_content_from_persistent_cache()
+    {
+        // Phase 5: across frames the layer tree is rebuilt, but persistent
+        // element-keyed caches let a layer whose only change is opacity (applied
+        // at composite, not baked into the slice) serve its pixels from cache
+        // rather than re-rasterize. We change opacity, rebuild the tree against
+        // the SAME store at the SAME page version, and assert the content is a
+        // cache HIT yet the composited output differs.
+        const int W = 160, H = 160;
+        const float scale = 1f;
+        var html =
+            "<body style=\"margin:0;height:160px;background-color:#eef0ff\">" +
+            "<div id=fade style=\"opacity:0.9;position:absolute;left:10px;top:10px;" +
+            "width:80px;height:80px;background-color:#cc2222\"></div>" +
+            "</body>";
+
+        var doc = HtmlParser.Parse(html);
+        var engine = new LayoutEngine(new StyleEngine(), DefaultTextMeasurer.Instance);
+        using var backend = new ImageSharpBackend(FontResolver.Default, webFonts: null);
+        var diag = new RecordingDiagnostics();
+        var store = new LayerCacheStore(diag);
+        var compositor = new CompositorEngine(backend, diag);
+        const int pageVersion = 3;
+
+        var root1 = engine.LayoutDocument(doc, new Size(W, H));
+        var tree1 = new LayerTreeBuilder(null, null, diag, store.CacheFor).Build(root1);
+        byte[] first;
+        using (var r1 = compositor.Render(tree1, new LayoutRect(0, 0, W, H), scale, pageVersion))
+            first = (byte[])r1.Rgba.Clone();
+        diag.CountOf("paint.cache.hit").Should().Be(0, "nothing is cached before the first render");
+
+        // Animate opacity only — no layout-affecting change. Re-lay-out so the new
+        // opacity reaches the box style, then rebuild the tree against the SAME store.
+        doc.GetElementById("fade")!.SetAttribute(
+            "style", "opacity:0.4;position:absolute;left:10px;top:10px;width:80px;height:80px;background-color:#cc2222");
+        var root2 = engine.LayoutDocument(doc, new Size(W, H));
+        var tree2 = new LayerTreeBuilder(null, null, diag, store.CacheFor).Build(root2);
+        byte[] second;
+        using (var r2 = compositor.Render(tree2, new LayoutRect(0, 0, W, H), scale, pageVersion))
+            second = (byte[])r2.Rgba.Clone();
+
+        // Both layers (root + the promoted div) re-blit their pixels from cache:
+        // the slice content didn't change, only the composite-time opacity did.
+        diag.CountOf("paint.cache.hit").Should().Be(2,
+            "the layer content is reused from cache; only the composite-time opacity changed");
+        // ...and the composited result actually changed (the div is more transparent).
+        second.SequenceEqual(first).Should().BeFalse("the new opacity must change the composited output");
+    }
+
     private sealed class RecordingDiagnostics : IDiagnostics
     {
         private readonly ConcurrentDictionary<string, double> _counters = new();

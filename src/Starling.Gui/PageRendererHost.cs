@@ -28,6 +28,7 @@ internal sealed class PageRendererHost : IDisposable
     private readonly IDiagnostics _diag;
     private readonly IPaintBackend _backend;
     private readonly CachedPageRenderer _cached;
+    private readonly LayerCacheStore _layerCaches;
     private bool _disposed;
 
     public PageRendererHost(IDiagnostics? diagnostics = null)
@@ -35,6 +36,7 @@ internal sealed class PageRendererHost : IDisposable
         _diag = diagnostics ?? NoopDiagnostics.Instance;
         _backend = PaintBackendSelector.Create(FontResolver.Default, webFonts: null, _diag);
         _cached = new CachedPageRenderer(_backend, _diag);
+        _layerCaches = new LayerCacheStore(_diag);
     }
 
     /// <summary>
@@ -43,7 +45,11 @@ internal sealed class PageRendererHost : IDisposable
     /// repaint rather than a stale-pixel blit. Scroll-only repaints leave it
     /// intact so the cache can serve them.
     /// </summary>
-    public void InvalidateCache() => _cached.Invalidate();
+    public void InvalidateCache()
+    {
+        _cached.Invalidate();
+        _layerCaches.Clear();
+    }
 
     /// <summary>
     /// Renders <paramref name="root"/>. When <paramref name="viewport"/> is
@@ -101,7 +107,11 @@ internal sealed class PageRendererHost : IDisposable
 
         try
         {
-            var tree = new LayerTreeBuilder(styleOverride, images, _diag).Build(root);
+            // Persistent per-layer caches (keyed by element) let a transform/
+            // opacity-only frame re-blit each layer from cache instead of
+            // re-rasterizing (Phase 5); the transform/opacity are re-sampled into
+            // the rebuilt tree and applied at composite time.
+            var tree = new LayerTreeBuilder(styleOverride, images, _diag, _layerCaches.CacheFor).Build(root);
             var region = viewport ?? new LayoutRect(0, 0,
                 Math.Max(1, root.Frame.Width),
                 Math.Max(1, root.Frame.Height));

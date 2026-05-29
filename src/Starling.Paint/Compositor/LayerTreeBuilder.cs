@@ -30,15 +30,22 @@ internal sealed class LayerTreeBuilder
     private readonly Func<Box, ComputedStyle?>? _styleOverride;
     private readonly IImageResolver? _images;
     private readonly IDiagnostics? _diag;
+    // Supplies each layer's picture cache. When set (the live compositing
+    // session), it returns a cache persisted across frames keyed by the layer's
+    // element, so a transform/opacity-only change re-blits from cache (Phase 5).
+    // Null for one-shot renders, where each layer owns a fresh cache.
+    private readonly Func<Box, Cache.PictureCache>? _cacheFor;
 
     public LayerTreeBuilder(
         Func<Box, ComputedStyle?>? styleOverride = null,
         IImageResolver? images = null,
-        IDiagnostics? diagnostics = null)
+        IDiagnostics? diagnostics = null,
+        Func<Box, Cache.PictureCache>? cacheFor = null)
     {
         _styleOverride = styleOverride;
         _images = images;
         _diag = diagnostics;
+        _cacheFor = cacheFor;
     }
 
     /// <summary>A box opens its own layer iff M12-03 tagged it with any hint.</summary>
@@ -108,7 +115,8 @@ internal sealed class LayerTreeBuilder
             .Select(c => c.Layer)
             .ToList();
 
-        return new CompositorLayer(slice, bounds, transform ?? Matrix2D.Identity, opacity, clip, ordered, _diag);
+        return new CompositorLayer(slice, bounds, transform ?? Matrix2D.Identity, opacity, clip, ordered, _diag,
+            cache: _cacheFor?.Invoke(layerBox));
     }
 
     /// <summary>
