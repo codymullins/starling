@@ -18,11 +18,15 @@ internal static class ReplayProgram
             return 2;
         }
 
+        if (args[0] == "--selftest")
+            return SelfTest();
+
         var page = args[0];
         var frames = 600;
         var warmup = 60;
         bool? incremental = null;
         var raster = true;
+        var composite = false;
         var scale = 1.0f;
 
         try
@@ -36,6 +40,7 @@ internal static class ReplayProgram
                     case "--incremental": incremental = true; break;
                     case "--full": incremental = false; break;
                     case "--no-raster": raster = false; break;
+                    case "--composite": composite = true; break;
                     case "--scale": scale = float.Parse(args[++i], CultureInfo.InvariantCulture); break;
                     default:
                         Console.Error.WriteLine($"unknown option: {args[i]}");
@@ -68,6 +73,7 @@ internal static class ReplayProgram
             WarmupFrames = warmup,
             RunRaster = raster,
             Incremental = incremental ?? true,
+            Composite = composite,
             Scale = scale,
         };
 
@@ -83,7 +89,7 @@ internal static class ReplayProgram
 
     private static void PrintUsage()
     {
-        Console.Error.WriteLine("usage: replay <page> [--frames N] [--warmup N] [--incremental | --full] [--no-raster] [--scale S]");
+        Console.Error.WriteLine("usage: replay <page|--selftest> [--frames N] [--warmup N] [--incremental | --full] [--no-raster] [--composite] [--scale S]");
         Console.Error.WriteLine($"pages: {string.Join(", ", ReplayScenarios.Names)}");
         Console.Error.WriteLine("default layout path is incremental; pass --full to A/B the full-rebuild path.");
     }
@@ -108,6 +114,41 @@ internal static class ReplayProgram
             $"Text: measures/frame {F1(r.TextMeasure.MeanMeasureWidthCalls)}  shapes/frame {F1(r.TextMeasure.MeanShapeCalls)}  "
             + $"shape cache hit-rate {r.TextMeasure.ShapeCacheHitRate.ToString("P1", CultureInfo.InvariantCulture)}");
         Console.WriteLine($"Nodes visited/frame: {r.TextMeasure.MeanNodesVisited.ToString("F0", CultureInfo.InvariantCulture)}");
+        if (r.Composite is { } c)
+            Console.WriteLine(
+                $"Compositor: layers/frame {F1(c.MeanLayersPerFrame)}  rastered/frame {F1(c.MeanLayersRasteredPerFrame)}  "
+                + $"blitted-from-cache/frame {F1(c.MeanLayersBlittedPerFrame)}");
+    }
+
+    /// <summary>
+    /// Deterministic self-test (LTF-00): drive the compositor-demo through the
+    /// composite path and assert that after warmup only the changed layers
+    /// re-raster (a small, roughly constant count) while the rest blit from cache.
+    /// Returns 0 on PASS, 1 on FAIL.
+    /// </summary>
+    private static int SelfTest()
+    {
+        var scenario = ReplayScenarios.Create("compositor-demo");
+        using var harness = new FrameReplayHarness(scenario, new ReplayOptions
+        {
+            FrameCount = 12,
+            WarmupFrames = 3,
+            Composite = true,
+        });
+        var r = harness.Run();
+        var c = r.Composite!;
+        Console.WriteLine(
+            $"selftest compositor-demo: layers/frame {F1(c.MeanLayersPerFrame)}  "
+            + $"rastered/frame {F1(c.MeanLayersRasteredPerFrame)}  blitted/frame {F1(c.MeanLayersBlittedPerFrame)}");
+
+        // The demo has a base, a transform-only spinner, and a per-frame status
+        // line. Only the status layer should re-raster each frame; the base and
+        // the spinner re-blit from cache.
+        var ok = c.MeanLayersPerFrame >= 3
+                 && c.MeanLayersRasteredPerFrame <= 1.5
+                 && c.MeanLayersBlittedPerFrame >= c.MeanLayersRasteredPerFrame;
+        Console.WriteLine(ok ? "PASS" : "FAIL");
+        return ok ? 0 : 1;
     }
 
     private static string WriteJson(ReplayResult r)
@@ -116,10 +157,11 @@ internal static class ReplayProgram
         var dir = Path.Combine(Fixtures.RepoRoot, "bench", "results", date);
         Directory.CreateDirectory(dir);
         var suffix = r.RasterEnabled ? "" : "-noraster";
-        // A non-1x scale gets its own filename so the Retina run doesn't clobber
-        // the logical-pixel run for the same page+scope.
+        // A non-1x scale and the composite path each get their own filename so a
+        // Retina or compositor run doesn't clobber the logical-pixel flat run.
+        var compositeSuffix = r.Composite is not null ? "-composite" : "";
         var scaleSuffix = r.Scale == 1.0f ? "" : $"-{r.Scale.ToString("0.0", CultureInfo.InvariantCulture)}x";
-        var file = Path.Combine(dir, $"{r.Page}-{r.ScopeLabel}{suffix}{scaleSuffix}.json");
+        var file = Path.Combine(dir, $"{r.Page}-{r.ScopeLabel}{suffix}{compositeSuffix}{scaleSuffix}.json");
         File.WriteAllText(file, JsonSerializer.Serialize(r, ReplayJsonContext.Default.ReplayResult));
         return file;
     }

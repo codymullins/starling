@@ -37,7 +37,21 @@ public sealed record ReplayResult
 
     public required GcStats Gc { get; init; }
     public required MeasureStats TextMeasure { get; init; }
+
+    /// <summary>Layer-compositor counts (LTF-00), present only for a composite run.</summary>
+    public CompositeStats? Composite { get; init; }
 }
+
+/// <summary>
+/// Per-frame layer-compositor counts averaged over the measured frames: how many
+/// layers the tree had, how many actually re-rastered (a backend Render call),
+/// and how many re-blitted from cache. The win shows as RasteredPerFrame dropping
+/// to the count of genuinely changed layers while the rest blit.
+/// </summary>
+public sealed record CompositeStats(
+    double MeanLayersPerFrame,
+    double MeanLayersRasteredPerFrame,
+    double MeanLayersBlittedPerFrame);
 
 /// <summary>Garbage-collection counts accumulated over the measured frames.</summary>
 public sealed record GcStats(int Gen0, int Gen1, int Gen2);
