@@ -47,7 +47,9 @@ internal static class ReplayReport
         var bdn = LoadBdnTables(bdnDir);
 
         var md = Render(replay, bdn, dateDir, bdnDir);
-        outPath ??= Path.Combine(resultsRoot, "benchmarks.md");
+        // Default to bench/benchmarks.md (a tracked, published file) rather than
+        // bench/results/ (gitignored generated output).
+        outPath ??= Path.Combine(Fixtures.RepoRoot, "bench", "benchmarks.md");
         Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
         File.WriteAllText(outPath, md);
 
