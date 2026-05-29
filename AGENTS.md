@@ -69,7 +69,7 @@ starling/
 │   ├── Starling.AppHost/          ← Aspire AppHost (orchestrates Gui + Headless)
 │   └── Starling.ServiceDefaults/  ← Aspire OTel + health-check shared bootstrap
 ├── tests/                     ← one xUnit project per src/ module + E2E
-├── bench/Starling.Bench/      ← BenchmarkDotNet
+├── bench/Starling.Bench/      ← BenchmarkDotNet + frame replay (see bench/README.md)
 └── testdata/                  ← fixtures + golden PNGs + WPT subsets
 ```
 

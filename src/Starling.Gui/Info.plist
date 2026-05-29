@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key>
+  <string>Starling</string>
+  <key>CFBundleDisplayName</key>
+  <string>Starling</string>
+  <key>CFBundleIdentifier</key>
+  <string>dev.starling.browser</string>
+  <key>CFBundleVersion</key>
+  <string>1.0.0</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0.0</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <!-- The native executable produced by `dotnet publish` (AssemblyName). -->
+  <key>CFBundleExecutable</key>
+  <string>Starling.Gui</string>
+  <!-- The dock / Finder icon. macOS reads this from Contents/Resources;
+       the .icns is copied there by the BundleMac target. Extension is
+       optional and omitted by convention. -->
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>11.0</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <!-- Regular app: shows in the dock and owns a menu bar. -->
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.utilities</string>
+</dict>
+</plist>

@@ -148,6 +148,10 @@ the wp id in the subject, leave a handoff-log entry on stop, and mark complete
 via `./tasks/lib/claim.sh complete <wp-id>`. The full workflow is in
 [`tasks/README.md`](tasks/README.md).
 
+**Benchmarks:** how to run the suite and read the numbers is in
+[`bench/README.md`](bench/README.md). The latest overview lives in
+[`bench/benchmarks.md`](bench/benchmarks.md).
+
 ## License
 
 [BSD 2-Clause License](LICENSE) — Copyright (c) 2026, Cody Mullins.

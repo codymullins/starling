@@ -11,7 +11,11 @@
          stack requires a Six Labors license key (repo-root sixlabors.lic,
          picked up via Directory.Build.props' SixLaborsLicenseFile property). -->
     <PackageVersion Include="SixLabors.ImageSharp" Version="4.0.*" />
-    <PackageVersion Include="SixLabors.ImageSharp.Drawing" Version="3.0.*" />
+    <!-- TEMPORARY: pinned to the SixLabors nightly that carries the shared glyph
+         cache (PR #398, merge commit c6e0ed5). Comes from the sixlabors-nightly
+         feed in nuget.config. Revert to "3.0.*" once the cache ships stable on
+         nuget.org. -->
+    <PackageVersion Include="SixLabors.ImageSharp.Drawing" Version="3.0.1-alpha.0.2" />
     <PackageVersion Include="SixLabors.ImageSharp.Drawing.WebGPU" Version="1.0.*" />
     <PackageVersion Include="SixLabors.Fonts"              Version="3.*" />
 

@@ -142,6 +142,51 @@ internal static class Fixtures
              border: 3px solid #336699; background: #eef; }
         """;
 
+    // ---- Animation fixtures (AnimationBench) ----
+    // A page of identical boxes, each running one CSS @keyframes animation. The
+    // bench ticks the clock and re-renders each frame; pair this HTML with one
+    // of the two CSS variants to pick the per-frame cost shape.
+
+    /// <summary>A row of <paramref name="boxes"/> animated boxes — each carries
+    /// the <c>anim</c> class so the cascade starts a <c>@keyframes</c> animation
+    /// on it. Pair with <see cref="TransformAnimCss"/> (composite-only) or
+    /// <see cref="LayoutAnimCss"/> (layout-affecting).</summary>
+    public static string AnimatedBoxesHtml(int boxes)
+    {
+        var sb = new System.Text.StringBuilder(boxes * 44 + 96);
+        sb.Append("<!doctype html><html><body><main>");
+        for (var i = 0; i < boxes; i++)
+            sb.Append("<div class=\"anim\" id=\"box-").Append(i).Append("\">Box ").Append(i).Append("</div>");
+        sb.Append("</main></body></html>");
+        return sb.ToString();
+    }
+
+    // transform + opacity animate → composite-only. The animated value never
+    // changes box geometry, so incremental layout leaves the tree alone and only
+    // the paint (display-list) stage re-runs each frame.
+    public const string TransformAnimCss = """
+        body { margin: 0; }
+        .anim { width: 120px; height: 40px; background: #4080c0;
+                animation: slide 1s linear infinite; }
+        @keyframes slide {
+          from { transform: translateX(0px); opacity: 1; }
+          to   { transform: translateX(200px); opacity: 0.2; }
+        }
+        """;
+
+    // width + margin animate → layout-affecting. Each frame marks the animated
+    // elements dirty (AnimationEngine.HasLayoutAffectingProperty) and relays
+    // them out, so the box-tree pass re-runs too.
+    public const string LayoutAnimCss = """
+        body { margin: 0; }
+        .anim { width: 120px; height: 40px; background: #c08040;
+                animation: grow 1s linear infinite; }
+        @keyframes grow {
+          from { width: 80px; margin-left: 0px; }
+          to   { width: 320px; margin-left: 120px; }
+        }
+        """;
+
     /// <summary>Solid-color blocks — fill raster cost with no text or borders.</summary>
     public static string SolidBackgrounds(int boxes)
     {

@@ -56,5 +56,45 @@
          resources so the chrome typography is identical across machines. -->
     <AvaloniaResource Include="Assets\Fonts\Geist-Variable.ttf" />
     <AvaloniaResource Include="Assets\Fonts\GeistMono-Variable.ttf" />
+    <!-- App icon. Avalonia's WindowIcon only parses PNG/ICO, so the runtime
+         window icon (Win/Linux taskbar, macOS titlebar proxy) loads this PNG.
+         The macOS dock reads the .icns from the .app bundle instead — see the
+         Info.plist CFBundleIconFile entry below. -->
+    <AvaloniaResource Include="Assets\icon_1024.png" />
   </ItemGroup>
+
+  <!-- Assemble a macOS .app bundle after publish so the dock/Finder icon comes
+       from AppIcon.icns (macOS reads CFBundleIconFile, not Window.Icon). Runs
+       only when publishing for an osx runtime. The bundle lands next to the
+       publish output as Starling.app:
+
+         dotnet publish src/Starling.Gui -c Release -r osx-arm64
+         open src/Starling.Gui/bin/Release/net10.0/osx-arm64/Starling.app
+
+       Layout: Contents/{Info.plist, MacOS/<publish output>, Resources/AppIcon.icns}. -->
+  <Target Name="BundleMac"
+          AfterTargets="Publish"
+          Condition="$([MSBuild]::IsOSPlatform('OSX')) and $(RuntimeIdentifier.StartsWith('osx'))">
+    <PropertyGroup>
+      <AppBundleRoot>$([System.IO.Path]::GetFullPath('$(PublishDir)..\Starling.app'))</AppBundleRoot>
+      <AppBundleMacOS>$(AppBundleRoot)\Contents\MacOS</AppBundleMacOS>
+      <AppBundleResources>$(AppBundleRoot)\Contents\Resources</AppBundleResources>
+    </PropertyGroup>
+
+    <!-- Start clean so a stale executable or renamed file never lingers. -->
+    <RemoveDir Directories="$(AppBundleRoot)" />
+    <MakeDir Directories="$(AppBundleMacOS);$(AppBundleResources)" />
+
+    <!-- Glob the publish output here (it doesn't exist at evaluation time). -->
+    <ItemGroup>
+      <PublishedFile Include="$(PublishDir)**\*" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(PublishedFile)"
+          DestinationFiles="@(PublishedFile->'$(AppBundleMacOS)\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="Info.plist" DestinationFiles="$(AppBundleRoot)\Contents\Info.plist" />
+    <Copy SourceFiles="Assets\AppIcon.icns" DestinationFiles="$(AppBundleResources)\AppIcon.icns" />
+
+    <Message Importance="high" Text="Bundled $(AppBundleRoot)" />
+  </Target>
 </Project>

@@ -47,6 +47,12 @@ public sealed class MainWindow : Window, IBrowserController
         new TabInfo("b4", "mcmaster.com",     "McMaster-Carr",           Url: "https://www.mcmaster.com/"),
     ];
 
+    // Window icon, loaded once from the bundled PNG (WindowIcon can't parse
+    // .icns). Shared across all windows — the stream is consumed at construction.
+    private static readonly WindowIcon AppIcon = new(
+        Avalonia.Platform.AssetLoader.Open(
+            new Uri("avares://Starling.Gui/Assets/icon_1024.png")));
+
     private readonly ThemeManager _tm;
     private readonly IDiagnostics _diag;
     private readonly TelemetryStream _telemetry;
@@ -100,6 +106,7 @@ public sealed class MainWindow : Window, IBrowserController
             hasActiveAnimations: _session.HasActiveAnimations);
 
         Title = string.Empty;
+        Icon = AppIcon;
         MinWidth = 1024;
         MinHeight = 720;
         Width = 1280;
