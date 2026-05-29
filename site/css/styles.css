@@ -57,6 +57,14 @@ h1, h2, h3 { line-height: 1.2; letter-spacing: -0.02em; }
   color: var(--text);
 }
 .brand:hover { text-decoration: none; }
+.brand-mark {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  background-color: currentColor;
+  -webkit-mask: url(../img/logo.svg) center / contain no-repeat;
+  mask: url(../img/logo.svg) center / contain no-repeat;
+}
 .nav { display: flex; align-items: center; gap: 22px; }
 .nav a { color: var(--muted); font-size: 0.95rem; }
 .nav a:hover { color: var(--text); text-decoration: none; }

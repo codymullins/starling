@@ -18,13 +18,10 @@
 <body>
   <header class="site-header">
     <a class="brand" href="#top">
-      <img src="img/logo.svg" width="32" height="32" alt="">
+      <span class="brand-mark" aria-hidden="true"></span>
       <span>Starling</span>
     </a>
     <nav class="nav">
-      <a href="#why">Why</a>
-      <a href="#status">Status</a>
-      <a href="#start">Get started</a>
       <a class="nav-cta" href="https://github.com/starling-browser/starling">GitHub</a>
     </nav>
   </header>
@@ -39,7 +36,7 @@
       </p>
       <div class="cta-row">
         <a class="btn btn-primary" href="https://github.com/starling-browser/starling">View on GitHub</a>
-        <a class="btn btn-ghost" href="#start">Get started</a>
+        <a class="btn btn-ghost" href="https://github.com/starling-browser/starling/blob/main/docs/approach.md">Read the approach</a>
       </div>
     </section>
 
@@ -53,105 +50,6 @@
       </figure>
     </section>
 
-    <section id="why" class="why">
-      <h2>Why build a new browser?</h2>
-      <p>
-        The common wisdom says a browser engine has to be C++ or Rust, built by
-        a large team over many years.
-        <a href="https://ladybird.org">Ladybird</a> already proved the hardest
-        part — that a truly independent engine is possible. Starling shares that
-        spirit but asks the next question: do you still need a systems language?
-      </p>
-      <p>
-        Starling is a managed-first .NET engine. The longer-term goal is to earn
-        parity on real sites first, then use that managed core to make WebAssembly
-        a first-class citizen — talking to the page directly instead of going
-        through a JavaScript bridge.
-      </p>
-      <div class="cards">
-        <div class="card">
-          <h3>Built from scratch</h3>
-          <p>Own HTML parser, DOM, CSS, layout, paint, networking, and JavaScript engine. No third-party engine under the hood.</p>
-        </div>
-        <div class="card">
-          <h3>Managed-first .NET</h3>
-          <p>A bet that a modern managed runtime can carry a real browser — safer code, faster iteration, fewer native shims.</p>
-        </div>
-        <div class="card">
-          <h3>Open and in the open</h3>
-          <p>BSD 2-Clause licensed. Design docs, a public roadmap, and a work queue anyone can read.</p>
-        </div>
-      </div>
-    </section>
-
-    <section id="status" class="status">
-      <h2>Where things stand</h2>
-      <p class="status-note">A snapshot of how far each part has come. Each badge links to the tests that back it.</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr><th>Area</th><th>Status</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>HTML parser</td><td><span class="pill pill-green">Spec compliant</span></td></tr>
-            <tr><td>Paint</td><td><span class="pill pill-green">Shipped</span></td></tr>
-            <tr><td>ECMAScript (Test262 language)</td><td><span class="pill pill-green">95%</span></td></tr>
-            <tr><td>DOM</td><td><span class="pill pill-yellow">Partial</span></td></tr>
-            <tr><td>CSS</td><td><span class="pill pill-yellow">Partial</span></td></tr>
-            <tr><td>Layout</td><td><span class="pill pill-yellow">Partial</span></td></tr>
-            <tr><td>Networking</td><td><span class="pill pill-yellow">Partial</span></td></tr>
-            <tr><td>JavaScript</td><td><span class="pill pill-yellow">Partial</span></td></tr>
-            <tr><td>Web APIs / DOM bindings</td><td><span class="pill pill-yellow">Partial</span></td></tr>
-            <tr><td>GUI shell</td><td><span class="pill pill-yellow">Partial</span></td></tr>
-            <tr><td>Web Platform Tests</td><td><span class="pill pill-orange">25%</span></td></tr>
-            <tr><td>Multi-process / sandbox</td><td><span class="pill pill-grey">Not started</span></td></tr>
-            <tr><td>Security</td><td><span class="pill pill-red">Not hardened</span></td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="status-foot">
-        Starling is early and experimental. It is not ready for everyday browsing
-        yet. Follow along on
-        <a href="https://github.com/starling-browser/starling">GitHub</a>.
-      </p>
-    </section>
-
-    <section id="start" class="start">
-      <h2>Get started</h2>
-      <p>You will need the .NET SDK 10.0.100 or newer. Clone with submodules, since Starling pulls in its regular expression engine from a sibling repo.</p>
-      <pre><code># Clone the repo with its submodules
-git clone --recurse-submodules https://github.com/starling-browser/starling.git
-cd starling
-
-# Build and test
-dotnet restore
-dotnet build
-dotnet test
-
-# Render a live site straight to a PNG
-dotnet run --project src/Starling.Headless -- render https://example.com -o example.png</code></pre>
-      <p class="start-note">
-        The desktop browser runs through Aspire with <code>aspire run</code>.
-        Full setup, including the free Six Labors paint license, is in the
-        <a href="https://github.com/starling-browser/starling#readme">README</a>.
-      </p>
-    </section>
   </main>
-
-  <footer class="site-footer">
-    <div class="footer-inner">
-      <div class="footer-brand">
-        <img src="img/logo.svg" width="24" height="24" alt="">
-        <span>Starling</span>
-      </div>
-      <nav class="footer-links">
-        <a href="https://github.com/starling-browser/starling">GitHub</a>
-        <a href="https://github.com/starling-browser/starling/blob/main/docs/approach.md">Approach</a>
-        <a href="https://github.com/starling-browser/starling/issues">Issues</a>
-        <a href="https://github.com/starling-browser/starling/blob/main/LICENSE">License</a>
-      </nav>
-    </div>
-    <p class="copyright">BSD 2-Clause License · Copyright © 2026, Cody Mullins</p>
-  </footer>
 </body>
 </html>
