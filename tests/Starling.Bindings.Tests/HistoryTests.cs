@@ -76,6 +76,20 @@ public sealed class HistoryTests
     }
 
     [TestMethod]
+    public void Popstate_event_exposes_entry_state()
+    {
+        var (runtime, _) = BuildEnv("https://example.com/a");
+        Eval(runtime, """
+            var captured = null;
+            window.addEventListener('popstate', function (e) { captured = e.state; });
+            history.pushState({ tag: 'second' }, '', '/b');
+            history.back();
+            history.forward();
+            result = captured.tag;
+        """).AsString.Should().Be("second");
+    }
+
+    [TestMethod]
     public void PushState_after_back_truncates_forward_entries()
     {
         var (runtime, _) = BuildEnv("https://example.com/a");
@@ -131,6 +145,33 @@ public sealed class HistoryTests
             .AsString.Should().Be("manual");
         Eval(runtime, "history.scrollRestoration = 'bogus'; result = history.scrollRestoration;")
             .AsString.Should().Be("manual");
+    }
+
+    [TestMethod]
+    public void Location_hash_assignment_adds_same_document_history_entry()
+    {
+        var (runtime, _) = BuildEnv("https://example.com/page");
+        Eval(runtime, """
+            var hashes = 0;
+            window.addEventListener('hashchange', function () { hashes = hashes + 1; });
+            location.hash = 'section';
+            result = location.href + '|' + history.length + '|' + hashes;
+        """).AsString.Should().Be("https://example.com/page#section|2|1");
+    }
+
+    [TestMethod]
+    public void Iframe_contentWindow_knows_parent_top_and_frameElement()
+    {
+        var (runtime, _) = BuildEnv("https://example.com/page");
+        Eval(runtime, """
+            var frame = document.createElement('iframe');
+            document.body.appendChild(frame);
+            var child = frame.contentWindow;
+            result = child.parent === window
+                && child.top === window
+                && child.frameElement === frame
+                && window.frameElement === null;
+        """).AsBool.Should().BeTrue();
     }
 
     private static (JsRuntime, Document) BuildEnv(string url)

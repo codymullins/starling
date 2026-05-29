@@ -37,6 +37,7 @@ public sealed class MainWindow : Window, IBrowserController
     private static readonly IReadOnlyList<TabInfo> Bookmarks =
     [
         new TabInfo("b0t", "localhost:8088",   "Todo",                    Url: "http://localhost:8088/todo/"),
+        new TabInfo("b0n", "localhost:8088",   "Animations",              Url: "http://localhost:8088/animations/"),
         new TabInfo("b0a", "example.com",      "Example",                 Url: "https://example.com"),
         new TabInfo("b0b", "Todos",            "Todos",                   Url: "https://jsonplaceholder.typicode.com/todos"),
         new TabInfo("b0c", "netclaw.dev",      "netclaw.dev",             Url: "https://netclaw.dev/"),
@@ -94,7 +95,9 @@ public sealed class MainWindow : Window, IBrowserController
         _diag = Program.Services.GetRequiredService<IDiagnostics>();
         _telemetry = Program.Services.GetRequiredService<TelemetryStream>();
         _session = new BrowserSession(_diag);
-        _webview = new WebviewPanel(_tm, _diag, OnLinkActivated, OnWebviewStatus, RelayoutForResize);
+        _webview = new WebviewPanel(_tm, _diag, OnLinkActivated, OnWebviewStatus, RelayoutForResize,
+            prepareAnimationFrame: _session.PrepareAnimationFrame,
+            hasActiveAnimations: _session.HasActiveAnimations);
 
         Title = string.Empty;
         MinWidth = 1024;
@@ -471,11 +474,11 @@ public sealed class MainWindow : Window, IBrowserController
 
     private void OnWebviewStatus(string text, bool isError) => _statusBar.SetHint(text, isError);
 
-    // Build facts for the sidebar footer: the build's commit plus the JS and
-    // render engines this process actually selected (single source of truth —
-    // the same selectors the engine/paint pipeline read).
+    // Build facts for the sidebar footer: the build's commit plus the JS engine,
+    // render engine, and layout mode this process actually selected (single
+    // source of truth — the same selectors the engine/paint pipeline read).
     private static BuildInfo GetBuildInfo()
-        => new(GetBuildLabel(), GetJsEngineLabel(), GetRenderBackendLabel());
+        => new(GetBuildLabel(), GetJsEngineLabel(), GetRenderBackendLabel(), GetLayoutLabel());
 
     private static string GetBuildLabel()
     {
@@ -503,6 +506,13 @@ public sealed class MainWindow : Window, IBrowserController
         PaintBackendKind.ImageSharpWebGpu => "imagesharp-gpu",
         _ => "imagesharp",
     };
+
+    // "incremental" when the relayout path reuses the retained box tree (the
+    // shell default, see Program.Main / the AppHost --incremental flag), "full"
+    // when every relayout rebuilds the whole tree. Reads the same switch the
+    // engine's RelayoutPage checks, so it reflects the real runtime behavior.
+    private static string GetLayoutLabel() =>
+        Starling.Layout.Incremental.LayoutSession.Enabled ? "incremental" : "full";
 
     private async void OnSidebarTabActivated(TabInfo tab)
     {

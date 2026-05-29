@@ -78,7 +78,7 @@ internal sealed class BlockLayout
     /// must establish the inline formatting context directly instead of trying
     /// to block-stack its text (which silently drops it).
     /// </summary>
-    internal double LayoutItem(Box.Box item, double containerWidth, double? containerHeight, bool measure = false)
+    internal double LayoutItem(Box.Box item, double containerWidth, double? containerHeight, bool measure = false, bool reuseHeight = false)
     {
         if (item.Kind == BoxKind.AnonymousBlock)
             return _inline.Layout(item, containerWidth, measure);
@@ -98,7 +98,7 @@ internal sealed class BlockLayout
             var grid = new Starling.Layout.Grid.GridLayout(this, _viewport);
             return grid.Layout(item, containerWidth, containerHeight);
         }
-        return LayoutChildren(item, containerWidth, containerHeight, measure);
+        return LayoutChildren(item, containerWidth, containerHeight, measure, reuseHeight);
     }
 
     /// <summary>
@@ -118,8 +118,13 @@ internal sealed class BlockLayout
     /// percentage heights on descendants (CSS 2.1 §10.5). Pass <c>null</c> when
     /// the containing block has indefinite height — percentage heights on
     /// direct children then collapse to <c>auto</c> per spec.
+    /// <para><paramref name="reuseHeight"/>, set by a flex/grid item's auto
+    /// cross-size (height) measurement, lets a clean child subtree replay its
+    /// cached measured height instead of re-laying. Only valid when the caller
+    /// consumes the returned height and never reads descendant fragments — the
+    /// width (min/max-content) measure passes leave it false.</para>
     /// </summary>
-    internal double LayoutChildren(Box.Box parent, double containerWidth, double? containerHeight, bool measure)
+    internal double LayoutChildren(Box.Box parent, double containerWidth, double? containerHeight, bool measure, bool reuseHeight = false)
     {
         var cursorY = 0d;
         var prevBottomMargin = 0d;
@@ -169,7 +174,7 @@ internal sealed class BlockLayout
                 }
             }
 
-            LayoutBlock(child, containerWidth, containerHeight, ref cursorY, ref prevBottomMargin, ref first, measure);
+            LayoutBlock(child, containerWidth, containerHeight, ref cursorY, ref prevBottomMargin, ref first, measure, reuseHeight);
         }
         // Grow the consumed height to enclose any floats that stick past the
         // last in-flow block (§10.6.7). Without this, a float-only container
@@ -260,7 +265,7 @@ internal sealed class BlockLayout
             || string.Equals(name, "fixed", StringComparison.OrdinalIgnoreCase);
     }
 
-    private void LayoutBlock(Box.Box child, double containerWidth, double? containerHeight, ref double cursorY, ref double prevBottomMargin, ref bool first, bool measure = false)
+    private void LayoutBlock(Box.Box child, double containerWidth, double? containerHeight, ref double cursorY, ref double prevBottomMargin, ref bool first, bool measure = false, bool reuseHeight = false)
     {
         // Incremental reuse: a clean subtree laid out under the same constraint
         // space keeps its size and its descendants' (parent-relative) geometry,
@@ -269,6 +274,30 @@ internal sealed class BlockLayout
         // no divergence. Measurement mode (inline-block shrink-to-fit) skips
         // reuse — its alignment behaviour differs from the normal pass.
         var cs = new ConstraintSpace(containerWidth, containerHeight, _viewport.Width, _viewport.Height);
+
+        // Measurement-mode reuse: an intrinsic-sizing pass over a clean subtree
+        // (e.g. an auto-height flex item measuring its content height) only
+        // consumes the subtree's height — it never reads the descendants' text
+        // fragments. So a clean box measured before under the same measurement
+        // constraint replays its cached height without re-shaping a single line.
+        // This is what stops one deep DOM change inside a flex root from
+        // re-measuring the whole page every frame: the dirty item re-measures,
+        // its clean siblings/descendants replay. Width (min/max-content) measures
+        // do read fragments, but those short-circuit at the flex layer before
+        // reaching here, so this height-only replay is sound.
+        if (_incremental && measure && reuseHeight && !child.SubtreeDirty
+            && child.LaidConstraintMeasure == cs && child.Kind != BoxKind.AnonymousBlock)
+        {
+            var mTop = child.Margin.Top;
+            var mCollapse = first ? mTop : Math.Max(0, Math.Max(mTop, prevBottomMargin) - prevBottomMargin);
+            cursorY += mCollapse;
+            first = false;
+            child.Frame = new Rect(child.Margin.Left, cursorY, child.Frame.Width, child.MeasuredHeight);
+            cursorY += child.MeasuredHeight + child.Margin.Bottom;
+            prevBottomMargin = child.Margin.Bottom;
+            return;
+        }
+
         if (_incremental && !measure && !child.SubtreeDirty && child.LaidConstraint == cs)
         {
             if (child.Kind == BoxKind.AnonymousBlock)
@@ -341,7 +370,7 @@ internal sealed class BlockLayout
         }
         else
         {
-            childContentHeight = LayoutChildren(child, width, explicitHeight, measure);
+            childContentHeight = LayoutChildren(child, width, explicitHeight, measure, reuseHeight);
         }
 
         var resolvedHeight = explicitHeight ?? childContentHeight;
@@ -359,11 +388,19 @@ internal sealed class BlockLayout
     }
 
     /// <summary>Record the constraint space a freshly laid-out box was computed
-    /// under and clear its dirty mark, so a later frame can reuse it. No-op off
-    /// the incremental path and in measurement mode (whose geometry is tentative).</summary>
+    /// under so a later frame can reuse it. The normal pass also clears the dirty
+    /// mark; the measurement pass records only its own (height-only) reuse key and
+    /// leaves the dirty mark for the normal pass to clear. No-op off the
+    /// incremental path.</summary>
     private void Stamp(Box.Box box, ConstraintSpace cs, bool measure)
     {
-        if (!_incremental || measure) return;
+        if (!_incremental) return;
+        if (measure)
+        {
+            box.LaidConstraintMeasure = cs;
+            box.MeasuredHeight = box.Frame.Height;
+            return;
+        }
         box.LaidConstraint = cs;
         box.SubtreeDirty = false;
     }

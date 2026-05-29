@@ -93,8 +93,9 @@ internal static class WindowBinding
             (_, args) =>
             {
                 var target = args.Length > 0 ? args[0].ToString() : "";
-                ctx.Diag.Log(Starling.Common.Diagnostics.DiagLevel.Warn, "engine.js",
-                    $"location assignment ignored (navigation not yet wired): {target}");
+                if (!HistoryBinding.NavigateSameDocument(ctx, target, replace: false))
+                    ctx.Diag.Log(Starling.Common.Diagnostics.DiagLevel.Warn, "engine.js",
+                        $"location assignment ignored (cross-document navigation not yet wired): {target}");
                 return JsValue.Undefined;
             });
 
@@ -223,8 +224,9 @@ internal static class WindowBinding
             (_, args) =>
             {
                 var target = args.Length > 0 ? args[0].ToString() : "";
-                ctx.Diag.Log(Starling.Common.Diagnostics.DiagLevel.Warn, "engine.js",
-                    $"location.href assignment ignored (navigation not yet wired): {target}");
+                if (!HistoryBinding.NavigateSameDocument(ctx, target, replace: false))
+                    ctx.Diag.Log(Starling.Common.Diagnostics.DiagLevel.Warn, "engine.js",
+                        $"location.href assignment ignored (cross-document navigation not yet wired): {target}");
                 return JsValue.Undefined;
             });
         JintInterop.DefineAccessor(engine, loc, "protocol", (_, _) => JintInterop.Str(ParsedPart(ctx, p => p.Scheme + ":")));
@@ -233,22 +235,32 @@ internal static class WindowBinding
         JintInterop.DefineAccessor(engine, loc, "port", (_, _) => JintInterop.Str(ParsedPart(ctx, p => p.IsDefaultPort ? "" : p.Port.ToString(CultureInfo.InvariantCulture))));
         JintInterop.DefineAccessor(engine, loc, "pathname", (_, _) => JintInterop.Str(ParsedPart(ctx, p => p.AbsolutePath)));
         JintInterop.DefineAccessor(engine, loc, "search", (_, _) => JintInterop.Str(ParsedPart(ctx, p => p.Query)));
-        JintInterop.DefineAccessor(engine, loc, "hash", (_, _) => JintInterop.Str(ParsedPart(ctx, p => p.Fragment)));
+        JintInterop.DefineAccessor(engine, loc, "hash",
+            (_, _) => JintInterop.Str(ParsedPart(ctx, p => p.Fragment)),
+            (_, args) =>
+            {
+                var raw = args.Length > 0 ? args[0].ToString() : "";
+                if (raw.Length > 0 && raw[0] != '#') raw = "#" + raw;
+                HistoryBinding.NavigateSameDocument(ctx, raw, replace: false);
+                return JsValue.Undefined;
+            });
         JintInterop.DefineAccessor(engine, loc, "origin", (_, _) => JintInterop.Str(ParsedPart(ctx, p => $"{p.Scheme}://{p.Authority}")));
 
         JintInterop.DefineMethod(engine, loc, "toString", (_, _) => JintInterop.Str(UrlFor(ctx)), length: 0);
         JintInterop.DefineMethod(engine, loc, "assign", (_, args) =>
         {
             var target = args.Length > 0 ? args[0].ToString() : "";
-            ctx.Diag.Log(Starling.Common.Diagnostics.DiagLevel.Warn, "engine.js",
-                $"location.assign ignored (navigation not yet wired): {target}");
+            if (!HistoryBinding.NavigateSameDocument(ctx, target, replace: false))
+                ctx.Diag.Log(Starling.Common.Diagnostics.DiagLevel.Warn, "engine.js",
+                    $"location.assign ignored (cross-document navigation not yet wired): {target}");
             return JsValue.Undefined;
         }, length: 1);
         JintInterop.DefineMethod(engine, loc, "replace", (_, args) =>
         {
             var target = args.Length > 0 ? args[0].ToString() : "";
-            ctx.Diag.Log(Starling.Common.Diagnostics.DiagLevel.Warn, "engine.js",
-                $"location.replace ignored (navigation not yet wired): {target}");
+            if (!HistoryBinding.NavigateSameDocument(ctx, target, replace: true))
+                ctx.Diag.Log(Starling.Common.Diagnostics.DiagLevel.Warn, "engine.js",
+                    $"location.replace ignored (cross-document navigation not yet wired): {target}");
             return JsValue.Undefined;
         }, length: 1);
         JintInterop.DefineMethod(engine, loc, "reload", (_, _) =>

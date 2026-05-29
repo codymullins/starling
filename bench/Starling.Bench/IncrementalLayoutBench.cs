@@ -168,6 +168,59 @@ public class IncrementalLayoutBench
     }
 }
 
+// The animations-demo CPU-spike shape: a flex-rooted page (body is a flex
+// container) where a per-frame script rewrites one deep text node — the status
+// line. Because the root is a flex item with an auto cross-size, every relayout
+// runs an intrinsic-size measurement pass over the item; the fix lets clean
+// sibling subtrees replay their cached measured height instead of re-measuring
+// every text run. Full_TextChange (always re-measures the whole page) is the
+// baseline; Incremental_TextChange should be far cheaper and ~flat in [Rows].
+[MemoryDiagnoser]
+public class IncrementalFlexRootBench
+{
+    [Params(50, 500)]
+    public int Rows;
+
+    private static readonly Size Viewport = new(1024, 768);
+    private readonly ITextMeasurer _measurer = DefaultTextMeasurer.Instance;
+
+    private Document _doc = null!;
+    private StyleEngine _style = null!;
+    private LayoutSession _session = null!;
+    private Text _status = null!;
+    private int _frame;
+
+    [GlobalSetup]
+    public void Setup()
+    {
+        _doc = HtmlParser.Parse(Fixtures.FlexRootedHtml(Rows));
+        _doc.RecordLayoutMutations = true;
+        _style = new StyleEngine();
+        _style.AddStyleSheet(CssParser.ParseStyleSheet(Fixtures.FlexRootCss));
+        _session = new LayoutSession(_style);
+        _session.Layout(_doc, Viewport, _measurer, nowMs: null); // warm full build
+
+        _status = (Text)_doc.GetElementById("status")!.FirstChild!;
+    }
+
+    [Benchmark(Baseline = true)]
+    public double Full_TextChange()
+    {
+        _status.Data = NextLabel();
+        _doc.DrainLayoutMutations();
+        return new LayoutEngine(_style).LayoutDocument(_doc, Viewport).Frame.Height;
+    }
+
+    [Benchmark]
+    public double Incremental_TextChange()
+    {
+        _status.Data = NextLabel();
+        return _session.Layout(_doc, Viewport, _measurer, nowMs: null).Frame.Height;
+    }
+
+    private string NextLabel() => (_frame++ & 1) == 0 ? "running 16 ms" : "running 32 ms";
+}
+
 // The same comparison on a real-world page (the offline nginx.org snapshot the
 // golden gate uses), so the synthetic scaling result is anchored to a page with
 // genuine cascade + inline complexity.

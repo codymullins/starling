@@ -15,6 +15,7 @@ using Starling.Common.Image;
 using Starling.Css.Cascade;
 using Starling.Css.Properties;
 using Starling.Css.Selectors;
+using Starling.Dom;
 using Starling.Dom.Events;
 using Starling.Engine;
 using AvColor = Avalonia.Media.Color;
@@ -113,12 +114,33 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     private readonly Stopwatch _liveStopwatch = new();
     private PageScripting? _boundScripting;
 
+    // Live animation loop (declarative @keyframes/transitions + WAAPI). The host
+    // supplies hooks to advance the page's animation clock and to query whether
+    // any animation is in flight; the live timer then repaints each frame.
+    private readonly Action<LaidOutPage, long>? _prepareAnimationFrame;
+    private readonly Func<LaidOutPage, bool>? _hasActiveAnimations;
+    private long _animClockMs;
+    private bool _animating;
+    // True for exactly one paint: a live frame that advanced only the animation
+    // clock and did NOT relayout. The layer compositor is taken only on these
+    // frames — a frame that relayouts has just wiped the per-layer caches
+    // (ShowPage → InvalidateCache), so compositing would re-raster every layer
+    // cold and pay its overhead for nothing. Consume-once: RenderPageBitmap
+    // reads it then clears it, so scroll/hover/navigation paints stay flat.
+    private bool _animationOnlyFrame;
+    // Cached "does this laid-out page carry a transform/opacity compositor
+    // layer?" answer (Phase 5 routing). Computed once per layout — a relayout
+    // produces a new box tree, so ShowPage resets it to null to recompute.
+    private bool? _pageHasCompositorLayers;
+
     public WebviewPanel(
         ThemeManager tm,
         IDiagnostics diag,
         Action<string> onLinkActivated,
         Action<string, bool> onStatus,
-        Func<LaidOutPage, EngineSize, LaidOutPage?>? relayout = null)
+        Func<LaidOutPage, EngineSize, LaidOutPage?>? relayout = null,
+        Action<LaidOutPage, long>? prepareAnimationFrame = null,
+        Func<LaidOutPage, bool>? hasActiveAnimations = null)
     {
         _tm = tm;
         _diag = diag;
@@ -126,6 +148,8 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         _onLinkActivated = onLinkActivated;
         _onStatus = onStatus;
         _relayout = relayout;
+        _prepareAnimationFrame = prepareAnimationFrame;
+        _hasActiveAnimations = hasActiveAnimations;
         _relayoutTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
         _relayoutTimer.Tick += (_, _) => RelayoutToViewport();
 
@@ -287,7 +311,7 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     /// offset — only the on-screen region is rasterized each frame (M12
     /// viewport-clipped paint).
     /// </summary>
-    public void ShowPage(LaidOutPage page, bool preserveScroll = false)
+    public void ShowPage(LaidOutPage page, bool preserveScroll = false, bool deferRender = false)
     {
         // Keep the scroll position across a reflow (resize re-layout) so the
         // user doesn't jump to the top; a fresh navigation resets to the top.
@@ -316,6 +340,9 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         // New laid-out page = new display-list version; drop any cached pixels
         // from the previous page so the first render is a clean full repaint.
         _renderer.InvalidateCache();
+
+        // Fresh box tree — recompute the compositor-layer routing answer lazily.
+        _pageHasCompositorLayers = null;
 
         // Reset interaction state.
         ClearSelection();
@@ -354,7 +381,12 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         {
             _scroll.Offset = new Vector(0, 0);
         }
-        RenderViewportRegion();
+        // The live animation loop defers the paint to the end of its tick so the
+        // page is rasterized exactly once, with the animation clock already
+        // advanced — instead of painting here with a stale clock and again after
+        // PrepareAnimationFrame. Every other caller paints inline.
+        if (!deferRender)
+            RenderViewportRegion();
 
         using (_diag.Span("gui", "show_page.hit_index"))
             _fragments = BoxHitTester.CollectFragments(page.Root);
@@ -741,23 +773,14 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         for (var b = box; b is not null; b = b.Parent)
         {
             if (b.Element is not DomElement el) continue;
-            switch (el.LocalName)
-            {
-                case "textarea":
-                    return el;
-                case "input":
-                    var type = (el.GetAttribute("type") ?? "text").Trim().ToLowerInvariant();
-                    return type is "text" or "search" or "email" or "url" or "tel"
-                            or "password" or "number" or ""
-                        ? el : null;
-            }
+            if (!el.HasAttribute("disabled") && !el.HasAttribute("readonly") && HtmlFormControls.IsTextControl(el))
+                return el;
         }
         return null;
     }
 
     private string CurrentValue()
-        => _focusedInput is null ? string.Empty
-            : _focusedInput.InputValue ?? _focusedInput.GetAttribute("value") ?? string.Empty;
+        => _focusedInput is null ? string.Empty : HtmlFormControls.Value(_focusedInput);
 
     /// <summary>
     /// Focuses <paramref name="input"/>: records document focus (so <c>:focus</c>
@@ -772,6 +795,7 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         _currentPage.Document.FocusedElement = input;
         _valueAtFocus = CurrentValue();
         _caretIndex = CurrentValue().Length;
+        HtmlFormControls.SetSelectionRange(input, _caretIndex, _caretIndex, "none");
         _pageCanvas.Focus();
 
         // Notify page JS (HTML focus event order: focus, then focusin/bubbles).
@@ -789,7 +813,7 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     {
         if (_focusedInput is null) return;
         var was = _focusedInput;
-        var finalValue = was.InputValue ?? was.GetAttribute("value") ?? string.Empty;
+        var finalValue = HtmlFormControls.Value(was);
         var changed = !string.Equals(finalValue, _valueAtFocus, StringComparison.Ordinal);
         _focusedInput = null;
         _caretBlinkTimer.Stop();
@@ -851,9 +875,12 @@ internal sealed class WebviewPanel : UserControl, IDisposable
                 // Implicit form submission: Enter in a text field submits its
                 // owning form (the keydown was already dispatched above).
                 e.Handled = true;
-                if (_focusedInput.LocalName == "input" && NearestForm(_focusedInput) is { } form
-                    && DispatchDom(form, new Event("submit", new EventInit(Bubbles: true, Cancelable: true))))
-                    RefreshLiveLayout();
+                if (_focusedInput.LocalName == "input")
+                {
+                    var actioned = false;
+                    if (SubmitOwningForm(_focusedInput, ref actioned))
+                        RefreshLiveLayout();
+                }
                 break;
         }
     }
@@ -863,8 +890,9 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     private void CommitValue(string next, int newCaret)
     {
         if (_focusedInput is null) return;
-        _focusedInput.InputValue = next;
+        HtmlFormControls.SetValue(_focusedInput, next);
         _caretIndex = Math.Clamp(newCaret, 0, next.Length);
+        HtmlFormControls.SetSelectionRange(_focusedInput, _caretIndex, _caretIndex, "none");
         // Fire the DOM `input` event so search-as-you-type / form handlers run;
         // RefreshFocusedLayout then reflects both the new value text and any DOM
         // the handler mutated synchronously.
@@ -875,6 +903,8 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     private void MoveCaret(int index)
     {
         _caretIndex = Math.Clamp(index, 0, CurrentValue().Length);
+        if (_focusedInput is not null)
+            HtmlFormControls.SetSelectionRange(_focusedInput, _caretIndex, _caretIndex, "none");
         RenderCaret(); // value unchanged — no re-layout needed
     }
 
@@ -1096,30 +1126,47 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     public void BindLiveScripting()
     {
         var scripting = _currentPage?.Scripting;
-        if (scripting is null)
+        // The live timer also drives the animation loop, so it must run for a
+        // page that has in-flight animations even when it has no JS context.
+        var wantsAnimation = _currentPage is { } p && _hasActiveAnimations?.Invoke(p) == true;
+        if (scripting is null && !wantsAnimation)
         {
             _liveTimer.Stop();
             _boundScripting = null;
             return;
         }
-        if (!ReferenceEquals(scripting, _boundScripting))
+        if (scripting is not null && !ReferenceEquals(scripting, _boundScripting))
         {
             _boundScripting = scripting;
             _liveStopwatch.Restart();
         }
+        if (scripting is null && !_liveStopwatch.IsRunning) _liveStopwatch.Restart();
         if (!_liveTimer.IsEnabled) _liveTimer.Start();
     }
 
     private void LiveTick()
     {
-        var scripting = _currentPage?.Scripting;
-        if (scripting is null) { _liveTimer.Stop(); _boundScripting = null; return; }
+        var page = _currentPage;
+        if (page is null) { _liveTimer.Stop(); _boundScripting = null; _animating = false; return; }
 
-        try { scripting.PumpFrame(_liveStopwatch.ElapsedMilliseconds); }
-        catch (Exception ex)
+        // One span per frame, with sub-spans for each phase (pump / relayout /
+        // prepare_anim / render) so a trace shows where a laggy animation frame
+        // spends its time. The inner "gui.render" span lives in RenderPageBitmap.
+        using var _tick = _diag.Span("gui", "live.tick");
+
+        var scripting = page.Scripting;
+        if (scripting is not null)
         {
-            _diag.Log(DiagLevel.Warn, "gui", $"live JS pump failed: {ex.Message}");
-            return;
+            try
+            {
+                using (_diag.Span("gui", "live.pump"))
+                    scripting.PumpFrame(_liveStopwatch.ElapsedMilliseconds);
+            }
+            catch (Exception ex)
+            {
+                _diag.Log(DiagLevel.Warn, "gui", $"live JS pump failed: {ex.Message}");
+                return;
+            }
         }
 
         // Relayout only when this frame produced a *layout-relevant* mutation —
@@ -1127,27 +1174,68 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         // attribute (Document.IsLayoutRelevantAttribute). Pure data-* / aria-* /
         // js* writes bump MutationVersion but not LayoutInvalidationVersion, so
         // an analytics or animation rAF that only touches those no longer pays a
-        // full reflow per frame.
+        // full reflow per frame. Defer its paint: when the page is also animating
+        // we advance the animation clock first and paint exactly once below —
+        // instead of painting here with last frame's clock and again after
+        // PrepareAnimationFrame.
         //
         // Attribute-selector invalidation is handled by Document.IsAttributeLayoutRelevant:
         // the layout pass records selector-referenced attributes, so author CSS
         // keyed on data-* / aria-* still advances LayoutInvalidationVersion.
-        var layoutVersion = _currentPage?.Document.LayoutInvalidationVersion ?? _lastLayoutInvalidationVersion;
-        if (layoutVersion != _lastLayoutInvalidationVersion)
+        var layoutVersion = page.Document.LayoutInvalidationVersion;
+        var needsRelayout = layoutVersion != _lastLayoutInvalidationVersion;
+        if (needsRelayout)
         {
             _lastLayoutInvalidationVersion = layoutVersion;
             CaretLog("LiveTick: layout-relevant mutation -> RefreshLiveLayout");
-            RefreshLiveLayout();
+            RefreshLiveLayout(deferRender: true);
+            page = _currentPage;
+            if (page is null) { _liveTimer.Stop(); _boundScripting = null; _animating = false; return; }
+        }
+
+        // Animation loop: advance the page's animation/transition clock and
+        // repaint while anything is in flight (no DOM mutation required). When
+        // it settles we simply stop repainting, leaving the final frame in
+        // place (no static revert — fill:forwards persists).
+        var animating = _prepareAnimationFrame is not null && _hasActiveAnimations?.Invoke(page) == true;
+        if (animating)
+        {
+            _animClockMs = _liveStopwatch.ElapsedMilliseconds;
+            using (_diag.Span("gui", "live.prepare_anim"))
+                _prepareAnimationFrame!(page, _animClockMs);
+            _animating = true;
+        }
+        else
+        {
+            _animating = false;
+        }
+
+        // Exactly one paint per frame — the animation clock and _animating flag
+        // are already set, so the sampled styles match this frame. A frame that
+        // only advanced the clock (no relayout) is eligible for the layer
+        // compositor, whose per-layer caches are still warm; a frame that
+        // relayouted just wiped them, so it must stay on the flat path.
+        _animationOnlyFrame = animating && !needsRelayout;
+        if (needsRelayout || animating)
+            RenderViewportRegion();
+
+        // Stop the timer once neither scripting nor animation needs it.
+        if (scripting is null && !animating)
+        {
+            _liveTimer.Stop();
+            _boundScripting = null;
         }
     }
 
     /// <summary>Re-lay-out + repaint after the live loop mutated the DOM,
     /// preserving scroll and the text caret. No-op without a relayout hook.</summary>
-    private void RefreshLiveLayout()
+    private void RefreshLiveLayout(bool deferRender = false)
     {
         if (_currentPage is null || _relayout is null) return;
-        var relaid = _relayout(_currentPage, CurrentViewportSize());
-        if (relaid is not null) ShowPage(relaid, preserveScroll: true);
+        LaidOutPage? relaid;
+        using (_diag.Span("gui", "live.relayout"))
+            relaid = _relayout(_currentPage, CurrentViewportSize());
+        if (relaid is not null) ShowPage(relaid, preserveScroll: true, deferRender: deferRender);
     }
 
     /// <summary>Dispatch a DOM event into the page's JS listeners (a no-op for
@@ -1211,6 +1299,7 @@ internal sealed class WebviewPanel : UserControl, IDisposable
                 if (type is "checkbox" or "radio")
                 {
                     actioned = true;
+                    HtmlFormControls.SetChecked(control, type == "radio" || !HtmlFormControls.Checked(control));
                     var m = DispatchDom(control, new InputEvent("input", new EventInit(Bubbles: true)));
                     m |= DispatchDom(control, new Event("change", new EventInit(Bubbles: true)));
                     return m;
@@ -1237,9 +1326,14 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     /// the SPA/todo pattern preventDefaults and handles submission in JS.</summary>
     private bool SubmitOwningForm(DomElement control, ref bool actioned)
     {
-        if (NearestForm(control) is not { } form) return false;
+        if (HtmlFormControls.FormOwner(control) is not { } form) return false;
         actioned = true;
-        return DispatchDom(form, new Event("submit", new EventInit(Bubbles: true, Cancelable: true)));
+        if (!DispatchInvalidEvents(form)) return true;
+        var submit = new Event("submit", new EventInit(Bubbles: true, Cancelable: true));
+        var mutated = DispatchDom(form, submit);
+        if (!submit.DefaultPrevented)
+            HtmlFormControls.RecordAutocompleteSubmission(form);
+        return mutated;
     }
 
     /// <summary>Nearest DOM element enclosing <paramref name="box"/> (the click's
@@ -1263,9 +1357,19 @@ internal sealed class WebviewPanel : UserControl, IDisposable
 
     private static DomElement? NearestForm(DomElement el)
     {
-        for (DomNode? n = el; n is not null; n = n.ParentNode)
-            if (n is DomElement { LocalName: "form" } f) return f;
-        return null;
+        return HtmlFormControls.FormOwner(el);
+    }
+
+    private bool DispatchInvalidEvents(DomElement form)
+    {
+        var valid = true;
+        foreach (var control in HtmlFormControls.FormControls(form))
+        {
+            if (HtmlFormControls.Validity(control).Valid) continue;
+            valid = false;
+            DispatchDom(control, new Event("invalid", new EventInit(Cancelable: true)));
+        }
+        return valid;
     }
 
     // ---- Programmatic input (MCP automation) --------------------------
@@ -1381,8 +1485,11 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         var target = _focusedInput;
         var down = new KeyboardEvent("keydown", new EventInit(Bubbles: true, Cancelable: true)) { Key = "Enter", Code = "Enter" };
         var mutated = DispatchDom(target, down);
-        if (target.LocalName == "input" && NearestForm(target) is { } form)
-            mutated |= DispatchDom(form, new Event("submit", new EventInit(Bubbles: true, Cancelable: true)));
+        if (target.LocalName == "input")
+        {
+            var actioned = false;
+            mutated |= SubmitOwningForm(target, ref actioned);
+        }
         var up = new KeyboardEvent("keyup", new EventInit(Bubbles: true, Cancelable: true)) { Key = "Enter", Code = "Enter" };
         mutated |= DispatchDom(target, up);
         if (mutated) RefreshLiveLayout();
@@ -1551,9 +1658,14 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         if (_currentPage is null) return;
 
         var overrides = _hoverOverrides;
-        Func<LayoutBox, ComputedStyle?>? styleOverride = overrides is null
-            ? null
-            : box => ResolveOverride(box, overrides);
+        // While animating, overlay each animated element's sampled style; hover
+        // overrides still win for the hovered element.
+        var animate = _animating && _currentPage is not null;
+        Func<LayoutBox, ComputedStyle?>? styleOverride =
+            (overrides is null && !animate)
+                ? null
+                : box => (overrides is null ? null : ResolveOverride(box, overrides))
+                         ?? (animate ? AnimatedStyle(_currentPage!, box) : null);
 
         RenderedBitmap rendered;
         // A finished navigation can leave its stopped Activity as the UI thread's
@@ -1566,8 +1678,38 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         Func<DomElement, (double X, double Y)>? scrollLookup = _scrollOffsets.Count == 0
             ? null
             : el => _scrollOffsets.TryGetValue(el, out var off) ? off : (0d, 0d);
+        // While animating, the painted pixels change every frame even though the
+        // box tree (DisplayListVersion) is unchanged, so vary the picture-cache
+        // key by the animation clock to force a fresh raster each frame.
+        // Phase 5: on an animation-only frame (the clock advanced, nothing
+        // relayouted) for a page that has transform/opacity compositor layers,
+        // route through the layer tree. Each layer's CONTENT is cached across
+        // frames — the page version excludes the animation clock, so the cache
+        // key is stable — while the re-sampled transform / opacity are applied
+        // at COMPOSITE time. So the frame re-blits each layer's pixels from
+        // cache instead of re-rasterizing. The flat path stays the default
+        // everywhere else (no animation, a frame that relayouted and wiped the
+        // caches, or no promoted layer), so existing goldens are untouched and a
+        // relayout-every-frame page never pays cold compositing. Guarded to the
+        // no-per-element-scroll case because RenderViaLayerTree does not yet
+        // thread per-container scroll offsets (tracked follow-up); a scrollable
+        // page falls back to the flat path, which handles offsets correctly.
+        var useLayerTree = _animationOnlyFrame && scrollLookup is null && PageHasCompositorLayers();
+        _animationOnlyFrame = false; // consume-once: only the live tick that set it composites
         using (_diag.Span("gui", "render"))
-            rendered = _renderer.Render(_currentPage.Root, (float)_currentScale, styleOverride, _currentPage.ImageResolver, viewport, _currentPage.DisplayListVersion, scrollLookup);
+        {
+            if (useLayerTree)
+            {
+                rendered = _renderer.RenderViaLayerTree(_currentPage!.Root, (float)_currentScale, styleOverride, _currentPage.ImageResolver, viewport, _currentPage.DisplayListVersion);
+            }
+            else
+            {
+                var pageVersion = animate
+                    ? unchecked(_currentPage!.DisplayListVersion + (int)_animClockMs)
+                    : _currentPage!.DisplayListVersion;
+                rendered = _renderer.Render(_currentPage.Root, (float)_currentScale, styleOverride, _currentPage.ImageResolver, viewport, pageVersion, scrollLookup);
+            }
+        }
         WriteableBitmap bmp;
         using (rendered)
             bmp = BitmapBridge.ToWriteableBitmap(rendered, _currentScale);
@@ -1595,6 +1737,53 @@ internal sealed class WebviewPanel : UserControl, IDisposable
                 return inherited;
         }
         return null;
+    }
+
+    /// <summary>
+    /// Per-box animated style overlay for the live animation loop. Returns the
+    /// element's composed (static + animation/transition sampled) style when it
+    /// has any animated property in flight; otherwise null so the box keeps its
+    /// laid-out style. Boxes without their own element (anonymous/text) are left
+    /// to their static style — animations on paint-on-self properties (transform,
+    /// opacity, background, border, color of the element itself) render; color
+    /// inherited into descendant text boxes is a follow-up.
+    /// </summary>
+    // The promotion hints whose layers gain from composite-time caching: a
+    // transform or opacity that can change per frame while the layer's content
+    // (and the picture-cache key) stays put. `will-change` is the author's
+    // explicit "I will animate this on the compositor" signal, so it counts too.
+    private const Starling.Layout.Compositor.LayerHint CompositeAnimatableHints =
+        Starling.Layout.Compositor.LayerHint.Transform3D
+        | Starling.Layout.Compositor.LayerHint.OpacityLessThanOne
+        | Starling.Layout.Compositor.LayerHint.WillChange;
+
+    /// <summary>True when the current laid-out page has a box promoted for a
+    /// composite-time transform / opacity — the layers whose pixels can be
+    /// re-blitted from cache across an animation frame. Computed once per layout
+    /// (cached; reset by <see cref="ShowPage"/>).</summary>
+    private bool PageHasCompositorLayers()
+    {
+        if (_currentPage is null) return false;
+        _pageHasCompositorLayers ??= HasCompositeAnimatableLayer(_currentPage.Root);
+        return _pageHasCompositorLayers.Value;
+    }
+
+    private static bool HasCompositeAnimatableLayer(LayoutBox box)
+    {
+        if ((box.Hints & CompositeAnimatableHints) != 0) return true;
+        foreach (var child in box.Children)
+            if (HasCompositeAnimatableLayer(child)) return true;
+        return false;
+    }
+
+    private ComputedStyle? AnimatedStyle(LaidOutPage page, LayoutBox box)
+    {
+        if (box.Element is not { } el) return null;
+        var hasAnim = false;
+        foreach (var _ in page.Style.AnimationEngine.ActiveProperties(el)) { hasAnim = true; break; }
+        if (!hasAnim)
+            foreach (var _ in page.Style.TransitionEngine.ActiveProperties(el)) { hasAnim = true; break; }
+        return hasAnim ? page.Style.ComputeWithAnimations(el, _animClockMs) : null;
     }
 
     // ---- Selection -----------------------------------------------------
@@ -1764,7 +1953,11 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         _liveTimer.Stop();
         _renderer.Dispose();
         _currentPage?.Dispose();
-        (_pageImage.Source as IDisposable)?.Dispose();
+        // Detach the bitmap before disposing it: a teardown layout pass can
+        // otherwise measure the Image against an already-disposed bitmap.
+        var pageSource = _pageImage.Source as IDisposable;
+        _pageImage.Source = null;
+        pageSource?.Dispose();
     }
 }
 

@@ -82,6 +82,53 @@ public class JsErrorPositionTests
         Eval("var o={f:function(){return 7;}}; o.f();").AsNumber.Should().Be(7);
     }
 
+    [TestMethod]
+    public void Thrown_error_stack_includes_function_source_line_and_caller()
+    {
+        const string src = """
+            function inner() {
+              throw new TypeError('bundle boom');
+            }
+            function outer() {
+              inner();
+            }
+            outer();
+            """;
+
+        var thrown = ((Action)(() => Eval(src))).Should().Throw<JsThrow>().Which.Value;
+        var stack = thrown.AsObject.Get("stack").AsString;
+        stack.Should().StartWith("TypeError: bundle boom");
+        stack.Should().Contain("at inner (<eval>:2:3)");
+        stack.Should().Contain("at outer (<eval>:5:3)");
+    }
+
+    [TestMethod]
+    public void Direct_eval_error_stack_uses_stable_eval_source_name()
+    {
+        var thrown = ((Action)(() => Eval("eval(\"function f(){\\n  throw new Error('eval boom');\\n}\\nf();\");")))
+            .Should().Throw<JsThrow>().Which.Value;
+
+        var stack = thrown.AsObject.Get("stack").AsString;
+        stack.Should().StartWith("Error: eval boom");
+        stack.Should().Contain("at f (<eval>:2:3)");
+    }
+
+    [TestMethod]
+    public void Reference_error_stack_includes_identifier_position()
+    {
+        const string src = """
+            function inner() {
+              missingBundleGlobal;
+            }
+            inner();
+            """;
+
+        var thrown = ((Action)(() => Eval(src))).Should().Throw<JsThrow>().Which.Value;
+        var stack = thrown.AsObject.Get("stack").AsString;
+        stack.Should().StartWith("ReferenceError: missingBundleGlobal is not defined");
+        stack.Should().Contain("at inner (<eval>:2:3)");
+    }
+
     // ----- Helpers --------------------------------------------------------
 
     private static JsValue Eval(string src)

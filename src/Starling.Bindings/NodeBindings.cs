@@ -547,13 +547,14 @@ public static class NodeBindings
         // live value so layout re-renders the field with the new text.
         EventTargetBinding.DefineAccessor(realm, elProto, "value",
             (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e
-                ? JsValue.String(e.InputValue ?? e.GetAttribute("value") ?? "") : JsValue.String(""),
+                ? JsValue.String(HtmlFormControls.Value(e)) : JsValue.String(""),
             (thisV, args) =>
             {
                 if (DomWrappers.UnwrapElement(thisV) is { } e)
-                    e.InputValue = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+                    HtmlFormControls.SetValue(e, args.Length > 0 ? JsValue.ToStringValue(args[0]) : "");
                 return JsValue.Undefined;
             });
+        InstallFormControlAccessors(realm, elProto);
         // HTMLElement.focus() / .blur() — move the document focus. The shell
         // reads document.FocusedElement to drive the caret and :focus styling.
         EventTargetBinding.DefineMethod(realm, elProto, "focus", (thisV, _) =>
@@ -1176,6 +1177,25 @@ public static class NodeBindings
             return JsValue.Object(styleObj);
         });
 
+        // ---- CSS Typed OM 1 §6: attributeStyleMap / computedStyleMap -------
+        // A StylePropertyMap over the inline `style` attribute (mutable) and a
+        // read-only StylePropertyMapReadOnly over the computed style (consults
+        // the layout host). Values are CSSStyleValue objects (CssBinding).
+        EventTargetBinding.DefineAccessor(realm, elProto, "attributeStyleMap", (thisV, _) =>
+            DomWrappers.UnwrapElement(thisV) is { } e
+                ? JsValue.Object(BuildInlineStyleMap(realm, e))
+                : JsValue.Undefined);
+        EventTargetBinding.DefineMethod(realm, elProto, "computedStyleMap", (thisV, _) =>
+            DomWrappers.UnwrapElement(thisV) is { } e
+                ? JsValue.Object(BuildComputedStyleMap(realm, e))
+                : JsValue.Undefined, length: 0);
+
+        // ---- Web Animations 1 §4: element.animate(keyframes, options) ------
+        EventTargetBinding.DefineMethod(realm, elProto, "animate", (thisV, args) =>
+            DomWrappers.UnwrapElement(thisV) is { } e
+                ? WebAnimationsBinding.Animate(realm, e, args)
+                : JsValue.Undefined, length: 2);
+
         // Layout-readback APIs — consult the realm's optional ILayoutHost
         // snapshot. With no host (e.g. JS run outside the engine pipeline)
         // they return spec-permitted zeros, matching a never-laid-out doc.
@@ -1218,6 +1238,12 @@ public static class NodeBindings
             (thisV, _) => ReadOffsetMetric(realm, thisV, m => m.OffsetWidth));
         EventTargetBinding.DefineAccessor(realm, elProto, "scrollHeight",
             (thisV, _) => ReadOffsetMetric(realm, thisV, m => m.OffsetHeight));
+        // CSSOM View §7 — scrollTop/scrollLeft. No scroll position is tracked
+        // behind the seam, so a never-scrolled element reads 0 (spec-permitted).
+        EventTargetBinding.DefineAccessor(realm, elProto, "scrollTop",
+            (_, _) => JsValue.Number(0));
+        EventTargetBinding.DefineAccessor(realm, elProto, "scrollLeft",
+            (_, _) => JsValue.Number(0));
 
         var elCtor = new JsNativeFunction(realm, "Element", 0, (_, _) =>
             throw new JsThrow(realm.NewTypeError("Illegal constructor")), isConstructor: false);
@@ -1605,6 +1631,162 @@ public static class NodeBindings
     {
         var arr = new JsArray(realm, items);
         return JsValue.Object(arr);
+    }
+
+    private static void InstallFormControlAccessors(JsRealm realm, JsObject proto)
+    {
+        EventTargetBinding.DefineAccessor(realm, proto, "name",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.String(e.GetAttribute("name") ?? "") : JsValue.String(""),
+            (thisV, args) => { if (DomWrappers.UnwrapElement(thisV) is { } e) e.SetAttribute("name", args.Length > 0 ? JsValue.ToStringValue(args[0]) : ""); return JsValue.Undefined; });
+        EventTargetBinding.DefineAccessor(realm, proto, "type",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.String(HtmlFormControls.InputType(e)) : JsValue.String(""),
+            (thisV, args) => { if (DomWrappers.UnwrapElement(thisV) is { } e) e.SetAttribute("type", args.Length > 0 ? JsValue.ToStringValue(args[0]) : ""); return JsValue.Undefined; });
+        EventTargetBinding.DefineAccessor(realm, proto, "required",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.Boolean(e.HasAttribute("required")) : JsValue.False,
+            (thisV, args) => { if (DomWrappers.UnwrapElement(thisV) is { } e) SetBoolAttr(e, "required", args.Length > 0 && JsValue.ToBoolean(args[0])); return JsValue.Undefined; });
+        EventTargetBinding.DefineAccessor(realm, proto, "disabled",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.Boolean(e.HasAttribute("disabled")) : JsValue.False,
+            (thisV, args) => { if (DomWrappers.UnwrapElement(thisV) is { } e) SetBoolAttr(e, "disabled", args.Length > 0 && JsValue.ToBoolean(args[0])); return JsValue.Undefined; });
+        EventTargetBinding.DefineAccessor(realm, proto, "readOnly",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.Boolean(e.HasAttribute("readonly")) : JsValue.False,
+            (thisV, args) => { if (DomWrappers.UnwrapElement(thisV) is { } e) SetBoolAttr(e, "readonly", args.Length > 0 && JsValue.ToBoolean(args[0])); return JsValue.Undefined; });
+        EventTargetBinding.DefineAccessor(realm, proto, "multiple",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.Boolean(e.HasAttribute("multiple")) : JsValue.False,
+            (thisV, args) => { if (DomWrappers.UnwrapElement(thisV) is { } e) SetBoolAttr(e, "multiple", args.Length > 0 && JsValue.ToBoolean(args[0])); return JsValue.Undefined; });
+        EventTargetBinding.DefineAccessor(realm, proto, "checked",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.Boolean(HtmlFormControls.Checked(e)) : JsValue.False,
+            (thisV, args) => { if (DomWrappers.UnwrapElement(thisV) is { } e) HtmlFormControls.SetChecked(e, args.Length > 0 && JsValue.ToBoolean(args[0])); return JsValue.Undefined; });
+        EventTargetBinding.DefineAccessor(realm, proto, "selected",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.Boolean(e.HasAttribute("selected")) : JsValue.False,
+            (thisV, args) => { if (DomWrappers.UnwrapElement(thisV) is { } e) SetBoolAttr(e, "selected", args.Length > 0 && JsValue.ToBoolean(args[0])); return JsValue.Undefined; });
+        EventTargetBinding.DefineAccessor(realm, proto, "form",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e && HtmlFormControls.FormOwner(e) is { } form
+                ? JsValue.Object(DomWrappers.Wrap(realm, form)) : JsValue.Null);
+        EventTargetBinding.DefineAccessor(realm, proto, "selectionStart",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e && HtmlFormControls.IsTextControl(e) ? JsValue.Number(e.SelectionStart) : JsValue.Null,
+            (thisV, args) => { if (DomWrappers.UnwrapElement(thisV) is { } e) HtmlFormControls.SetSelectionRange(e, args.Length > 0 ? (int)JsValue.ToNumber(args[0]) : 0, e.SelectionEnd, e.SelectionDirection); return JsValue.Undefined; });
+        EventTargetBinding.DefineAccessor(realm, proto, "selectionEnd",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e && HtmlFormControls.IsTextControl(e) ? JsValue.Number(e.SelectionEnd) : JsValue.Null,
+            (thisV, args) => { if (DomWrappers.UnwrapElement(thisV) is { } e) HtmlFormControls.SetSelectionRange(e, e.SelectionStart, args.Length > 0 ? (int)JsValue.ToNumber(args[0]) : 0, e.SelectionDirection); return JsValue.Undefined; });
+        EventTargetBinding.DefineAccessor(realm, proto, "validity",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.Object(BuildValidityObject(realm, HtmlFormControls.Validity(e))) : JsValue.Undefined);
+        EventTargetBinding.DefineAccessor(realm, proto, "willValidate",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.Boolean(HtmlFormControls.WillValidate(e)) : JsValue.False);
+        EventTargetBinding.DefineAccessor(realm, proto, "validationMessage",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.String(HtmlFormControls.ValidationMessage(e)) : JsValue.String(""));
+        EventTargetBinding.DefineAccessor(realm, proto, "selectedIndex",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.Number(SelectedIndex(e)) : JsValue.Number(-1),
+            (thisV, args) => { if (DomWrappers.UnwrapElement(thisV) is { } e) SetSelectedIndex(e, args.Length > 0 ? (int)JsValue.ToNumber(args[0]) : -1); return JsValue.Undefined; });
+        EventTargetBinding.DefineMethod(realm, proto, "setSelectionRange", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is { } e)
+                HtmlFormControls.SetSelectionRange(e,
+                    args.Length > 0 ? (int)JsValue.ToNumber(args[0]) : 0,
+                    args.Length > 1 ? (int)JsValue.ToNumber(args[1]) : 0,
+                    args.Length > 2 ? JsValue.ToStringValue(args[2]) : "none");
+            return JsValue.Undefined;
+        }, length: 2);
+        EventTargetBinding.DefineMethod(realm, proto, "checkValidity", (thisV, _) =>
+            DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.Boolean(HtmlFormControls.CheckValidity(e)) : JsValue.True, length: 0);
+        EventTargetBinding.DefineMethod(realm, proto, "reportValidity", (thisV, _) =>
+            DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.Boolean(HtmlFormControls.CheckValidity(e)) : JsValue.True, length: 0);
+        EventTargetBinding.DefineMethod(realm, proto, "setCustomValidity", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is { } e)
+                e.CustomValidationMessage = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+            return JsValue.Undefined;
+        }, length: 1);
+        EventTargetBinding.DefineMethod(realm, proto, "serialize", (thisV, _) =>
+            DomWrappers.UnwrapElement(thisV) is { LocalName: "form" } form ? JsValue.String(HtmlFormControls.UrlEncodedFormData(form)) : JsValue.String(""), length: 0);
+        EventTargetBinding.DefineMethod(realm, proto, "submit", (thisV, _) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is { LocalName: "form" } form)
+                HtmlFormControls.RecordAutocompleteSubmission(form);
+            return JsValue.Undefined;
+        }, length: 0);
+        EventTargetBinding.DefineMethod(realm, proto, "requestSubmit", (thisV, _) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is not { LocalName: "form" } form) return JsValue.Undefined;
+            if (!DispatchInvalidEvents(form)) return JsValue.Undefined;
+            var ev = new Starling.Dom.Events.Event("submit", new Starling.Dom.Events.EventInit(Bubbles: true, Cancelable: true));
+            form.DispatchEvent(ev);
+            if (!ev.DefaultPrevented)
+                HtmlFormControls.RecordAutocompleteSubmission(form);
+            return JsValue.Undefined;
+        }, length: 0);
+        EventTargetBinding.DefineMethod(realm, proto, "autocompleteSuggestions", (thisV, _) =>
+            DomWrappers.UnwrapElement(thisV) is { } e ? StringArray(realm, HtmlFormControls.AutocompleteSuggestions(e)) : MakeArray(realm, Array.Empty<JsValue>()), length: 0);
+    }
+
+    private static JsObject BuildValidityObject(JsRealm realm, FormValidityState validity)
+    {
+        var obj = new JsObject(realm.ObjectPrototype);
+        obj.DefineOwnProperty("valueMissing", PropertyDescriptor.Data(JsValue.Boolean(validity.ValueMissing), writable: false, enumerable: true, configurable: true));
+        obj.DefineOwnProperty("typeMismatch", PropertyDescriptor.Data(JsValue.Boolean(validity.TypeMismatch), writable: false, enumerable: true, configurable: true));
+        obj.DefineOwnProperty("patternMismatch", PropertyDescriptor.Data(JsValue.Boolean(validity.PatternMismatch), writable: false, enumerable: true, configurable: true));
+        obj.DefineOwnProperty("tooLong", PropertyDescriptor.Data(JsValue.Boolean(validity.TooLong), writable: false, enumerable: true, configurable: true));
+        obj.DefineOwnProperty("tooShort", PropertyDescriptor.Data(JsValue.Boolean(validity.TooShort), writable: false, enumerable: true, configurable: true));
+        obj.DefineOwnProperty("rangeUnderflow", PropertyDescriptor.Data(JsValue.Boolean(validity.RangeUnderflow), writable: false, enumerable: true, configurable: true));
+        obj.DefineOwnProperty("rangeOverflow", PropertyDescriptor.Data(JsValue.Boolean(validity.RangeOverflow), writable: false, enumerable: true, configurable: true));
+        obj.DefineOwnProperty("stepMismatch", PropertyDescriptor.Data(JsValue.Boolean(validity.StepMismatch), writable: false, enumerable: true, configurable: true));
+        obj.DefineOwnProperty("badInput", PropertyDescriptor.Data(JsValue.Boolean(validity.BadInput), writable: false, enumerable: true, configurable: true));
+        obj.DefineOwnProperty("customError", PropertyDescriptor.Data(JsValue.Boolean(validity.CustomError), writable: false, enumerable: true, configurable: true));
+        obj.DefineOwnProperty("valid", PropertyDescriptor.Data(JsValue.Boolean(validity.Valid), writable: false, enumerable: true, configurable: true));
+        return obj;
+    }
+
+    private static JsValue StringArray(JsRealm realm, IReadOnlyList<string> values)
+    {
+        var items = new JsValue[values.Count];
+        for (var i = 0; i < values.Count; i++)
+            items[i] = JsValue.String(values[i]);
+        return MakeArray(realm, items);
+    }
+
+    private static int SelectedIndex(Element element)
+    {
+        if (element.LocalName != "select") return -1;
+        var index = 0;
+        var fallback = -1;
+        foreach (var option in element.DescendantElements())
+        {
+            if (option.LocalName != "option") continue;
+            if (fallback < 0) fallback = index;
+            if (option.HasAttribute("selected")) return index;
+            index++;
+        }
+        return fallback;
+    }
+
+    private static void SetSelectedIndex(Element element, int selectedIndex)
+    {
+        if (element.LocalName != "select") return;
+        var index = 0;
+        foreach (var option in element.DescendantElements())
+        {
+            if (option.LocalName != "option") continue;
+            if (index == selectedIndex) option.SetAttribute("selected", string.Empty);
+            else if (!element.HasAttribute("multiple")) option.RemoveAttribute("selected");
+            index++;
+        }
+    }
+
+    private static bool DispatchInvalidEvents(Element form)
+    {
+        var valid = true;
+        foreach (var control in HtmlFormControls.FormControls(form))
+        {
+            if (HtmlFormControls.Validity(control).Valid) continue;
+            valid = false;
+            control.DispatchEvent(new Starling.Dom.Events.Event("invalid", new Starling.Dom.Events.EventInit(Cancelable: true)));
+        }
+        return valid;
+    }
+
+    private static void SetBoolAttr(Element element, string attr, bool value)
+    {
+        if (value) element.SetAttribute(attr, string.Empty);
+        else element.RemoveAttribute(attr);
     }
 
     // ---- DOM Name / QName validation (DOM §1 "validate", §4.5). Approximates
@@ -2171,6 +2353,20 @@ public static class NodeBindings
         o.Set("right", JsValue.Number(rect.Right));
         o.Set("bottom", JsValue.Number(rect.Bottom));
         o.Set("left", JsValue.Number(rect.Left));
+        // CSSOM View §6 — DOMRectReadOnly.toJSON() serializes the members.
+        EventTargetBinding.DefineMethod(realm, o, "toJSON", (_, _) =>
+        {
+            var j = new JsObject(realm.ObjectPrototype);
+            j.Set("x", JsValue.Number(rect.X));
+            j.Set("y", JsValue.Number(rect.Y));
+            j.Set("width", JsValue.Number(rect.Width));
+            j.Set("height", JsValue.Number(rect.Height));
+            j.Set("top", JsValue.Number(rect.Top));
+            j.Set("right", JsValue.Number(rect.Right));
+            j.Set("bottom", JsValue.Number(rect.Bottom));
+            j.Set("left", JsValue.Number(rect.Left));
+            return JsValue.Object(j);
+        }, length: 0);
         return o;
     }
 
@@ -2553,6 +2749,168 @@ public static class NodeBindings
         }
 
         return obj;
+    }
+
+    /// <summary>CSS Typed OM 1 §6.3 — a mutable <c>StylePropertyMap</c> over the
+    /// element's inline <c>style</c> attribute. <c>get</c>/<c>getAll</c> return
+    /// CSSStyleValue objects (via <see cref="CssBinding"/>); <c>set</c>/<c>append</c>
+    /// accept a CSSStyleValue or a string and serialize back into the attribute.</summary>
+    private static JsObject BuildInlineStyleMap(JsRealm realm, Element element)
+    {
+        var map = new JsObject(realm.ObjectPrototype);
+
+        EventTargetBinding.DefineMethod(realm, map, "get", (_, args) =>
+        {
+            if (args.Length == 0) return JsValue.Undefined;
+            var prop = JsValue.ToStringValue(args[0]).Trim().ToLowerInvariant();
+            var text = ParseInlineStyleProp(element, prop);
+            return string.IsNullOrEmpty(text) ? JsValue.Undefined : JsValue.Object(CssBinding.WrapDeclaredValue(realm, prop, text));
+        }, length: 1);
+
+        EventTargetBinding.DefineMethod(realm, map, "getAll", (_, args) =>
+        {
+            if (args.Length == 0) return MakeArray(realm, Array.Empty<JsValue>());
+            var prop = JsValue.ToStringValue(args[0]).Trim().ToLowerInvariant();
+            var text = ParseInlineStyleProp(element, prop);
+            return string.IsNullOrEmpty(text)
+                ? MakeArray(realm, Array.Empty<JsValue>())
+                : MakeArray(realm, new[] { JsValue.Object(CssBinding.WrapDeclaredValue(realm, prop, text)) });
+        }, length: 1);
+
+        EventTargetBinding.DefineMethod(realm, map, "has", (_, args) =>
+            args.Length > 0 && !string.IsNullOrEmpty(ParseInlineStyleProp(element, JsValue.ToStringValue(args[0]).Trim().ToLowerInvariant()))
+                ? JsValue.True : JsValue.False, length: 1);
+
+        EventTargetBinding.DefineMethod(realm, map, "set", (_, args) =>
+        {
+            if (args.Length < 2) return JsValue.Undefined;
+            var prop = JsValue.ToStringValue(args[0]).Trim().ToLowerInvariant();
+            WriteInlineStyleProp(element, prop, CoerceCssText(realm, args[1]));
+            return JsValue.Undefined;
+        }, length: 2);
+
+        EventTargetBinding.DefineMethod(realm, map, "append", (_, args) =>
+        {
+            if (args.Length < 2) return JsValue.Undefined;
+            var prop = JsValue.ToStringValue(args[0]).Trim().ToLowerInvariant();
+            var add = CoerceCssText(realm, args[1]);
+            var existing = ParseInlineStyleProp(element, prop);
+            WriteInlineStyleProp(element, prop, string.IsNullOrEmpty(existing) ? add : existing + ", " + add);
+            return JsValue.Undefined;
+        }, length: 2);
+
+        EventTargetBinding.DefineMethod(realm, map, "delete", (_, args) =>
+        {
+            if (args.Length > 0)
+                WriteInlineStyleProp(element, JsValue.ToStringValue(args[0]).Trim().ToLowerInvariant(), null);
+            return JsValue.Undefined;
+        }, length: 1);
+
+        EventTargetBinding.DefineMethod(realm, map, "clear", (_, _) =>
+        {
+            element.RemoveAttribute("style");
+            return JsValue.Undefined;
+        }, length: 0);
+
+        EventTargetBinding.DefineAccessor(realm, map, "size",
+            (_, _) => JsValue.Number(InlineStyleEntries(element).Count));
+
+        EventTargetBinding.DefineMethod(realm, map, "forEach", (_, args) =>
+        {
+            if (args.Length == 0 || !AbstractOperations.IsCallable(args[0])) return JsValue.Undefined;
+            foreach (var (name, value) in InlineStyleEntries(element))
+                AbstractOperations.Call(realm.ActiveVm, args[0], JsValue.Undefined,
+                    new[] { JsValue.Object(CssBinding.WrapDeclaredValue(realm, name, value)), JsValue.String(name), JsValue.Object(map) });
+            return JsValue.Undefined;
+        }, length: 1);
+
+        return map;
+    }
+
+    /// <summary>CSS Typed OM 1 §6.2 — a read-only <c>StylePropertyMapReadOnly</c>
+    /// over the element's computed style, backed by the layout host. Enumeration
+    /// spans the known property set, filtered to properties with a resolved value.</summary>
+    private static JsObject BuildComputedStyleMap(JsRealm realm, Element element)
+    {
+        var map = new JsObject(realm.ObjectPrototype);
+        var host = WindowBinding.LayoutHostForRealm(realm);
+
+        string Resolve(string prop) => host?.GetComputedProperty(element, prop) ?? "";
+
+        EventTargetBinding.DefineMethod(realm, map, "get", (_, args) =>
+        {
+            if (args.Length == 0) return JsValue.Undefined;
+            var prop = JsValue.ToStringValue(args[0]).Trim().ToLowerInvariant();
+            var text = Resolve(prop);
+            return string.IsNullOrEmpty(text) ? JsValue.Undefined : JsValue.Object(CssBinding.WrapDeclaredValue(realm, prop, text));
+        }, length: 1);
+
+        EventTargetBinding.DefineMethod(realm, map, "getAll", (_, args) =>
+        {
+            if (args.Length == 0) return MakeArray(realm, Array.Empty<JsValue>());
+            var prop = JsValue.ToStringValue(args[0]).Trim().ToLowerInvariant();
+            var text = Resolve(prop);
+            return string.IsNullOrEmpty(text)
+                ? MakeArray(realm, Array.Empty<JsValue>())
+                : MakeArray(realm, new[] { JsValue.Object(CssBinding.WrapDeclaredValue(realm, prop, text)) });
+        }, length: 1);
+
+        EventTargetBinding.DefineMethod(realm, map, "has", (_, args) =>
+            args.Length > 0 && !string.IsNullOrEmpty(Resolve(JsValue.ToStringValue(args[0]).Trim().ToLowerInvariant()))
+                ? JsValue.True : JsValue.False, length: 1);
+
+        EventTargetBinding.DefineAccessor(realm, map, "size", (_, _) =>
+        {
+            var n = 0;
+            foreach (var prop in InlineStylePropertyNames)
+                if (!string.IsNullOrEmpty(Resolve(prop))) n++;
+            return JsValue.Number(n);
+        });
+
+        EventTargetBinding.DefineMethod(realm, map, "forEach", (_, args) =>
+        {
+            if (args.Length == 0 || !AbstractOperations.IsCallable(args[0])) return JsValue.Undefined;
+            foreach (var prop in InlineStylePropertyNames)
+            {
+                var text = Resolve(prop);
+                if (string.IsNullOrEmpty(text)) continue;
+                AbstractOperations.Call(realm.ActiveVm, args[0], JsValue.Undefined,
+                    new[] { JsValue.Object(CssBinding.WrapDeclaredValue(realm, prop, text)), JsValue.String(prop), JsValue.Object(map) });
+            }
+            return JsValue.Undefined;
+        }, length: 1);
+
+        return map;
+    }
+
+    /// <summary>Coerce a JS argument (CSSStyleValue object or string/number) to
+    /// CSS text for writing into a declaration. Objects are serialized via their
+    /// <c>toString</c> method (CSSStyleValue defines one); primitives use ToString.</summary>
+    private static string CoerceCssText(JsRealm realm, JsValue v)
+    {
+        if (v.IsObject)
+        {
+            var ts = v.AsObject.Get("toString");
+            if (AbstractOperations.IsCallable(ts))
+                return JsValue.ToStringValue(AbstractOperations.Call(realm.ActiveVm, ts, v, Array.Empty<JsValue>())).Trim();
+        }
+        return JsValue.ToStringValue(v).Trim();
+    }
+
+    /// <summary>Parse the element's inline <c>style</c> attribute into ordered
+    /// (kebab-name, value) pairs. Used by the Typed OM style map.</summary>
+    private static List<(string Name, string Value)> InlineStyleEntries(Element element)
+    {
+        var list = new List<(string, string)>();
+        var styleAttr = element.GetAttribute("style");
+        if (string.IsNullOrEmpty(styleAttr)) return list;
+        foreach (var decl in styleAttr.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var colon = decl.IndexOf(':');
+            if (colon < 0) continue;
+            list.Add((decl[..colon].Trim().ToLowerInvariant(), decl[(colon + 1)..].Trim()));
+        }
+        return list;
     }
 
     /// <summary>Build a DOMStringMap for the element's data-* attributes.

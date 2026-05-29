@@ -66,6 +66,11 @@ public sealed record ScriptSessionOptions(
     /// <see cref="CancellationToken.None"/> for callers that do not need
     /// interruption (PNG/headless tests, unit tests).</summary>
     public CancellationToken AbortToken { get; init; }
+
+    /// <summary>Optional host for the Web Animations API (<c>element.animate</c>).
+    /// The engine supplies one backed by its per-document script-animation store;
+    /// null selects a no-op control surface (bare unit tests).</summary>
+    public Starling.Bindings.IAnimationHost? AnimationHost { get; init; }
 }
 
 /// <summary>
@@ -98,6 +103,12 @@ public interface IScriptSession : IDisposable
 
     /// <summary>Fire <c>load</c> on the window.</summary>
     void FireLoad();
+
+    /// <summary>Fire <c>beforeunload</c> on the window.</summary>
+    void FireBeforeUnload();
+
+    /// <summary>Fire <c>unload</c> on the window.</summary>
+    void FireUnload();
 
     /// <summary>Drain the engine's microtask/promise-job queue to quiescence
     /// against the active VM.</summary>

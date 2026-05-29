@@ -64,6 +64,35 @@ public abstract class Box
     /// every child <see cref="Frame"/> is parent-relative.</summary>
     internal bool SubtreeDirty;
 
+    /// <summary>
+    /// Cached intrinsic main-axis content sizes (min-content and max-content
+    /// widths) from the last flex/grid measurement of this subtree. Both are
+    /// width-independent for a row item, so a clean subtree (<see
+    /// cref="SubtreeDirty"/> false) can return them without re-laying and
+    /// re-measuring every descendant text run. This is what keeps a deep DOM
+    /// change inside a flex root (e.g. an animation-status line under a
+    /// <c>display:flex</c> body) from re-measuring the whole page every frame:
+    /// the dirty path forces the flex item to re-measure, but its clean siblings
+    /// and clean nested flex items serve their intrinsic sizes from here.
+    /// Populated on the incremental path only; reset implicitly because a content
+    /// change marks the box subtree-dirty, which gates reuse off.
+    /// </summary>
+    internal double? CachedMinContentWidth;
+    internal double? CachedMaxContentWidth;
+
+    /// <summary>
+    /// The constraint space and consumed height of this box's last
+    /// <em>measurement-mode</em> (intrinsic-sizing) layout. Mirrors
+    /// <see cref="LaidConstraint"/> but for the measure pass, which uses a
+    /// different constraint (a measurement width, indefinite height) and so
+    /// needs its own reuse key. Lets an auto-size flex/grid item's cross-size
+    /// (height) measurement reuse a clean subtree's measured height instead of
+    /// re-laying it. Only the height is consumed by that path — no fragments are
+    /// read — so reusing it without re-shaping text is sound.
+    /// </summary>
+    internal Starling.Layout.Incremental.ConstraintSpace? LaidConstraintMeasure;
+    internal double MeasuredHeight;
+
     public void AppendChild(Box child)
     {
         ArgumentNullException.ThrowIfNull(child);

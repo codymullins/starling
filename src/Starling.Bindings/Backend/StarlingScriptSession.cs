@@ -81,7 +81,8 @@ internal sealed class StarlingScriptSession : IScriptSession
         WindowBinding.Install(_runtime, _document, new WindowInstallOptions(
             DocumentUrl: _baseUrl.ToString(),
             HttpClient: options.Http,
-            LayoutHost: options.LayoutHost));
+            LayoutHost: options.LayoutHost,
+            AnimationHost: options.AnimationHost));
 
         // setTimeout / setInterval / rAF ride the same simulated WebEventLoop
         // clock; PumpOnce advances it.
@@ -319,6 +320,12 @@ internal sealed class StarlingScriptSession : IScriptSession
 
     public void FireLoad()
         => _runtime.WithActiveVm(() => WindowBinding.FireLoad(_runtime));
+
+    public void FireBeforeUnload()
+        => _runtime.WithActiveVm(() => WindowBinding.FireBeforeUnload(_runtime));
+
+    public void FireUnload()
+        => _runtime.WithActiveVm(() => WindowBinding.FireUnload(_runtime));
 
     public void DrainMicrotasks() => _runtime.WithActiveVm(() => { });
 

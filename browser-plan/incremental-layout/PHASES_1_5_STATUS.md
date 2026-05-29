@@ -88,6 +88,31 @@ when fragment *structure* changes and reuse it when only geometry shifted, and
 scope `_renderer.InvalidateCache()` to the changed region. Until then, building
 it would be speculative complexity the plan tells us to avoid.
 
+### Where the sound/speculative line actually falls (analyzed)
+
+Mapping the code against the gate sharpened the boundary:
+
+- **Already satisfied — reuse the hit index on animation-only frames.** A pure
+  transform/opacity frame doesn't relayout, so it never calls `ShowPage`, which
+  is the only caller of `BoxHitTester.CollectFragments`. The fragment list is
+  already reused untouched across those frames. There is no code to add here.
+
+- **Still speculative — make layer caches survive a *relayout*.** The realistic
+  animation (a rAF that writes one bit of text every frame, e.g. a status
+  readout) does relayout each frame, which calls `ShowPage` →
+  `InvalidateCache`, wiping the per-layer caches. Keeping them across the
+  relayout does not help on its own, because the layer cache key is a **global**
+  page version (`DisplayListVersion`) that bumps for the whole page on any
+  relayout — so every layer would re-raster anyway. Real reuse needs a
+  **per-layer content version** so an unchanged layer keeps its key while the
+  one changed layer bumps. That is exactly the structural complexity the gate
+  defers until a 0a trace proves the cost is real. Building it now would break
+  the repo performance policy (no complexity without a measured win).
+
+So Phase 4 stays gated by design. The cross-phase note for whoever picks it up:
+scoped invalidation must keep `_layerCaches` keyed per layer, not wipe it, or it
+will fight Phase 5's reuse.
+
 ## Phase 5 — composited layers for animation-only frames: core mechanism done
 
 Phase 5 addresses DRAW cost, not LAYOUT cost: a `transform`/`opacity` animation
@@ -115,24 +140,46 @@ version serves **both** layers (the page background and the promoted div) from
 cache — zero re-raster — while the composited output reflects the new opacity /
 rotation. This is the plan's Phase 5 acceptance at the compositor level.
 
-### What remains (needs the live GUI + a GPU host to verify)
-The mechanism is wired into `PageRendererHost.RenderViaLayerTree` (the additive
-compositor path) with the persistent store. Two integration steps remain, both
-needing the running GUI / WebGPU to verify end to end, so they are not done here:
+### What remains — both integration steps now done
 
-1. **A live animation clock.** The live GUI (`WebviewPanel`) has no animation
-   timer today — it repaints only on relayout / scroll / hover / resize, so
-   declarative CSS animations don't drive live frames at all (the
-   `animClockMs`-in-the-cache-key path the plan cites is the headless
-   `StarlingEngine.RenderFrame` loop, not the live shell). A timer that ticks
-   the animation/transition engines and requests a repaint is the prerequisite
-   for a live "animation-only frame".
-2. **Route that repaint through `RenderViaLayerTree`** when the page has
-   transform/opacity layers, passing a page version that excludes the animation
-   clock (so the layer content caches across frames) while the re-sampled
-   transform/opacity are applied at composite. The flat path stays the default
-   so the existing goldens are untouched until the compositor path is
-   golden-validated on a GPU host.
+1. **A live animation clock — done (merged).** The live GUI (`WebviewPanel`) now
+   has a 16ms timer that drives the animation loop. `LiveTick` calls
+   `engine.PrepareAnimationFrame(page, clock)` (ticks the animation/transition
+   engines) while `engine.HasActiveAnimations(page)` holds, then repaints once
+   per frame with a per-box animated `styleOverride`. This came in by merging
+   `feat/render-and-interact-fixes`. The merge kept this branch's narrow
+   relayout signal (relayout only when `Document.LayoutInvalidationVersion`
+   advances, not on every mutation) on top of that loop, so an animation rAF
+   that only writes `data-*` / `aria-*` no longer pays a full reflow per frame.
+
+2. **Route that repaint through `RenderViaLayerTree` — done.** When an animation
+   is in flight on a page that has a transform/opacity compositor layer,
+   `RenderPageBitmap` now routes through the layer-tree path with a page version
+   that **excludes** the animation clock — just `DisplayListVersion`, stable
+   across frames — so each layer's content stays in cache while the re-sampled
+   transform/opacity are applied at composite. A frame whose only change is a
+   composite-time transform/opacity re-blits the cached pixels instead of
+   re-rasterizing. The flat path stays the default for every other frame (no
+   animation, or no promoted layer), so the existing goldens are untouched.
+
+   The routing predicate (`WebviewPanel.PageHasCompositorLayers`) walks the box
+   tree once per layout for a `Transform3D` / `OpacityLessThanOne` / `WillChange`
+   layer hint and caches the answer. It is guarded to the no-per-element-scroll
+   case, because `RenderViaLayerTree` does not yet thread per-container scroll
+   offsets — a scrollable page falls back to the flat path, which handles them
+   correctly. **Follow-up:** thread `scrollOffsets` through `LayerTreeBuilder`
+   so a page with both an animated layer and a scroll container also takes the
+   compositor path.
+
+   Verified headlessly on the CPU backend
+   (`AnimationLoopTests.Transform_animation_on_a_promoted_layer_reblits_content_from_cache`):
+   a `will-change: transform` div animating `translateX` re-blits its layer
+   content from cache across two frames at different clocks (the flat path's
+   clock-keyed version would miss every frame) while the composited box still
+   moves. The `Compositor`'s own SSIM parity test already proves the layer-tree
+   output matches the flat path within tolerance, so the live routing is sound
+   to keep on by default. A final golden pass on a GPU host is still the bar
+   before trusting it on the WebGPU backend.
 
 ## Benchmarks
 

@@ -50,6 +50,10 @@ public static class WindowBinding
     // getBoundingClientRect / offsetWidth / getComputedStyle.
     private static readonly ConditionalWeakTable<JsRealm, ILayoutHost> RealmToLayoutHost = new();
 
+    // realm → animation host (optional): the Web Animations API backend that
+    // element.animate() registers script animations with.
+    private static readonly ConditionalWeakTable<JsRealm, IAnimationHost> RealmToAnimationHost = new();
+
     /// <summary>Install the full Window / EventTarget / Node / Element /
     /// Document surface on <paramref name="runtime"/>'s realm and bind it to
     /// <paramref name="document"/>. Idempotent per realm.</summary>
@@ -63,6 +67,8 @@ public static class WindowBinding
         DocMeta.AddOrUpdate(document, new DocumentMeta(options.DocumentUrl ?? "about:blank", options));
         if (options.LayoutHost is { } layoutHost)
             RealmToLayoutHost.AddOrUpdate(realm, layoutHost);
+        if (options.AnimationHost is { } animationHost)
+            RealmToAnimationHost.AddOrUpdate(realm, animationHost);
 
         // 1) EventTarget + Event + Node/Element/Document prototypes.
         EventTargetBinding.Install(realm);
@@ -99,6 +105,10 @@ public static class WindowBinding
             PropertyDescriptor.Data(JsValue.Object(global), writable: true, enumerable: true, configurable: true));
         global.DefineOwnProperty("frames",
             PropertyDescriptor.Data(JsValue.Object(global), writable: true, enumerable: true, configurable: true));
+        global.DefineOwnProperty("frameElement",
+            PropertyDescriptor.Data(JsValue.Null, writable: false, enumerable: true, configurable: true));
+        global.DefineOwnProperty("length",
+            PropertyDescriptor.Data(JsValue.Number(0), writable: true, enumerable: true, configurable: true));
         global.DefineOwnProperty("opener",
             PropertyDescriptor.Data(JsValue.Null, writable: true, enumerable: true, configurable: true));
         global.DefineOwnProperty("document",
@@ -114,8 +124,9 @@ public static class WindowBinding
             (_, args) =>
             {
                 var target = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
-                realm.ConsoleSink(ConsoleLevel.Warn,
-                    $"location assignment ignored (navigation not yet wired): {target}");
+                if (!NavigateLocation(realm, document, target, replace: false))
+                    realm.ConsoleSink(ConsoleLevel.Warn,
+                        $"location assignment ignored (cross-document navigation not yet wired): {target}");
                 return JsValue.Undefined;
             });
         global.DefineOwnProperty("name",
@@ -174,6 +185,12 @@ public static class WindowBinding
         // property reads as the empty string (matches an un-styled doc).
         InstallGetComputedStyle(realm, global);
 
+        // 8b) matchMedia(query) — CSSOM View §4.2. Resolves `matches` once
+        //     against the layout host's media context; with no host it is
+        //     false. There is no resize signal behind the seam, so the list
+        //     never changes and the listener methods are accepted but inert.
+        InstallMatchMedia(realm, global);
+
         // 9) M3-31: Web Crypto minimal surface — crypto.getRandomValues +
         //    crypto.randomUUID. crypto.subtle is intentionally left undefined.
         CryptoBinding.Install(runtime);
@@ -188,6 +205,14 @@ public static class WindowBinding
         //    can fetch their src through the same HTTP client + resolve
         //    relative URLs against the document URL.
         IFrameBinding.RegisterParent(realm, initialUrl, options.HttpClient);
+
+        // 13) CSS-V1 JS-OM: window.CSS namespace (Typed OM numeric factories,
+        //     CSS.escape, CSS.registerProperty) + CSSStyleValue.parse.
+        CssBinding.Install(realm);
+
+        // 14) CSS Font Loading 3: document.fonts (FontFaceSet) + FontFace ctor,
+        //     seeded from the document's @font-face rules.
+        FontFaceBinding.Install(realm, document);
     }
 
     /// <summary>Resolve the runtime that backs the given realm. Returns null
@@ -201,6 +226,12 @@ public static class WindowBinding
     /// binding should fall back to spec-permitted defaults.</summary>
     internal static ILayoutHost? LayoutHostForRealm(JsRealm realm)
         => RealmToLayoutHost.TryGetValue(realm, out var h) ? h : null;
+
+    /// <summary>Resolve the optional Web Animations host for the realm; null
+    /// when no engine host was installed (the binding then exposes a no-op
+    /// Animation control surface).</summary>
+    internal static IAnimationHost? AnimationHostForRealm(JsRealm realm)
+        => RealmToAnimationHost.TryGetValue(realm, out var h) ? h : null;
 
     /// <summary>Install <c>window.getComputedStyle(el, pseudoElt?)</c>. The
     /// returned object exposes a <c>getPropertyValue(name)</c> method plus
@@ -219,6 +250,29 @@ public static class WindowBinding
         }, isConstructor: false);
         global.DefineOwnProperty("getComputedStyle",
             PropertyDescriptor.Data(JsValue.Object(fn), writable: true, enumerable: false, configurable: true));
+    }
+
+    /// <summary>Install <c>window.matchMedia(query)</c> returning a
+    /// MediaQueryList whose <c>matches</c> is resolved once against the layout
+    /// host (false with no host). <c>media</c> echoes the query; listener
+    /// registration methods are accepted but inert (no media-change source).</summary>
+    private static void InstallMatchMedia(JsRealm realm, JsObject global)
+    {
+        EventTargetBinding.DefineMethod(realm, global, "matchMedia", (_, args) =>
+        {
+            var query = args.Length > 0 && !args[0].IsNullish ? JsValue.ToStringValue(args[0]) : "";
+            var host = LayoutHostForRealm(realm);
+            var matches = host?.MatchMedia(query) ?? false;
+            var mql = new JsObject(realm.ObjectPrototype);
+            EventTargetBinding.DefineAccessor(realm, mql, "matches", (_, _) => matches ? JsValue.True : JsValue.False);
+            EventTargetBinding.DefineAccessor(realm, mql, "media", (_, _) => JsValue.String(query));
+            mql.DefineOwnProperty("onchange",
+                PropertyDescriptor.Data(JsValue.Null, writable: true, enumerable: true, configurable: true));
+            foreach (var m in new[] { "addListener", "removeListener", "addEventListener", "removeEventListener" })
+                EventTargetBinding.DefineMethod(realm, mql, m, (_, _) => JsValue.Undefined, length: 1);
+            EventTargetBinding.DefineMethod(realm, mql, "dispatchEvent", (_, _) => JsValue.False, length: 1);
+            return JsValue.Object(mql);
+        }, length: 1);
     }
 
     private static JsObject BuildComputedStyleDeclaration(JsRealm realm, Element element)
@@ -306,8 +360,9 @@ public static class WindowBinding
             (_, args) =>
             {
                 var target = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
-                realm.ConsoleSink(ConsoleLevel.Warn,
-                    $"location.href assignment ignored (navigation not yet wired): {target}");
+                if (!NavigateLocation(realm, doc, target, replace: false))
+                    realm.ConsoleSink(ConsoleLevel.Warn,
+                        $"location.href assignment ignored (cross-document navigation not yet wired): {target}");
                 return JsValue.Undefined;
             });
         EventTargetBinding.DefineAccessor(realm, loc, "protocol", (_, _) => JsValue.String(ParsedPart(realm, doc, p => p.Scheme + ":")));
@@ -316,7 +371,15 @@ public static class WindowBinding
         EventTargetBinding.DefineAccessor(realm, loc, "port", (_, _) => JsValue.String(ParsedPart(realm, doc, p => p.IsDefaultPort ? "" : p.Port.ToString(System.Globalization.CultureInfo.InvariantCulture))));
         EventTargetBinding.DefineAccessor(realm, loc, "pathname", (_, _) => JsValue.String(ParsedPart(realm, doc, p => p.AbsolutePath)));
         EventTargetBinding.DefineAccessor(realm, loc, "search", (_, _) => JsValue.String(ParsedPart(realm, doc, p => p.Query)));
-        EventTargetBinding.DefineAccessor(realm, loc, "hash", (_, _) => JsValue.String(ParsedPart(realm, doc, p => p.Fragment)));
+        EventTargetBinding.DefineAccessor(realm, loc, "hash",
+            (_, _) => JsValue.String(ParsedPart(realm, doc, p => p.Fragment)),
+            (_, args) =>
+            {
+                var raw = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+                if (raw.Length > 0 && raw[0] != '#') raw = "#" + raw;
+                NavigateLocation(realm, doc, raw, replace: false);
+                return JsValue.Undefined;
+            });
         EventTargetBinding.DefineAccessor(realm, loc, "origin", (_, _) => JsValue.String(ParsedPart(realm, doc, p =>
             $"{p.Scheme}://{p.Authority}")));
         EventTargetBinding.DefineMethod(realm, loc, "toString",
@@ -324,13 +387,15 @@ public static class WindowBinding
         EventTargetBinding.DefineMethod(realm, loc, "assign", (_, args) =>
         {
             var target = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
-            realm.ConsoleSink(ConsoleLevel.Warn, $"location.assign ignored (navigation not yet wired): {target}");
+            if (!NavigateLocation(realm, doc, target, replace: false))
+                realm.ConsoleSink(ConsoleLevel.Warn, $"location.assign ignored (cross-document navigation not yet wired): {target}");
             return JsValue.Undefined;
         }, length: 1);
         EventTargetBinding.DefineMethod(realm, loc, "replace", (_, args) =>
         {
             var target = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
-            realm.ConsoleSink(ConsoleLevel.Warn, $"location.replace ignored (navigation not yet wired): {target}");
+            if (!NavigateLocation(realm, doc, target, replace: true))
+                realm.ConsoleSink(ConsoleLevel.Warn, $"location.replace ignored (cross-document navigation not yet wired): {target}");
             return JsValue.Undefined;
         }, length: 1);
         EventTargetBinding.DefineMethod(realm, loc, "reload",
@@ -349,6 +414,38 @@ public static class WindowBinding
         if (HistoryBinding.HistoryForRealm(realm) is { } hist) return hist.CurrentUrl;
         return DocMeta.TryGetValue(doc, out var m) ? m.Url : "about:blank";
     }
+
+    private static bool NavigateLocation(JsRealm realm, Document doc, string target, bool replace)
+    {
+        var oldUrl = UrlFor(realm, doc);
+        var newUrl = HistoryBinding.ResolveUrl(oldUrl, JsValue.String(target));
+        if (!IsSameDocumentUrl(oldUrl, newUrl)) return false;
+
+        var oldHash = ParsedFragment(oldUrl);
+        var newHash = ParsedFragment(newUrl);
+        if (string.Equals(oldUrl, newUrl, StringComparison.Ordinal)) return true;
+
+        if (HistoryBinding.HistoryForRealm(realm) is not { } hist) return false;
+        hist.Mutate(JsValue.Null, newUrl, replace);
+        if (!string.Equals(oldHash, newHash, StringComparison.Ordinal))
+            FireWindowEvent(realm, "hashchange", cancelable: false);
+        return true;
+    }
+
+    private static bool IsSameDocumentUrl(string oldUrl, string newUrl)
+    {
+        if (!Uri.TryCreate(oldUrl, UriKind.Absolute, out var oldUri)
+            || !Uri.TryCreate(newUrl, UriKind.Absolute, out var newUri))
+            return false;
+
+        return string.Equals(oldUri.Scheme, newUri.Scheme, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(oldUri.Authority, newUri.Authority, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(oldUri.AbsolutePath, newUri.AbsolutePath, StringComparison.Ordinal)
+            && string.Equals(oldUri.Query, newUri.Query, StringComparison.Ordinal);
+    }
+
+    private static string ParsedFragment(string url)
+        => Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri.Fragment : "";
 
     /// <summary>Get the document's base URL (without falling back to
     /// about:blank). Returns null when the document was installed without one;
@@ -412,11 +509,26 @@ public static class WindowBinding
     public static void FireLoad(JsRuntime runtime)
     {
         ArgumentNullException.ThrowIfNull(runtime);
-        // Dispatch on the host target backing the global window.
-        var hostTarget = EventTargetBinding.ResolveHost(JsValue.Object(runtime.Realm.GlobalObject));
+        FireWindowEvent(runtime.Realm, "load", cancelable: false);
+    }
+
+    public static void FireBeforeUnload(JsRuntime runtime)
+    {
+        ArgumentNullException.ThrowIfNull(runtime);
+        FireWindowEvent(runtime.Realm, "beforeunload", cancelable: true);
+    }
+
+    public static void FireUnload(JsRuntime runtime)
+    {
+        ArgumentNullException.ThrowIfNull(runtime);
+        FireWindowEvent(runtime.Realm, "unload", cancelable: false);
+    }
+
+    private static void FireWindowEvent(JsRealm realm, string type, bool cancelable)
+    {
+        var hostTarget = EventTargetBinding.ResolveHost(JsValue.Object(realm.GlobalObject));
         if (hostTarget is null) return;
-        var ev = new Event("load");
-        hostTarget.DispatchEvent(ev);
+        hostTarget.DispatchEvent(new Event(type, new EventInit(Bubbles: false, Cancelable: cancelable)));
     }
 
     private sealed record DocumentMeta(string Url, WindowInstallOptions Options);
@@ -430,7 +542,8 @@ public readonly record struct WindowInstallOptions(
     double InnerHeight = 0,
     StarlingHttpClient? HttpClient = null,
     CookieJar? CookieJar = null,
-    ILayoutHost? LayoutHost = null);
+    ILayoutHost? LayoutHost = null,
+    IAnimationHost? AnimationHost = null);
 
 internal static class ConditionalWeakTableExtensions
 {

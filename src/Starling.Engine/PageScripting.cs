@@ -87,6 +87,8 @@ public sealed class PageScripting : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _session.FireBeforeUnload();
+        _session.FireUnload();
         // Make the document inert again and release the JS-owned resources. The
         // session's own Dispose unregisters the realm's src/inject hooks.
         _document.NodeConnected = null;

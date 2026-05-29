@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Numerics;
 using Starling.Js.Runtime;
 
 namespace Starling.Js.Intrinsics;
@@ -6,8 +7,6 @@ namespace Starling.Js.Intrinsics;
 /// <summary>ECMA-262 §25.3 DataView Objects.</summary>
 public static class DataViewCtor
 {
-    private const double MaxSafeInteger = 9007199254740991d;
-
     private sealed class JsDataView : JsObject
     {
         public JsDataView(JsObject? prototype, JsArrayBuffer buffer, int byteOffset, int byteLength) : base(prototype)
@@ -43,7 +42,7 @@ public static class DataViewCtor
             var length = args.Length > 2 && !args[2].IsUndefined
                 ? ArrayBufferCtor.ToIndex(realm, args[2])
                 : buffer.ByteLength - offset;
-            if (offset + length > buffer.ByteLength) throw new JsThrow(realm.NewRangeError("DataView byteLength out of range"));
+            if (length > buffer.ByteLength - offset) throw new JsThrow(realm.NewRangeError("DataView byteLength out of range"));
             // §25.3.2.1 step 10: OrdinaryCreateFromConstructor — prototype from new.target.
             var instProto = IntrinsicHelpers.NewTargetPrototype(realm.ActiveVm, newTarget, proto);
             return JsValue.Object(new JsDataView(instProto, buffer, offset, length));
@@ -67,16 +66,16 @@ public static class DataViewCtor
         DefineGet(realm, proto, "getBigInt64", 8, 2, (s, le) => ReadBigInt64(realm, s, le));
         DefineGet(realm, proto, "getBigUint64", 8, 2, (s, le) => ReadBigUint64(realm, s, le));
 
-        DefineSet(realm, proto, "setInt8", 1, 2, (s, v, le) => s[0] = unchecked((byte)(sbyte)ToInt32(ArrayBufferCtor.Number(v))));
-        DefineSet(realm, proto, "setUint8", 1, 2, (s, v, le) => s[0] = unchecked((byte)ToUint32(ArrayBufferCtor.Number(v))));
-        DefineSet(realm, proto, "setInt16", 2, 3, (s, v, le) => Write(le, s, unchecked((short)ToInt32(ArrayBufferCtor.Number(v)))));
-        DefineSet(realm, proto, "setUint16", 2, 3, (s, v, le) => Write(le, s, unchecked((ushort)ToUint32(ArrayBufferCtor.Number(v)))));
-        DefineSet(realm, proto, "setInt32", 4, 3, (s, v, le) => Write(le, s, ToInt32(ArrayBufferCtor.Number(v))));
-        DefineSet(realm, proto, "setUint32", 4, 3, (s, v, le) => Write(le, s, ToUint32(ArrayBufferCtor.Number(v))));
-        DefineSet(realm, proto, "setFloat32", 4, 3, (s, v, le) => { if (le) BinaryPrimitives.WriteSingleLittleEndian(s, (float)ArrayBufferCtor.Number(v)); else BinaryPrimitives.WriteSingleBigEndian(s, (float)ArrayBufferCtor.Number(v)); });
-        DefineSet(realm, proto, "setFloat64", 8, 3, (s, v, le) => { if (le) BinaryPrimitives.WriteDoubleLittleEndian(s, ArrayBufferCtor.Number(v)); else BinaryPrimitives.WriteDoubleBigEndian(s, ArrayBufferCtor.Number(v)); });
-        DefineSet(realm, proto, "setBigInt64", 8, 3, (s, v, le) => WriteBigInt64(realm, s, ArrayBufferCtor.Number(v), le));
-        DefineSet(realm, proto, "setBigUint64", 8, 3, (s, v, le) => WriteBigUint64(realm, s, ArrayBufferCtor.Number(v), le));
+        DefineSet(realm, proto, "setInt8", 1, 2, (s, v, le) => s[0] = unchecked((byte)(sbyte)ToInt32(ArrayBufferCtor.Number(realm, v))));
+        DefineSet(realm, proto, "setUint8", 1, 2, (s, v, le) => s[0] = unchecked((byte)ToUint32(ArrayBufferCtor.Number(realm, v))));
+        DefineSet(realm, proto, "setInt16", 2, 3, (s, v, le) => Write(le, s, unchecked((short)ToInt32(ArrayBufferCtor.Number(realm, v)))));
+        DefineSet(realm, proto, "setUint16", 2, 3, (s, v, le) => Write(le, s, unchecked((ushort)ToUint32(ArrayBufferCtor.Number(realm, v)))));
+        DefineSet(realm, proto, "setInt32", 4, 3, (s, v, le) => Write(le, s, ToInt32(ArrayBufferCtor.Number(realm, v))));
+        DefineSet(realm, proto, "setUint32", 4, 3, (s, v, le) => Write(le, s, ToUint32(ArrayBufferCtor.Number(realm, v))));
+        DefineSet(realm, proto, "setFloat32", 4, 3, (s, v, le) => { var n = (float)ArrayBufferCtor.Number(realm, v); if (le) BinaryPrimitives.WriteSingleLittleEndian(s, n); else BinaryPrimitives.WriteSingleBigEndian(s, n); });
+        DefineSet(realm, proto, "setFloat64", 8, 3, (s, v, le) => { var n = ArrayBufferCtor.Number(realm, v); if (le) BinaryPrimitives.WriteDoubleLittleEndian(s, n); else BinaryPrimitives.WriteDoubleBigEndian(s, n); });
+        DefineSet(realm, proto, "setBigInt64", 8, 3, (s, v, le) => WriteBigInt64(realm, s, v, le));
+        DefineSet(realm, proto, "setBigUint64", 8, 3, (s, v, le) => WriteBigUint64(realm, s, v, le));
 
         realm.GlobalObject.DefineOwnProperty("DataView", PropertyDescriptor.Data(JsValue.Object(ctor), true, false, true));
     }
@@ -110,7 +109,7 @@ public static class DataViewCtor
 
     private static Span<byte> CheckedSpan(JsRealm realm, JsDataView view, int offset, int size)
     {
-        if (offset < 0 || offset + size > view.ByteLength)
+        if (offset > view.ByteLength - size)
             throw new JsThrow(realm.NewRangeError("DataView byteOffset out of range"));
         return view.Buffer.Bytes.AsSpan(view.ByteOffset + offset, size);
     }
@@ -118,36 +117,41 @@ public static class DataViewCtor
     private static JsValue ReadBigInt64(JsRealm realm, ReadOnlySpan<byte> s, bool le)
     {
         var v = le ? BinaryPrimitives.ReadInt64LittleEndian(s) : BinaryPrimitives.ReadInt64BigEndian(s);
-        if (Math.Abs((double)v) > MaxSafeInteger) throw BigIntTypeError(realm);
-        return JsValue.Number(v);
+        return JsValue.BigInt(new BigInteger(v));
     }
 
     private static JsValue ReadBigUint64(JsRealm realm, ReadOnlySpan<byte> s, bool le)
     {
         var v = le ? BinaryPrimitives.ReadUInt64LittleEndian(s) : BinaryPrimitives.ReadUInt64BigEndian(s);
-        if (v > (ulong)MaxSafeInteger) throw BigIntTypeError(realm);
-        return JsValue.Number(v);
+        return JsValue.BigInt(new BigInteger(v));
     }
 
-    private static void WriteBigInt64(JsRealm realm, Span<byte> s, double n, bool le)
+    private static void WriteBigInt64(JsRealm realm, Span<byte> s, JsValue value, bool le)
     {
-        if (!IsSafeInteger(n)) throw BigIntTypeError(realm);
-        if (le) BinaryPrimitives.WriteInt64LittleEndian(s, (long)Math.Truncate(n));
-        else BinaryPrimitives.WriteInt64BigEndian(s, (long)Math.Truncate(n));
+        var n = (long)BigIntOps.AsIntN(realm, 64, ToBigInt(realm, value));
+        if (le) BinaryPrimitives.WriteInt64LittleEndian(s, n);
+        else BinaryPrimitives.WriteInt64BigEndian(s, n);
     }
 
-    private static void WriteBigUint64(JsRealm realm, Span<byte> s, double n, bool le)
+    private static void WriteBigUint64(JsRealm realm, Span<byte> s, JsValue value, bool le)
     {
-        if (!IsSafeInteger(n) || n < 0) throw BigIntTypeError(realm);
-        if (le) BinaryPrimitives.WriteUInt64LittleEndian(s, (ulong)Math.Truncate(n));
-        else BinaryPrimitives.WriteUInt64BigEndian(s, (ulong)Math.Truncate(n));
+        var n = (ulong)BigIntOps.AsUintN(realm, 64, ToBigInt(realm, value));
+        if (le) BinaryPrimitives.WriteUInt64LittleEndian(s, n);
+        else BinaryPrimitives.WriteUInt64BigEndian(s, n);
     }
 
-    private static JsThrow BigIntTypeError(JsRealm realm)
-        => new(realm.NewTypeError("B4-3 BigInt: DataView BigInt values outside Number safe-integer range are not implemented"));
-
-    private static bool IsSafeInteger(double n)
-        => double.IsFinite(n) && n == Math.Truncate(n) && Math.Abs(n) <= MaxSafeInteger;
+    private static BigInteger ToBigInt(JsRealm realm, JsValue value)
+    {
+        if (value.IsObject)
+            value = AbstractOperations.ToPrimitive(value, "number");
+        return value.Kind switch
+        {
+            JsValueKind.BigInt => value.AsBigInt,
+            JsValueKind.Boolean => value.AsBool ? BigInteger.One : BigInteger.Zero,
+            JsValueKind.String => BigIntOps.ParseStringToBigInt(realm, value.AsString),
+            _ => throw new JsThrow(realm.NewTypeError("Cannot convert value to BigInt"))
+        };
+    }
 
     // ECMA-262 §7.1.6 / §7.1.7 conversions used by §25.3 setters.
     private static int ToInt32(double n) => unchecked((int)ToUint32(n));

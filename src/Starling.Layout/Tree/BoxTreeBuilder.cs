@@ -150,7 +150,10 @@ internal sealed class BoxTreeBuilder
 
         // CSS Content 3 §2 — synthesize ::before before children.
         AppendPseudoElement(element, elementStyle, box, PseudoElement.Before, cache);
-        BuildChildren(element, elementStyle, box, cache);
+        if (element.LocalName is "select" or "textarea")
+            AppendFormControlLabel(element, elementStyle, box);
+        else
+            BuildChildren(element, elementStyle, box, cache);
         // ::after after children.
         AppendPseudoElement(element, elementStyle, box, PseudoElement.After, cache);
         // <input> is a void element with no DOM children — synthesize a TextBox
@@ -610,6 +613,41 @@ internal sealed class BoxTreeBuilder
         };
         if (!string.IsNullOrEmpty(fallback))
             box.AppendChild(new TextBox(fallback, style));
+    }
+
+    private static void AppendFormControlLabel(Element element, ComputedStyle style, Box.Box box)
+    {
+        if (element.LocalName == "select")
+        {
+            var label = SelectedOptionLabel(element);
+            if (!string.IsNullOrEmpty(label))
+                box.AppendChild(new TextBox(label, style));
+            return;
+        }
+
+        var value = HtmlFormControls.Value(element);
+        if (!string.IsNullOrEmpty(value))
+        {
+            box.AppendChild(new TextBox(value, style));
+            return;
+        }
+
+        var focused = ReferenceEquals(element.OwnerDocument?.FocusedElement, element);
+        if (!focused && element.GetAttribute("placeholder") is { Length: > 0 } placeholder)
+            box.AppendChild(new TextBox(placeholder, style));
+    }
+
+    private static string SelectedOptionLabel(Element select)
+    {
+        Element? first = null;
+        foreach (var option in select.DescendantElements())
+        {
+            if (option.LocalName != "option") continue;
+            first ??= option;
+            if (option.HasAttribute("selected"))
+                return option.TextContent.Trim();
+        }
+        return first?.TextContent.Trim() ?? string.Empty;
     }
 
     /// <summary>

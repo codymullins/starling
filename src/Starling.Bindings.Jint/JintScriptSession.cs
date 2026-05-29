@@ -193,6 +193,10 @@ internal sealed class JintScriptSession : IScriptSession
 
     public void FireLoad() => DispatchDocumentEvent("load", onWindow: true);
 
+    public void FireBeforeUnload() => DispatchWindowEvent("beforeunload", cancelable: true);
+
+    public void FireUnload() => DispatchWindowEvent("unload", cancelable: false);
+
     public void DrainMicrotasks()
     {
         try { _engine.Advanced.ProcessTasks(); }
@@ -362,9 +366,31 @@ internal sealed class JintScriptSession : IScriptSession
                 _ctx.Document.DispatchEvent(new Starling.Dom.Events.Event(type,
                     new Starling.Dom.Events.EventInit(Bubbles: true, Cancelable: false)));
             }
+
             if (_ctx.Wrappers.Unwrap(_engine.Global) is Starling.Dom.Events.EventTarget windowHost)
             {
                 windowHost.DispatchEvent(new Starling.Dom.Events.Event(type));
+            }
+            _engine.Advanced.ProcessTasks();
+        }
+        catch (JavaScriptException ex)
+        {
+            ReportUncaught(ex);
+        }
+        catch (Exception ex)
+        {
+            _ctx.Diag.Log(DiagLevel.Warn, "engine.js", $"'{type}' handler threw: {ex.Message}");
+        }
+    }
+
+    private void DispatchWindowEvent(string type, bool cancelable)
+    {
+        try
+        {
+            if (_ctx.Wrappers.Unwrap(_engine.Global) is Starling.Dom.Events.EventTarget windowHost)
+            {
+                windowHost.DispatchEvent(new Starling.Dom.Events.Event(type,
+                    new Starling.Dom.Events.EventInit(Bubbles: false, Cancelable: cancelable)));
             }
             _engine.Advanced.ProcessTasks();
         }

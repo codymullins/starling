@@ -166,6 +166,50 @@ public class ProxyTests
     }
 
     [TestMethod]
+    public void DefineProperty_trap_receives_only_present_descriptor_fields()
+    {
+        Eval(@"
+            var p = new Proxy({}, {
+                defineProperty: function(t, k, d) {
+                    return ('value' in d)
+                        && !('writable' in d)
+                        && !('enumerable' in d)
+                        && !('configurable' in d);
+                }
+            });
+            Reflect.defineProperty(p, 'x', { value: 1 });
+        ").AsBool.Should().BeTrue();
+    }
+
+    [TestMethod]
+    public void GetOwnPropertyDescriptor_trap_cannot_report_new_property_on_non_extensible_target()
+    {
+        Action act = () => Eval(@"
+            var t = {};
+            Object.preventExtensions(t);
+            var p = new Proxy(t, {
+                getOwnPropertyDescriptor: function() {
+                    return { value: 1, writable: true, enumerable: true, configurable: true };
+                }
+            });
+            Reflect.getOwnPropertyDescriptor(p, 'x');
+        ");
+        act.Should().Throw<JsThrow>();
+    }
+
+    [TestMethod]
+    public void DefineProperty_trap_cannot_claim_incompatible_redefinition()
+    {
+        Action act = () => Eval(@"
+            var t = {};
+            Object.defineProperty(t, 'x', { value: 1, writable: false, configurable: false });
+            var p = new Proxy(t, { defineProperty: function() { return true; } });
+            Reflect.defineProperty(p, 'x', { value: 2 });
+        ");
+        act.Should().Throw<JsThrow>();
+    }
+
+    [TestMethod]
     public void Revocable_returns_proxy_and_revoke_that_invalidates_access()
     {
         Eval(@"

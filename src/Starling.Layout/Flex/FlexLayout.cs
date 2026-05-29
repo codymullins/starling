@@ -369,8 +369,17 @@ internal sealed class FlexLayout
     {
         if (props.IsRow)
         {
+            // Min-content width is width-independent and stable while the subtree
+            // is unchanged, so a clean item serves it from cache instead of
+            // re-laying + re-measuring every descendant. (Column direction below
+            // returns a height that depends on containerWidth, so it is not
+            // cached here.)
+            if (!child.SubtreeDirty && child.CachedMinContentWidth is { } cached)
+                return cached;
             _block.LayoutItem(child, 0d, null, measure: true);
-            return UsedMainWidth(child);
+            var min = UsedMainWidth(child);
+            child.CachedMinContentWidth = min;
+            return min;
         }
         return _block.LayoutItem(child, containerWidth, null, measure: true);
     }
@@ -410,9 +419,15 @@ internal sealed class FlexLayout
     {
         if (box.Kind == BoxKind.AnonymousBlock || !BlockLayout.IsFlexContainer(box.Style))
         {
+            // Max-content width is measured at a fixed huge width, so it too is
+            // stable while the subtree is unchanged — cache it for clean items.
+            if (!box.SubtreeDirty && box.CachedMaxContentWidth is { } cached)
+                return cached;
             const double measureWidth = 1_000_000d;
             _block.LayoutItem(box, measureWidth, null, measure: true);
-            return UsedMainWidth(box);
+            var natural = UsedMainWidth(box);
+            box.CachedMaxContentWidth = natural;
+            return natural;
         }
 
         // Nested flex container — compute structurally.
@@ -548,7 +563,10 @@ internal sealed class FlexLayout
         // the natural cross size.
         if (props.IsRow)
         {
-            return _block.LayoutItem(child, itemMainSize, null, measure: true);
+            // Height-only measurement: the caller takes the consumed height and
+            // never reads fragments, so a clean subtree may replay its cached
+            // measured height (reuseHeight) instead of re-laying every line.
+            return _block.LayoutItem(child, itemMainSize, null, measure: true, reuseHeight: true);
         }
         else
         {

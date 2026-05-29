@@ -233,7 +233,9 @@ public static class AbstractOperations
         // ArrayBuffer instead of creating ordinary own properties.
         if (obj is JsTypedArray ta && key.IsString && IsCanonicalArrayIndex(key.AsString))
         {
-            ta.Set(key.AsString, value);
+            if (int.TryParse(key.AsString, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var index)
+                && index >= 0 && index < ta.Length)
+                ta.SetElement(index, value, vm?.Realm);
             return true;
         }
         // Find existing descriptor anywhere on the chain.

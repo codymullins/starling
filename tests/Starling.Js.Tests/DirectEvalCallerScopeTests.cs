@@ -75,6 +75,10 @@ public class DirectEvalCallerScopeTests
             .AsNumber.Should().Be(10);
 
     [TestMethod]
+    public void Direct_eval_assignment_to_caller_const_throws_TypeError()
+        => EvalThrows("(function(){ const k = 5; eval('k = 6'); })();", "TypeError");
+
+    [TestMethod]
     public void Direct_eval_reads_caller_param()
         => Eval("(function(p){ return eval('p * 2'); })(21);")
             .AsNumber.Should().Be(42);
@@ -175,6 +179,33 @@ public class DirectEvalCallerScopeTests
         // var-environment, so its `var x = 1` does not touch the caller's `x`.
         => Eval("(function(){ var x = 0; (function(){ eval('\"use strict\"; var x = 1;'); })(); return x; })();")
             .AsNumber.Should().Be(0);
+
+    [TestMethod]
+    public void Strict_direct_eval_var_does_not_leak_to_caller_or_global()
+        => Eval("""
+            (function(){
+              var inside = eval('"use strict"; var sx = 1; sx;');
+              return inside + ':' + typeof sx;
+            })() + ':' + typeof sx;
+            """).AsString.Should().Be("1:undefined:undefined");
+
+    [TestMethod]
+    public void Strict_direct_eval_function_is_local_to_eval_body()
+        => Eval("""
+            (function(){
+              var inside = eval('"use strict"; function sf(){ return 2; } typeof sf;');
+              return inside + ':' + typeof sf;
+            })() + ':' + typeof sf;
+            """).AsString.Should().Be("function:undefined:undefined");
+
+    [TestMethod]
+    public void Direct_eval_lexical_declarations_are_local_to_eval_body()
+        => Eval("""
+            (function(){
+              var inside = eval('let lx = 3; const ly = 4; lx + ly;');
+              return inside + ':' + typeof lx + ':' + typeof ly;
+            })();
+            """).AsString.Should().Be("7:undefined:undefined");
 
     [TestMethod]
     public void Indirect_eval_var_binds_globally()

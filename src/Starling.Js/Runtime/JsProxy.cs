@@ -198,15 +198,19 @@ public sealed class JsProxy : JsObject
         }
         // Build a host descriptor from the trap-returned JS object.
         var desc = ToPropertyDescriptor(trapResult);
-        // Invariant: must satisfy IsCompatiblePropertyDescriptor against target's existing desc.
-        if (targetDesc is { } td && !td.Configurable)
+        var extensibleTarget = target.Extensible;
+        var present = DescriptorFields.Complete(desc);
+        if (!IsCompatiblePropertyDescriptor(extensibleTarget, desc, present, targetDesc))
+            throw new JsThrow(_realm.NewTypeError(
+                "'getOwnPropertyDescriptor' trap returned an incompatible descriptor"));
+        if (!desc.Configurable)
         {
-            if (desc.Configurable)
+            if (targetDesc is null)
                 throw new JsThrow(_realm.NewTypeError(
-                    "'getOwnPropertyDescriptor' trap reported non-configurable target prop as configurable"));
-            if (!desc.IsAccessor && !td.IsAccessor && !td.Writable && desc.Writable)
+                    "'getOwnPropertyDescriptor' trap reported a non-configurable descriptor for a missing target property"));
+            if (targetDesc.Value.Configurable)
                 throw new JsThrow(_realm.NewTypeError(
-                    "'getOwnPropertyDescriptor' trap reported non-writable non-configurable prop as writable"));
+                    "'getOwnPropertyDescriptor' trap reported a configurable target property as non-configurable"));
         }
         return desc;
     }
@@ -215,10 +219,10 @@ public sealed class JsProxy : JsObject
     //                       §10.5.6 DefineOwnProperty
     // ==========================================================
     public override bool DefineOwnProperty(string name, PropertyDescriptor desc)
-        => DefineOwnPropertyImpl(JsPropertyKey.String(name), desc);
+        => DefineOwnPropertyImpl(JsPropertyKey.String(name), desc, DescriptorFields.Complete(desc));
 
     public override bool DefineOwnProperty(JsSymbol symbol, PropertyDescriptor desc)
-        => DefineOwnPropertyImpl(JsPropertyKey.Symbol(symbol), desc);
+        => DefineOwnPropertyImpl(JsPropertyKey.Symbol(symbol), desc, DescriptorFields.Complete(desc));
 
     /// <summary>Route the user-facing partial define through the proxy's
     /// <c>defineProperty</c> trap (the base partial path would bypass the trap
@@ -226,24 +230,25 @@ public sealed class JsProxy : JsObject
     /// receives the resolved descriptor; the partial-presence info is folded
     /// in by the caller's <see cref="JsMappedArguments.DefineFromUser"/>.</summary>
     internal override bool DefineOwnPropertyPartial(JsPropertyKey key, PropertyDescriptor desc, DescriptorFields present)
-        => DefineOwnPropertyImpl(key, desc);
+        => DefineOwnPropertyImpl(key, desc, present);
 
-    private bool DefineOwnPropertyImpl(JsPropertyKey key, PropertyDescriptor desc)
+    private bool DefineOwnPropertyImpl(JsPropertyKey key, PropertyDescriptor desc, DescriptorFields present)
     {
         var (target, handler) = RequireLive("defineProperty");
         var trap = GetTrap(handler, "defineProperty");
-        if (trap.IsUndefined) return target.DefineOwnProperty(key, desc);
+        if (trap.IsUndefined) return target.DefineOwnPropertyPartial(key, desc, present);
         var keyArg = key.IsSymbol ? JsValue.Symbol(key.AsSymbol) : JsValue.String(key.AsString);
-        var descArg = FromPropertyDescriptor(desc);
+        var descArg = FromPropertyDescriptor(desc, present);
         var trapResult = AbstractOperations.Call(_realm.ActiveVm, trap,
             JsValue.Object(handler), new[] { JsValue.Object(target), keyArg, descArg });
         if (!JsValue.ToBoolean(trapResult)) return false;
-        // Invariants per §10.5.6: enforce non-configurable parity.
+        // Invariants per §10.5.6.
         var targetDesc = target.GetOwnPropertyDescriptor(key);
-        var settingConfigurableFalse = !desc.Configurable;
+        var extensibleTarget = target.Extensible;
+        var settingConfigurableFalse = present.HasConfigurable && !desc.Configurable;
         if (targetDesc is null)
         {
-            if (!target.Extensible)
+            if (!extensibleTarget)
                 throw new JsThrow(_realm.NewTypeError(
                     "'defineProperty' trap added a property to a non-extensible target"));
             if (settingConfigurableFalse)
@@ -252,14 +257,17 @@ public sealed class JsProxy : JsObject
         }
         else
         {
-            if (!targetDesc.Value.Configurable && desc.Configurable)
+            if (!IsCompatiblePropertyDescriptor(extensibleTarget, desc, present, targetDesc.Value))
                 throw new JsThrow(_realm.NewTypeError(
-                    "'defineProperty' trap turned a non-configurable property configurable"));
+                    "'defineProperty' trap returned true for an incompatible property descriptor"));
+            if (settingConfigurableFalse && targetDesc.Value.Configurable)
+                throw new JsThrow(_realm.NewTypeError(
+                    "'defineProperty' trap reported a configurable target property as non-configurable"));
             if (!targetDesc.Value.IsAccessor && !targetDesc.Value.Configurable && targetDesc.Value.Writable
-                && !desc.IsAccessor && !desc.Writable)
+                && !desc.IsAccessor && present.HasWritable && !desc.Writable)
             {
-                // §10.5.6 step 16.b.iii — allowed redefine but value must match
-                // for non-writable. Skip the detailed value check for brevity.
+                throw new JsThrow(_realm.NewTypeError(
+                    "'defineProperty' trap made a non-configurable writable property non-writable"));
             }
         }
         return true;
@@ -514,22 +522,53 @@ public sealed class JsProxy : JsObject
 
     /// <summary>FromPropertyDescriptor (§6.2.5.5) — builds a JS object the
     /// trap can observe.</summary>
-    private JsValue FromPropertyDescriptor(PropertyDescriptor d)
+    private JsValue FromPropertyDescriptor(PropertyDescriptor d, DescriptorFields present)
     {
         var obj = _realm.NewOrdinaryObject();
         if (d.IsAccessor)
         {
-            obj.Set("get", d.Getter is null ? JsValue.Undefined : JsValue.Object(d.Getter));
-            obj.Set("set", d.Setter is null ? JsValue.Undefined : JsValue.Object(d.Setter));
+            if (present.HasGet)
+                obj.Set("get", d.Getter is null ? JsValue.Undefined : JsValue.Object(d.Getter));
+            if (present.HasSet)
+                obj.Set("set", d.Setter is null ? JsValue.Undefined : JsValue.Object(d.Setter));
         }
         else
         {
-            obj.Set("value", d.Value);
-            obj.Set("writable", JsValue.Boolean(d.Writable));
+            if (present.HasValue) obj.Set("value", d.Value);
+            if (present.HasWritable) obj.Set("writable", JsValue.Boolean(d.Writable));
         }
-        obj.Set("enumerable", JsValue.Boolean(d.Enumerable));
-        obj.Set("configurable", JsValue.Boolean(d.Configurable));
+        if (present.HasEnumerable) obj.Set("enumerable", JsValue.Boolean(d.Enumerable));
+        if (present.HasConfigurable) obj.Set("configurable", JsValue.Boolean(d.Configurable));
         return JsValue.Object(obj);
+    }
+
+    private static bool IsCompatiblePropertyDescriptor(bool extensible, PropertyDescriptor desc,
+        DescriptorFields present, PropertyDescriptor? current)
+    {
+        if (current is null) return extensible;
+
+        var cur = current.Value;
+        if (cur.Configurable) return true;
+        if (present.HasConfigurable && desc.Configurable) return false;
+        if (present.HasEnumerable && desc.Enumerable != cur.Enumerable) return false;
+
+        var descHasAccessorFields = present.HasGet || present.HasSet;
+        var descHasDataFields = present.HasValue || present.HasWritable;
+        if (!descHasAccessorFields && !descHasDataFields) return true;
+
+        if (cur.IsAccessor)
+        {
+            if (descHasDataFields) return false;
+            if (present.HasGet && !ReferenceEquals(desc.Getter, cur.Getter)) return false;
+            if (present.HasSet && !ReferenceEquals(desc.Setter, cur.Setter)) return false;
+            return true;
+        }
+
+        if (descHasAccessorFields) return false;
+        if (cur.Writable) return true;
+        if (present.HasWritable && desc.Writable) return false;
+        if (present.HasValue && !AbstractOperations.SameValue(desc.Value, cur.Value)) return false;
+        return true;
     }
 
     /// <summary>ToPropertyDescriptor (§6.2.5.6).</summary>

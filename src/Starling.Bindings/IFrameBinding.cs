@@ -55,6 +55,7 @@ public static class IFrameBinding
     }
 
     private sealed record ParentEnv(
+        JsRealm Realm,
         StarlingHttpClient? Http,
         string DocumentUrl,
         IDiagnostics Diag);
@@ -66,7 +67,7 @@ public static class IFrameBinding
         StarlingHttpClient? http, IDiagnostics? diag = null)
     {
         ArgumentNullException.ThrowIfNull(parentRealm);
-        var env = new ParentEnv(http, documentUrl ?? "about:blank", diag ?? NoopDiagnostics.Instance);
+        var env = new ParentEnv(parentRealm, http, documentUrl ?? "about:blank", diag ?? NoopDiagnostics.Instance);
         Parents.AddOrUpdate(parentRealm, env);
     }
 
@@ -112,7 +113,7 @@ public static class IFrameBinding
     public static JsObject EnsureContentWindow(JsRealm parentRealm, BrowsingContext ctx)
     {
         if (ctx.WindowObject is not null) return ctx.WindowObject;
-        var parent = Parents.TryGetValue(parentRealm, out var p) ? p : new ParentEnv(null, "about:blank", NoopDiagnostics.Instance);
+        var parent = Parents.TryGetValue(parentRealm, out var p) ? p : new ParentEnv(parentRealm, null, "about:blank", NoopDiagnostics.Instance);
         EnsureRuntime(ctx, parent);
         return ctx.WindowObject!;
     }
@@ -126,12 +127,32 @@ public static class IFrameBinding
             HttpClient: parent.Http));
         ctx.Runtime = runtime;
         ctx.WindowObject = runtime.Global;
+        WireFrameWindow(ctx, parent);
         // Propagate the same parent-env onto the child realm so an iframe
         // nested inside an iframe (rare in WPT but the spec allows it)
         // resolves its src and reuses the same HTTP client. The child's own
         // document URL is the resolution base, so callers up the tree don't
         // bleed.
         RegisterParent(runtime.Realm, ctx.DocumentUrl, parent.Http, parent.Diag);
+    }
+
+    private static void WireFrameWindow(BrowsingContext ctx, ParentEnv parent)
+    {
+        var child = ctx.WindowObject!;
+        var parentWindow = parent.Realm.GlobalObject;
+        var parentTop = parentWindow.Get("top");
+        if (parentTop.IsUndefined || !parentTop.IsObject)
+            parentTop = JsValue.Object(parentWindow);
+
+        child.DefineOwnProperty("parent",
+            PropertyDescriptor.Data(JsValue.Object(parentWindow), writable: true, enumerable: true, configurable: true));
+        child.DefineOwnProperty("top",
+            PropertyDescriptor.Data(parentTop, writable: true, enumerable: true, configurable: true));
+        child.DefineOwnProperty("frameElement",
+            PropertyDescriptor.Data(JsValue.Object(DomWrappers.Wrap(parent.Realm, ctx.Frame)),
+                writable: false, enumerable: true, configurable: true));
+        child.DefineOwnProperty("length",
+            PropertyDescriptor.Data(JsValue.Number(0), writable: true, enumerable: true, configurable: true));
     }
 
     /// <summary>HTML §iframe — "process the iframe attributes" for <c>src</c>.
@@ -147,7 +168,7 @@ public static class IFrameBinding
         if (!IsFrameElement(frame)) return;
         var src = frame.GetAttribute("src");
         if (string.IsNullOrEmpty(src)) return;
-        var parentEnv = Parents.TryGetValue(parentRealm, out var p) ? p : new ParentEnv(null, "about:blank", NoopDiagnostics.Instance);
+        var parentEnv = Parents.TryGetValue(parentRealm, out var p) ? p : new ParentEnv(parentRealm, null, "about:blank", NoopDiagnostics.Instance);
         var ctx = EnsureContext(frame);
         var resolved = ResolveUrl(parentEnv.DocumentUrl, src);
         var parentRuntime = WindowBinding.RuntimeForRealm(parentRealm);

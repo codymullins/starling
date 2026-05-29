@@ -44,6 +44,8 @@ public static class TypedArrayCtors
         ArrayBufferCtor.DefineData(ctor, "name", JsValue.String(name), false, false, true);
         ArrayBufferCtor.DefineData(ctor, "length", JsValue.Number(3), false, false, true);
         ArrayBufferCtor.DefineData(ctor, "BYTES_PER_ELEMENT", JsValue.Number(JsTypedArray.BytesPerElementOf(kind)), false, false, false);
+        ctor.DefineOwnProperty(SymbolCtor.Species,
+            PropertyDescriptor.Accessor(new JsNativeFunction("get [Symbol.species]", (thisV, _) => thisV), null));
         ArrayBufferCtor.DefineData(proto, "constructor", JsValue.Object(ctor), true, false, true);
         ArrayBufferCtor.DefineData(proto, "BYTES_PER_ELEMENT", JsValue.Number(JsTypedArray.BytesPerElementOf(kind)), false, false, false);
         // §23.2.3.34: @@toStringTag lives on %TypedArray%.prototype as an
@@ -64,18 +66,27 @@ public static class TypedArrayCtors
             var offset = args.Length > 1 ? ArrayBufferCtor.ToIndex(realm, args[1]) : 0;
             if (offset % bpe != 0) throw new JsThrow(realm.NewRangeError("TypedArray byteOffset must align to element size"));
             if (offset > buffer.ByteLength) throw new JsThrow(realm.NewRangeError("TypedArray byteOffset out of range"));
-            var viewLength = args.Length > 2 && !args[2].IsUndefined
-                ? ArrayBufferCtor.ToIndex(realm, args[2])
-                : (buffer.ByteLength - offset) / bpe;
-            if (offset + viewLength * bpe > buffer.ByteLength)
-                throw new JsThrow(realm.NewRangeError("TypedArray length out of range"));
+            var remaining = buffer.ByteLength - offset;
+            int viewLength;
+            if (args.Length > 2 && !args[2].IsUndefined)
+            {
+                viewLength = ArrayBufferCtor.ToIndex(realm, args[2]);
+                if (viewLength > remaining / bpe)
+                    throw new JsThrow(realm.NewRangeError("TypedArray length out of range"));
+            }
+            else
+            {
+                if (remaining % bpe != 0)
+                    throw new JsThrow(realm.NewRangeError("TypedArray byteLength must align to element size"));
+                viewLength = remaining / bpe;
+            }
             return new JsTypedArray(proto, kind, buffer, offset, viewLength);
         }
 
         if (first.IsObject && first.AsObject is JsTypedArray source)
         {
             var target = Allocate(realm, proto, kind, source.Length);
-            for (var i = 0; i < source.Length; i++) target.SetElement(i, source.GetElement(i));
+            for (var i = 0; i < source.Length; i++) target.SetElement(i, source.GetElement(i), realm);
             return target;
         }
 
@@ -87,7 +98,7 @@ public static class TypedArrayCtors
             {
                 var len = ArrayBufferCtor.ToIndex(realm, lenV);
                 var target = Allocate(realm, proto, kind, len);
-                for (var i = 0; i < len; i++) target.SetElement(i, src.Get(ArrayBufferCtor.IndexKey(i)));
+                for (var i = 0; i < len; i++) target.SetElement(i, src.Get(ArrayBufferCtor.IndexKey(i)), realm);
                 return target;
             }
         }
@@ -119,7 +130,7 @@ public static class TypedArrayCtors
             var v = src.Get(ArrayBufferCtor.IndexKey(i));
             if (!mapFn.IsUndefined)
                 v = AbstractOperations.Call(realm.ActiveVm, mapFn, thisArg, new[] { v, JsValue.Number(i) });
-            target.SetElement(i, v);
+            target.SetElement(i, v, realm);
         }
         return JsValue.Object(target);
     }
@@ -127,7 +138,7 @@ public static class TypedArrayCtors
     private static JsValue Of(JsRealm realm, JsObject proto, JsTypedArrayKind kind, JsValue[] args)
     {
         var target = Allocate(realm, proto, kind, args.Length);
-        for (var i = 0; i < args.Length; i++) target.SetElement(i, args[i]);
+        for (var i = 0; i < args.Length; i++) target.SetElement(i, args[i], realm);
         return JsValue.Object(target);
     }
 
@@ -192,10 +203,10 @@ public static class TypedArrayCtors
     private static JsObject TypePrototype(JsRealm realm, JsTypedArray ta)
         => ta.Prototype ?? realm.TypedArrayPrototype;
 
-    private static int RelativeIndex(JsValue v, int len, bool defaultEnd = false)
+    private static int RelativeIndex(JsRealm realm, JsValue v, int len, bool defaultEnd = false)
     {
         if (v.IsUndefined) return defaultEnd ? len : 0;
-        var n = ArrayBufferCtor.ToIntegerOrInfinity(v);
+        var n = ArrayBufferCtor.ToIntegerOrInfinity(realm, v);
         if (n < 0) return (int)Math.Max(len + n, 0);
         return (int)Math.Min(n, len);
     }
@@ -203,7 +214,7 @@ public static class TypedArrayCtors
     private static JsValue At(JsRealm realm, JsValue thisV, JsValue[] args)
     {
         var ta = ThisTA(realm, thisV);
-        var k = (int)ArrayBufferCtor.ToIntegerOrInfinity(args.Length > 0 ? args[0] : JsValue.Undefined);
+        var k = (int)ArrayBufferCtor.ToIntegerOrInfinity(realm, args.Length > 0 ? args[0] : JsValue.Undefined);
         if (k < 0) k += ta.Length;
         return k < 0 || k >= ta.Length ? JsValue.Undefined : ta.GetElement(k);
     }
@@ -212,23 +223,23 @@ public static class TypedArrayCtors
     {
         var ta = ThisTA(realm, thisV);
         var value = args.Length > 0 ? args[0] : JsValue.Undefined;
-        var start = RelativeIndex(args.Length > 1 ? args[1] : JsValue.Undefined, ta.Length);
-        var end = RelativeIndex(args.Length > 2 ? args[2] : JsValue.Undefined, ta.Length, defaultEnd: true);
-        for (var i = start; i < end; i++) ta.SetElement(i, value);
+        var start = RelativeIndex(realm, args.Length > 1 ? args[1] : JsValue.Undefined, ta.Length);
+        var end = RelativeIndex(realm, args.Length > 2 ? args[2] : JsValue.Undefined, ta.Length, defaultEnd: true);
+        for (var i = start; i < end; i++) ta.SetElement(i, value, realm);
         return thisV;
     }
 
     private static JsValue CopyWithin(JsRealm realm, JsValue thisV, JsValue[] args)
     {
         var ta = ThisTA(realm, thisV);
-        var to = RelativeIndex(args.Length > 0 ? args[0] : JsValue.Undefined, ta.Length);
-        var from = RelativeIndex(args.Length > 1 ? args[1] : JsValue.Undefined, ta.Length);
-        var end = RelativeIndex(args.Length > 2 ? args[2] : JsValue.Undefined, ta.Length, defaultEnd: true);
+        var to = RelativeIndex(realm, args.Length > 0 ? args[0] : JsValue.Undefined, ta.Length);
+        var from = RelativeIndex(realm, args.Length > 1 ? args[1] : JsValue.Undefined, ta.Length);
+        var end = RelativeIndex(realm, args.Length > 2 ? args[2] : JsValue.Undefined, ta.Length, defaultEnd: true);
         var count = Math.Min(end - from, ta.Length - to);
         if (count <= 0) return thisV;
         var tmp = new JsValue[count];
         for (var i = 0; i < count; i++) tmp[i] = ta.GetElement(from + i);
-        for (var i = 0; i < count; i++) ta.SetElement(to + i, tmp[i]);
+        for (var i = 0; i < count; i++) ta.SetElement(to + i, tmp[i], realm);
         return thisV;
     }
 
@@ -239,8 +250,8 @@ public static class TypedArrayCtors
             throw new JsThrow(realm.NewTypeError("TypedArray.prototype.set source must be array-like"));
         var offset = args.Length > 1 ? ArrayBufferCtor.ToIndex(realm, args[1]) : 0;
         var values = ToList(realm, args[0].AsObject);
-        if (offset + values.Count > ta.Length) throw new JsThrow(realm.NewRangeError("TypedArray.prototype.set out of range"));
-        for (var i = 0; i < values.Count; i++) ta.SetElement(offset + i, values[i]);
+        if (values.Count > ta.Length - offset) throw new JsThrow(realm.NewRangeError("TypedArray.prototype.set out of range"));
+        for (var i = 0; i < values.Count; i++) ta.SetElement(offset + i, values[i], realm);
         return JsValue.Undefined;
     }
 
@@ -261,19 +272,19 @@ public static class TypedArrayCtors
     private static JsValue Slice(JsRealm realm, JsValue thisV, JsValue[] args)
     {
         var ta = ThisTA(realm, thisV);
-        var start = RelativeIndex(args.Length > 0 ? args[0] : JsValue.Undefined, ta.Length);
-        var end = RelativeIndex(args.Length > 1 ? args[1] : JsValue.Undefined, ta.Length, defaultEnd: true);
+        var start = RelativeIndex(realm, args.Length > 0 ? args[0] : JsValue.Undefined, ta.Length);
+        var end = RelativeIndex(realm, args.Length > 1 ? args[1] : JsValue.Undefined, ta.Length, defaultEnd: true);
         var len = Math.Max(end - start, 0);
         var result = Allocate(realm, TypePrototype(realm, ta), ta.Kind, len);
-        for (var i = 0; i < len; i++) result.SetElement(i, ta.GetElement(start + i));
+        for (var i = 0; i < len; i++) result.SetElement(i, ta.GetElement(start + i), realm);
         return JsValue.Object(result);
     }
 
     private static JsValue Subarray(JsRealm realm, JsValue thisV, JsValue[] args)
     {
         var ta = ThisTA(realm, thisV);
-        var start = RelativeIndex(args.Length > 0 ? args[0] : JsValue.Undefined, ta.Length);
-        var end = RelativeIndex(args.Length > 1 ? args[1] : JsValue.Undefined, ta.Length, defaultEnd: true);
+        var start = RelativeIndex(realm, args.Length > 0 ? args[0] : JsValue.Undefined, ta.Length);
+        var end = RelativeIndex(realm, args.Length > 1 ? args[1] : JsValue.Undefined, ta.Length, defaultEnd: true);
         var len = Math.Max(end - start, 0);
         return JsValue.Object(new JsTypedArray(TypePrototype(realm, ta), ta.Kind, ta.Buffer, ta.ByteOffset + start * ta.BytesPerElement, len));
     }
@@ -285,8 +296,8 @@ public static class TypedArrayCtors
         {
             var j = ta.Length - 1 - i;
             var a = ta.GetElement(i);
-            ta.SetElement(i, ta.GetElement(j));
-            ta.SetElement(j, a);
+            ta.SetElement(i, ta.GetElement(j), realm);
+            ta.SetElement(j, a, realm);
         }
         return thisV;
     }
@@ -295,7 +306,7 @@ public static class TypedArrayCtors
     {
         var ta = ThisTA(realm, thisV);
         var result = Allocate(realm, TypePrototype(realm, ta), ta.Kind, ta.Length);
-        for (var i = 0; i < ta.Length; i++) result.SetElement(i, ta.GetElement(ta.Length - 1 - i));
+        for (var i = 0; i < ta.Length; i++) result.SetElement(i, ta.GetElement(ta.Length - 1 - i), realm);
         return JsValue.Object(result);
     }
 
@@ -316,7 +327,7 @@ public static class TypedArrayCtors
                 return Math.Sign(ArrayBufferCtor.Number(AbstractOperations.Call(realm.ActiveVm, compare, JsValue.Undefined, new[] { a, b })));
             return ArrayBufferCtor.Number(a).CompareTo(ArrayBufferCtor.Number(b));
         });
-        for (var i = 0; i < values.Count; i++) ta.SetElement(i, values[i]);
+        for (var i = 0; i < values.Count; i++) ta.SetElement(i, values[i], realm);
         return thisV;
     }
 
@@ -327,7 +338,7 @@ public static class TypedArrayCtors
         var thisArg = args.Length > 1 ? args[1] : JsValue.Undefined;
         var result = Allocate(realm, TypePrototype(realm, ta), ta.Kind, ta.Length);
         for (var i = 0; i < ta.Length; i++)
-            result.SetElement(i, AbstractOperations.Call(realm.ActiveVm, cb, thisArg, new[] { ta.GetElement(i), JsValue.Number(i), thisV }));
+            result.SetElement(i, AbstractOperations.Call(realm.ActiveVm, cb, thisArg, new[] { ta.GetElement(i), JsValue.Number(i), thisV }), realm);
         return JsValue.Object(result);
     }
 
@@ -343,7 +354,7 @@ public static class TypedArrayCtors
             if (JsValue.ToBoolean(AbstractOperations.Call(realm.ActiveVm, cb, thisArg, new[] { v, JsValue.Number(i), thisV }))) kept.Add(v);
         }
         var result = Allocate(realm, TypePrototype(realm, ta), ta.Kind, kept.Count);
-        for (var i = 0; i < kept.Count; i++) result.SetElement(i, kept[i]);
+        for (var i = 0; i < kept.Count; i++) result.SetElement(i, kept[i], realm);
         return JsValue.Object(result);
     }
 
@@ -408,7 +419,7 @@ public static class TypedArrayCtors
     {
         var ta = ThisTA(realm, thisV);
         var search = args.Length > 0 ? args[0] : JsValue.Undefined;
-        var start = RelativeIndex(args.Length > 1 ? args[1] : JsValue.Undefined, ta.Length);
+        var start = RelativeIndex(realm, args.Length > 1 ? args[1] : JsValue.Undefined, ta.Length);
         for (var i = start; i < ta.Length; i++) if (AbstractOperations.SameValueZero(ta.GetElement(i), search)) return JsValue.True;
         return JsValue.False;
     }
@@ -417,7 +428,7 @@ public static class TypedArrayCtors
     {
         var ta = ThisTA(realm, thisV);
         var search = args.Length > 0 ? args[0] : JsValue.Undefined;
-        var start = args.Length > 1 ? RelativeIndex(args[1], ta.Length, defaultEnd: last) : (last ? ta.Length - 1 : 0);
+        var start = args.Length > 1 ? RelativeIndex(realm, args[1], ta.Length, defaultEnd: last) : (last ? ta.Length - 1 : 0);
         if (last) { for (var i = Math.Min(start, ta.Length - 1); i >= 0; i--) if (JsValue.StrictEquals(ta.GetElement(i), search)) return JsValue.Number(i); }
         else { for (var i = start; i < ta.Length; i++) if (JsValue.StrictEquals(ta.GetElement(i), search)) return JsValue.Number(i); }
         return JsValue.Number(-1);
@@ -435,11 +446,11 @@ public static class TypedArrayCtors
     private static JsValue With(JsRealm realm, JsValue thisV, JsValue[] args)
     {
         var ta = ThisTA(realm, thisV);
-        var index = (int)ArrayBufferCtor.ToIntegerOrInfinity(args.Length > 0 ? args[0] : JsValue.Undefined);
+        var index = (int)ArrayBufferCtor.ToIntegerOrInfinity(realm, args.Length > 0 ? args[0] : JsValue.Undefined);
         if (index < 0) index += ta.Length;
         if (index < 0 || index >= ta.Length) throw new JsThrow(realm.NewRangeError("TypedArray.prototype.with index out of range"));
         var copy = Slice(realm, thisV, Array.Empty<JsValue>()).AsObject as JsTypedArray ?? throw new InvalidOperationException();
-        copy.SetElement(index, args.Length > 1 ? args[1] : JsValue.Undefined);
+        copy.SetElement(index, args.Length > 1 ? args[1] : JsValue.Undefined, realm);
         return JsValue.Object(copy);
     }
 

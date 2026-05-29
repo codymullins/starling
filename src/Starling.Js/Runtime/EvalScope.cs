@@ -39,6 +39,8 @@ internal sealed class EvalScope
         /// <summary>True when this is a lexical binding (let/const/class) and so
         /// is subject to the Temporal Dead Zone in the caller.</summary>
         public bool IsLexical { get; init; }
+        /// <summary>True when this is an immutable caller binding.</summary>
+        public bool IsConst { get; init; }
 
         public JsValue Read()
             => Cell is { } c ? c.Value : Locals![Slot];

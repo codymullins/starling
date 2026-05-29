@@ -132,6 +132,16 @@ public sealed class BrowserSession : IDisposable
     public LaidOutPage RelayoutCurrent(LaidOutPage page, RenderOptions options)
         => _engine.RelayoutPage(page, options);
 
+    /// <summary>Advance the page's animation/transition clocks to
+    /// <paramref name="nowMs"/> (and import script animations) so the next
+    /// render samples the animated values. Drives the live GUI animation loop.</summary>
+    public void PrepareAnimationFrame(LaidOutPage page, long nowMs)
+        => _engine.PrepareAnimationFrame(page, nowMs);
+
+    /// <summary>True while the page has an in-flight animation or transition.</summary>
+    public bool HasActiveAnimations(LaidOutPage page)
+        => _engine.HasActiveAnimations(page);
+
     /// <summary>
     /// Capture <paramref name="page"/> to a PNG at <paramref name="outputPath"/>.
     /// Pass-through to <see cref="StarlingEngine.CaptureToPng"/> — used by the

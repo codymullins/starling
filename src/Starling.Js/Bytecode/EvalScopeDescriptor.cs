@@ -21,7 +21,7 @@ public sealed class EvalScopeDescriptor
         Upvalue,
     }
 
-    public readonly record struct Binding(string Name, Kind Kind, int Index, bool IsLexical);
+    public readonly record struct Binding(string Name, Kind Kind, int Index, bool IsLexical, bool IsConst);
 
     public IReadOnlyList<Binding> Bindings { get; }
 

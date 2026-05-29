@@ -81,6 +81,25 @@ internal static class HistoryBinding
     internal static string? CurrentUrlFor(JintBackendContext ctx)
         => Histories.TryGetValue(ctx, out var h) ? h.CurrentUrl : null;
 
+    internal static bool NavigateSameDocument(JintBackendContext ctx, string target, bool replace)
+    {
+        if (!Histories.TryGetValue(ctx, out var history)) return false;
+        var oldUrl = history.CurrentUrl;
+        var newUrl = ResolveUrl(oldUrl, string.IsNullOrEmpty(target) ? JsValue.Undefined : new JsString(target));
+        if (!IsSameDocumentUrl(oldUrl, newUrl)) return false;
+        if (string.Equals(oldUrl, newUrl, StringComparison.Ordinal)) return true;
+
+        var oldHash = ParsedFragment(oldUrl);
+        var newHash = ParsedFragment(newUrl);
+        history.Mutate(JsValue.Null, newUrl, replace);
+        if (!string.Equals(oldHash, newHash, StringComparison.Ordinal)
+            && ctx.Wrappers.Unwrap(ctx.Engine.Global) is EventTarget windowHost)
+        {
+            windowHost.DispatchEvent(new Event("hashchange"));
+        }
+        return true;
+    }
+
     private static void Mutate(SessionHistory history, JsValue[] args, bool replace)
     {
         var state = args.Length > 0 ? args[0] : JsValue.Null;
@@ -95,13 +114,7 @@ internal static class HistoryBinding
         if (!history.TryTraverse(delta, out var newState)) return;
 
         if (ctx.Wrappers.Unwrap(ctx.Engine.Global) is not EventTarget windowHost) return;
-        // popstate is not bubbling per spec; we lose `state` payload fidelity
-        // because Starling.Dom.Events doesn't model PopStateEvent — wire the
-        // state through the listener via a synthetic Event whose `state` prop
-        // is set on the JS wrapper later if needed. v1 fires a bare event so
-        // listeners that only care about the trigger still run.
-        _ = newState;
-        windowHost.DispatchEvent(new Event("popstate"));
+        windowHost.DispatchEvent(new PopStateEvent("popstate") { State = newState });
     }
 
     private static string ResolveUrl(string baseUrl, JsValue arg)
@@ -133,6 +146,21 @@ internal static class HistoryBinding
         }
         return true;
     }
+
+    private static bool IsSameDocumentUrl(string oldUrl, string newUrl)
+    {
+        if (!Uri.TryCreate(oldUrl, UriKind.Absolute, out var oldUri)
+            || !Uri.TryCreate(newUrl, UriKind.Absolute, out var newUri))
+            return false;
+
+        return string.Equals(oldUri.Scheme, newUri.Scheme, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(oldUri.Authority, newUri.Authority, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(oldUri.AbsolutePath, newUri.AbsolutePath, StringComparison.Ordinal)
+            && string.Equals(oldUri.Query, newUri.Query, StringComparison.Ordinal);
+    }
+
+    private static string ParsedFragment(string url)
+        => Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri.Fragment : "";
 }
 
 internal sealed class SessionHistory

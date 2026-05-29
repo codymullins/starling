@@ -2,18 +2,21 @@
 // typically http://localhost:18888) and launches the registered resources.
 // Run with:
 //
-//     aspire run                            # defaults: --starling --imagesharp-gpu
+//     aspire run                            # defaults: --starling --imagesharp-gpu --incremental
 //     aspire run -- --jint                  # Jint JS backend
 //     aspire run -- --jint --imagesharp     # Jint + CPU paint backend
+//     aspire run -- --full                  # full (non-incremental) relayout
 //
 // Runtime-selection flags (everything after `aspire run --` lands in args) are
 // parsed here and forwarded to BOTH the gui and headless resources:
 //
 //     --starling | --jint                JS engine     (default: --starling)
 //     --imagesharp | --imagesharp-gpu    paint backend (default: --imagesharp-gpu)
+//     --incremental | --full             layout        (default: --incremental)
 //
 // A command-line flag wins over the matching env var (STARLING_JS_ENGINE /
-// STARLING_PAINT_BACKEND); the env var wins over the built-in default.
+// STARLING_PAINT_BACKEND / STARLING_INCREMENTAL_LAYOUT); the env var wins over
+// the built-in default.
 //
 // The dashboard surfaces stdout/stderr and (when the resource wires it via
 // Starling.Telemetry) OpenTelemetry traces + metrics + logs.
@@ -22,6 +25,11 @@
 // to Aspire — left in, they'd be parsed as bogus configuration keys.
 var jsEngine = SelectJsEngine(args) ?? Env("STARLING_JS_ENGINE") ?? "starling";
 var paintBackend = SelectPaintBackend(args) ?? Env("STARLING_PAINT_BACKEND") ?? "imagesharp-gpu";
+// The env var is a 0/1 switch; map it onto the same "incremental"/"full" label
+// the flag uses so the flag -> env -> default chain reads like the others.
+var layoutEnv = Env("STARLING_INCREMENTAL_LAYOUT") switch { "1" => "incremental", null => null, _ => "full" };
+var layout = SelectLayout(args) ?? layoutEnv ?? "incremental";
+var incrementalLayout = layout == "incremental" ? "1" : "0";
 
 var builder = DistributedApplication.CreateBuilder(
     args.Where(a => !IsStarlingSelectionFlag(a)).ToArray());
@@ -44,6 +52,7 @@ var repoRoot = LocateRepoRoot();
 var gui = builder.AddProject<Projects.Starling_Gui>("gui")
     .WithEnvironment("STARLING_PAINT_BACKEND", paintBackend)
     .WithEnvironment("STARLING_JS_ENGINE", jsEngine)
+    .WithEnvironment("STARLING_INCREMENTAL_LAYOUT", incrementalLayout)
     .WithEnvironment("STARLING_MCP_URL", "http://127.0.0.1:3078/mcp")
     .WithOtlpExporter();
 
@@ -60,6 +69,7 @@ var headless = builder.AddProject<Projects.Starling_Headless>("headless")
         "-o", Path.Combine(Path.GetTempPath(), "starling-headless-out.png"))
     .WithEnvironment("STARLING_PAINT_BACKEND", paintBackend)
     .WithEnvironment("STARLING_JS_ENGINE", jsEngine)
+    .WithEnvironment("STARLING_INCREMENTAL_LAYOUT", incrementalLayout)
     .WithExplicitStart()
     .WithOtlpExporter();
 
@@ -123,6 +133,12 @@ static string? SelectPaintBackend(string[] args) => SelectFlag(
     ("--imagesharp-webgpu", "imagesharp-gpu"),
     ("--gpu", "imagesharp-gpu"));
 
+// --incremental | --full  ->  "incremental"/"full" (null if no flag given).
+static string? SelectLayout(string[] args) => SelectFlag(
+    args, "layout",
+    ("--incremental", "incremental"),
+    ("--full", "full"));
+
 // Scan args for any of the given flag->value mappings; return the selected value
 // (null if none present). Throws on conflicting selections (e.g. --jint --starling).
 static string? SelectFlag(string[] args, string label, params (string Flag, string Value)[] mappings)
@@ -146,4 +162,5 @@ static string? SelectFlag(string[] args, string label, params (string Flag, stri
 static bool IsStarlingSelectionFlag(string arg) => arg is
     "--starling" or "--jint"
     or "--imagesharp" or "--cpu"
-    or "--imagesharp-gpu" or "--imagesharp-webgpu" or "--gpu";
+    or "--imagesharp-gpu" or "--imagesharp-webgpu" or "--gpu"
+    or "--incremental" or "--full";
