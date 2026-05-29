@@ -5,10 +5,8 @@
    ============================================================ */
 
 :root {
-  /* Sky */
-  --night:    #07081a;
-  --indigo:   #141033;
-  --plum:     #2a1c40;
+  /* Sky — a single flat dusk indigo, no gradient */
+  --night:    #15112e;
   /* Ink */
   --ink:      #f4ead9;   /* warm paper */
   --ink-dim:  #c5bbd2;   /* dusk-lit lilac */
@@ -49,44 +47,6 @@ a { color: inherit; text-decoration: none; }
   z-index: -1;
   overflow: hidden;
   pointer-events: none;
-}
-.sky-grad {
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(180deg,
-      var(--night) 0%,
-      var(--indigo) 46%,
-      var(--plum) 78%,
-      #1d1330 100%);
-}
-.glow {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(70px);
-  opacity: 0.9;
-}
-/* Warm horizon light, low and centered — the set sun behind the product */
-.glow-ember {
-  width: 1100px;
-  height: 620px;
-  left: 50%;
-  bottom: -22%;
-  transform: translateX(-50%);
-  background: radial-gradient(ellipse at center,
-      rgba(255, 122, 60, 0.40) 0%,
-      rgba(224, 90, 80, 0.20) 38%,
-      rgba(224, 90, 80, 0) 70%);
-}
-/* A cool counter-light up high to keep the night blue */
-.glow-cool {
-  width: 760px;
-  height: 760px;
-  right: -12%;
-  top: -28%;
-  background: radial-gradient(circle at center,
-      rgba(96, 110, 220, 0.22) 0%,
-      rgba(96, 110, 220, 0) 68%);
 }
 
 /* The murmuration */
@@ -138,10 +98,10 @@ a { color: inherit; text-decoration: none; }
   mask: url(../img/logo.svg) center / contain no-repeat;
 }
 .brand-name {
-  font-family: "Fraunces", Georgia, serif;
-  font-weight: 500;
-  font-size: 1.45rem;
-  letter-spacing: -0.01em;
+  font-family: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 1.4rem;
+  letter-spacing: -0.02em;
 }
 .nav-cta {
   font-family: "Space Mono", ui-monospace, monospace;
@@ -174,22 +134,17 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 0 28px; }
   margin: 0 0 26px;
 }
 h1 {
-  font-family: "Fraunces", Georgia, serif;
-  font-weight: 400;
-  font-size: clamp(2.6rem, 7vw, 5.1rem);
-  line-height: 1.02;
-  letter-spacing: -0.025em;
+  font-family: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: clamp(2.6rem, 7vw, 5rem);
+  line-height: 1.0;
+  letter-spacing: -0.035em;
   margin: 0 auto;
   max-width: 15ch;
   text-wrap: balance;
 }
 h1 .accent { display: block; color: var(--ink); }
-h1 em {
-  font-style: italic;
-  position: relative;
-  white-space: nowrap;
-  background: linear-gradient(transparent 78%, rgba(255, 122, 60, 0.38) 0);
-}
+h1 em { font-style: normal; }
 .lede {
   max-width: 38ch;
   margin: 30px auto 0;
