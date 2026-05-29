@@ -120,6 +120,13 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     private readonly Func<LaidOutPage, bool>? _hasActiveAnimations;
     private long _animClockMs;
     private bool _animating;
+    // True for exactly one paint: a live frame that advanced only the animation
+    // clock and did NOT relayout. The layer compositor is taken only on these
+    // frames — a frame that relayouts has just wiped the per-layer caches
+    // (ShowPage → InvalidateCache), so compositing would re-raster every layer
+    // cold and pay its overhead for nothing. Consume-once: RenderPageBitmap
+    // reads it then clears it, so scroll/hover/navigation paints stay flat.
+    private bool _animationOnlyFrame;
     // Cached "does this laid-out page carry a transform/opacity compositor
     // layer?" answer (Phase 5 routing). Computed once per layout — a relayout
     // produces a new box tree, so ShowPage resets it to null to recompute.
@@ -1206,7 +1213,11 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         }
 
         // Exactly one paint per frame — the animation clock and _animating flag
-        // are already set, so the sampled styles match this frame.
+        // are already set, so the sampled styles match this frame. A frame that
+        // only advanced the clock (no relayout) is eligible for the layer
+        // compositor, whose per-layer caches are still warm; a frame that
+        // relayouted just wiped them, so it must stay on the flat path.
+        _animationOnlyFrame = animating && !needsRelayout;
         if (needsRelayout || animating)
             RenderViewportRegion();
 
@@ -1653,19 +1664,21 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         // While animating, the painted pixels change every frame even though the
         // box tree (DisplayListVersion) is unchanged, so vary the picture-cache
         // key by the animation clock to force a fresh raster each frame.
-        // Phase 5: when an animation is in flight on a page that has
-        // transform/opacity compositor layers, route through the layer tree.
-        // Each layer's CONTENT is cached across frames — the page version
-        // excludes the animation clock, so the cache key is stable — while the
-        // re-sampled transform / opacity are applied at COMPOSITE time. So an
-        // animation-only frame re-blits each layer's pixels from cache instead
-        // of re-rasterizing. The flat path stays the default everywhere else
-        // (no animation, or no promoted layer), so existing goldens are
-        // untouched. Guarded to the no-per-element-scroll case because
-        // RenderViaLayerTree does not yet thread per-container scroll offsets
-        // (tracked follow-up); a scrollable page falls back to the flat path,
-        // which handles offsets correctly.
-        var useLayerTree = animate && scrollLookup is null && PageHasCompositorLayers();
+        // Phase 5: on an animation-only frame (the clock advanced, nothing
+        // relayouted) for a page that has transform/opacity compositor layers,
+        // route through the layer tree. Each layer's CONTENT is cached across
+        // frames — the page version excludes the animation clock, so the cache
+        // key is stable — while the re-sampled transform / opacity are applied
+        // at COMPOSITE time. So the frame re-blits each layer's pixels from
+        // cache instead of re-rasterizing. The flat path stays the default
+        // everywhere else (no animation, a frame that relayouted and wiped the
+        // caches, or no promoted layer), so existing goldens are untouched and a
+        // relayout-every-frame page never pays cold compositing. Guarded to the
+        // no-per-element-scroll case because RenderViaLayerTree does not yet
+        // thread per-container scroll offsets (tracked follow-up); a scrollable
+        // page falls back to the flat path, which handles offsets correctly.
+        var useLayerTree = _animationOnlyFrame && scrollLookup is null && PageHasCompositorLayers();
+        _animationOnlyFrame = false; // consume-once: only the live tick that set it composites
         using (_diag.Span("gui", "render"))
         {
             if (useLayerTree)

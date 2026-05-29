@@ -22,6 +22,7 @@
 // to Aspire — left in, they'd be parsed as bogus configuration keys.
 var jsEngine = SelectJsEngine(args) ?? Env("STARLING_JS_ENGINE") ?? "starling";
 var paintBackend = SelectPaintBackend(args) ?? Env("STARLING_PAINT_BACKEND") ?? "imagesharp-gpu";
+var layout = Env("STARLING_INCREMENTAL_LAYOUT") == "1" ? "incremental" : "full";
 
 var builder = DistributedApplication.CreateBuilder(
     args.Where(a => !IsStarlingSelectionFlag(a)).ToArray());
@@ -44,6 +45,7 @@ var repoRoot = LocateRepoRoot();
 var gui = builder.AddProject<Projects.Starling_Gui>("gui")
     .WithEnvironment("STARLING_PAINT_BACKEND", paintBackend)
     .WithEnvironment("STARLING_JS_ENGINE", jsEngine)
+    .WithEnvironment("STARLING_INCREMENTAL_LAYOUT", "1")
     .WithEnvironment("STARLING_MCP_URL", "http://127.0.0.1:3078/mcp")
     .WithOtlpExporter();
 

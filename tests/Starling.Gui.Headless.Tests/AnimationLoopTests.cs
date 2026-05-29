@@ -173,6 +173,10 @@ public class AnimationLoopTests
         engine.PrepareAnimationFrame(page, nowMs);
         SetField(panel, "_animClockMs", nowMs);
         SetField(panel, "_animating", true);
+        // Mark this as an animation-only frame (clock advanced, no relayout) —
+        // what the live tick sets before painting; the layer-compositor route is
+        // gated on it.
+        SetField(panel, "_animationOnlyFrame", true);
         typeof(WebviewPanel).GetMethod("RenderViewportRegion", BindingFlags.NonPublic | BindingFlags.Instance)!
             .Invoke(panel, null);
 
