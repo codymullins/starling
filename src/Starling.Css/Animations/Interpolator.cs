@@ -29,6 +29,19 @@ public static class Interpolator
         if (progress >= 1) return to;
 
         if (ReferenceEquals(from, to)) return from;
+
+        // `transform` is stored in the cascade as a function value / value list
+        // (e.g. rotate(0deg)), not a CssTransform, so the type switch below would
+        // miss it and the value would snap at 50%. Parse both endpoints to
+        // CssTransform up front (Parse is idempotent + maps `none` to the empty
+        // transform) so a rotate/translate/scale animation actually tweens.
+        if (property == PropertyId.Transform)
+        {
+            var fromTransform = from as CssTransform ?? CssTransformParser.Parse(from);
+            var toTransform = to as CssTransform ?? CssTransformParser.Parse(to);
+            return InterpolateTransform(fromTransform, toTransform, progress);
+        }
+
         if (from.GetType() != to.GetType()) return Discrete(from, to, progress);
 
         switch (from)

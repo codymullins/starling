@@ -17,6 +17,11 @@ public static class CssTransformParser
     public static CssTransform Parse(CssValue value)
     {
         ArgumentNullException.ThrowIfNull(value);
+        // Idempotent: an already-parsed transform (e.g. the output of animation
+        // interpolation, which the cascade stores back as the property value)
+        // passes straight through. Without this, re-parsing it would fall through
+        // the function-value path below and yield None — dropping the transform.
+        if (value is CssTransform already) return already;
         if (value is CssKeyword { Name: var kw } && kw.Equals("none", StringComparison.OrdinalIgnoreCase))
             return CssTransform.None;
 
