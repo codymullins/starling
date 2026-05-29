@@ -27,7 +27,7 @@ namespace Starling.Bindings;
 /// <para><b>Simplifications.</b>
 /// <list type="bullet">
 ///   <item>No <c>ReadableStream</c>: response bodies are buffered byte arrays.</item>
-///   <item><c>response.blob()</c> and <c>response.formData()</c> throw "not supported".</item>
+///   <item><c>response.formData()</c> supports URL-encoded bodies. Multipart parsing is still pending.</item>
 ///   <item><c>mode</c>, <c>credentials</c>, <c>cache</c> accepted but ignored.</item>
 ///   <item><c>redirect: "follow"</c> is the underlying client's default; <c>"manual"</c>
 ///   and <c>"error"</c> aren't actively distinguishable today — we accept all
@@ -337,7 +337,7 @@ public static class FetchBinding
         {
             var body = args.Length > 0 ? args[0] : JsValue.Undefined;
             var init = args.Length > 1 ? args[1] : JsValue.Undefined;
-            var bytes = BodyToBytes(realm, body);
+            var bytes = BodyToBytes(realm, body, out var contentType);
             var status = 200;
             var statusText = "";
             HeadersObject headers = new(realm.HeadersPrototype);
@@ -352,6 +352,8 @@ public static class FetchBinding
                 if (!hd.IsUndefined && !hd.IsNull)
                     headers.Store.PopulateFromJs(realm, hd);
             }
+            if (contentType is not null && !headers.Store.Has("content-type"))
+                headers.Store.Set("content-type", contentType);
             var resp = new ResponseObject(proto, status, statusText, headers, bytes, "", false);
             return JsValue.Object(resp);
         }, isConstructor: true);
@@ -408,10 +410,30 @@ public static class FetchBinding
             return ResolvedPromise(realm, JsValue.Object(buf));
         }, length: 0);
 
-        EventTargetBinding.DefineMethod(realm, proto, "blob", (_, _) =>
-            throw new JsThrow(realm.NewTypeError("Response.blob is not supported yet")), length: 0);
-        EventTargetBinding.DefineMethod(realm, proto, "formData", (_, _) =>
-            throw new JsThrow(realm.NewTypeError("Response.formData is not supported yet")), length: 0);
+        EventTargetBinding.DefineMethod(realm, proto, "blob", (thisV, _) =>
+        {
+            var owner = resolve(thisV);
+            if (owner.BodyUsed) return RejectedPromise(realm, realm.NewTypeError("Body already consumed"));
+            owner.BodyUsed = true;
+            var type = owner is ResponseObject response ? response.Headers.Store.Get("content-type") ?? "" : "";
+            var blob = new BlobObject(realm.GlobalObject.Get("Blob").AsObject.Get("prototype").AsObject,
+                owner.BodyBytes.ToArray(), type);
+            return ResolvedPromise(realm, JsValue.Object(blob));
+        }, length: 0);
+        EventTargetBinding.DefineMethod(realm, proto, "formData", (thisV, _) =>
+        {
+            var owner = resolve(thisV);
+            if (owner.BodyUsed) return RejectedPromise(realm, realm.NewTypeError("Body already consumed"));
+            owner.BodyUsed = true;
+            if (owner is not ResponseObject response)
+                return RejectedPromise(realm, realm.NewTypeError("formData is only supported on Response"));
+            var type = response.Headers.Store.Get("content-type") ?? "";
+            if (!type.StartsWith("application/x-www-form-urlencoded", StringComparison.OrdinalIgnoreCase))
+                return RejectedPromise(realm, realm.NewTypeError("Response.formData only supports URL-encoded bodies"));
+            var protoObj = realm.GlobalObject.Get("FormData").AsObject.Get("prototype").AsObject;
+            var form = CoreWebApiBinding.ParseUrlEncodedFormData(realm, protoObj, Encoding.UTF8.GetString(owner.BodyBytes));
+            return ResolvedPromise(realm, JsValue.Object(form));
+        }, length: 0);
     }
 
     // =====================================================================
@@ -567,7 +589,11 @@ public static class FetchBinding
             }
             var b = obj.Get("body");
             if (!b.IsUndefined && !b.IsNull)
-                body = BodyToBytes(realm, b);
+            {
+                body = BodyToBytes(realm, b, out var contentType);
+                if (contentType is not null && !headers.Store.Has("content-type"))
+                    headers.Store.Set("content-type", contentType);
+            }
             var r = obj.Get("redirect");
             if (r.IsString) redirect = r.AsString;
             var md = obj.Get("mode");
@@ -630,13 +656,25 @@ public static class FetchBinding
     }
 
     internal static byte[] BodyToBytes(JsRealm realm, JsValue body)
+        => BodyToBytes(realm, body, out _);
+
+    private static byte[] BodyToBytes(JsRealm realm, JsValue body, out string? contentType)
     {
+        contentType = null;
         if (body.IsUndefined || body.IsNull) return Array.Empty<byte>();
         if (body.IsString) return Encoding.UTF8.GetBytes(body.AsString);
         if (body.IsObject)
         {
             switch (body.AsObject)
             {
+                case BlobObject blob:
+                    if (blob.Type.Length > 0) contentType = blob.Type;
+                    return blob.Bytes.ToArray();
+                case FormDataObject form:
+                    return CoreWebApiBinding.SerializeFormDataMultipart(form, out contentType);
+                case UrlSearchParamsObject searchParams:
+                    contentType = "application/x-www-form-urlencoded;charset=UTF-8";
+                    return Encoding.UTF8.GetBytes(searchParams.Serialize());
                 case JsArrayBuffer buf:
                     {
                         var copy = new byte[buf.ByteLength];

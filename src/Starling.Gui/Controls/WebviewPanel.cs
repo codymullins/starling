@@ -1179,10 +1179,9 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         // instead of painting here with last frame's clock and again after
         // PrepareAnimationFrame.
         //
-        // KNOWN GAP (accepted): author CSS using an attribute selector (e.g.
-        // [role="button"] {...}) plus a script writing that attribute misses a
-        // recompute until the next layout-relevant change. The spec-correct fix
-        // is selector-aware invalidation — a tracked follow-up.
+        // Attribute-selector invalidation is handled by Document.IsAttributeLayoutRelevant:
+        // the layout pass records selector-referenced attributes, so author CSS
+        // keyed on data-* / aria-* still advances LayoutInvalidationVersion.
         var layoutVersion = page.Document.LayoutInvalidationVersion;
         var needsRelayout = layoutVersion != _lastLayoutInvalidationVersion;
         if (needsRelayout)

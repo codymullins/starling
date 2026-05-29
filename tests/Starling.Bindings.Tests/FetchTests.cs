@@ -125,6 +125,60 @@ public sealed class FetchTests
     }
 
     [TestMethod]
+    public async Task Fetch_url_search_params_body_sets_form_header()
+    {
+        string? contentType = null;
+        string? body = null;
+        await using var server = await LocalServer.Start(ctx =>
+        {
+            contentType = ctx.Request.Headers["Content-Type"];
+            using var sr = new StreamReader(ctx.Request.InputStream, Encoding.UTF8);
+            body = sr.ReadToEnd();
+            ctx.Response.StatusCode = 204;
+        });
+        var env = NewEnv(server.BaseUrl);
+        Eval(env.Runtime, $@"
+            globalThis.done = false;
+            var params = new URLSearchParams({{ a: '1', b: 'two words' }});
+            fetch('{server.BaseUrl}/p', {{ method: 'POST', body: params }})
+              .then(function(r) {{ globalThis.done = true; }});
+        ");
+        await PumpUntil(env.Runtime, () => env.Runtime.GetGlobal("done").AsBool);
+        contentType.Should().Be("application/x-www-form-urlencoded;charset=UTF-8");
+        body.Should().Be("a=1&b=two+words");
+    }
+
+    [TestMethod]
+    public async Task Fetch_form_data_body_sends_multipart_payload()
+    {
+        string? contentType = null;
+        string? body = null;
+        await using var server = await LocalServer.Start(ctx =>
+        {
+            contentType = ctx.Request.Headers["Content-Type"];
+            using var sr = new StreamReader(ctx.Request.InputStream, Encoding.UTF8);
+            body = sr.ReadToEnd();
+            ctx.Response.StatusCode = 204;
+        });
+        var env = NewEnv(server.BaseUrl);
+        Eval(env.Runtime, $@"
+            globalThis.done = false;
+            var fd = new FormData();
+            fd.append('name', 'value');
+            fd.append('upload', new Blob(['abc'], {{ type: 'text/plain' }}), 'a.txt');
+            fetch('{server.BaseUrl}/p', {{ method: 'POST', body: fd }})
+              .then(function(r) {{ globalThis.done = true; }});
+        ");
+        await PumpUntil(env.Runtime, () => env.Runtime.GetGlobal("done").AsBool);
+        contentType.Should().StartWith("multipart/form-data; boundary=----starling-formdata-");
+        body.Should().Contain("name=\"name\"");
+        body.Should().Contain("value");
+        body.Should().Contain("filename=\"a.txt\"");
+        body.Should().Contain("Content-Type: text/plain");
+        body.Should().Contain("abc");
+    }
+
+    [TestMethod]
     public async Task Fetch_bad_url_rejects_with_TypeError()
     {
         var env = NewEnv("http://127.0.0.1:1/");
