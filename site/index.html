@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Starling — an independent web browser, built from scratch</title>
   <meta name="description" content="Starling is an independent web browser built from scratch in .NET. No Chromium, Gecko, or WebKit.">
+  <meta name="theme-color" content="#0a0b1e">
 
   <!-- Open Graph -->
   <meta property="og:type" content="website">
@@ -13,43 +14,130 @@
   <meta property="og:image" content="img/screenshot.png">
 
   <link rel="icon" type="image/svg+xml" href="img/logo.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..600;1,9..144,400..600&family=Hanken+Grotesk:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
+  <div class="sky" aria-hidden="true">
+    <div class="sky-grad"></div>
+    <div class="glow glow-ember"></div>
+    <div class="glow glow-cool"></div>
+    <svg class="murmuration" viewBox="0 0 1200 700" preserveAspectRatio="xMidYMid slice" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <path id="bird" d="M-7 0 Q-3.5 -4.2 0 -1 Q3.5 -4.2 7 0 Q3.5 -1.6 0 0.6 Q-3.5 -1.6 -7 0 Z"/>
+      </defs>
+      <g class="mm-far">
+        <use href="#bird" x="0" y="0" transform="translate(161.8 293.2) rotate(-16.9) scale(0.58)" opacity="0.21"/>
+        <use href="#bird" x="0" y="0" transform="translate(156.8 285.8) rotate(-30.2) scale(0.77)" opacity="0.29"/>
+        <use href="#bird" x="0" y="0" transform="translate(254.5 339.7) rotate(-19.7) scale(0.85)" opacity="0.32"/>
+        <use href="#bird" x="0" y="0" transform="translate(193.9 271.4) rotate(-22.7) scale(0.87)" opacity="0.33"/>
+        <use href="#bird" x="0" y="0" transform="translate(184.1 234.6) rotate(-20.9) scale(0.57)" opacity="0.21"/>
+        <use href="#bird" x="0" y="0" transform="translate(420.8 193.1) rotate(-22.9) scale(0.57)" opacity="0.21"/>
+        <use href="#bird" x="0" y="0" transform="translate(424.8 106.9) rotate(-31.1) scale(0.50)" opacity="0.18"/>
+        <use href="#bird" x="0" y="0" transform="translate(473.7 172.5) rotate(-24.6) scale(0.62)" opacity="0.23"/>
+        <use href="#bird" x="0" y="0" transform="translate(543.9 169.7) rotate(-19.3) scale(0.69)" opacity="0.26"/>
+        <use href="#bird" x="0" y="0" transform="translate(569.4 141.7) rotate(-19.2) scale(0.50)" opacity="0.18"/>
+        <use href="#bird" x="0" y="0" transform="translate(575.0 90.0) rotate(-27.1) scale(0.80)" opacity="0.31"/>
+        <use href="#bird" x="0" y="0" transform="translate(535.2 133.9) rotate(-14.1) scale(0.60)" opacity="0.22"/>
+        <use href="#bird" x="0" y="0" transform="translate(723.6 102.6) rotate(-2.6) scale(0.69)" opacity="0.26"/>
+        <use href="#bird" x="0" y="0" transform="translate(815.2 32.7) rotate(-25.0) scale(0.81)" opacity="0.31"/>
+        <use href="#bird" x="0" y="0" transform="translate(809.7 97.5) rotate(-14.7) scale(0.77)" opacity="0.29"/>
+        <use href="#bird" x="0" y="0" transform="translate(965.8 224.0) rotate(-24.5) scale(0.70)" opacity="0.27"/>
+        <use href="#bird" x="0" y="0" transform="translate(921.6 204.7) rotate(7.6) scale(0.66)" opacity="0.25"/>
+        <use href="#bird" x="0" y="0" transform="translate(1029.2 216.0) rotate(-10.5) scale(0.66)" opacity="0.25"/>
+        <use href="#bird" x="0" y="0" transform="translate(1069.8 225.7) rotate(-16.7) scale(0.72)" opacity="0.27"/>
+      </g>
+      <g class="mm-mid">
+        <use href="#bird" x="0" y="0" transform="translate(69.3 315.3) rotate(-14.9) scale(1.28)" opacity="0.51"/>
+        <use href="#bird" x="0" y="0" transform="translate(120.5 284.9) rotate(-23.3) scale(1.11)" opacity="0.43"/>
+        <use href="#bird" x="0" y="0" transform="translate(51.3 201.5) rotate(-47.3) scale(1.19)" opacity="0.47"/>
+        <use href="#bird" x="0" y="0" transform="translate(154.4 190.5) rotate(-32.1) scale(0.95)" opacity="0.37"/>
+        <use href="#bird" x="0" y="0" transform="translate(323.6 193.8) rotate(-21.0) scale(1.20)" opacity="0.47"/>
+        <use href="#bird" x="0" y="0" transform="translate(342.6 206.5) rotate(-30.1) scale(1.09)" opacity="0.42"/>
+        <use href="#bird" x="0" y="0" transform="translate(241.4 155.8) rotate(-9.9) scale(1.21)" opacity="0.48"/>
+        <use href="#bird" x="0" y="0" transform="translate(471.4 162.0) rotate(-25.5) scale(1.05)" opacity="0.41"/>
+        <use href="#bird" x="0" y="0" transform="translate(522.9 191.0) rotate(-9.5) scale(1.16)" opacity="0.45"/>
+        <use href="#bird" x="0" y="0" transform="translate(322.1 187.0) rotate(-29.2) scale(1.00)" opacity="0.39"/>
+        <use href="#bird" x="0" y="0" transform="translate(528.3 147.0) rotate(-15.6) scale(1.08)" opacity="0.42"/>
+        <use href="#bird" x="0" y="0" transform="translate(557.0 -33.2) rotate(-32.6) scale(1.33)" opacity="0.53"/>
+        <use href="#bird" x="0" y="0" transform="translate(380.9 120.7) rotate(-2.2) scale(1.31)" opacity="0.52"/>
+        <use href="#bird" x="0" y="0" transform="translate(930.4 141.0) rotate(-13.6) scale(1.13)" opacity="0.44"/>
+        <use href="#bird" x="0" y="0" transform="translate(794.8 199.7) rotate(-18.1) scale(0.93)" opacity="0.36"/>
+        <use href="#bird" x="0" y="0" transform="translate(798.2 112.7) rotate(-12.7) scale(1.33)" opacity="0.53"/>
+        <use href="#bird" x="0" y="0" transform="translate(860.8 167.8) rotate(-4.4) scale(1.25)" opacity="0.49"/>
+        <use href="#bird" x="0" y="0" transform="translate(918.0 215.6) rotate(-43.9) scale(1.29)" opacity="0.51"/>
+        <use href="#bird" x="0" y="0" transform="translate(1056.8 165.0) rotate(-11.4) scale(1.20)" opacity="0.47"/>
+        <use href="#bird" x="0" y="0" transform="translate(975.5 222.7) rotate(-30.1) scale(1.10)" opacity="0.43"/>
+      </g>
+      <g class="mm-near">
+        <use href="#bird" x="0" y="0" transform="translate(180.5 238.0) rotate(-27.1) scale(1.45)" opacity="0.58"/>
+        <use href="#bird" x="0" y="0" transform="translate(201.5 160.2) rotate(-30.1) scale(1.55)" opacity="0.62"/>
+        <use href="#bird" x="0" y="0" transform="translate(262.3 166.4) rotate(-16.8) scale(1.68)" opacity="0.67"/>
+        <use href="#bird" x="0" y="0" transform="translate(421.1 219.8) rotate(-42.5) scale(1.42)" opacity="0.56"/>
+        <use href="#bird" x="0" y="0" transform="translate(249.7 153.0) rotate(-13.3) scale(1.51)" opacity="0.60"/>
+        <use href="#bird" x="0" y="0" transform="translate(315.4 168.6) rotate(-26.9) scale(1.34)" opacity="0.53"/>
+        <use href="#bird" x="0" y="0" transform="translate(192.3 10.3) rotate(-25.8) scale(1.49)" opacity="0.59"/>
+        <use href="#bird" x="0" y="0" transform="translate(362.8 159.7) rotate(-13.4) scale(1.55)" opacity="0.62"/>
+        <use href="#bird" x="0" y="0" transform="translate(329.0 260.8) rotate(-19.3) scale(1.65)" opacity="0.66"/>
+        <use href="#bird" x="0" y="0" transform="translate(614.9 156.3) rotate(-42.3) scale(1.46)" opacity="0.58"/>
+        <use href="#bird" x="0" y="0" transform="translate(643.3 108.0) rotate(-20.1) scale(1.55)" opacity="0.62"/>
+        <use href="#bird" x="0" y="0" transform="translate(716.6 220.2) rotate(-8.0) scale(1.69)" opacity="0.68"/>
+        <use href="#bird" x="0" y="0" transform="translate(799.4 202.1) rotate(-19.0) scale(1.67)" opacity="0.67"/>
+        <use href="#bird" x="0" y="0" transform="translate(774.8 128.2) rotate(-33.0) scale(1.43)" opacity="0.57"/>
+        <use href="#bird" x="0" y="0" transform="translate(713.7 160.3) rotate(-1.2) scale(1.47)" opacity="0.59"/>
+        <use href="#bird" x="0" y="0" transform="translate(745.0 161.8) rotate(-37.9) scale(1.39)" opacity="0.55"/>
+        <use href="#bird" x="0" y="0" transform="translate(903.7 105.4) rotate(4.7) scale(1.62)" opacity="0.65"/>
+        <use href="#bird" x="0" y="0" transform="translate(765.1 47.0) rotate(-17.9) scale(1.46)" opacity="0.58"/>
+        <use href="#bird" x="0" y="0" transform="translate(975.0 177.8) rotate(-16.3) scale(1.59)" opacity="0.63"/>
+        <use href="#bird" x="0" y="0" transform="translate(763.1 104.1) rotate(-18.7) scale(1.45)" opacity="0.57"/>
+        <use href="#bird" x="0" y="0" transform="translate(838.8 225.5) rotate(-27.4) scale(1.67)" opacity="0.67"/>
+        <use href="#bird" x="0" y="0" transform="translate(964.8 170.2) rotate(-17.2) scale(1.59)" opacity="0.63"/>
+        <use href="#bird" x="0" y="0" transform="translate(999.2 131.9) rotate(-28.6) scale(1.62)" opacity="0.65"/>
+        <use href="#bird" x="0" y="0" transform="translate(893.9 201.5) rotate(-16.8) scale(1.49)" opacity="0.59"/>
+        <use href="#bird" x="0" y="0" transform="translate(1024.1 138.9) rotate(-14.8) scale(1.59)" opacity="0.63"/>
+      </g>
+    </svg>
+    <div class="grain"></div>
+  </div>
+
   <header class="site-header">
     <a class="brand" href="#top">
       <span class="brand-mark" aria-hidden="true"></span>
-      <span>Starling</span>
+      <span class="brand-name">Starling</span>
     </a>
     <nav class="nav">
-      <a class="nav-cta" href="https://github.com/starling-browser/starling">GitHub</a>
+      <a class="nav-cta" href="https://github.com/starling-browser/starling">GitHub <span aria-hidden="true">&#8599;</span></a>
     </nav>
   </header>
 
   <main id="top">
     <section class="hero">
-      <p class="badge">Experimental · Written in .NET</p>
-      <h1>An independent web browser,<br>built from scratch.</h1>
-      <p class="lede">
+      <p class="eyebrow reveal" style="--d:.05s">Experimental &middot; Written in .NET</p>
+      <h1 class="reveal" style="--d:.15s">An independent web browser,
+        <span class="accent">built from <em>scratch.</em></span></h1>
+      <p class="lede reveal" style="--d:.3s">
         No Chromium. No Gecko. No WebKit. Starling is a brand-new browser
         engine, written in .NET and built in the open.
       </p>
-      <div class="cta-row">
-        <a class="btn btn-primary" href="https://github.com/starling-browser/starling">View on GitHub</a>
+      <div class="cta-row reveal" style="--d:.42s">
+        <a class="btn btn-primary" href="https://github.com/starling-browser/starling">View on GitHub <span aria-hidden="true">&#8599;</span></a>
         <a class="btn btn-ghost" href="https://github.com/starling-browser/starling/blob/main/docs/approach.md">Read the approach</a>
       </div>
     </section>
 
-    <section class="shot">
+    <section class="shot reveal" style="--d:.58s">
       <figure>
-        <img src="img/screenshot.png" alt="Starling rendering a live website in its desktop shell" loading="lazy">
+        <div class="shot-frame">
+          <img src="img/screenshot.png" alt="Starling rendering a live website in its desktop shell" loading="lazy">
+        </div>
         <figcaption>
-          Starling rendering netclaw.dev — an Astro and Redux-Toolkit site — in
-          its desktop shell. The site is shown only as a rendering target.
+          Starling rendering netclaw.dev &mdash; an Astro and Redux-Toolkit site
+          &mdash; in its desktop shell. The site is shown only as a rendering target.
         </figcaption>
       </figure>
     </section>
-
   </main>
 </body>
 </html>
