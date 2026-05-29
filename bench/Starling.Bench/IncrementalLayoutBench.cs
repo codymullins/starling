@@ -90,12 +90,13 @@ public class IncrementalLayoutBench
 
     // ---- structural insert/remove (alternating, net-bounded) -----------------
     //
-    // NOTE: the reconciler rebuilds the *whole* affected parent's subtree on a
-    // structural change (Phase 3 as shipped), so toggling a child of <main> —
-    // which holds every row here — costs ~O(rows), close to a full rebuild. The
-    // win shows only for content *outside* the changed parent. Per-child splice
-    // (plan §3a) would make this O(change) too; §3b (localized re-wrap) is the
-    // tracked follow-up. The bench measures the current behaviour honestly.
+    // Per-child splice (§3a) + localized anonymous re-wrap (§3b): the changed
+    // child is built/removed and the unchanged siblings' laid-out subtrees are
+    // reused by identity, so build + layout + text-shaping is O(change). The
+    // parent's subtree is still re-cascaded (to catch positional :nth-child-style
+    // restyles soundly), so the residual cost is cascade-bound (~1/3 of a full
+    // rebuild here), not the near-zero of a text/attr edit. :has()/:empty force a
+    // full rebuild instead (a structural change can restyle outside the parent).
 
     [Benchmark]
     public double Full_StructuralToggle()

@@ -126,20 +126,31 @@ ballpark until a full BenchmarkDotNet run on a quiet host):
 | Text              | 1000 |  489 MB    |        0 B        |   ~0.01    |
 | Attribute         | 1000 |  489 MB    |     ~670 KB       |   ~0.02    |
 | No change         | 1000 |  489 MB    |        0 B        |   ~0.01    |
-| Structural toggle | 1000 |  489 MB    |      489 MB       |   ~0.95    |
+| Structural toggle | 1000 |  467 MB    |      155 MB       |   ~0.29    |
 | Text (nginx.org)  |   —  |   22.4 MB  |     ~9 KB         |   ~0.02    |
 
 The headline holds: a text edit, an attribute edit, and a no-op frame reuse the
 retained tree and recompute only the dirty subtree — flat allocation regardless
 of page size, while the full rebuild's cost grows with the tree.
 
-The benchmark also surfaces an honest limitation: a **structural** change
-rebuilds the whole affected parent's subtree (Phase 3 as shipped), so inserting
-into a parent that holds the entire list costs ~O(rows), no better than a full
-rebuild. The win appears only for content outside the changed parent. Per-child
-splicing (plan §3a) plus localized re-wrap (§3b, flagged in the plan as the
-nastiest piece) would make structural changes O(change) too — the tracked
-next step. The benchmark is what makes this measurable.
+### Structural changes — §3a per-child splice + §3b localized re-wrap (done)
+
+Child insert/remove now splices the one changed child into the parent's box
+children and reuses every unchanged sibling's laid-out subtree by identity, then
+re-buckets only the parent's direct child run (the localized anonymous re-wrap).
+Build, layout, and text-shaping are O(change). The parent's subtree is still
+re-cascaded first, so a sibling whose computed style shifts — a positional
+`:nth-child` rule firing as siblings move — is detected (style value-equality)
+and that subtree rebuilt, while style-unchanged subtrees are reused. That keeps
+it sound for sibling and positional selectors. `:has()` / `:empty`, whose match
+can change the cascade outside the changed parent, force a full rebuild instead
+(`StyleEngine.StructuralChangeNeedsFullRebuild`).
+
+The residual cost is the re-cascade (the structural toggle lands at ~1/3 of a
+full rebuild, cascade-bound), not the near-zero of a text/attr edit, which is
+the sound price of catching positional restyles. Tests prove unchanged siblings
+are reused by reference-identity, that a geometry-affecting `:nth-child` restyle
+on insert still matches a full rebuild, and that `:has()` falls back.
 
 A companion `Fixtures.LocateRepoRoot` fix was needed: it looked only for
 `Starling.sln`, but the repo uses `Starling.slnx`, so every fixture-backed

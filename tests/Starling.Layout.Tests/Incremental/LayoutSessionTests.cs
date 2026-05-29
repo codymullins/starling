@@ -1,6 +1,7 @@
 using AwesomeAssertions;
 using Starling.Common.Diagnostics;
 using Starling.Css.Cascade;
+using Starling.Css.Parser;
 using Starling.Dom;
 using Starling.Html;
 using Starling.Layout.Box;
@@ -26,6 +27,21 @@ public sealed class LayoutSessionTests
     // always-correct output the incremental result must match.
     private static BlockBox FullRebuild(Document doc)
         => new LayoutEngine(new StyleEngine()).LayoutDocument(doc, Viewport);
+
+    private static BlockBox FullRebuildWith(Document doc, string css)
+    {
+        var style = new StyleEngine();
+        style.AddStyleSheet(CssParser.ParseStyleSheet(css));
+        return new LayoutEngine(style).LayoutDocument(doc, Viewport);
+    }
+
+    private static (LayoutSession Session, CountingDiagnostics Diag) SessionWith(string css)
+    {
+        var style = new StyleEngine();
+        style.AddStyleSheet(CssParser.ParseStyleSheet(css));
+        var diag = new CountingDiagnostics();
+        return (new LayoutSession(style, diagnostics: diag), diag);
+    }
 
     private static Starling.Dom.Text FirstText(Element el)
         => (Starling.Dom.Text)el.FirstChild!;
@@ -127,6 +143,69 @@ public sealed class LayoutSessionTests
 
         diag.Counter("layout.incremental.relayout").Should().Be(1);
         LayoutVerifier.FindFirstDivergence(rebuilt, FullRebuild(doc)).Should().BeNull();
+    }
+
+    [TestMethod]
+    public void Insert_reuses_unchanged_sibling_boxes_by_identity()
+    {
+        // §3a: a structural insert must reuse the unchanged siblings' box objects,
+        // not rebuild them. Reference-identity across the relayout proves it.
+        var doc = Parse("<body><main id=main><section id=a>alpha</section><section id=b>beta</section></main></body>");
+        var session = new LayoutSession(new StyleEngine());
+        var first = session.Layout(doc, Viewport, DefaultTextMeasurer.Instance, nowMs: null);
+        var aBox = FindById(first, "a");
+        var bBox = FindById(first, "b");
+
+        var added = doc.CreateElement("section");
+        added.AppendChild(doc.CreateTextNode("gamma"));
+        doc.GetElementById("main")!.AppendChild(added);
+
+        var after = session.Layout(doc, Viewport, DefaultTextMeasurer.Instance, nowMs: null);
+
+        ReferenceEquals(FindById(after, "a"), aBox).Should().BeTrue("unchanged sibling #a is reused, not rebuilt");
+        ReferenceEquals(FindById(after, "b"), bBox).Should().BeTrue("unchanged sibling #b is reused, not rebuilt");
+        FindById(after, "a")!.Element!.Id.Should().Be("a"); // sanity
+        LayoutVerifier.FindFirstDivergence(after, FullRebuild(doc)).Should().BeNull();
+    }
+
+    [TestMethod]
+    public void Positional_selector_restyle_on_insert_is_detected_and_matches_full_rebuild()
+    {
+        // A geometry-affecting :nth-child rule: inserting at the front shifts every
+        // sibling's parity, so the re-cascade + style-equality gate must rebuild the
+        // shifted siblings rather than reuse them stale.
+        const string css = "section:nth-child(even) { padding-left: 40px; }";
+        var doc = Parse("<body><main id=main><section id=a>a</section><section id=b>b</section><section id=c>c</section></main></body>");
+        var (session, _) = SessionWith(css);
+        session.Layout(doc, Viewport, DefaultTextMeasurer.Instance, nowMs: null);
+
+        var lead = doc.CreateElement("section");
+        lead.AppendChild(doc.CreateTextNode("lead"));
+        var main = doc.GetElementById("main")!;
+        main.InsertBefore(lead, main.FirstChild);
+
+        var after = session.Layout(doc, Viewport, DefaultTextMeasurer.Instance, nowMs: null);
+        LayoutVerifier.FindFirstDivergence(after, FullRebuildWith(doc, css))
+            .Should().BeNull("positional restyle must be re-cascaded, not reused stale");
+    }
+
+    [TestMethod]
+    public void Has_selector_forces_full_rebuild_on_structural_change()
+    {
+        const string css = "main:has(section) { padding: 10px; }";
+        var doc = Parse("<body><main id=main><section id=a>a</section></main></body>");
+        var (session, diag) = SessionWith(css);
+        session.Layout(doc, Viewport, DefaultTextMeasurer.Instance, nowMs: null);
+
+        var added = doc.CreateElement("section");
+        added.AppendChild(doc.CreateTextNode("b"));
+        doc.GetElementById("main")!.AppendChild(added);
+
+        var after = session.Layout(doc, Viewport, DefaultTextMeasurer.Instance, nowMs: null);
+
+        diag.Counter("layout.incremental.full_rebuild").Should().Be(2, "a :has rule forces structural full rebuild");
+        diag.Counter("layout.incremental.relayout").Should().Be(0);
+        LayoutVerifier.FindFirstDivergence(after, FullRebuildWith(doc, css)).Should().BeNull();
     }
 
     [TestMethod]

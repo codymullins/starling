@@ -21,6 +21,54 @@ public sealed class ComputedStyle
 
     public CssValue Get(PropertyId property) => _values[property];
 
+    /// <summary>
+    /// Value-equality over the resolved property map — true when every property
+    /// resolves to an equal <see cref="CssValue"/> (records compare structurally).
+    /// Incremental layout uses this to decide whether a re-cascaded element is
+    /// unchanged and its laid-out subtree can be reused. Custom properties feed
+    /// <c>var()</c> which is already resolved into the property map at compute
+    /// time, so they need not be compared separately for layout/paint equality.
+    /// </summary>
+    public bool ValuesEqual(ComputedStyle? other)
+    {
+        if (ReferenceEquals(this, other)) return true;
+        if (other is null || _values.Count != other._values.Count) return false;
+        foreach (var (id, value) in _values)
+            if (!other._values.TryGetValue(id, out var v) || !ValueEquals(value, v))
+                return false;
+        return true;
+    }
+
+    /// <summary>
+    /// Deep value equality for <see cref="CssValue"/>. Record equality is value-
+    /// based for scalar values, but a record's synthesized <c>Equals</c> compares
+    /// collection members (e.g. <see cref="CssValueList"/>'s <c>Values</c>) by
+    /// reference — so two equal <c>font-family: a, b</c> values would compare
+    /// unequal. We recurse through the collection-bearing value kinds. Anything
+    /// not handled here falls back to record equality, which is conservative
+    /// (a false "unequal" only forces a rebuild, never a stale reuse).
+    /// </summary>
+    private static bool ValueEquals(CssValue a, CssValue b)
+    {
+        if (ReferenceEquals(a, b)) return true;
+        switch (a, b)
+        {
+            case (CssValueList la, CssValueList lb):
+                if (la.Values.Count != lb.Values.Count) return false;
+                for (var i = 0; i < la.Values.Count; i++)
+                    if (!ValueEquals(la.Values[i], lb.Values[i])) return false;
+                return true;
+            case (CssFunctionValue fa, CssFunctionValue fb):
+                if (!string.Equals(fa.Name, fb.Name, StringComparison.Ordinal)
+                    || fa.Arguments.Count != fb.Arguments.Count) return false;
+                for (var i = 0; i < fa.Arguments.Count; i++)
+                    if (!ValueEquals(fa.Arguments[i], fb.Arguments[i])) return false;
+                return true;
+            default:
+                return a.Equals(b);
+        }
+    }
+
     public bool TryGet(PropertyId property, out CssValue value)
     {
         if (_values.TryGetValue(property, out var v))

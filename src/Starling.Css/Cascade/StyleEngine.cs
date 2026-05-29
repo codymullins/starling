@@ -32,6 +32,21 @@ public sealed class StyleEngine
     // already handled via SharingKey.PreviousElementSiblingTag).
     private bool _sharingDisabled;
 
+    // True when any active stylesheet uses :has() or :empty — selectors whose
+    // match for an element depends on its descendants/emptiness, so a child
+    // insert/remove can restyle ancestors or the parent itself, anywhere in the
+    // tree. Incremental structural layout then can't localize and falls back to
+    // a full rebuild. (Sibling combinators and positional pseudos like
+    // :nth-child only restyle within the changed parent's children, which the
+    // structural reconciler handles by re-cascading that subtree.)
+    private bool _structuralRebuildSensitive;
+
+    /// <summary>Whether a child insert/remove can change the cascade outside the
+    /// changed parent's own subtree (because some selector uses <c>:has()</c> or
+    /// <c>:empty</c>). When true, incremental structural layout falls back to a
+    /// full rebuild.</summary>
+    public bool StructuralChangeNeedsFullRebuild => _structuralRebuildSensitive;
+
     /// <summary>Resolver built from every <c>@counter-style</c> rule in the
     /// attached stylesheets (CSS Counter Styles 3 §3). Holds the predefined
     /// styles plus any author-defined ones. Use
@@ -100,6 +115,8 @@ public sealed class StyleEngine
         _sheetIndexes[sheet] = index;
         if (!_sharingDisabled && SheetUsesUnshareableSelectors(index))
             _sharingDisabled = true;
+        if (!_structuralRebuildSensitive && SheetUsesHasOrEmpty(index))
+            _structuralRebuildSensitive = true;
         RegisterKeyframesFromSheet(sheet);
         RebuildCounterStyles();
         RebuildRegisteredProperties();
@@ -112,6 +129,7 @@ public sealed class StyleEngine
         _sheetIndexes.Remove(sheet);
         // Re-evaluate whether sharing can be re-enabled after removal.
         _sharingDisabled = _sheetIndexes.Values.Any(SheetUsesUnshareableSelectors);
+        _structuralRebuildSensitive = _sheetIndexes.Values.Any(SheetUsesHasOrEmpty);
         UnregisterKeyframesFromSheet(sheet);
         RebuildCounterStyles();
         RebuildRegisteredProperties();
@@ -173,6 +191,39 @@ public sealed class StyleEngine
                     foreach (var simple in part.Compound.SimpleSelectors)
                         if (simple is PseudoClassSelector pc && IsUnshareablePseudoClass(pc.Name))
                             return true;
+        return false;
+    }
+
+    /// <summary>True if any selector in <paramref name="index"/> uses
+    /// <c>:has()</c> or <c>:empty</c> (recursing into <c>:is()</c>/<c>:where()</c>/
+    /// <c>:not()</c>/<c>:has()</c> arguments). Those make an element's match
+    /// depend on its descendants/emptiness, so a structural change can restyle
+    /// outside the changed parent's subtree.</summary>
+    private static bool SheetUsesHasOrEmpty(SheetIndex index)
+    {
+        foreach (var parsed in index.ParsedSelectorLists.Values)
+            if (SelectorListUsesHasOrEmpty(parsed))
+                return true;
+        return false;
+    }
+
+    private static bool SelectorListUsesHasOrEmpty(SelectorList list)
+    {
+        foreach (var complex in list.Selectors)
+            foreach (var part in complex.Parts)
+                foreach (var simple in part.Compound.SimpleSelectors)
+                {
+                    if (simple is not PseudoClassSelector pc) continue;
+                    if (pc.Name is "has" or "empty") return true;
+                    // Recurse into functional pseudo arguments (:is/:where/:not/:has).
+                    switch (pc.Argument)
+                    {
+                        case SelectorList nested when SelectorListUsesHasOrEmpty(nested):
+                            return true;
+                        case NthArgument { OfSelector: { } of } when SelectorListUsesHasOrEmpty(of):
+                            return true;
+                    }
+                }
         return false;
     }
 

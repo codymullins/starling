@@ -173,13 +173,16 @@ public sealed class LayoutSession
                         return false;
                     break;
 
-                // A child was inserted/removed under the target: rebuild only
-                // that parent's subtree (re-cascade + localized anonymous
-                // re-wrapping), reusing everything outside it. Falls back when
-                // the parent isn't a mapped element (e.g. a document-level swap).
+                // A child was inserted/removed under the target. Splice the one
+                // changed child into the parent's box children, reusing the
+                // unchanged siblings' laid-out subtrees, and re-bucket the parent's
+                // inline run (plan §3a + §3b). Falls back to a full rebuild when a
+                // :has()/:empty selector means the change could restyle outside the
+                // parent, or when the parent isn't a mapped element.
                 case LayoutChangeKind.ChildInserted:
                 case LayoutChangeKind.ChildRemoved:
-                    if (m.Target is not Element parent || !RebuildChildren(parent, nowMs))
+                    if (_style.StructuralChangeNeedsFullRebuild) return false;
+                    if (m.Target is not Element parent || !SpliceChildren(parent, nowMs))
                         return false;
                     break;
             }
@@ -200,11 +203,11 @@ public sealed class LayoutSession
         return true;
     }
 
-    private bool RebuildChildren(Element parent, double? nowMs)
+    private bool SpliceChildren(Element parent, double? nowMs)
     {
         if (!_elementMap.TryGetValue(parent, out var parentBox)) return false;
         var builder = new BoxTreeBuilder(_style, _images, nowMs, _elementMap, _textMap);
-        builder.RebuildChildren(parent, parentBox);
+        if (!builder.SpliceChildren(parent, parentBox)) return false;
         MarkDirtyPath(parentBox);
         return true;
     }
