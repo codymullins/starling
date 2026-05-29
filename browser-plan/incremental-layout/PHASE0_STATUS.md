@@ -95,3 +95,42 @@ The design forks 0a was meant to settle are already resolved in the plan: the
 cross-frame cascade cache stays out, the shaped-text cache stays out, and
 Phase 4 stays gated until the hit-index number is measured. So 0a is
 confirmatory, not blocking, for Phases 1 through 3.
+
+## Phase 1 readiness — blast radius and a green-at-each-step strategy
+
+Phase 1 (the input/output split) is the largest single piece in the plan. The
+0d harness is the safety net for it: every step can be checked full-vs-full so
+behavior stays identical. Measured blast radius on this branch:
+
+- Formatting passes to rewrite (Block, Inline, Position, Flex, Grid, Tree):
+  about 4,560 lines.
+- Sites that write box output (`Frame`, `Margin`, `Padding`, `Border`,
+  `Hints`): about 40, all inside `Starling.Layout`.
+- Files that read box output: about 28, spanning `Starling.Layout`,
+  `Starling.Paint`, and `Starling.Gui`.
+
+Because the split touches every formatting pass and every consumer at once, it
+cannot land in one behavior-neutral commit while staying green. A strangler-fig
+order that keeps every step green:
+
+1. Add the immutable `Fragment` hierarchy next to `Box` (additive, no readers
+   yet). Mirror `BoxKind`: `BlockFragment`, `InlineFragment`, `TextNodeFragment`
+   (the existing `TextFragment` struct stays the per-line glyph-run leaf),
+   `ImageFragment`, `AnonymousFragment`. Use an immutable spine with reference
+   identity — never key a cache on a fragment's value equality. A fragment holds
+   its own content-space size and edges and does not store its offset in the
+   parent.
+2. Add the persistent input layer (`LayoutInput`) and the element-to-input map
+   the builder never had, alongside `Box`, still unused.
+3. Have `LayoutDocument` build the input tree and emit a `Fragment` tree, with a
+   thin shim that also fills the old `Box` outputs so consumers keep working.
+   The 0d harness compares the two.
+4. Migrate consumers (Painter display list, `PageRendererHost`, `BoxHitTester`,
+   the find index, `LaidOutPage`) to read fragments one at a time, each behind
+   a passing test run.
+5. Delete the box-output fields once no reader remains.
+
+Only after this is Phase 2 (constraint-space cache and the incremental win)
+worth starting. The note's reuse rule keys on `(input, constraint-space)`, so
+the input layer and the fragment cache slot from steps 2 and 1 are its
+foundation.
