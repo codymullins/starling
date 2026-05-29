@@ -1,0 +1,242 @@
+/* ============================================================
+   Starling — "Dusk murmuration"
+   A starling flock turning across a dusk sky. Cool indigo field,
+   a warm ember horizon, editorial serif display.
+   ============================================================ */
+
+:root {
+  /* Sky — a single flat dusk indigo, no gradient */
+  --night:    #15112e;
+  /* Ink */
+  --ink:      #f4ead9;   /* warm paper */
+  --ink-dim:  #c5bbd2;   /* dusk-lit lilac */
+  --ink-faint:#8b84a4;
+  /* Accent — the last of the daylight */
+  --ember:    #ff7a3c;
+  --ember-lo: #ffb079;
+  --rose:     #e07a78;
+
+  --maxw: 1060px;
+  --ease: cubic-bezier(.2, .7, .2, 1);
+
+  font-family: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--ink);
+  background: var(--night);
+  font-size: 17px;
+  line-height: 1.6;
+  letter-spacing: 0.01em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+a { color: inherit; text-decoration: none; }
+
+/* ---------------- Sky / atmosphere ---------------- */
+.sky {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* The murmuration */
+.murmuration {
+  position: absolute;
+  top: -4%;
+  left: 50%;
+  width: 132%;
+  max-width: 1500px;
+  transform: translateX(-50%);
+  height: auto;
+}
+.murmuration use { fill: var(--ink-dim); }
+.mm-near use { fill: var(--ember-lo); }
+.mm-far  { animation: drift-far 30s var(--ease) infinite alternate; }
+.mm-mid  { animation: drift-mid 23s var(--ease) infinite alternate; }
+.mm-near { animation: drift-near 17s var(--ease) infinite alternate; }
+@keyframes drift-far  { from { transform: translate(0,0); }      to { transform: translate(-22px, 14px); } }
+@keyframes drift-mid  { from { transform: translate(0,0); }      to { transform: translate(34px, -10px); } }
+@keyframes drift-near { from { transform: translate(0,0) rotate(0); } to { transform: translate(-44px, 22px) rotate(-1.2deg); } }
+
+/* Film grain for texture */
+.grain {
+  position: absolute;
+  inset: -50%;
+  opacity: 0.05;
+  mix-blend-mode: soft-light;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ---------------- Header ---------------- */
+.site-header {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 26px 28px;
+}
+.brand { display: flex; align-items: center; gap: 11px; }
+.brand-mark {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  background-color: var(--ink);
+  -webkit-mask: url(../img/logo.svg) center / contain no-repeat;
+  mask: url(../img/logo.svg) center / contain no-repeat;
+}
+.brand-name {
+  font-family: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 1.4rem;
+  letter-spacing: -0.02em;
+}
+.nav-cta {
+  font-family: "Space Mono", ui-monospace, monospace;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  padding: 9px 16px;
+  border: 1px solid rgba(244, 234, 217, 0.22);
+  border-radius: 10px;
+  transition: border-color 0.25s, color 0.25s, background 0.25s;
+}
+.nav-cta:hover {
+  border-color: var(--ember);
+  color: var(--ember-lo);
+}
+
+/* ---------------- Layout ---------------- */
+main { max-width: var(--maxw); margin: 0 auto; padding: 0 28px; }
+
+/* ---------------- Hero ---------------- */
+.hero {
+  text-align: center;
+  padding: clamp(56px, 11vw, 130px) 0 clamp(40px, 6vw, 70px);
+}
+.eyebrow {
+  font-family: "Space Mono", ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.32em;
+  font-size: 0.74rem;
+  color: var(--ember-lo);
+  margin: 0 0 26px;
+}
+h1 {
+  font-family: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: clamp(2.6rem, 7vw, 5rem);
+  line-height: 1.0;
+  letter-spacing: -0.035em;
+  margin: 0 auto;
+  max-width: 15ch;
+  text-wrap: balance;
+}
+h1 .accent { display: block; color: var(--ink); }
+h1 em { font-style: normal; }
+.lede {
+  max-width: 38ch;
+  margin: 30px auto 0;
+  font-size: clamp(1.05rem, 2.2vw, 1.25rem);
+  color: var(--ink-dim);
+}
+
+/* Buttons */
+.cta-row {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 38px;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 24px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.98rem;
+  border: 1px solid transparent;
+  transition: transform 0.18s var(--ease), box-shadow 0.25s, border-color 0.25s, background 0.25s;
+}
+.btn:hover { transform: translateY(-2px); }
+.btn-primary {
+  color: #2a1207;
+  background: linear-gradient(180deg, var(--ember-lo), var(--ember));
+  box-shadow: 0 10px 30px -8px rgba(255, 122, 60, 0.55);
+}
+.btn-primary:hover { box-shadow: 0 16px 40px -8px rgba(255, 122, 60, 0.7); }
+.btn-ghost {
+  color: var(--ink);
+  border-color: rgba(244, 234, 217, 0.26);
+}
+.btn-ghost:hover { border-color: var(--ink); background: rgba(244, 234, 217, 0.05); }
+
+/* ---------------- Screenshot ---------------- */
+.shot { padding: 8px 0 clamp(70px, 12vw, 130px); }
+.shot figure { margin: 0; }
+.shot-frame {
+  position: relative;
+  border-radius: 16px;
+  padding: 8px;
+  background: linear-gradient(180deg, rgba(255, 176, 121, 0.18), rgba(96, 110, 220, 0.10));
+  border: 1px solid rgba(244, 234, 217, 0.12);
+  box-shadow:
+    0 40px 90px -30px rgba(0, 0, 0, 0.8),
+    0 0 80px -20px rgba(255, 122, 60, 0.28);
+}
+.shot-frame img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+}
+.shot figcaption {
+  margin-top: 18px;
+  text-align: center;
+  font-family: "Space Mono", ui-monospace, monospace;
+  font-size: 0.76rem;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  color: var(--ink-faint);
+}
+
+/* ---------------- Entrance reveal ---------------- */
+.reveal {
+  opacity: 0;
+  transform: translateY(16px);
+  animation: rise 0.95s var(--ease) forwards;
+  animation-delay: var(--d, 0s);
+}
+@keyframes rise {
+  to { opacity: 1; transform: none; }
+}
+.murmuration { opacity: 0; animation: flock-in 2.4s var(--ease) 0.2s forwards; }
+@keyframes flock-in { to { opacity: 1; } }
+
+/* ---------------- Responsive ---------------- */
+@media (max-width: 600px) {
+  .site-header { padding: 20px 20px; }
+  main { padding: 0 20px; }
+  .murmuration { width: 200%; top: 2%; }
+  .shot-frame { padding: 5px; border-radius: 12px; }
+}
+
+/* ---------------- Reduced motion ---------------- */
+@media (prefers-reduced-motion: reduce) {
+  .reveal, .murmuration { animation: none; opacity: 1; transform: none; }
+  .mm-far, .mm-mid, .mm-near { animation: none; }
+  html { scroll-behavior: auto; }
+}
