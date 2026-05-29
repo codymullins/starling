@@ -96,4 +96,64 @@ internal static class Fixtures
         p > em { font-style: italic; }
         .container { max-width: 960px; margin: 0 auto; padding: 1em; }
         """;
+
+    // ---- Focused layout + raster fixtures (benchmark dashboard) ----
+    // Each isolates one cost driver so a benchmark can attribute time to it.
+
+    /// <summary>Many short paragraphs — text shaping and measurement dominate.</summary>
+    public static string TextHeavyParagraphs(int paragraphs)
+    {
+        var sb = new System.Text.StringBuilder(paragraphs * 120 + 64);
+        sb.Append("<!doctype html><html><body><main>");
+        for (var i = 0; i < paragraphs; i++)
+            sb.Append("<p>Paragraph ").Append(i)
+              .Append(" has several words of body text that the engine must shape and wrap across the available width of the line box.</p>");
+        sb.Append("</main></body></html>");
+        return sb.ToString();
+    }
+
+    /// <summary>Nested flex containers — exercises flex sizing depth.</summary>
+    public static string NestedFlex(int depth)
+    {
+        var sb = new System.Text.StringBuilder(depth * 48 + 96);
+        sb.Append("<!doctype html><html><body>");
+        for (var i = 0; i < depth; i++) sb.Append("<div class=\"f\">");
+        sb.Append("<span>leaf</span>");
+        for (var i = 0; i < depth; i++) sb.Append("</div>");
+        sb.Append("</body></html>");
+        return sb.ToString();
+    }
+
+    public const string NestedFlexCss = ".f { display: flex; flex-direction: row; padding: 2px; }";
+
+    /// <summary>A grid of bordered boxes — border raster cost.</summary>
+    public static string ManyBorders(int boxes)
+    {
+        var sb = new System.Text.StringBuilder(boxes * 28 + 96);
+        sb.Append("<!doctype html><html><body>");
+        for (var i = 0; i < boxes; i++) sb.Append("<div class=\"b\"></div>");
+        sb.Append("</body></html>");
+        return sb.ToString();
+    }
+
+    public const string ManyBordersCss = """
+        body { margin: 0; }
+        .b { display: inline-block; width: 40px; height: 40px; margin: 2px;
+             border: 3px solid #336699; background: #eef; }
+        """;
+
+    /// <summary>Solid-color blocks — fill raster cost with no text or borders.</summary>
+    public static string SolidBackgrounds(int boxes)
+    {
+        var sb = new System.Text.StringBuilder(boxes * 24 + 96);
+        sb.Append("<!doctype html><html><body>");
+        for (var i = 0; i < boxes; i++) sb.Append("<div class=\"s\"></div>");
+        sb.Append("</body></html>");
+        return sb.ToString();
+    }
+
+    public const string SolidBackgroundsCss = """
+        body { margin: 0; }
+        .s { display: inline-block; width: 48px; height: 48px; background: #4080c0; }
+        """;
 }
