@@ -154,3 +154,50 @@ These touch shared GUI files (`WebviewPanel.cs`, `PageRendererHost.cs`) — per 
 ## Exit criteria
 
 On the demo scenario in the LTF-00 harness, after warmup: backend raster calls per frame ≤ (number of genuinely changed layers, ~2–3) instead of 1 full-viewport raster; base layer served from cache; frame time smooth at scale 1.0 and a large improvement at scale 2.0; all goldens byte-identical to the flat path.
+
+---
+
+## Implementation status (shipped)
+
+All work packages landed. Each shipped with tests and a `wp:LTF-0x` commit.
+
+- **LTF-00** — replay harness composite path, raster/blit counters, Scale, a
+  `compositor-demo` scenario, and a `--selftest`. Self-test passes: the demo is
+  3 layers/frame, 1 rastered, 2 blitted from cache.
+- **LTF-01** — per-frame promotion predicate in `LayerTreeBuilder`, threaded
+  through `PageRendererHost` and `WebviewPanel`.
+- **LTF-02** — 64-bit slice content-hash cache key (`DisplayListContentHash`),
+  `PictureCache` version widened to 64-bit.
+- **LTF-03** — `PageRendererHost.ResetForNavigation` clears layer caches only on
+  navigation; in-place relayout keeps them.
+- **LTF-04** — removed the `_animationOnlyFrame` gate.
+- **LTF-05** — fast integer-aligned, opacity-1 blit, byte-identical to the
+  general path.
+- **LTF-06** — `Document` recently-mutated tracker with hysteresis; the predicate
+  promotes mutated subtrees.
+
+### Deviations from the plan
+
+- **LTF-04 gate.** Shipped as `scrollLookup is null && _animating`, not the
+  plan's `PageHasStaticCompositorLayers() || hasActiveAnimations`. Routing every
+  static page's scroll and navigation through the layer tree is too large a blast
+  radius to enable without a full byte-exact GUI golden sweep. Gating on
+  `_animating` delivers the demo goal — animation frames, including relayout
+  frames, composite — with no change to non-animating renders. Widening the gate
+  waits on that golden sweep and a cheaper blend.
+
+### Finding: the managed blend is the new floor
+
+The raster-call exit criterion is met: per-frame backend raster calls drop from
+one full-viewport raster to the count of changed layers (one on the demo), with
+the base and unchanged layers served from cache. Goldens are byte-identical.
+
+The frame-time exit criterion is only partly met on the pure-managed backend.
+The compositor blend runs on the CPU and touches every output pixel per layer,
+so its cost scales with the viewport, not with what changed. On a cheap-to-raster
+page the blend costs more than the flat raster it replaces (slower at scale 1.0,
+much slower at scale 2.0 — see `docs/animation-relayout-perf.md`). The frame-time
+win lands when a cached layer is expensive to raster (text, gradients, images)
+and does not reflow, and generally when the blend moves to the GPU — which this
+plan scopes out. Recommended next step: GPU compositing of the blend before
+widening the LTF-04 gate.
