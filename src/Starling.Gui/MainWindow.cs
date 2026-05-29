@@ -485,7 +485,7 @@ public sealed class MainWindow : Window, IBrowserController
     // render engine, and layout mode this process actually selected (single
     // source of truth — the same selectors the engine/paint pipeline read).
     private static BuildInfo GetBuildInfo()
-        => new(GetBuildLabel(), GetJsEngineLabel(), GetRenderBackendLabel(), GetLayoutLabel());
+        => new(GetBuildLabel(), GetJsEngineLabel(), GetRenderBackendLabel());
 
     private static string GetBuildLabel()
     {
@@ -513,13 +513,6 @@ public sealed class MainWindow : Window, IBrowserController
         PaintBackendKind.ImageSharpWebGpu => "imagesharp-gpu",
         _ => "imagesharp",
     };
-
-    // "incremental" when the relayout path reuses the retained box tree (the
-    // shell default, see Program.Main / the AppHost --incremental flag), "full"
-    // when every relayout rebuilds the whole tree. Reads the same switch the
-    // engine's RelayoutPage checks, so it reflects the real runtime behavior.
-    private static string GetLayoutLabel() =>
-        Starling.Layout.Incremental.LayoutSession.Enabled ? "incremental" : "full";
 
     private async void OnSidebarTabActivated(TabInfo tab)
     {

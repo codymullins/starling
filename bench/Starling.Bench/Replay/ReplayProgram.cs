@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Text.Json;
-using Starling.Layout.Incremental;
 
 namespace Starling.Bench.Replay;
 
@@ -24,6 +23,7 @@ internal static class ReplayProgram
         var warmup = 60;
         bool? incremental = null;
         var raster = true;
+        var scale = 1.0f;
 
         try
         {
@@ -36,6 +36,7 @@ internal static class ReplayProgram
                     case "--incremental": incremental = true; break;
                     case "--full": incremental = false; break;
                     case "--no-raster": raster = false; break;
+                    case "--scale": scale = float.Parse(args[++i], CultureInfo.InvariantCulture); break;
                     default:
                         Console.Error.WriteLine($"unknown option: {args[i]}");
                         PrintUsage();
@@ -66,7 +67,8 @@ internal static class ReplayProgram
             FrameCount = frames,
             WarmupFrames = warmup,
             RunRaster = raster,
-            Incremental = incremental ?? LayoutSession.Enabled,
+            Incremental = incremental ?? true,
+            Scale = scale,
         };
 
         using var harness = new FrameReplayHarness(scenario, options);
@@ -81,16 +83,16 @@ internal static class ReplayProgram
 
     private static void PrintUsage()
     {
-        Console.Error.WriteLine("usage: replay <page> [--frames N] [--warmup N] [--incremental | --full] [--no-raster]");
+        Console.Error.WriteLine("usage: replay <page> [--frames N] [--warmup N] [--incremental | --full] [--no-raster] [--scale S]");
         Console.Error.WriteLine($"pages: {string.Join(", ", ReplayScenarios.Names)}");
-        Console.Error.WriteLine("default layout path follows STARLING_INCREMENTAL_LAYOUT (=1 for incremental).");
+        Console.Error.WriteLine("default layout path is incremental; pass --full to A/B the full-rebuild path.");
     }
 
     private static void PrintReport(ReplayResult r)
     {
-        var rasterLabel = r.RasterEnabled ? "CPU raster" : "no raster";
+        var rasterLabel = r.RasterEnabled ? "GPU raster" : "no raster";
         Console.WriteLine($"Benchmark: {r.Page}   Scope: full-frame ({r.ScopeLabel} layout, {rasterLabel})");
-        Console.WriteLine($"Frames: {r.FrameCount} ({r.WarmupFrames} warmup)   Frame delta: {r.FrameDeltaMs.ToString("F3", CultureInfo.InvariantCulture)} ms   Backend: {r.PaintBackend}");
+        Console.WriteLine($"Frames: {r.FrameCount} ({r.WarmupFrames} warmup)   Frame delta: {r.FrameDeltaMs.ToString("F3", CultureInfo.InvariantCulture)} ms   Backend: {r.PaintBackend}   Scale: {r.Scale.ToString("0.0", CultureInfo.InvariantCulture)}x");
         Console.WriteLine();
         Console.WriteLine($"{"phase",-13}{"mean",9}{"p50",9}{"p95",9}{"p99",9}{"max",9}{"drop>16.7",11}{"drop>8.3",10}{"alloc/f",12}");
         foreach (var key in new[] { "frame", "style_anim", "layout", "display_list", "raster" })
@@ -114,7 +116,10 @@ internal static class ReplayProgram
         var dir = Path.Combine(Fixtures.RepoRoot, "bench", "results", date);
         Directory.CreateDirectory(dir);
         var suffix = r.RasterEnabled ? "" : "-noraster";
-        var file = Path.Combine(dir, $"{r.Page}-{r.ScopeLabel}{suffix}.json");
+        // A non-1x scale gets its own filename so the Retina run doesn't clobber
+        // the logical-pixel run for the same page+scope.
+        var scaleSuffix = r.Scale == 1.0f ? "" : $"-{r.Scale.ToString("0.0", CultureInfo.InvariantCulture)}x";
+        var file = Path.Combine(dir, $"{r.Page}-{r.ScopeLabel}{suffix}{scaleSuffix}.json");
         File.WriteAllText(file, JsonSerializer.Serialize(r, ReplayJsonContext.Default.ReplayResult));
         return file;
     }

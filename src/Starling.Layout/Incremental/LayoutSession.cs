@@ -43,14 +43,6 @@ public sealed class LayoutSession
     private BlockBox? _root;
     private Size _viewport;
 
-    /// <summary>Env switch that turns the incremental relayout path on. Off by
-    /// default — the engine then uses the unchanged full-rebuild path.</summary>
-    public const string EnvVar = "STARLING_INCREMENTAL_LAYOUT";
-
-    /// <summary>Whether <see cref="EnvVar"/> requests incremental layout.</summary>
-    public static bool Enabled =>
-        string.Equals(Environment.GetEnvironmentVariable(EnvVar), "1", StringComparison.Ordinal);
-
     public LayoutSession(StyleEngine style, IImageResolver? images = null, IDiagnostics? diagnostics = null)
     {
         ArgumentNullException.ThrowIfNull(style);

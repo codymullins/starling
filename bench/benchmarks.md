@@ -77,7 +77,7 @@ Regenerate with:
 ```
 # end-to-end frame replay (writes the JSON this reads)
 dotnet run --project bench/Starling.Bench -c Release -- replay flex-status --frames 300 --full
-STARLING_INCREMENTAL_LAYOUT=1 dotnet run --project bench/Starling.Bench -c Release -- replay flex-status --frames 300
+dotnet run --project bench/Starling.Bench -c Release -- replay flex-status --frames 300
 # subsystem benches (writes the BenchmarkDotNet artifacts this reads)
 dotnet run --project bench/Starling.Bench -c Release -- --filter "*RasterBench*"
 # then rebuild this page

@@ -181,7 +181,7 @@ internal static class ReplayReport
         sb.AppendLine("```");
         sb.AppendLine("# end-to-end frame replay (writes the JSON this reads)");
         sb.AppendLine("dotnet run --project bench/Starling.Bench -c Release -- replay flex-status --frames 300 --full");
-        sb.AppendLine("STARLING_INCREMENTAL_LAYOUT=1 dotnet run --project bench/Starling.Bench -c Release -- replay flex-status --frames 300");
+        sb.AppendLine("dotnet run --project bench/Starling.Bench -c Release -- replay flex-status --frames 300");
         sb.AppendLine("# subsystem benches (writes the BenchmarkDotNet artifacts this reads)");
         sb.AppendLine("dotnet run --project bench/Starling.Bench -c Release -- --filter \"*RasterBench*\"");
         sb.AppendLine("# then rebuild this page");

@@ -14,8 +14,12 @@ public sealed record ReplayOptions
     public int FrameCount { get; init; } = 600;
     public int WarmupFrames { get; init; } = 60;
     public double FrameDeltaMs { get; init; } = 1000.0 / 60.0;
-    public bool Incremental { get; init; } = LayoutSession.Enabled;
+    public bool Incremental { get; init; } = true;
     public bool RunRaster { get; init; } = true;
+    // Device pixel scale handed to the backend each frame. 1.0 = logical pixels;
+    // 2.0 is the Retina scale the GUI runs at, which quadruples the raster
+    // surface (and its GPU readback) — a real per-frame cost worth measuring.
+    public float Scale { get; init; } = 1.0f;
 }
 
 /// <summary>
@@ -42,9 +46,11 @@ public sealed class FrameReplayHarness : IDisposable
         _scenario = scenario;
         _options = options;
         _measurer = new CountingTextMeasurer(new ImageSharpTextMeasurer(FontResolver.Default));
-        // Pure-CPU backend, constructed once and reused across frames: host
-        // independent and free of per-frame backend-init noise.
-        _backend = new ImageSharpBackend(FontResolver.Default, webFonts: null, diagnostics: null, useWebGpu: false);
+        // WebGPU backend, constructed once and reused across frames: this is the
+        // GPU paint path Starling ships, and reusing one target across frames
+        // keeps per-frame backend-init noise out of the raster numbers. The host
+        // must expose a working WebGPU adapter or Render throws.
+        _backend = new ImageSharpBackend(FontResolver.Default, webFonts: null, diagnostics: null, useWebGpu: true);
         _session = options.Incremental ? new LayoutSession(scenario.Style) : null;
     }
 
@@ -132,8 +138,9 @@ public sealed class FrameReplayHarness : IDisposable
             FrameCount = n,
             WarmupFrames = _options.WarmupFrames,
             FrameDeltaMs = _options.FrameDeltaMs,
-            PaintBackend = _options.RunRaster ? "imagesharp-cpu" : "none",
+            PaintBackend = _options.RunRaster ? "imagesharp-webgpu" : "none",
             RasterEnabled = _options.RunRaster,
+            Scale = _options.Scale,
             CapturedUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
             Phases = phases,
             Gc = gc,
@@ -178,7 +185,7 @@ public sealed class FrameReplayHarness : IDisposable
         {
             a0 = GC.GetAllocatedBytesForCurrentThread();
             sw.Restart();
-            using var bmp = _backend.Render(list, _scenario.Viewport, 1.0f);
+            using var bmp = _backend.Render(list, _scenario.Viewport, _options.Scale);
             sw.Stop();
             pt.RasterTicks = sw.ElapsedTicks;
             pt.RasterAlloc = GC.GetAllocatedBytesForCurrentThread() - a0;

@@ -10,9 +10,11 @@ using Starling.Paint.DisplayList;
 namespace Starling.Bench;
 
 // Raster cost — the actual renderer number, separate from layout and from
-// display-list build. Uses the pure-CPU ImageSharp backend (useWebGpu: false) so
-// the timing is host independent (no GPU variance). Each display list is built
-// once in Setup; the benchmark times only backend.Render. Scope: raster-only.
+// display-list build. Uses the WebGPU ImageSharp backend (useWebGpu: true) so
+// the timing reflects the GPU paint path Starling actually ships. Each display
+// list is built once in Setup; the benchmark times only backend.Render. Scope:
+// raster-only. The host must expose a working WebGPU adapter (see
+// WgpuNativeLoader); the backend throws on Render if none is available.
 //
 // PaintBench is the matching display-list-build benchmark; the two together
 // separate "build the paint list" from "draw it to pixels".
@@ -28,7 +30,7 @@ public class RasterBench
     [GlobalSetup]
     public void Setup()
     {
-        _backend = new ImageSharpBackend(FontResolver.Default, webFonts: null, diagnostics: null, useWebGpu: false);
+        _backend = new ImageSharpBackend(FontResolver.Default, webFonts: null, diagnostics: null, useWebGpu: true);
         _solid = BuildList(Fixtures.SolidBackgrounds(150), Fixtures.SolidBackgroundsCss);
         _borders = BuildList(Fixtures.ManyBorders(150), Fixtures.ManyBordersCss);
         _text = BuildList(Fixtures.TextHeavyParagraphs(80), css: null);

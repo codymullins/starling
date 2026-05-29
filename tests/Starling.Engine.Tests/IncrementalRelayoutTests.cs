@@ -1,15 +1,16 @@
 using AwesomeAssertions;
 using SixLabors.ImageSharp;
 using Starling.Layout.Verification;
+using Starling.Paint;
 using DomText = Starling.Dom.Text;
 
 namespace Starling.Engine.Tests;
 
 /// <summary>
-/// End-to-end check of the engine's incremental relayout path
-/// (<c>STARLING_INCREMENTAL_LAYOUT=1</c>): after a DOM mutation,
-/// <see cref="StarlingEngine.RelayoutPage"/> reuses the page's persistent
-/// StyleEngine and retained box tree, and the result matches a full rebuild.
+/// End-to-end check of the engine's incremental relayout path: after a DOM
+/// mutation, <see cref="StarlingEngine.RelayoutPage"/> reuses the page's
+/// persistent StyleEngine and retained box tree, and the result matches a full
+/// rebuild.
 /// </summary>
 [TestClass]
 public class IncrementalRelayoutTests
@@ -24,7 +25,6 @@ public class IncrementalRelayoutTests
             "<!doctype html><html><body>" +
             "<div id=a>alpha</div><div id=b>beta</div><div id=c>gamma</div>" +
             "</body></html>");
-        var original = Environment.GetEnvironmentVariable("STARLING_INCREMENTAL_LAYOUT");
         try
         {
             var engine = new StarlingEngine();
@@ -33,9 +33,8 @@ public class IncrementalRelayoutTests
             result.IsOk.Should().BeTrue(result.IsErr ? result.Error.Message : "");
             var page = result.Value;
 
-            // Turn incremental on and prime the session (first relayout = full build,
-            // which also enables mutation recording for subsequent frames).
-            Environment.SetEnvironmentVariable("STARLING_INCREMENTAL_LAYOUT", "1");
+            // Prime the session (first relayout = full build, which also enables
+            // mutation recording for subsequent frames).
             var primed = engine.RelayoutPage(page, Options);
 
             // Mutate a text node — recorded into the batch, reconciled in place.
@@ -43,23 +42,20 @@ public class IncrementalRelayoutTests
             ((DomText)b.FirstChild!).Data = "beta is now a good deal longer and will wrap onto several lines here";
 
             var incremental = engine.RelayoutPage(primed, Options);
-            var incrementalHeight = incremental.DocumentHeight;
 
-            // Reference: a full rebuild of the same (mutated) DOM with the feature off.
-            Environment.SetEnvironmentVariable("STARLING_INCREMENTAL_LAYOUT", null);
-            var reference = engine.RelayoutPage(incremental, Options);
+            // Reference: a full rebuild of the same (mutated) DOM, laid out from
+            // scratch by the painter.
+            var (referenceRoot, _) = new Painter().LayoutDocumentWithStyle(
+                incremental.Document, new Starling.Layout.Size(800, 600), defaultFontSize: 16f);
 
-            LayoutVerifier.FindFirstDivergence(incremental.Root, reference.Root)
+            LayoutVerifier.FindFirstDivergence(incremental.Root, referenceRoot)
                 .Should().BeNull("incremental relayout must match a full rebuild");
-            incremental.Root.Frame.Should().Be(reference.Root.Frame);
+            incremental.Root.Frame.Should().Be(referenceRoot.Frame);
             // The mutation actually took effect (taller than the unmutated layout).
-            incrementalHeight.Should().BeGreaterThan(0);
-
-            reference.Dispose();
+            incremental.DocumentHeight.Should().BeGreaterThan(0);
         }
         finally
         {
-            Environment.SetEnvironmentVariable("STARLING_INCREMENTAL_LAYOUT", original);
             if (File.Exists(fixture)) File.Delete(fixture);
         }
     }
@@ -69,7 +65,6 @@ public class IncrementalRelayoutTests
     {
         var fixture = Path.Combine(Path.GetTempPath(), $"starling-inc-{Guid.NewGuid():N}.html");
         File.WriteAllText(fixture, "<!doctype html><body><div id=a>x</div></body>");
-        var original = Environment.GetEnvironmentVariable("STARLING_INCREMENTAL_LAYOUT");
         try
         {
             var engine = new StarlingEngine();
@@ -77,7 +72,6 @@ public class IncrementalRelayoutTests
                 "file://" + fixture.Replace('\\', '/'), Options, CancellationToken.None);
             var page = result.Value;
 
-            Environment.SetEnvironmentVariable("STARLING_INCREMENTAL_LAYOUT", "1");
             var a = engine.RelayoutPage(page, Options);
             var b = engine.RelayoutPage(a, Options);
 
@@ -88,7 +82,6 @@ public class IncrementalRelayoutTests
         }
         finally
         {
-            Environment.SetEnvironmentVariable("STARLING_INCREMENTAL_LAYOUT", original);
             if (File.Exists(fixture)) File.Delete(fixture);
         }
     }

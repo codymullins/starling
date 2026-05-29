@@ -23,6 +23,9 @@ public sealed record ReplayResult
     public required string PaintBackend { get; init; }
     public required bool RasterEnabled { get; init; }
 
+    /// <summary>Device pixel scale the frames were rasterized at (1.0 logical, 2.0 Retina).</summary>
+    public float Scale { get; init; } = 1.0f;
+
     /// <summary>ISO-8601 capture time. Metadata only — read outside the measured loop.</summary>
     public required string CapturedUtc { get; init; }
 

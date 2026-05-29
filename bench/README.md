@@ -76,8 +76,8 @@ Pages: `flex-status`, `list`, `nginx`.
 replay <page> [--frames N] [--warmup N] [--incremental | --full] [--no-raster]
 ```
 
-The layout path defaults to the `STARLING_INCREMENTAL_LAYOUT` environment
-variable (`=1` for incremental). Pass `--incremental` or `--full` to force one.
+The layout path defaults to incremental. Pass `--full` to A/B against the
+full-rebuild path (or `--incremental` to be explicit).
 
 Each run saves a result to `bench/results/<date>/<page>-<scope>.json`. The scope
 is `incremental` or `full`. Unlike the microbenchmark reports, these are dated,

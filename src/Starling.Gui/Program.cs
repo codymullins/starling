@@ -18,18 +18,6 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
-        // The live shell relayouts on every animation frame and on every
-        // per-frame DOM write (an animation status readout, a live counter…).
-        // A full relayout of the whole page each frame is the dominant cost
-        // there — tens of milliseconds of CPU that the GPU paint backend can't
-        // hide. Default the shell to incremental relayout, which recomputes
-        // only the subtree a mutation touched (a text edit drops from ~34 ms to
-        // under 1 ms on the animations demo) and falls back to a full rebuild
-        // whenever it can't prove reuse is safe. Honor an explicit override so
-        // it can be turned off for an A/B.
-        if (Environment.GetEnvironmentVariable(Starling.Layout.Incremental.LayoutSession.EnvVar) is null)
-            Environment.SetEnvironmentVariable(Starling.Layout.Incremental.LayoutSession.EnvVar, "1");
-
         Services = BuildServices();
 
         var otlp = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT");
