@@ -76,11 +76,32 @@ public sealed class StyleEngine
     public IReadOnlyDictionary<string, PropertiesValues.RegisteredProperty> RegisteredProperties { get; private set; }
         = new Dictionary<string, PropertiesValues.RegisteredProperty>();
 
+    private readonly AnimationTimeline _timeline;
+
     public StyleEngine(bool includeUserAgentStyleSheet = true, IDiagnostics? diagnostics = null)
+        : this(includeUserAgentStyleSheet, diagnostics, timeline: null)
+    {
+    }
+
+    /// <summary>
+    /// Build a style engine that draws its animation/transition state from
+    /// <paramref name="timeline"/>. Pass a timeline the caller keeps alive across
+    /// layout passes (one per document) so animation playback survives a
+    /// relayout — the <see cref="StyleEngine"/> itself is rebuilt every layout,
+    /// but the timeline is not. When <paramref name="timeline"/> is <c>null</c> a
+    /// fresh, engine-local timeline is created (the single-shot render and unit
+    /// test default).
+    /// </summary>
+    public StyleEngine(bool includeUserAgentStyleSheet, IDiagnostics? diagnostics, AnimationTimeline? timeline)
     {
         _diag = diagnostics ?? NoopDiagnostics.Instance;
-        AnimationEngine = new AnimationEngine();
-        TransitionEngine = new TransitionEngine();
+        _timeline = timeline ?? new AnimationTimeline();
+        // The keyframe registry tracks the *current* stylesheet set, which is
+        // re-attached on every layout. A reused timeline still holds the prior
+        // layout's keyframes, so clear them before AddStyleSheet re-registers
+        // from this layout's sheets. Playback state (active instances, script
+        // animations, transition snapshots) lives elsewhere and is preserved.
+        _timeline.Animations.ClearKeyframes();
         foreach (var origin in Enum.GetValues<StyleOrigin>())
             _layerOrders[origin] = new LayerOrder();
 
@@ -91,13 +112,14 @@ public sealed class StyleEngine
     /// <summary>The animation engine fed by <c>@keyframes</c> rules in every
     /// stylesheet attached via <see cref="AddStyleSheet"/>. Sample with
     /// <see cref="AnimationEngine.GetEffective(Element, PropertyId)"/> after
-    /// the compositor (wp:M5-css-09) feeds cascaded declarations to it.</summary>
-    public AnimationEngine AnimationEngine { get; }
+    /// the compositor (wp:M5-css-09) feeds cascaded declarations to it. Lives on
+    /// the <see cref="AnimationTimeline"/> so it outlives this engine.</summary>
+    public AnimationEngine AnimationEngine => _timeline.Animations;
 
     /// <summary>The transition engine. Independent from animations but exposed
     /// here so the compositor (wp:M5-css-09) can route both through one
     /// <see cref="StyleEngine"/> instance.</summary>
-    public TransitionEngine TransitionEngine { get; }
+    public TransitionEngine TransitionEngine => _timeline.Transitions;
 
     public MediaContext MediaContext
     {
@@ -362,15 +384,14 @@ public sealed class StyleEngine
     public ComputedStyle Compute(Element element, SelectorMatchContext? context)
         => Compute(element, context, cache: null);
 
-    private AnimationCompositor? _compositor;
-
     /// <summary>
     /// The animation/transition compositor wired to this engine's
-    /// <see cref="AnimationEngine"/> and <see cref="TransitionEngine"/>.
-    /// Lazily constructed on first use.
+    /// <see cref="AnimationEngine"/> and <see cref="TransitionEngine"/>. Lives on
+    /// the <see cref="AnimationTimeline"/>, so its per-element snapshots survive
+    /// relayouts (a re-cascade with the same declarations does not restart
+    /// playback or re-trigger transitions).
     /// </summary>
-    public AnimationCompositor Compositor =>
-        _compositor ??= new AnimationCompositor(AnimationEngine, TransitionEngine);
+    public AnimationCompositor Compositor => _timeline.Compositor;
 
     /// <summary>
     /// Compute the static cascade for <paramref name="element"/> and overlay

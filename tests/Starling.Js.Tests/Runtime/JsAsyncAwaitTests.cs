@@ -103,6 +103,61 @@ public class JsAsyncAwaitTests
         runtime.GetGlobal("r").AsNumber.Should().Be(1);
     }
 
+    [TestMethod]
+    public void Await_thenable_resolve_then_throw_follows_nested_resolution()
+    {
+        var (runtime, _) = Eval(@"
+            async function f() {
+                try {
+                    return await {
+                        then: function(resolve) {
+                            resolve({ then: function(resolve2) { resolve2('ok'); } });
+                            throw 'bad';
+                        }
+                    };
+                } catch (e) {
+                    return 'caught:' + e;
+                }
+            }
+            f().then(function(v) { globalThis.r = v });
+        ");
+        runtime.GetGlobal("r").AsString.Should().Be("ok");
+    }
+
+    [TestMethod]
+    public void For_await_normal_exhaustion_does_not_call_return()
+    {
+        var (runtime, _) = Eval(@"
+            globalThis.closed = 'no';
+            async function run() {
+                var iterable = {
+                    [Symbol.asyncIterator]() {
+                        var state = { i: 0 };
+                        return {
+                            next: function() {
+                                state.i = state.i + 1;
+                                return Promise.resolve(state.i <= 2
+                                    ? { value: state.i, done: false }
+                                    : { value: undefined, done: true });
+                            },
+                            return: function() {
+                                globalThis.closed = 'yes';
+                                return Promise.resolve({ value: undefined, done: true });
+                            }
+                        };
+                    }
+                };
+                var out = '';
+                for await (var x of iterable) { out = out + x; }
+                return out + '|' + globalThis.closed;
+            }
+            run().then(
+                function(v) { globalThis.r = v },
+                function(e) { globalThis.r = 'err:' + e });
+        ");
+        runtime.GetGlobal("r").AsString.Should().Be("12|no");
+    }
+
     private static (JsRuntime runtime, JsValue result) Eval(string src)
     {
         var program = new JsParser(src).ParseProgram();

@@ -230,9 +230,8 @@ public static class PromiseCtor
             }
             catch (JsThrow ex)
             {
-                // If both resolving fns are still un-called, reject. The
-                // CreateResolvingFunctions flag ensures we don't double-settle.
-                RejectPromise(realm, promise, ex.Value);
+                AbstractOperations.Call(realm.ActiveVm, innerReject, JsValue.Undefined,
+                    new[] { ex.Value });
             }
         });
     }

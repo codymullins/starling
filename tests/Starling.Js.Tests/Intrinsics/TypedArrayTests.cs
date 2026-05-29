@@ -32,8 +32,8 @@ public class TypedArrayTests
         Eval("var d = new DataView(new ArrayBuffer(32)); d.setUint32(0, 4000000000, false); d.getUint32(0, false);").AsNumber.Should().Be(4000000000);
         Eval("var d = new DataView(new ArrayBuffer(32)); d.setFloat32(0, 1.5, true); d.getFloat32(0, true);").AsNumber.Should().BeApproximately(1.5, 0.0001);
         Eval("var d = new DataView(new ArrayBuffer(32)); d.setFloat64(0, -3.25, false); d.getFloat64(0, false);").AsNumber.Should().Be(-3.25);
-        Eval("var d = new DataView(new ArrayBuffer(32)); d.setBigInt64(0, 12345, true); d.getBigInt64(0, true);").AsNumber.Should().Be(12345);
-        Eval("var d = new DataView(new ArrayBuffer(32)); d.setBigUint64(0, 12345, false); d.getBigUint64(0, false);").AsNumber.Should().Be(12345);
+        Eval("var d = new DataView(new ArrayBuffer(32)); d.setBigInt64(0, 12345n, true); d.getBigInt64(0, true) === 12345n;").AsBool.Should().BeTrue();
+        Eval("var d = new DataView(new ArrayBuffer(32)); d.setBigUint64(0, 12345n, false); d.getBigUint64(0, false) === 12345n;").AsBool.Should().BeTrue();
         Eval("var b = new ArrayBuffer(8); var d = new DataView(b, 2, 4); d.byteOffset + d.byteLength + d.buffer.byteLength;").AsNumber.Should().Be(14);
         Action badCtor = () => Eval("new DataView(new ArrayBuffer(4), 5);");
         Action badRead = () => Eval("var d = new DataView(new ArrayBuffer(4)); d.getFloat64(0);");
@@ -64,8 +64,48 @@ public class TypedArrayTests
         Eval("var a = new Int32Array(1); a[0] = 4294967295; a[0];").AsNumber.Should().Be(-1);
         Eval("var a = new Float32Array(1); a[0] = 1.25; a[0];").AsNumber.Should().BeApproximately(1.25, 0.0001);
         Eval("var a = new Float64Array(1); a[0] = -9.5; a[0];").AsNumber.Should().Be(-9.5);
-        Eval("var a = new BigInt64Array(1); a[0] = -99; a[0];").AsNumber.Should().Be(-99);
-        Eval("var a = new BigUint64Array(1); a[0] = 99; a[0];").AsNumber.Should().Be(99);
+        Eval("var a = new BigInt64Array(1); a[0] = -99n; a[0] === -99n;").AsBool.Should().BeTrue();
+        Eval("var a = new BigUint64Array(1); a[0] = 99n; a[0] === 99n;").AsBool.Should().BeTrue();
+    }
+
+    [TestMethod]
+    public void Constructors_reject_negative_indexes_and_misaligned_buffer_lengths()
+    {
+        ((Action)(() => Eval("new ArrayBuffer(-1);"))).Should().Throw<JsThrow>();
+        ((Action)(() => Eval("new Uint8Array(-1);"))).Should().Throw<JsThrow>();
+        ((Action)(() => Eval("new DataView(new ArrayBuffer(4), -1);"))).Should().Throw<JsThrow>();
+        ((Action)(() => Eval("new Uint8Array(new ArrayBuffer(4), -1);"))).Should().Throw<JsThrow>();
+        ((Action)(() => Eval("new Uint16Array(new ArrayBuffer(3));"))).Should().Throw<JsThrow>();
+    }
+
+    [TestMethod]
+    public void BigInt_typed_arrays_use_bigint_values_and_reject_numbers()
+    {
+        Eval("var a = new BigInt64Array(1); a[0] = -99n; a[0] === -99n;").AsBool.Should().BeTrue();
+        Eval("var a = new BigUint64Array(1); a[0] = -1n; a[0] === 18446744073709551615n;").AsBool.Should().BeTrue();
+        Eval("BigInt64Array.of(1n, 2n)[1] === 2n;").AsBool.Should().BeTrue();
+        Eval("var a = new BigInt64Array({0: 2n, length: 1}); a[0] === 2n;").AsBool.Should().BeTrue();
+        Eval("var a = new BigInt64Array([1n, -2n]); var b = new BigInt64Array(a); b[1] === -2n;").AsBool.Should().BeTrue();
+        ((Action)(() => Eval("BigInt64Array.of(1);"))).Should().Throw<JsThrow>();
+        ((Action)(() => Eval("Uint8Array.of(1n);"))).Should().Throw<JsThrow>();
+        ((Action)(() => Eval("new BigInt64Array(new Uint8Array([1]));"))).Should().Throw<JsThrow>();
+        ((Action)(() => Eval("new Uint8Array(new BigInt64Array([1n]));"))).Should().Throw<JsThrow>();
+    }
+
+    [TestMethod]
+    public void DataView_BigInt_methods_use_bigints_wrap_and_reject_numbers()
+    {
+        Eval("var d = new DataView(new ArrayBuffer(8)); d.setBigInt64(0, 9223372036854775808n, true); d.getBigInt64(0, true) === -9223372036854775808n;").AsBool.Should().BeTrue();
+        Eval("var d = new DataView(new ArrayBuffer(8)); d.setBigUint64(0, -1n, true); d.getBigUint64(0, true) === 18446744073709551615n;").AsBool.Should().BeTrue();
+        ((Action)(() => Eval("var d = new DataView(new ArrayBuffer(8)); d.setBigInt64(0, 1);"))).Should().Throw<JsThrow>();
+        ((Action)(() => Eval("var d = new DataView(new ArrayBuffer(8)); d.setInt8(0, 1n);"))).Should().Throw<JsThrow>();
+    }
+
+    [TestMethod]
+    public void Species_getters_return_this_constructor()
+    {
+        Eval("ArrayBuffer[Symbol.species] === ArrayBuffer;").AsBool.Should().BeTrue();
+        Eval("Uint8Array[Symbol.species] === Uint8Array;").AsBool.Should().BeTrue();
     }
 
     [TestMethod]
@@ -118,12 +158,10 @@ public class TypedArrayTests
         Eval("new BigUint64Array(1).BYTES_PER_ELEMENT;").AsNumber.Should().Be(8);
     }
 
-    [Ignore("B4-3 BigInt")]
-
     [TestMethod]
     public void DataView_BigInt_large_values_round_trip_as_bigints()
     {
-        Eval("var d = new DataView(new ArrayBuffer(8)); d.setBigUint64(0, 9007199254740993, true); d.getBigUint64(0, true);").AsNumber.Should().Be(9007199254740993d);
+        Eval("var d = new DataView(new ArrayBuffer(8)); d.setBigUint64(0, 9007199254740993n, true); d.getBigUint64(0, true) === 9007199254740993n;").AsBool.Should().BeTrue();
     }
 
     private static JsValue Eval(string src)

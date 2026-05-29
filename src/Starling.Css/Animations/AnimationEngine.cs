@@ -24,12 +24,45 @@ public sealed class AnimationEngine
 {
     private readonly Dictionary<Element, List<AnimationInstance>> _active
         = new(ReferenceEqualityComparer.Instance);
+    // Script-driven (Web Animations API) animations. Kept separate from the
+    // cascade-managed _active set so OnAnimationsCascaded — which rebuilds
+    // _active from the cascaded animation-name list — never wipes a
+    // programmatically created animation. Sampled / ticked alongside _active.
+    private readonly Dictionary<Element, List<ScriptAnimation>> _scriptActive
+        = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<string, KeyframesRule> _keyframes
         = new(StringComparer.Ordinal);
     private double _nowMs;
 
+    private sealed class ScriptAnimation(AnimationInstance instance, KeyframesRule rule)
+    {
+        public AnimationInstance Instance { get; } = instance;
+        public KeyframesRule Rule { get; } = rule;
+    }
+
     /// <summary>Current monotonic clock — exposed for diagnostics and tests.</summary>
     public double NowMs => _nowMs;
+
+    /// <summary>True when any animation (cascade or script) is registered.</summary>
+    public bool HasActive => _active.Count > 0 || _scriptActive.Count > 0;
+
+    /// <summary>True when any animation is still advancing — playing, not yet
+    /// completed, not paused/cancelled. The live loop repaints while this holds
+    /// and stops (leaving the final frame) once everything settles, so a finished
+    /// animation doesn't pin the frame loop on forever.</summary>
+    public bool HasInFlight
+    {
+        get
+        {
+            foreach (var list in _active.Values)
+                foreach (var inst in list)
+                    if (inst.IsInFlight) return true;
+            foreach (var list in _scriptActive.Values)
+                foreach (var s in list)
+                    if (s.Instance.IsInFlight) return true;
+            return false;
+        }
+    }
 
     /// <summary>Total in-flight animation instances across all elements; for tests.</summary>
     public int ActiveCount
@@ -66,6 +99,49 @@ public sealed class AnimationEngine
     /// <c>null</c> when no rule by that name exists.</summary>
     public KeyframesRule? GetKeyframes(string name)
         => _keyframes.TryGetValue(name, out var rule) ? rule : null;
+
+    /// <summary>
+    /// Register a script-created animation (Web Animations API
+    /// <c>element.animate</c>) and return its <see cref="AnimationInstance"/>
+    /// for playback control. Unlike cascade animations these carry their own
+    /// keyframes and are not diffed by <see cref="OnAnimationsCascaded"/>, so a
+    /// re-cascade of the element does not disturb them.
+    /// </summary>
+    public AnimationInstance AddScriptAnimation(Element element, AnimationDeclaration decl, KeyframesRule rule)
+        => AddScriptAnimation(element, decl, rule, _nowMs);
+
+    /// <summary>
+    /// As <see cref="AddScriptAnimation(Element, AnimationDeclaration, KeyframesRule)"/>
+    /// but pins the instance's start to <paramref name="startMs"/> on the
+    /// engine clock's timeline. Used to re-import a persisted script animation
+    /// into a freshly-built engine so its playback head lands where the page's
+    /// timeline says it should (the <see cref="AnimationEngine"/> is rebuilt per
+    /// layout pass; script animations live in a stable per-document store).
+    /// </summary>
+    public AnimationInstance AddScriptAnimation(Element element, AnimationDeclaration decl, KeyframesRule rule, double startMs)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        ArgumentNullException.ThrowIfNull(rule);
+        var inst = new AnimationInstance(element, decl, _nowMs);
+        inst.SetStart(startMs);
+        if (!_scriptActive.TryGetValue(element, out var list))
+            _scriptActive[element] = list = new List<ScriptAnimation>();
+        list.Add(new ScriptAnimation(inst, rule));
+        return inst;
+    }
+
+    /// <summary>Remove a script animation (cancel cleanup). No-op if unknown.</summary>
+    public void RemoveScriptAnimation(AnimationInstance instance)
+    {
+        foreach (var (el, list) in _scriptActive)
+        {
+            if (list.RemoveAll(s => ReferenceEquals(s.Instance, instance)) > 0)
+            {
+                if (list.Count == 0) _scriptActive.Remove(el);
+                return;
+            }
+        }
+    }
 
     /// <summary>
     /// Diff the element's previously-active animation list against the
@@ -118,16 +194,24 @@ public sealed class AnimationEngine
     /// <summary>Returns the current sampled value for <paramref name="property"/>, or null if no animation affects it.</summary>
     public CssValue? GetEffective(Element element, PropertyId property)
     {
-        if (!_active.TryGetValue(element, out var list)) return null;
         // Later-listed animations override earlier ones for the same
-        // property, per CSS Animations 1 §6.
+        // property, per CSS Animations 1 §6. Cascade animations are sampled
+        // first; script animations (WAAPI) overlay on top, matching the
+        // implementation-defined ordering where explicit animations win.
         CssValue? winning = null;
-        foreach (var inst in list)
-        {
-            if (!_keyframes.TryGetValue(inst.Name, out var rule)) continue;
-            var sample = inst.Sample(property, rule, _nowMs);
-            if (sample is not null) winning = sample;
-        }
+        if (_active.TryGetValue(element, out var list))
+            foreach (var inst in list)
+            {
+                if (!_keyframes.TryGetValue(inst.Name, out var rule)) continue;
+                var sample = inst.Sample(property, rule, _nowMs);
+                if (sample is not null) winning = sample;
+            }
+        if (_scriptActive.TryGetValue(element, out var slist))
+            foreach (var s in slist)
+            {
+                var sample = s.Instance.Sample(property, s.Rule, _nowMs);
+                if (sample is not null) winning = sample;
+            }
         return winning;
     }
 
@@ -139,16 +223,22 @@ public sealed class AnimationEngine
     /// </summary>
     public IEnumerable<PropertyId> ActiveProperties(Element element)
     {
-        if (!_active.TryGetValue(element, out var list)) yield break;
         var seen = new HashSet<PropertyId>();
-        foreach (var inst in list)
-        {
-            if (!_keyframes.TryGetValue(inst.Name, out var rule)) continue;
-            foreach (var frame in rule.Frames)
-                foreach (var decl in frame.Declarations)
-                    if (PropertyRegistry.TryGetPropertyId(decl.Property, out var id) && seen.Add(id))
-                        yield return id;
-        }
+        if (_active.TryGetValue(element, out var list))
+            foreach (var inst in list)
+            {
+                if (!_keyframes.TryGetValue(inst.Name, out var rule)) continue;
+                foreach (var frame in rule.Frames)
+                    foreach (var decl in frame.Declarations)
+                        if (PropertyRegistry.TryGetPropertyId(decl.Property, out var id) && seen.Add(id))
+                            yield return id;
+            }
+        if (_scriptActive.TryGetValue(element, out var slist))
+            foreach (var s in slist)
+                foreach (var frame in s.Rule.Frames)
+                    foreach (var decl in frame.Declarations)
+                        if (PropertyRegistry.TryGetPropertyId(decl.Property, out var id) && seen.Add(id))
+                            yield return id;
     }
 
     /// <summary>Advance the engine clock. Returns the number of animations that
@@ -161,16 +251,24 @@ public sealed class AnimationEngine
         foreach (var list in _active.Values)
             foreach (var inst in list)
                 if (inst.NoteTick(nowMs)) completed++;
+        foreach (var list in _scriptActive.Values)
+            foreach (var s in list)
+                if (s.Instance.NoteTick(nowMs)) completed++;
         return completed;
     }
 
     /// <summary>Forget all animation state for <paramref name="element"/> (detached element cleanup).</summary>
-    public void Forget(Element element) => _active.Remove(element);
+    public void Forget(Element element)
+    {
+        _active.Remove(element);
+        _scriptActive.Remove(element);
+    }
 
     /// <summary>Reset to empty state — for tests.</summary>
     public void Reset()
     {
         _active.Clear();
+        _scriptActive.Clear();
         _keyframes.Clear();
         _nowMs = 0;
     }
@@ -208,17 +306,27 @@ public sealed class AnimationInstance
     // at pause time; on resume, StartMs is shifted forward by the pause
     // duration so Sample() reads the same offset.
     private double _pausedAtElapsedMs = -1;
+    // Web Animations API control flags. Script pause uses the same frozen-elapsed
+    // mechanism as declarative pause but is driven explicitly (not via the
+    // cascaded play-state); cancel removes the animation from sampling.
+    private bool _scriptPaused;
+    private bool _canceled;
 
     public AnimationInstance(Element element, AnimationDeclaration decl, double nowMs)
     {
         Element = element;
         _decl = decl;
         _startMs = nowMs;
+        _nowSeenMs = nowMs;
     }
 
     public Element Element { get; }
     public string Name => _decl.Name;
     public double StartMs => _startMs;
+
+    /// <summary>Pin the playback start to an explicit clock value (used when
+    /// re-importing a persisted script animation into a freshly-built engine).</summary>
+    internal void SetStart(double startMs) => _startMs = startMs;
 
     /// <summary>Update timing parameters without resetting playback (re-cascade case).</summary>
     public void Update(AnimationDeclaration decl)
@@ -248,6 +356,7 @@ public sealed class AnimationInstance
     public bool NoteTick(double nowMs)
     {
         _nowSeenMs = nowMs;
+        if (_canceled || _scriptPaused) return false;
         if (_completed) return false;
         if (_decl.PlayState == AnimationPlayState.Paused) return false;
         if (double.IsInfinity(_decl.IterationCount) || _decl.IterationCount <= 0) return false;
@@ -260,6 +369,76 @@ public sealed class AnimationInstance
         return false;
     }
 
+    // ---- Web Animations API playback control (element.animate) -------------
+
+    /// <summary>True once <see cref="ScriptCancel"/> was called.</summary>
+    public bool IsCanceled => _canceled;
+
+    /// <summary>True while <see cref="ScriptPause"/> holds the playback head
+    /// (Web Animations API <c>paused</c> state).</summary>
+    public bool IsPaused => _scriptPaused;
+
+    /// <summary>True once playback has reached its terminal state.</summary>
+    public bool IsCompleted => _completed;
+
+    /// <summary>True while the animation is still advancing: playing (not
+    /// paused), not completed, not cancelled. An infinite-iteration animation is
+    /// always in flight.</summary>
+    public bool IsInFlight =>
+        !_completed && !_canceled && !_scriptPaused && _decl.PlayState != AnimationPlayState.Paused;
+
+    /// <summary>Total active time (after delay) in ms — finite iterations only;
+    /// infinite iteration counts report a single iteration's duration.</summary>
+    private double ActiveDurationMs =>
+        _decl.DurationMs * (double.IsInfinity(_decl.IterationCount) ? 1 : Math.Max(0, _decl.IterationCount));
+
+    /// <summary>Animation.currentTime — elapsed active time in ms.</summary>
+    public double ScriptCurrentTime()
+        => _scriptPaused ? Math.Max(0, _pausedAtElapsedMs) : Math.Max(0, _nowSeenMs - _startMs - _decl.DelayMs);
+
+    /// <summary>Set Animation.currentTime by shifting the start so the playback
+    /// head lands at <paramref name="ms"/> active-time.</summary>
+    public void ScriptSetCurrentTime(double ms)
+    {
+        _startMs = _nowSeenMs - _decl.DelayMs - ms;
+        if (_scriptPaused) _pausedAtElapsedMs = ms;
+        _completed = false;
+        _canceled = false;
+    }
+
+    /// <summary>Animation.pause() — freeze the playback head.</summary>
+    public void ScriptPause()
+    {
+        if (_scriptPaused) return;
+        _pausedAtElapsedMs = Math.Max(0, _nowSeenMs - _startMs - _decl.DelayMs);
+        _scriptPaused = true;
+    }
+
+    /// <summary>Animation.play() — resume from the frozen head (or restart after cancel).</summary>
+    public void ScriptPlay()
+    {
+        _canceled = false;
+        if (_scriptPaused)
+        {
+            _startMs = _nowSeenMs - _decl.DelayMs - _pausedAtElapsedMs;
+            _pausedAtElapsedMs = -1;
+            _scriptPaused = false;
+        }
+        _completed = false;
+    }
+
+    /// <summary>Animation.cancel() — remove all effects (Sample returns null).</summary>
+    public void ScriptCancel() => _canceled = true;
+
+    /// <summary>Animation.finish() — jump the playback head to the end.</summary>
+    public void ScriptFinish()
+    {
+        _scriptPaused = false;
+        _pausedAtElapsedMs = -1;
+        _startMs = _nowSeenMs - _decl.DelayMs - ActiveDurationMs;
+        _completed = true;
+    }
+
     /// <summary>
     /// Sample the property at <paramref name="nowMs"/> against the given
     /// rule. Returns null if the property is not animated by any of the
@@ -270,6 +449,7 @@ public sealed class AnimationInstance
     public CssValue? Sample(PropertyId property, KeyframesRule rule, double nowMs)
     {
         _nowSeenMs = nowMs;
+        if (_canceled) return null;
 
         // Compute "iteration progress" p ∈ [0, 1] for this clock value,
         // honouring delay, iteration count, direction, and fill mode.

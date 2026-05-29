@@ -1,6 +1,8 @@
+using System.Runtime.CompilerServices;
 using Starling.Common.Diagnostics;
 using Starling.Common.Image;
 using Starling.Css;
+using Starling.Css.Animations;
 using Starling.Css.Cascade;
 using Starling.Css.Media;
 using Starling.Css.Parser;
@@ -26,10 +28,28 @@ public sealed class Painter
     private readonly FontResolver _fonts;
     private readonly IDiagnostics _diag;
 
+    // One animation timeline per document, kept alive across the per-layout
+    // StyleEngine rebuilds. Every StyleEngine this painter builds for a given
+    // document shares its timeline, so animation/transition playback survives
+    // relayouts instead of restarting each pass. Weak-keyed so the timeline GCs
+    // with its document.
+    private readonly ConditionalWeakTable<Document, AnimationTimeline> _timelines = new();
+
     public Painter(FontResolver? fonts = null, IDiagnostics? diag = null)
     {
         _fonts = fonts ?? FontResolver.Default;
         _diag = diag ?? NoopDiagnostics.Instance;
+    }
+
+    /// <summary>The persistent <see cref="AnimationTimeline"/> for
+    /// <paramref name="document"/>, created on first use. The engine grabs this
+    /// to register Web Animations API (<c>element.animate</c>) animations into
+    /// the same long-lived <see cref="AnimationEngine"/> the cascade samples,
+    /// without going through a per-layout re-import.</summary>
+    public AnimationTimeline GetAnimationTimeline(Document document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        return _timelines.GetValue(document, static _ => new AnimationTimeline());
     }
 
     /// <summary>
@@ -347,7 +367,7 @@ public sealed class Painter
             return CreateStyleEngine(document, viewport, defaultFontSize, externalStylesheet, _diag, colorScheme);
     }
 
-    private static StyleEngine CreateStyleEngine(
+    private StyleEngine CreateStyleEngine(
         Document document,
         LayoutSize viewport,
         float? defaultFontSize,
@@ -355,7 +375,10 @@ public sealed class Painter
         IDiagnostics diag,
         ColorScheme colorScheme)
     {
-        var style = new StyleEngine(diagnostics: diag);
+        // Reuse the document's persistent timeline so animation/transition state
+        // outlives this (per-layout) StyleEngine.
+        var style = new StyleEngine(
+            includeUserAgentStyleSheet: true, diagnostics: diag, timeline: GetAnimationTimeline(document));
         // Expose the UA's preferred color scheme through @media
         // (prefers-color-scheme: …) and the real viewport size through both
         // @media width/height/orientation queries and the vw/vh/sv*/lv*/dv*

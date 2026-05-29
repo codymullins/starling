@@ -2,6 +2,7 @@ using AwesomeAssertions;
 using Starling.Js.Bytecode;
 using Starling.Js.Parse;
 using Starling.Js.Runtime;
+using Starling.Spec;
 namespace Starling.Js.Tests.Intrinsics;
 
 /// <summary>JS-surface tests for the RegExp intrinsic + String.prototype regex paths.</summary>
@@ -259,6 +260,35 @@ public class RegExpTests
         var act = () => Run("new RegExp('{', 'u').test('{');");
         act.Should().Throw<JsThrow>();
     }
+
+    [Spec("ecma262", "https://tc39.es/ecma262/#sec-advancestringindex", "22.2.7.3 AdvanceStringIndex")]
+    [SpecFact]
+    public void MatchAll_empty_unicode_global_advances_by_code_point()
+    {
+        Run("var a = [...'\\uD83D\\uDE00'.matchAll(/(?:)/gu)]; a.length + ':' + a[0].index + ',' + a[1].index;")
+            .AsString.Should().Be("2:0,2");
+    }
+
+    [Spec("ecma262", "https://tc39.es/ecma262/#sec-advancestringindex", "22.2.7.3 AdvanceStringIndex")]
+    [SpecFact]
+    public void Replace_empty_unicode_global_advances_by_code_point()
+        => Run("'\\uD83D\\uDE00'.replace(/(?:)/gu, '|');").AsString.Should().Be("|\uD83D\uDE00|");
+
+    [Spec("ecma262", "https://tc39.es/ecma262/#sec-regexp.prototype-@@split", "22.2.6.14 RegExp.prototype [ @@split ]")]
+    [SpecFact]
+    public void Split_empty_unicode_separator_does_not_split_surrogate_pair()
+        => Run("'\\uD83D\\uDE00'.split(/(?:)/u).length;").AsNumber.Should().Be(1);
+
+    [Spec("ecma262", "https://tc39.es/ecma262/#sec-regexpunicodeescape-sequence", "22.2.1 RegExp UnicodeEscapeSequence")]
+    [SpecFact]
+    public void Unicode_fixed_surrogate_escape_pair_matches_as_code_point()
+        => Run("new RegExp('\\\\uD83D\\\\uDE00', 'u').test('\\uD83D\\uDE00');").AsBool.Should().BeTrue();
+
+    [Spec("ecma262", "https://tc39.es/ecma262/#sec-runtime-semantics-unicodematchproperty-p", "22.2.1 RegExp Unicode mode")]
+    [SpecFact]
+    public void Named_backreference_to_unicode_escape_pair_matches_as_code_point()
+        => Run("new RegExp('(?<x>\\\\uD83D\\\\uDE00)\\\\k<x>', 'u').test('\\uD83D\\uDE00\\uD83D\\uDE00');")
+            .AsBool.Should().BeTrue();
 
     private static JsValue Run(string src)
     {

@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Text;
 using Starling.Js.Bytecode;
 using Starling.Js.Intrinsics;
 using Starling.RegExp;
@@ -369,6 +370,7 @@ public sealed class JsVm
                         Locals = locals,
                         Slot = b.Index,
                         IsLexical = b.IsLexical,
+                        IsConst = b.IsConst,
                     });
                     break;
                 case Bytecode.EvalScopeDescriptor.Kind.LocalCell:
@@ -378,16 +380,16 @@ public sealed class JsVm
                         // any other closures over the same binding.
                         var slotVal = locals[b.Index];
                         if (slotVal.IsObject && slotVal.AsObject is Cell cell)
-                            entries.Add(new EvalScope.Entry { Name = b.Name, Cell = cell, IsLexical = b.IsLexical });
+                            entries.Add(new EvalScope.Entry { Name = b.Name, Cell = cell, IsLexical = b.IsLexical, IsConst = b.IsConst });
                         else
-                            entries.Add(new EvalScope.Entry { Name = b.Name, Locals = locals, Slot = b.Index, IsLexical = b.IsLexical });
+                            entries.Add(new EvalScope.Entry { Name = b.Name, Locals = locals, Slot = b.Index, IsLexical = b.IsLexical, IsConst = b.IsConst });
                         break;
                     }
                 case Bytecode.EvalScopeDescriptor.Kind.Upvalue:
                     {
                         if (b.Index < upvalues.Count && upvalues[b.Index].IsObject
                             && upvalues[b.Index].AsObject is Cell upCell)
-                            entries.Add(new EvalScope.Entry { Name = b.Name, Cell = upCell, IsLexical = b.IsLexical });
+                            entries.Add(new EvalScope.Entry { Name = b.Name, Cell = upCell, IsLexical = b.IsLexical, IsConst = b.IsConst });
                         break;
                     }
             }
@@ -523,6 +525,18 @@ public sealed class JsVm
         {
             var pos = chunk.PositionAt(ip);
             return pos is { } p ? $"{message} (at {p.Line}:{p.Col})" : message;
+        }
+
+        void CaptureJsStack(JsThrow ex)
+        {
+            var pos = chunk.PositionAt(ip);
+            var source = chunk.SourcePath ?? chunk.Name ?? "<unknown>";
+            var function = currentFunction?.Name;
+            if (string.IsNullOrEmpty(function))
+                function = "<anonymous>";
+
+            ex.AddStackFrame(new JsStackFrame(function!, source, pos?.Line, pos?.Col));
+            AttachGeneratedStack(ex);
         }
 
         // §14.15 try-frame stack — owns the catch/finally targets that the
@@ -879,6 +893,9 @@ public sealed class JsVm
                             var value = Pop();
                             if (evalScope is not null && evalScope.TryGet(name, out var entry))
                             {
+                                if (entry.IsConst)
+                                    throw new JsThrow(_runtime.Realm.NewTypeError(
+                                        "Assignment to constant variable '" + name + "'"));
                                 entry.Write(value);
                                 break;
                             }
@@ -2801,6 +2818,7 @@ public sealed class JsVm
             }
             catch (JsThrow ex)
             {
+                CaptureJsStack(ex);
                 JsValue thrown = ex.Value;
                 bool handled = false;
                 while (tryStack.Count > 0)
@@ -2843,6 +2861,66 @@ public sealed class JsVm
             }
             if (rethrow is not null) throw rethrow;
         }
+    }
+
+    private void AttachGeneratedStack(JsThrow ex)
+    {
+        if (!ex.Value.IsObject) return;
+
+        var error = ex.Value.AsObject;
+        if (!IsErrorObject(error, _runtime.Realm)) return;
+        if (error.HasOwn("stack") && !ex.GeneratedStackAttached) return;
+
+        error.DefineOwnProperty("stack",
+            PropertyDescriptor.Data(JsValue.String(FormatJsStack(error, ex.StackFrames)),
+                writable: true, enumerable: false, configurable: true));
+        ex.GeneratedStackAttached = true;
+    }
+
+    private static bool IsErrorObject(JsObject obj, JsRealm realm)
+    {
+        for (var cur = obj; cur is not null; cur = cur.Prototype)
+            if (ReferenceEquals(cur, realm.ErrorPrototype)) return true;
+        return false;
+    }
+
+    private static string FormatJsStack(JsObject error, List<JsStackFrame> frames)
+    {
+        var sb = new StringBuilder();
+        AppendErrorHeader(sb, error);
+        for (var i = 0; i < frames.Count; i++)
+        {
+            var frame = frames[i];
+            sb.AppendLine();
+            sb.Append("    at ");
+            sb.Append(string.IsNullOrEmpty(frame.FunctionName) ? "<anonymous>" : frame.FunctionName);
+            sb.Append(" (");
+            sb.Append(string.IsNullOrEmpty(frame.SourceName) ? "<unknown>" : frame.SourceName);
+            if (frame.Line is { } line)
+            {
+                sb.Append(':');
+                sb.Append(line.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                if (frame.Column is { } column)
+                {
+                    sb.Append(':');
+                    sb.Append(column.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                }
+            }
+            sb.Append(')');
+        }
+        return sb.ToString();
+    }
+
+    private static void AppendErrorHeader(StringBuilder sb, JsObject error)
+    {
+        var nameV = error.Get("name");
+        var name = nameV.IsUndefined ? "Error" : JsValue.ToStringValue(nameV);
+        var messageV = error.Get("message");
+        var message = messageV.IsUndefined ? "" : JsValue.ToStringValue(messageV);
+
+        if (name.Length == 0) sb.Append(message);
+        else if (message.Length == 0) sb.Append(name);
+        else sb.Append(name).Append(": ").Append(message);
     }
 
     /// <summary>§27.5.3.2 / §27.6.3.7 YieldDelegate body — runs the full
@@ -4136,11 +4214,27 @@ public sealed class JsVm
     }
 }
 
+internal readonly record struct JsStackFrame(string FunctionName, string SourceName, int? Line, int? Column);
+
 /// <summary>Thrown by the VM when a script-level <c>throw</c> is uncaught.</summary>
 #pragma warning disable RCS1194
-public sealed class JsThrow(JsValue value) : Exception($"uncaught: {value}")
+public sealed class JsThrow : Exception
 {
-    public JsValue Value { get; } = value;
+    public JsThrow(JsValue value)
+        : base($"uncaught: {value}")
+    {
+        Value = value;
+    }
+
+    public JsValue Value { get; }
+    internal List<JsStackFrame> StackFrames { get; } = [];
+    internal bool GeneratedStackAttached { get; set; }
+
+    internal void AddStackFrame(JsStackFrame frame)
+    {
+        if (StackFrames.Count > 0 && StackFrames[^1].Equals(frame)) return;
+        StackFrames.Add(frame);
+    }
 }
 
 /// <summary>Internal sentinel raised inside a generator worker thread when

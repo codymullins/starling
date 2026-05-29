@@ -1176,6 +1176,25 @@ public static class NodeBindings
             return JsValue.Object(styleObj);
         });
 
+        // ---- CSS Typed OM 1 §6: attributeStyleMap / computedStyleMap -------
+        // A StylePropertyMap over the inline `style` attribute (mutable) and a
+        // read-only StylePropertyMapReadOnly over the computed style (consults
+        // the layout host). Values are CSSStyleValue objects (CssBinding).
+        EventTargetBinding.DefineAccessor(realm, elProto, "attributeStyleMap", (thisV, _) =>
+            DomWrappers.UnwrapElement(thisV) is { } e
+                ? JsValue.Object(BuildInlineStyleMap(realm, e))
+                : JsValue.Undefined);
+        EventTargetBinding.DefineMethod(realm, elProto, "computedStyleMap", (thisV, _) =>
+            DomWrappers.UnwrapElement(thisV) is { } e
+                ? JsValue.Object(BuildComputedStyleMap(realm, e))
+                : JsValue.Undefined, length: 0);
+
+        // ---- Web Animations 1 §4: element.animate(keyframes, options) ------
+        EventTargetBinding.DefineMethod(realm, elProto, "animate", (thisV, args) =>
+            DomWrappers.UnwrapElement(thisV) is { } e
+                ? WebAnimationsBinding.Animate(realm, e, args)
+                : JsValue.Undefined, length: 2);
+
         // Layout-readback APIs — consult the realm's optional ILayoutHost
         // snapshot. With no host (e.g. JS run outside the engine pipeline)
         // they return spec-permitted zeros, matching a never-laid-out doc.
@@ -1218,6 +1237,12 @@ public static class NodeBindings
             (thisV, _) => ReadOffsetMetric(realm, thisV, m => m.OffsetWidth));
         EventTargetBinding.DefineAccessor(realm, elProto, "scrollHeight",
             (thisV, _) => ReadOffsetMetric(realm, thisV, m => m.OffsetHeight));
+        // CSSOM View §7 — scrollTop/scrollLeft. No scroll position is tracked
+        // behind the seam, so a never-scrolled element reads 0 (spec-permitted).
+        EventTargetBinding.DefineAccessor(realm, elProto, "scrollTop",
+            (_, _) => JsValue.Number(0));
+        EventTargetBinding.DefineAccessor(realm, elProto, "scrollLeft",
+            (_, _) => JsValue.Number(0));
 
         var elCtor = new JsNativeFunction(realm, "Element", 0, (_, _) =>
             throw new JsThrow(realm.NewTypeError("Illegal constructor")), isConstructor: false);
@@ -2171,6 +2196,20 @@ public static class NodeBindings
         o.Set("right", JsValue.Number(rect.Right));
         o.Set("bottom", JsValue.Number(rect.Bottom));
         o.Set("left", JsValue.Number(rect.Left));
+        // CSSOM View §6 — DOMRectReadOnly.toJSON() serializes the members.
+        EventTargetBinding.DefineMethod(realm, o, "toJSON", (_, _) =>
+        {
+            var j = new JsObject(realm.ObjectPrototype);
+            j.Set("x", JsValue.Number(rect.X));
+            j.Set("y", JsValue.Number(rect.Y));
+            j.Set("width", JsValue.Number(rect.Width));
+            j.Set("height", JsValue.Number(rect.Height));
+            j.Set("top", JsValue.Number(rect.Top));
+            j.Set("right", JsValue.Number(rect.Right));
+            j.Set("bottom", JsValue.Number(rect.Bottom));
+            j.Set("left", JsValue.Number(rect.Left));
+            return JsValue.Object(j);
+        }, length: 0);
         return o;
     }
 
@@ -2553,6 +2592,168 @@ public static class NodeBindings
         }
 
         return obj;
+    }
+
+    /// <summary>CSS Typed OM 1 §6.3 — a mutable <c>StylePropertyMap</c> over the
+    /// element's inline <c>style</c> attribute. <c>get</c>/<c>getAll</c> return
+    /// CSSStyleValue objects (via <see cref="CssBinding"/>); <c>set</c>/<c>append</c>
+    /// accept a CSSStyleValue or a string and serialize back into the attribute.</summary>
+    private static JsObject BuildInlineStyleMap(JsRealm realm, Element element)
+    {
+        var map = new JsObject(realm.ObjectPrototype);
+
+        EventTargetBinding.DefineMethod(realm, map, "get", (_, args) =>
+        {
+            if (args.Length == 0) return JsValue.Undefined;
+            var prop = JsValue.ToStringValue(args[0]).Trim().ToLowerInvariant();
+            var text = ParseInlineStyleProp(element, prop);
+            return string.IsNullOrEmpty(text) ? JsValue.Undefined : JsValue.Object(CssBinding.WrapDeclaredValue(realm, prop, text));
+        }, length: 1);
+
+        EventTargetBinding.DefineMethod(realm, map, "getAll", (_, args) =>
+        {
+            if (args.Length == 0) return MakeArray(realm, Array.Empty<JsValue>());
+            var prop = JsValue.ToStringValue(args[0]).Trim().ToLowerInvariant();
+            var text = ParseInlineStyleProp(element, prop);
+            return string.IsNullOrEmpty(text)
+                ? MakeArray(realm, Array.Empty<JsValue>())
+                : MakeArray(realm, new[] { JsValue.Object(CssBinding.WrapDeclaredValue(realm, prop, text)) });
+        }, length: 1);
+
+        EventTargetBinding.DefineMethod(realm, map, "has", (_, args) =>
+            args.Length > 0 && !string.IsNullOrEmpty(ParseInlineStyleProp(element, JsValue.ToStringValue(args[0]).Trim().ToLowerInvariant()))
+                ? JsValue.True : JsValue.False, length: 1);
+
+        EventTargetBinding.DefineMethod(realm, map, "set", (_, args) =>
+        {
+            if (args.Length < 2) return JsValue.Undefined;
+            var prop = JsValue.ToStringValue(args[0]).Trim().ToLowerInvariant();
+            WriteInlineStyleProp(element, prop, CoerceCssText(realm, args[1]));
+            return JsValue.Undefined;
+        }, length: 2);
+
+        EventTargetBinding.DefineMethod(realm, map, "append", (_, args) =>
+        {
+            if (args.Length < 2) return JsValue.Undefined;
+            var prop = JsValue.ToStringValue(args[0]).Trim().ToLowerInvariant();
+            var add = CoerceCssText(realm, args[1]);
+            var existing = ParseInlineStyleProp(element, prop);
+            WriteInlineStyleProp(element, prop, string.IsNullOrEmpty(existing) ? add : existing + ", " + add);
+            return JsValue.Undefined;
+        }, length: 2);
+
+        EventTargetBinding.DefineMethod(realm, map, "delete", (_, args) =>
+        {
+            if (args.Length > 0)
+                WriteInlineStyleProp(element, JsValue.ToStringValue(args[0]).Trim().ToLowerInvariant(), null);
+            return JsValue.Undefined;
+        }, length: 1);
+
+        EventTargetBinding.DefineMethod(realm, map, "clear", (_, _) =>
+        {
+            element.RemoveAttribute("style");
+            return JsValue.Undefined;
+        }, length: 0);
+
+        EventTargetBinding.DefineAccessor(realm, map, "size",
+            (_, _) => JsValue.Number(InlineStyleEntries(element).Count));
+
+        EventTargetBinding.DefineMethod(realm, map, "forEach", (_, args) =>
+        {
+            if (args.Length == 0 || !AbstractOperations.IsCallable(args[0])) return JsValue.Undefined;
+            foreach (var (name, value) in InlineStyleEntries(element))
+                AbstractOperations.Call(realm.ActiveVm, args[0], JsValue.Undefined,
+                    new[] { JsValue.Object(CssBinding.WrapDeclaredValue(realm, name, value)), JsValue.String(name), JsValue.Object(map) });
+            return JsValue.Undefined;
+        }, length: 1);
+
+        return map;
+    }
+
+    /// <summary>CSS Typed OM 1 §6.2 — a read-only <c>StylePropertyMapReadOnly</c>
+    /// over the element's computed style, backed by the layout host. Enumeration
+    /// spans the known property set, filtered to properties with a resolved value.</summary>
+    private static JsObject BuildComputedStyleMap(JsRealm realm, Element element)
+    {
+        var map = new JsObject(realm.ObjectPrototype);
+        var host = WindowBinding.LayoutHostForRealm(realm);
+
+        string Resolve(string prop) => host?.GetComputedProperty(element, prop) ?? "";
+
+        EventTargetBinding.DefineMethod(realm, map, "get", (_, args) =>
+        {
+            if (args.Length == 0) return JsValue.Undefined;
+            var prop = JsValue.ToStringValue(args[0]).Trim().ToLowerInvariant();
+            var text = Resolve(prop);
+            return string.IsNullOrEmpty(text) ? JsValue.Undefined : JsValue.Object(CssBinding.WrapDeclaredValue(realm, prop, text));
+        }, length: 1);
+
+        EventTargetBinding.DefineMethod(realm, map, "getAll", (_, args) =>
+        {
+            if (args.Length == 0) return MakeArray(realm, Array.Empty<JsValue>());
+            var prop = JsValue.ToStringValue(args[0]).Trim().ToLowerInvariant();
+            var text = Resolve(prop);
+            return string.IsNullOrEmpty(text)
+                ? MakeArray(realm, Array.Empty<JsValue>())
+                : MakeArray(realm, new[] { JsValue.Object(CssBinding.WrapDeclaredValue(realm, prop, text)) });
+        }, length: 1);
+
+        EventTargetBinding.DefineMethod(realm, map, "has", (_, args) =>
+            args.Length > 0 && !string.IsNullOrEmpty(Resolve(JsValue.ToStringValue(args[0]).Trim().ToLowerInvariant()))
+                ? JsValue.True : JsValue.False, length: 1);
+
+        EventTargetBinding.DefineAccessor(realm, map, "size", (_, _) =>
+        {
+            var n = 0;
+            foreach (var prop in InlineStylePropertyNames)
+                if (!string.IsNullOrEmpty(Resolve(prop))) n++;
+            return JsValue.Number(n);
+        });
+
+        EventTargetBinding.DefineMethod(realm, map, "forEach", (_, args) =>
+        {
+            if (args.Length == 0 || !AbstractOperations.IsCallable(args[0])) return JsValue.Undefined;
+            foreach (var prop in InlineStylePropertyNames)
+            {
+                var text = Resolve(prop);
+                if (string.IsNullOrEmpty(text)) continue;
+                AbstractOperations.Call(realm.ActiveVm, args[0], JsValue.Undefined,
+                    new[] { JsValue.Object(CssBinding.WrapDeclaredValue(realm, prop, text)), JsValue.String(prop), JsValue.Object(map) });
+            }
+            return JsValue.Undefined;
+        }, length: 1);
+
+        return map;
+    }
+
+    /// <summary>Coerce a JS argument (CSSStyleValue object or string/number) to
+    /// CSS text for writing into a declaration. Objects are serialized via their
+    /// <c>toString</c> method (CSSStyleValue defines one); primitives use ToString.</summary>
+    private static string CoerceCssText(JsRealm realm, JsValue v)
+    {
+        if (v.IsObject)
+        {
+            var ts = v.AsObject.Get("toString");
+            if (AbstractOperations.IsCallable(ts))
+                return JsValue.ToStringValue(AbstractOperations.Call(realm.ActiveVm, ts, v, Array.Empty<JsValue>())).Trim();
+        }
+        return JsValue.ToStringValue(v).Trim();
+    }
+
+    /// <summary>Parse the element's inline <c>style</c> attribute into ordered
+    /// (kebab-name, value) pairs. Used by the Typed OM style map.</summary>
+    private static List<(string Name, string Value)> InlineStyleEntries(Element element)
+    {
+        var list = new List<(string, string)>();
+        var styleAttr = element.GetAttribute("style");
+        if (string.IsNullOrEmpty(styleAttr)) return list;
+        foreach (var decl in styleAttr.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var colon = decl.IndexOf(':');
+            if (colon < 0) continue;
+            list.Add((decl[..colon].Trim().ToLowerInvariant(), decl[(colon + 1)..].Trim()));
+        }
+        return list;
     }
 
     /// <summary>Build a DOMStringMap for the element's data-* attributes.

@@ -59,7 +59,8 @@ internal sealed class JsRegExpStringIterator : JsObject
         }
         // Advance cursor; guard against zero-width matches.
         _cursor = m.End;
-        if (m.End == m.Start) _cursor++;
+        if (m.End == m.Start)
+            _cursor = RegExpCtor.AdvanceStringIndex(_input, _cursor, _unicode);
         if (!_global) _done = true;
         var matchArr = RegExpCtor.BuildMatchArrayForIterator(realm, _regex, m);
         return IteratorIntrinsics.MakeResult(realm, JsValue.Object(matchArr), done: false);

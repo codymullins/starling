@@ -90,6 +90,7 @@ public sealed class JsRuntime
         PromiseCtor.Install(Realm); // B3-4 — depends on Object/Function/Error protos.
         RegExpCtor.Install(Realm);  // B4-1 — depends on Function/Error/Array protos.
         DateCtor.Install(Realm);    // B4-2 — depends on Function.prototype only.
+        IntlObj.Install(Realm);     // Intl-lite bundle compatibility surface.
         BigIntCtor.Install(Realm);  // B4-3 — depends on Function.prototype only.
         ProxyCtor.Install(Realm);   // B4-4 — depends on Function.prototype only.
         ReflectObj.Install(Realm);  // B4-4 — depends on Symbol (for @@toStringTag).

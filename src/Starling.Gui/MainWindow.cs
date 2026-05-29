@@ -37,6 +37,7 @@ public sealed class MainWindow : Window, IBrowserController
     private static readonly IReadOnlyList<TabInfo> Bookmarks =
     [
         new TabInfo("b0t", "localhost:8088",   "Todo",                    Url: "http://localhost:8088/todo/"),
+        new TabInfo("b0n", "localhost:8088",   "Animations",              Url: "http://localhost:8088/animations/"),
         new TabInfo("b0a", "example.com",      "Example",                 Url: "https://example.com"),
         new TabInfo("b0b", "Todos",            "Todos",                   Url: "https://jsonplaceholder.typicode.com/todos"),
         new TabInfo("b0c", "netclaw.dev",      "netclaw.dev",             Url: "https://netclaw.dev/"),
@@ -94,7 +95,9 @@ public sealed class MainWindow : Window, IBrowserController
         _diag = Program.Services.GetRequiredService<IDiagnostics>();
         _telemetry = Program.Services.GetRequiredService<TelemetryStream>();
         _session = new BrowserSession(_diag);
-        _webview = new WebviewPanel(_tm, _diag, OnLinkActivated, OnWebviewStatus, RelayoutForResize);
+        _webview = new WebviewPanel(_tm, _diag, OnLinkActivated, OnWebviewStatus, RelayoutForResize,
+            prepareAnimationFrame: _session.PrepareAnimationFrame,
+            hasActiveAnimations: _session.HasActiveAnimations);
 
         Title = string.Empty;
         MinWidth = 1024;

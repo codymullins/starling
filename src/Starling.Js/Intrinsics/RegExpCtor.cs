@@ -259,7 +259,7 @@ public static class RegExpCtor
 
     // §22.2.7.3 AdvanceStringIndex — step over a full code point when the
     // `unicode` flag is set and `index` sits on a leading surrogate.
-    private static int AdvanceStringIndex(string s, int index, bool unicode)
+    internal static int AdvanceStringIndex(string s, int index, bool unicode)
     {
         if (!unicode || index + 1 >= s.Length) return index + 1;
         var first = s[index];
@@ -339,7 +339,8 @@ public static class RegExpCtor
             if (matchStr.Length == 0)
             {
                 var li = (int)ToLengthLocal(AbstractOperations.Get(vm, rx, "lastIndex"));
-                rx.Set("lastIndex", JsValue.Number(li + 1));
+                bool fullUnicode = JsValue.ToBoolean(AbstractOperations.Get(vm, rx, "unicode"));
+                rx.Set("lastIndex", JsValue.Number(AdvanceStringIndex(s, li, fullUnicode)));
             }
         }
 
@@ -501,7 +502,11 @@ public static class RegExpCtor
         {
             var m = re.Compiled.Exec(s, pos);
             if (m is null) break;
-            if (m.End == prev) { pos++; continue; } // zero-width: advance one
+            if (m.End == prev)
+            {
+                pos = AdvanceStringIndex(s, pos, (re.Flags & RegexFlags.Unicode) != 0);
+                continue;
+            }
             arr.Push(JsValue.String(s[prev..m.Start]));
             if (arr.Length >= limit) return JsValue.Object(arr);
             // Push captures

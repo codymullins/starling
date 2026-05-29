@@ -42,7 +42,7 @@ namespace Starling.Js.Bytecode;
 public sealed partial class JsCompiler
 {
     /// <summary>Module top-level binding name → upvalue index. Populated before
-    /// emission so <see cref="EmitIdLoad"/> / <see cref="StoreBindingIdentifier"/>
+    /// emission so <see cref="EmitIdLoad(string, bool)"/> / <see cref="StoreBindingIdentifier"/>
     /// resolve module bindings as upvalues (cells) rather than globals.</summary>
     private Dictionary<string, int>? _moduleBindingUpvalues;
 

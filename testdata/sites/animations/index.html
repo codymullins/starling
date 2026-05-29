@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Animations · Starling test site</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="page">
+    <header class="page__header">
+      <h1 class="page__title">Animations</h1>
+      <p class="page__sub">A live showcase of what Starling animates today — declarative
+        <code>@keyframes</code>, CSS transitions, and the JS Web Animations API.</p>
+    </header>
+
+    <!-- ============================ KEYFRAMES ============================ -->
+    <section class="section">
+      <h2 class="section__title">Declarative <code>@keyframes</code></h2>
+      <p class="section__note">Pure CSS, no script. Interpolates transforms, color,
+        opacity and length; honours duration, easing, iteration, direction and delay.</p>
+
+      <div class="grid">
+        <figure class="card">
+          <div class="stage"><div class="spinner"></div></div>
+          <figcaption>rotate · infinite · linear</figcaption>
+        </figure>
+
+        <figure class="card">
+          <div class="stage"><div class="pulse"></div></div>
+          <figcaption>scale · alternate · ease-in-out</figcaption>
+        </figure>
+
+        <figure class="card">
+          <div class="stage"><div class="hue"></div></div>
+          <figcaption>background-color cycle</figcaption>
+        </figure>
+
+        <figure class="card">
+          <div class="stage"><div class="slider"></div></div>
+          <figcaption>translateX · cubic-bezier</figcaption>
+        </figure>
+
+        <figure class="card">
+          <div class="stage"><div class="breathe"></div></div>
+          <figcaption>opacity · alternate</figcaption>
+        </figure>
+
+        <figure class="card">
+          <div class="stage">
+            <div class="eq">
+              <span class="eq__bar"></span>
+              <span class="eq__bar"></span>
+              <span class="eq__bar"></span>
+              <span class="eq__bar"></span>
+              <span class="eq__bar"></span>
+            </div>
+          </div>
+          <figcaption>staggered animation-delay</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ============================ TRANSITIONS ========================== -->
+    <section class="section">
+      <h2 class="section__title">CSS transitions</h2>
+      <p class="section__note">State-driven easing. Hover the tiles — transform,
+        background and colour ease between states.</p>
+
+      <div class="grid">
+        <button class="tile tile--lift">Lift</button>
+        <button class="tile tile--grow">Grow</button>
+        <button class="tile tile--slide"><span>Slide&nbsp;&gt;&gt;</span></button>
+        <button class="tile tile--tint">Tint</button>
+      </div>
+    </section>
+
+    <!-- ======================= WEB ANIMATIONS API ======================= -->
+    <section class="section">
+      <h2 class="section__title">Web Animations API <span class="badge">JS</span></h2>
+      <p class="section__note"><code>element.animate()</code> driven from JavaScript,
+        with live playback controls. The box below is animated by script, not CSS.</p>
+
+      <div class="waapi">
+        <div class="waapi__stage">
+          <div class="waapi__box" id="waapi-box">animate()</div>
+        </div>
+        <div class="waapi__controls">
+          <button class="btn" id="waapi-play" type="button">Play</button>
+          <button class="btn" id="waapi-pause" type="button">Pause</button>
+          <button class="btn" id="waapi-reverse" type="button">Resume</button>
+          <button class="btn btn--ghost" id="waapi-cancel" type="button">Cancel</button>
+          <button class="btn btn--ghost" id="waapi-finish" type="button">Finish</button>
+        </div>
+        <p class="waapi__status" id="waapi-status">idle · 0 ms</p>
+      </div>
+    </section>
+
+    <footer class="page__footer">
+      Rendered by the Starling browser engine.
+    </footer>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

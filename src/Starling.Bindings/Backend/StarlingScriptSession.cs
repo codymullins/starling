@@ -81,7 +81,8 @@ internal sealed class StarlingScriptSession : IScriptSession
         WindowBinding.Install(_runtime, _document, new WindowInstallOptions(
             DocumentUrl: _baseUrl.ToString(),
             HttpClient: options.Http,
-            LayoutHost: options.LayoutHost));
+            LayoutHost: options.LayoutHost,
+            AnimationHost: options.AnimationHost));
 
         // setTimeout / setInterval / rAF ride the same simulated WebEventLoop
         // clock; PumpOnce advances it.

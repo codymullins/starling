@@ -50,6 +50,10 @@ public static class WindowBinding
     // getBoundingClientRect / offsetWidth / getComputedStyle.
     private static readonly ConditionalWeakTable<JsRealm, ILayoutHost> RealmToLayoutHost = new();
 
+    // realm → animation host (optional): the Web Animations API backend that
+    // element.animate() registers script animations with.
+    private static readonly ConditionalWeakTable<JsRealm, IAnimationHost> RealmToAnimationHost = new();
+
     /// <summary>Install the full Window / EventTarget / Node / Element /
     /// Document surface on <paramref name="runtime"/>'s realm and bind it to
     /// <paramref name="document"/>. Idempotent per realm.</summary>
@@ -63,6 +67,8 @@ public static class WindowBinding
         DocMeta.AddOrUpdate(document, new DocumentMeta(options.DocumentUrl ?? "about:blank", options));
         if (options.LayoutHost is { } layoutHost)
             RealmToLayoutHost.AddOrUpdate(realm, layoutHost);
+        if (options.AnimationHost is { } animationHost)
+            RealmToAnimationHost.AddOrUpdate(realm, animationHost);
 
         // 1) EventTarget + Event + Node/Element/Document prototypes.
         EventTargetBinding.Install(realm);
@@ -173,6 +179,12 @@ public static class WindowBinding
         // property reads as the empty string (matches an un-styled doc).
         InstallGetComputedStyle(realm, global);
 
+        // 8b) matchMedia(query) — CSSOM View §4.2. Resolves `matches` once
+        //     against the layout host's media context; with no host it is
+        //     false. There is no resize signal behind the seam, so the list
+        //     never changes and the listener methods are accepted but inert.
+        InstallMatchMedia(realm, global);
+
         // 9) M3-31: Web Crypto minimal surface — crypto.getRandomValues +
         //    crypto.randomUUID. crypto.subtle is intentionally left undefined.
         CryptoBinding.Install(runtime);
@@ -187,6 +199,14 @@ public static class WindowBinding
         //    can fetch their src through the same HTTP client + resolve
         //    relative URLs against the document URL.
         IFrameBinding.RegisterParent(realm, initialUrl, options.HttpClient);
+
+        // 13) CSS-V1 JS-OM: window.CSS namespace (Typed OM numeric factories,
+        //     CSS.escape, CSS.registerProperty) + CSSStyleValue.parse.
+        CssBinding.Install(realm);
+
+        // 14) CSS Font Loading 3: document.fonts (FontFaceSet) + FontFace ctor,
+        //     seeded from the document's @font-face rules.
+        FontFaceBinding.Install(realm, document);
     }
 
     /// <summary>Resolve the runtime that backs the given realm. Returns null
@@ -200,6 +220,12 @@ public static class WindowBinding
     /// binding should fall back to spec-permitted defaults.</summary>
     internal static ILayoutHost? LayoutHostForRealm(JsRealm realm)
         => RealmToLayoutHost.TryGetValue(realm, out var h) ? h : null;
+
+    /// <summary>Resolve the optional Web Animations host for the realm; null
+    /// when no engine host was installed (the binding then exposes a no-op
+    /// Animation control surface).</summary>
+    internal static IAnimationHost? AnimationHostForRealm(JsRealm realm)
+        => RealmToAnimationHost.TryGetValue(realm, out var h) ? h : null;
 
     /// <summary>Install <c>window.getComputedStyle(el, pseudoElt?)</c>. The
     /// returned object exposes a <c>getPropertyValue(name)</c> method plus
@@ -218,6 +244,29 @@ public static class WindowBinding
         }, isConstructor: false);
         global.DefineOwnProperty("getComputedStyle",
             PropertyDescriptor.Data(JsValue.Object(fn), writable: true, enumerable: false, configurable: true));
+    }
+
+    /// <summary>Install <c>window.matchMedia(query)</c> returning a
+    /// MediaQueryList whose <c>matches</c> is resolved once against the layout
+    /// host (false with no host). <c>media</c> echoes the query; listener
+    /// registration methods are accepted but inert (no media-change source).</summary>
+    private static void InstallMatchMedia(JsRealm realm, JsObject global)
+    {
+        EventTargetBinding.DefineMethod(realm, global, "matchMedia", (_, args) =>
+        {
+            var query = args.Length > 0 && !args[0].IsNullish ? JsValue.ToStringValue(args[0]) : "";
+            var host = LayoutHostForRealm(realm);
+            var matches = host?.MatchMedia(query) ?? false;
+            var mql = new JsObject(realm.ObjectPrototype);
+            EventTargetBinding.DefineAccessor(realm, mql, "matches", (_, _) => matches ? JsValue.True : JsValue.False);
+            EventTargetBinding.DefineAccessor(realm, mql, "media", (_, _) => JsValue.String(query));
+            mql.DefineOwnProperty("onchange",
+                PropertyDescriptor.Data(JsValue.Null, writable: true, enumerable: true, configurable: true));
+            foreach (var m in new[] { "addListener", "removeListener", "addEventListener", "removeEventListener" })
+                EventTargetBinding.DefineMethod(realm, mql, m, (_, _) => JsValue.Undefined, length: 1);
+            EventTargetBinding.DefineMethod(realm, mql, "dispatchEvent", (_, _) => JsValue.False, length: 1);
+            return JsValue.Object(mql);
+        }, length: 1);
     }
 
     private static JsObject BuildComputedStyleDeclaration(JsRealm realm, Element element)
@@ -429,7 +478,8 @@ public readonly record struct WindowInstallOptions(
     double InnerHeight = 0,
     StarlingHttpClient? HttpClient = null,
     CookieJar? CookieJar = null,
-    ILayoutHost? LayoutHost = null);
+    ILayoutHost? LayoutHost = null,
+    IAnimationHost? AnimationHost = null);
 
 internal static class ConditionalWeakTableExtensions
 {

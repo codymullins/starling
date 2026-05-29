@@ -206,6 +206,14 @@ public sealed partial class JsCompiler
     /// real var-environments and never inject.</summary>
     private bool _evalInjectVars;
 
+    /// <summary>True for a direct eval chunk: top-level let/const declarations
+    /// are scoped to the eval body, not installed on the global object.</summary>
+    private bool _directEvalLocalLexicals;
+
+    /// <summary>True for strict direct eval: top-level var/function declarations
+    /// are scoped to the eval body, not injected into the caller/global env.</summary>
+    private bool _directEvalLocalVars;
+
     /// <summary>wp:M3-80 — the local slot of each positional formal parameter, in
     /// declaration order, recorded by <see cref="BindFunctionParameters"/> and
     /// consumed by <see cref="MaybeBindArguments"/> to build the §10.4.4.6 mapped
@@ -317,6 +325,29 @@ public sealed partial class JsCompiler
         return false;
     }
 
+    private bool IsConstUpvalue(string name)
+    {
+        if (_moduleImmutableBindings is not null && _moduleImmutableBindings.Contains(name))
+            return true;
+        if (_parent is null) return false;
+        if (_parent.IsConstLocalForChild(name, out var found)) return found;
+        return _parent.IsConstUpvalue(name);
+    }
+
+    private bool IsConstLocalForChild(string name, out bool isConst)
+    {
+        for (var i = _scopes.Count - 1; i >= 0; i--)
+        {
+            if (_scopes[i].ContainsKey(name))
+            {
+                isConst = _constScopes[i].Contains(name);
+                return true;
+            }
+        }
+        isConst = false;
+        return false;
+    }
+
     /// <summary>TDZ — mark <paramref name="name"/> as a lexical binding in the
     /// innermost scope frame (must already be reserved as a local there).</summary>
     private void MarkLexical(string name) => _lexicalScopes[^1].Add(name);
@@ -416,7 +447,7 @@ public sealed partial class JsCompiler
     /// bindings are not TDZ-hoisted. A <c>let</c>/<c>const</c> inside any
     /// nested scope (block, switch, loop body, …) — even at script top — is a
     /// true block-scoped lexical binding and IS subject to TDZ.</summary>
-    private bool IsGlobalLexicalScope => IsScriptTop && _scopes.Count == 1;
+    private bool IsGlobalLexicalScope => IsScriptTop && !_directEvalLocalLexicals && _scopes.Count == 1;
 
     public static Chunk Compile(Program program, string? name = "<script>")
     {
@@ -466,7 +497,13 @@ public sealed partial class JsCompiler
         IReadOnlySet<string> callerScopeNames, bool injectVars = false,
         IReadOnlyDictionary<string, string>? privateNameScope = null)
     {
-        var c = new JsCompiler { _callerScopeNames = callerScopeNames, _evalInjectVars = injectVars };
+        var c = new JsCompiler
+        {
+            _callerScopeNames = callerScopeNames,
+            _evalInjectVars = injectVars,
+            _directEvalLocalLexicals = true,
+            _directEvalLocalVars = program.Strict
+        };
         c._b.IsStrict = program.Strict;
         c._b.SourcePath = name;
         // §19.2.1.1 — a direct eval inherits the caller's PrivateEnvironment, so
@@ -474,7 +511,7 @@ public sealed partial class JsCompiler
         // names. Seed the private-name scope from the caller's chunk.
         if (privateNameScope is { Count: > 0 })
             c._privateScopes.Push(new Dictionary<string, string>(privateNameScope, StringComparer.Ordinal));
-        c.RunCaptureAnalysisForScript(program.Body);
+        c._capturedNames = CaptureAnalysis.Compute(Array.Empty<Expression>(), program.Body);
         c.EmitProgram(program, keepLastExpression: true);
         return c._b.Build(name);
     }
@@ -541,6 +578,8 @@ public sealed partial class JsCompiler
         // body resolves a captured name to the parent's local (cell) slot
         // instead of falling through to LoadGlobal/StoreGlobal.
         PreallocateCapturedVarBindings(p.Body);
+        if (_directEvalLocalLexicals)
+            HoistLexicalDeclarations(p.Body);
         // Hoist FunctionDeclarations: compile bodies, allocate locals,
         // emit StoreLocal in declaration order so they're callable before
         // their textual position (matches §10.2.11 / §13.2.1 var hoisting
@@ -571,7 +610,7 @@ public sealed partial class JsCompiler
         // function-declarations install themselves as globals (mirroring
         // §10.2.11 host-defined global object behavior). Inside a function,
         // they bind a fresh local slot in the function's variable scope.
-        var isScriptTop = _parent is null;
+        var isScriptTop = IsScriptTop && !_directEvalLocalVars;
 
         // PASS 1 — register a slot / binding for EVERY function declaration in
         // this scope BEFORE compiling any body. Without this, a body that
@@ -817,13 +856,14 @@ public sealed partial class JsCompiler
         // `function inner() {...}` would be silently dropped, breaking
         // closure tests like `function outer(){ var x=0; function inner(){x=5} inner(); return x }`.
         HoistFunctionDeclarations(fd.Body.Body);
+        // Temporal Dead Zone — instantiate top-level let/const before we decide
+        // whether to synthesize `arguments`, so a real lexical binding named
+        // `arguments` wins over the implicit object.
+        HoistLexicalDeclarations(fd.Body.Body);
         // wp:M3-20 — synthesize the `arguments` object if the body reads it.
         MaybeBindArguments(fd.Params, fd.Body.Body);
         // §10.2.1.1 — box `this` if a nested arrow reads it.
         MaybeBindLexicalThis();
-        // TDZ — instantiate top-level let/const of the function body in the
-        // uninitialized state so reads before their declaration throw.
-        HoistLexicalDeclarations(fd.Body.Body);
         // §10.2.1.3 — for generator/async/async-generator bodies the parameter-
         // binding prologue above must run synchronously at call time; mark the
         // boundary so the runtime can hand off here before the body runs lazily.
@@ -1206,6 +1246,7 @@ public sealed partial class JsCompiler
                 return;
             case ThrowStatement t:
                 EmitExpression(t.Argument);
+                RecordPos(t);
                 _b.Emit(Opcode.Throw);
                 return;
             case DebuggerStatement:
@@ -1630,7 +1671,7 @@ public sealed partial class JsCompiler
                             // the caller's var-environment (let/const keep their
                             // own script-top/global lexical binding).
                             if (_evalInjectVars && functionScoped) EmitEvalInjectedStore(id.Name);
-                            else if (IsScriptTop) _b.EmitU16(Opcode.StoreGlobal, _b.AddConstant(id.Name));
+                            else if (IsScriptTop && !_directEvalLocalVars) _b.EmitU16(Opcode.StoreGlobal, _b.AddConstant(id.Name));
                             else if (TryResolveLocal(id.Name, out var s)) EmitStoreLocalSlot(s);
                             else _b.EmitU16(Opcode.StoreGlobal, _b.AddConstant(id.Name));
                         });
@@ -1647,7 +1688,7 @@ public sealed partial class JsCompiler
                     // gap:script-top-var-not-global — at script top, the
                     // binding is a global property (not a local slot), so
                     // the initializer write routes through StoreGlobal.
-                    else if (IsScriptTop)
+                    else if (IsScriptTop && !_directEvalLocalVars)
                     {
                         _b.EmitU16(Opcode.StoreGlobal, _b.AddConstant(id.Name));
                     }
@@ -2130,7 +2171,6 @@ public sealed partial class JsCompiler
 
         _b.PatchJump(jExit);
         _b.Emit(Opcode.Pop);
-        EmitForOfClose(handleSlot, isAwait: true);
 
         _b.PatchJump(jPastNormal);
         _loops.Pop();
@@ -2442,7 +2482,7 @@ public sealed partial class JsCompiler
                 _b.EmitU16Raw(_b.AddConstant(rx.Flags));
                 return;
             case Identifier id:
-                EmitIdLoad(id.Name);
+                EmitIdLoad(id);
                 return;
             case ThisExpression:
                 // §10.2.1.1 — inside an arrow, `this` is the enclosing ordinary
@@ -2481,7 +2521,7 @@ public sealed partial class JsCompiler
                 // shape evaluates normally and throws where the spec requires.
                 if (u.Op == "typeof" && u.Argument is Identifier typeofId)
                 {
-                    EmitIdLoad(typeofId.Name, checkedGlobal: false);
+                    EmitIdLoad(typeofId, checkedGlobal: false);
                     _b.Emit(Opcode.TypeOf);
                     return;
                 }
@@ -2760,6 +2800,22 @@ public sealed partial class JsCompiler
         // static read), so the static store needs no TDZ check.
         EmitIdStoreStatic(name, needsTdzCheck: false); // static fallback store
         _b.PatchI32(storeMissPos, _b.Position - (storeMissPos + 4));
+    }
+
+    private void EmitIdLoad(Identifier id, bool checkedGlobal = true)
+    {
+        if (IdLoadMayThrow(id.Name, checkedGlobal))
+            RecordPos(id);
+        EmitIdLoad(id.Name, checkedGlobal);
+    }
+
+    private bool IdLoadMayThrow(string name, bool checkedGlobal)
+    {
+        if (ShouldRouteWith(name)) return true;
+        if (TryResolveLocal(name, out _)) return IsLexicalLocal(name);
+        if (TryResolveUpvalue(name, out _)) return IsLexicalUpvalue(name);
+        if (_callerScopeNames is { } cs && cs.Contains(name)) return true;
+        return checkedGlobal;
     }
 
     private void EmitIdLoad(string name, bool checkedGlobal = true)
@@ -3775,7 +3831,7 @@ public sealed partial class JsCompiler
                 bindings.Add(new EvalScopeDescriptor.Binding(
                     kv.Key,
                     captured ? EvalScopeDescriptor.Kind.LocalCell : EvalScopeDescriptor.Kind.LocalSlot,
-                    slot, lexical));
+                    slot, lexical, IsConstLocal(kv.Key)));
             }
         }
         // Names already captured from enclosing scopes (upvalues) — these live as
@@ -3784,7 +3840,8 @@ public sealed partial class JsCompiler
         {
             if (!seen.Add(kv.Key)) continue;
             bindings.Add(new EvalScopeDescriptor.Binding(
-                kv.Key, EvalScopeDescriptor.Kind.Upvalue, kv.Value, IsLexicalUpvalue(kv.Key)));
+                kv.Key, EvalScopeDescriptor.Kind.Upvalue, kv.Value,
+                IsLexicalUpvalue(kv.Key), IsConstUpvalue(kv.Key)));
         }
         return new EvalScopeDescriptor(bindings);
     }
@@ -4344,7 +4401,7 @@ public sealed partial class JsCompiler
                 // an initializer doesn't reset an existing value, and a
                 // hoisted function-decl that already installed the name
                 // keeps its function value.
-                if (IsScriptTop)
+                if (IsScriptTop && !_directEvalLocalVars)
                 {
                     // wp:M3-73 — a non-strict direct eval whose caller is a
                     // function injects its top-level vars into the caller's
