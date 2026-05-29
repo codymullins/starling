@@ -241,6 +241,26 @@ public sealed class AnimationEngine
                             yield return id;
     }
 
+    /// <summary>
+    /// True when at least one in-flight animation on <paramref name="element"/>
+    /// targets a layout-affecting property (width, margin, font-size, …), so
+    /// incremental layout must recompute the element's box. False when every
+    /// animated property is paint- or composite-only (transform, opacity, color,
+    /// …) — those need only a repaint, not a relayout. Conservatively returns
+    /// true when no recognised animated property is found, so an unknown
+    /// animation still gets a (correct) relayout.
+    /// </summary>
+    public bool HasLayoutAffectingProperty(Element element)
+    {
+        var any = false;
+        foreach (var id in ActiveProperties(element))
+        {
+            any = true;
+            if (PropertyRegistry.AffectsLayout(id)) return true;
+        }
+        return !any;
+    }
+
     /// <summary>Advance the engine clock. Returns the number of animations that
     /// completed (entered a non-replaying terminal state) during this tick.</summary>
     public int Tick(double nowMs)

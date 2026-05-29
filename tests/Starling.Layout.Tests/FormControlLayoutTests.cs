@@ -123,6 +123,30 @@ public sealed class FormControlLayoutTests
         labels.Should().Contain("I'm Feeling Lucky");
     }
 
+    [TestMethod]
+    public void Textarea_renders_live_value_or_placeholder()
+    {
+        var document = HtmlParser.Parse("<body><textarea id=\"message\" placeholder=\"Message\"></textarea></body>");
+        var textarea = document.GetElementById("message")!;
+        textarea.InputValue = "hello";
+
+        var root = NewEngine().LayoutDocument(document, new Size(800, 600));
+        var box = FindBox(root, "textarea")!;
+        FlattenTextBoxes(box).Select(tb => tb.Text).Should().Contain("hello");
+    }
+
+    [TestMethod]
+    public void Select_renders_the_selected_option_label()
+    {
+        var root = Layout(
+            "<body><select><option value=\"ground\">Ground</option><option value=\"air\" selected>Air</option></select></body>",
+            new Size(800, 600));
+        var select = FindBox(root, "select")!;
+
+        FlattenTextBoxes(select).Select(tb => tb.Text).Should().Contain("Air");
+        FlattenTextBoxes(select).Select(tb => tb.Text).Should().NotContain("Ground");
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private static Box.Box? FindBox(Box.Box root, string localName)

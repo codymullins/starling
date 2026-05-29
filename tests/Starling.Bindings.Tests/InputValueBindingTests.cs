@@ -57,6 +57,44 @@ public sealed class InputValueBindingTests
         """).AsBool.Should().BeTrue();
     }
 
+    [TestMethod]
+    public void Form_controls_support_selection_validation_and_serialization()
+    {
+        var (runtime, _) = BuildEnv();
+        Eval(runtime, """
+            var f = document.createElement('form');
+            var q = document.createElement('input');
+            q.name = 'q';
+            q.required = true;
+            f.appendChild(q);
+            document.body.appendChild(f);
+
+            var invalid = q.checkValidity();
+            q.value = 'hello world';
+            q.setSelectionRange(6, 11);
+            var valid = q.checkValidity();
+            result = invalid + '|' + valid + '|' + q.selectionStart + ':' + q.selectionEnd + '|' + f.serialize();
+        """).AsString.Should().Be("false|true|6:11|q=hello+world");
+    }
+
+    [TestMethod]
+    public void Checkbox_and_select_values_participate_in_form_serialization()
+    {
+        var (runtime, _) = BuildEnv();
+        Eval(runtime, """
+            document.body.innerHTML =
+              '<form id="f">' +
+              '<input type="checkbox" name="agree" value="yes">' +
+              '<select name="ship"><option value="ground">Ground</option><option value="air">Air</option></select>' +
+              '</form>';
+            var agree = document.querySelector('input');
+            var select = document.querySelector('select');
+            agree.checked = true;
+            select.value = 'air';
+            result = document.getElementById('f').serialize();
+        """).AsString.Should().Be("agree=yes&ship=air");
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private static (JsRuntime, Document) BuildEnv()

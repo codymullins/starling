@@ -215,6 +215,25 @@ public sealed class TransitionEngine
     }
 
     /// <summary>
+    /// True when at least one in-flight transition on <paramref name="element"/>
+    /// targets a layout-affecting property, so incremental layout must recompute
+    /// the element. False when every transitioned property is paint- or
+    /// composite-only (transform, opacity, color, …) — those need only a repaint.
+    /// Conservatively true when no recognised property is in flight.
+    /// </summary>
+    public bool HasLayoutAffectingProperty(Element element)
+    {
+        var any = false;
+        foreach (var key in _active.Keys)
+        {
+            if (!ReferenceEquals(key.Item1, element)) continue;
+            any = true;
+            if (PropertyRegistry.AffectsLayout(key.Item2)) return true;
+        }
+        return !any;
+    }
+
+    /// <summary>
     /// Clear all active transitions and the effective-value table for
     /// <paramref name="element"/>. Called by the host when an element is
     /// detached so we don't leak Element references through the dictionary.

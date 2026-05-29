@@ -15,6 +15,7 @@ using Starling.Common.Image;
 using Starling.Css.Cascade;
 using Starling.Css.Properties;
 using Starling.Css.Selectors;
+using Starling.Dom;
 using Starling.Dom.Events;
 using Starling.Engine;
 using AvColor = Avalonia.Media.Color;
@@ -772,23 +773,14 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         for (var b = box; b is not null; b = b.Parent)
         {
             if (b.Element is not DomElement el) continue;
-            switch (el.LocalName)
-            {
-                case "textarea":
-                    return el;
-                case "input":
-                    var type = (el.GetAttribute("type") ?? "text").Trim().ToLowerInvariant();
-                    return type is "text" or "search" or "email" or "url" or "tel"
-                            or "password" or "number" or ""
-                        ? el : null;
-            }
+            if (!el.HasAttribute("disabled") && !el.HasAttribute("readonly") && HtmlFormControls.IsTextControl(el))
+                return el;
         }
         return null;
     }
 
     private string CurrentValue()
-        => _focusedInput is null ? string.Empty
-            : _focusedInput.InputValue ?? _focusedInput.GetAttribute("value") ?? string.Empty;
+        => _focusedInput is null ? string.Empty : HtmlFormControls.Value(_focusedInput);
 
     /// <summary>
     /// Focuses <paramref name="input"/>: records document focus (so <c>:focus</c>
@@ -803,6 +795,7 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         _currentPage.Document.FocusedElement = input;
         _valueAtFocus = CurrentValue();
         _caretIndex = CurrentValue().Length;
+        HtmlFormControls.SetSelectionRange(input, _caretIndex, _caretIndex, "none");
         _pageCanvas.Focus();
 
         // Notify page JS (HTML focus event order: focus, then focusin/bubbles).
@@ -820,7 +813,7 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     {
         if (_focusedInput is null) return;
         var was = _focusedInput;
-        var finalValue = was.InputValue ?? was.GetAttribute("value") ?? string.Empty;
+        var finalValue = HtmlFormControls.Value(was);
         var changed = !string.Equals(finalValue, _valueAtFocus, StringComparison.Ordinal);
         _focusedInput = null;
         _caretBlinkTimer.Stop();
@@ -882,9 +875,12 @@ internal sealed class WebviewPanel : UserControl, IDisposable
                 // Implicit form submission: Enter in a text field submits its
                 // owning form (the keydown was already dispatched above).
                 e.Handled = true;
-                if (_focusedInput.LocalName == "input" && NearestForm(_focusedInput) is { } form
-                    && DispatchDom(form, new Event("submit", new EventInit(Bubbles: true, Cancelable: true))))
-                    RefreshLiveLayout();
+                if (_focusedInput.LocalName == "input")
+                {
+                    var actioned = false;
+                    if (SubmitOwningForm(_focusedInput, ref actioned))
+                        RefreshLiveLayout();
+                }
                 break;
         }
     }
@@ -894,8 +890,9 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     private void CommitValue(string next, int newCaret)
     {
         if (_focusedInput is null) return;
-        _focusedInput.InputValue = next;
+        HtmlFormControls.SetValue(_focusedInput, next);
         _caretIndex = Math.Clamp(newCaret, 0, next.Length);
+        HtmlFormControls.SetSelectionRange(_focusedInput, _caretIndex, _caretIndex, "none");
         // Fire the DOM `input` event so search-as-you-type / form handlers run;
         // RefreshFocusedLayout then reflects both the new value text and any DOM
         // the handler mutated synchronously.
@@ -906,6 +903,8 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     private void MoveCaret(int index)
     {
         _caretIndex = Math.Clamp(index, 0, CurrentValue().Length);
+        if (_focusedInput is not null)
+            HtmlFormControls.SetSelectionRange(_focusedInput, _caretIndex, _caretIndex, "none");
         RenderCaret(); // value unchanged — no re-layout needed
     }
 
@@ -1301,6 +1300,7 @@ internal sealed class WebviewPanel : UserControl, IDisposable
                 if (type is "checkbox" or "radio")
                 {
                     actioned = true;
+                    HtmlFormControls.SetChecked(control, type == "radio" || !HtmlFormControls.Checked(control));
                     var m = DispatchDom(control, new InputEvent("input", new EventInit(Bubbles: true)));
                     m |= DispatchDom(control, new Event("change", new EventInit(Bubbles: true)));
                     return m;
@@ -1327,9 +1327,14 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     /// the SPA/todo pattern preventDefaults and handles submission in JS.</summary>
     private bool SubmitOwningForm(DomElement control, ref bool actioned)
     {
-        if (NearestForm(control) is not { } form) return false;
+        if (HtmlFormControls.FormOwner(control) is not { } form) return false;
         actioned = true;
-        return DispatchDom(form, new Event("submit", new EventInit(Bubbles: true, Cancelable: true)));
+        if (!DispatchInvalidEvents(form)) return true;
+        var submit = new Event("submit", new EventInit(Bubbles: true, Cancelable: true));
+        var mutated = DispatchDom(form, submit);
+        if (!submit.DefaultPrevented)
+            HtmlFormControls.RecordAutocompleteSubmission(form);
+        return mutated;
     }
 
     /// <summary>Nearest DOM element enclosing <paramref name="box"/> (the click's
@@ -1353,9 +1358,19 @@ internal sealed class WebviewPanel : UserControl, IDisposable
 
     private static DomElement? NearestForm(DomElement el)
     {
-        for (DomNode? n = el; n is not null; n = n.ParentNode)
-            if (n is DomElement { LocalName: "form" } f) return f;
-        return null;
+        return HtmlFormControls.FormOwner(el);
+    }
+
+    private bool DispatchInvalidEvents(DomElement form)
+    {
+        var valid = true;
+        foreach (var control in HtmlFormControls.FormControls(form))
+        {
+            if (HtmlFormControls.Validity(control).Valid) continue;
+            valid = false;
+            DispatchDom(control, new Event("invalid", new EventInit(Cancelable: true)));
+        }
+        return valid;
     }
 
     // ---- Programmatic input (MCP automation) --------------------------
@@ -1471,8 +1486,11 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         var target = _focusedInput;
         var down = new KeyboardEvent("keydown", new EventInit(Bubbles: true, Cancelable: true)) { Key = "Enter", Code = "Enter" };
         var mutated = DispatchDom(target, down);
-        if (target.LocalName == "input" && NearestForm(target) is { } form)
-            mutated |= DispatchDom(form, new Event("submit", new EventInit(Bubbles: true, Cancelable: true)));
+        if (target.LocalName == "input")
+        {
+            var actioned = false;
+            mutated |= SubmitOwningForm(target, ref actioned);
+        }
         var up = new KeyboardEvent("keyup", new EventInit(Bubbles: true, Cancelable: true)) { Key = "Enter", Code = "Enter" };
         mutated |= DispatchDom(target, up);
         if (mutated) RefreshLiveLayout();

@@ -547,13 +547,14 @@ public static class NodeBindings
         // live value so layout re-renders the field with the new text.
         EventTargetBinding.DefineAccessor(realm, elProto, "value",
             (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e
-                ? JsValue.String(e.InputValue ?? e.GetAttribute("value") ?? "") : JsValue.String(""),
+                ? JsValue.String(HtmlFormControls.Value(e)) : JsValue.String(""),
             (thisV, args) =>
             {
                 if (DomWrappers.UnwrapElement(thisV) is { } e)
-                    e.InputValue = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+                    HtmlFormControls.SetValue(e, args.Length > 0 ? JsValue.ToStringValue(args[0]) : "");
                 return JsValue.Undefined;
             });
+        InstallFormControlAccessors(realm, elProto);
         // HTMLElement.focus() / .blur() — move the document focus. The shell
         // reads document.FocusedElement to drive the caret and :focus styling.
         EventTargetBinding.DefineMethod(realm, elProto, "focus", (thisV, _) =>
@@ -1630,6 +1631,162 @@ public static class NodeBindings
     {
         var arr = new JsArray(realm, items);
         return JsValue.Object(arr);
+    }
+
+    private static void InstallFormControlAccessors(JsRealm realm, JsObject proto)
+    {
+        EventTargetBinding.DefineAccessor(realm, proto, "name",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.String(e.GetAttribute("name") ?? "") : JsValue.String(""),
+            (thisV, args) => { if (DomWrappers.UnwrapElement(thisV) is { } e) e.SetAttribute("name", args.Length > 0 ? JsValue.ToStringValue(args[0]) : ""); return JsValue.Undefined; });
+        EventTargetBinding.DefineAccessor(realm, proto, "type",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.String(HtmlFormControls.InputType(e)) : JsValue.String(""),
+            (thisV, args) => { if (DomWrappers.UnwrapElement(thisV) is { } e) e.SetAttribute("type", args.Length > 0 ? JsValue.ToStringValue(args[0]) : ""); return JsValue.Undefined; });
+        EventTargetBinding.DefineAccessor(realm, proto, "required",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.Boolean(e.HasAttribute("required")) : JsValue.False,
+            (thisV, args) => { if (DomWrappers.UnwrapElement(thisV) is { } e) SetBoolAttr(e, "required", args.Length > 0 && JsValue.ToBoolean(args[0])); return JsValue.Undefined; });
+        EventTargetBinding.DefineAccessor(realm, proto, "disabled",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.Boolean(e.HasAttribute("disabled")) : JsValue.False,
+            (thisV, args) => { if (DomWrappers.UnwrapElement(thisV) is { } e) SetBoolAttr(e, "disabled", args.Length > 0 && JsValue.ToBoolean(args[0])); return JsValue.Undefined; });
+        EventTargetBinding.DefineAccessor(realm, proto, "readOnly",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.Boolean(e.HasAttribute("readonly")) : JsValue.False,
+            (thisV, args) => { if (DomWrappers.UnwrapElement(thisV) is { } e) SetBoolAttr(e, "readonly", args.Length > 0 && JsValue.ToBoolean(args[0])); return JsValue.Undefined; });
+        EventTargetBinding.DefineAccessor(realm, proto, "multiple",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.Boolean(e.HasAttribute("multiple")) : JsValue.False,
+            (thisV, args) => { if (DomWrappers.UnwrapElement(thisV) is { } e) SetBoolAttr(e, "multiple", args.Length > 0 && JsValue.ToBoolean(args[0])); return JsValue.Undefined; });
+        EventTargetBinding.DefineAccessor(realm, proto, "checked",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.Boolean(HtmlFormControls.Checked(e)) : JsValue.False,
+            (thisV, args) => { if (DomWrappers.UnwrapElement(thisV) is { } e) HtmlFormControls.SetChecked(e, args.Length > 0 && JsValue.ToBoolean(args[0])); return JsValue.Undefined; });
+        EventTargetBinding.DefineAccessor(realm, proto, "selected",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.Boolean(e.HasAttribute("selected")) : JsValue.False,
+            (thisV, args) => { if (DomWrappers.UnwrapElement(thisV) is { } e) SetBoolAttr(e, "selected", args.Length > 0 && JsValue.ToBoolean(args[0])); return JsValue.Undefined; });
+        EventTargetBinding.DefineAccessor(realm, proto, "form",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e && HtmlFormControls.FormOwner(e) is { } form
+                ? JsValue.Object(DomWrappers.Wrap(realm, form)) : JsValue.Null);
+        EventTargetBinding.DefineAccessor(realm, proto, "selectionStart",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e && HtmlFormControls.IsTextControl(e) ? JsValue.Number(e.SelectionStart) : JsValue.Null,
+            (thisV, args) => { if (DomWrappers.UnwrapElement(thisV) is { } e) HtmlFormControls.SetSelectionRange(e, args.Length > 0 ? (int)JsValue.ToNumber(args[0]) : 0, e.SelectionEnd, e.SelectionDirection); return JsValue.Undefined; });
+        EventTargetBinding.DefineAccessor(realm, proto, "selectionEnd",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e && HtmlFormControls.IsTextControl(e) ? JsValue.Number(e.SelectionEnd) : JsValue.Null,
+            (thisV, args) => { if (DomWrappers.UnwrapElement(thisV) is { } e) HtmlFormControls.SetSelectionRange(e, e.SelectionStart, args.Length > 0 ? (int)JsValue.ToNumber(args[0]) : 0, e.SelectionDirection); return JsValue.Undefined; });
+        EventTargetBinding.DefineAccessor(realm, proto, "validity",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.Object(BuildValidityObject(realm, HtmlFormControls.Validity(e))) : JsValue.Undefined);
+        EventTargetBinding.DefineAccessor(realm, proto, "willValidate",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.Boolean(HtmlFormControls.WillValidate(e)) : JsValue.False);
+        EventTargetBinding.DefineAccessor(realm, proto, "validationMessage",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.String(HtmlFormControls.ValidationMessage(e)) : JsValue.String(""));
+        EventTargetBinding.DefineAccessor(realm, proto, "selectedIndex",
+            (thisV, _) => DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.Number(SelectedIndex(e)) : JsValue.Number(-1),
+            (thisV, args) => { if (DomWrappers.UnwrapElement(thisV) is { } e) SetSelectedIndex(e, args.Length > 0 ? (int)JsValue.ToNumber(args[0]) : -1); return JsValue.Undefined; });
+        EventTargetBinding.DefineMethod(realm, proto, "setSelectionRange", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is { } e)
+                HtmlFormControls.SetSelectionRange(e,
+                    args.Length > 0 ? (int)JsValue.ToNumber(args[0]) : 0,
+                    args.Length > 1 ? (int)JsValue.ToNumber(args[1]) : 0,
+                    args.Length > 2 ? JsValue.ToStringValue(args[2]) : "none");
+            return JsValue.Undefined;
+        }, length: 2);
+        EventTargetBinding.DefineMethod(realm, proto, "checkValidity", (thisV, _) =>
+            DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.Boolean(HtmlFormControls.CheckValidity(e)) : JsValue.True, length: 0);
+        EventTargetBinding.DefineMethod(realm, proto, "reportValidity", (thisV, _) =>
+            DomWrappers.UnwrapElement(thisV) is { } e ? JsValue.Boolean(HtmlFormControls.CheckValidity(e)) : JsValue.True, length: 0);
+        EventTargetBinding.DefineMethod(realm, proto, "setCustomValidity", (thisV, args) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is { } e)
+                e.CustomValidationMessage = args.Length > 0 ? JsValue.ToStringValue(args[0]) : "";
+            return JsValue.Undefined;
+        }, length: 1);
+        EventTargetBinding.DefineMethod(realm, proto, "serialize", (thisV, _) =>
+            DomWrappers.UnwrapElement(thisV) is { LocalName: "form" } form ? JsValue.String(HtmlFormControls.UrlEncodedFormData(form)) : JsValue.String(""), length: 0);
+        EventTargetBinding.DefineMethod(realm, proto, "submit", (thisV, _) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is { LocalName: "form" } form)
+                HtmlFormControls.RecordAutocompleteSubmission(form);
+            return JsValue.Undefined;
+        }, length: 0);
+        EventTargetBinding.DefineMethod(realm, proto, "requestSubmit", (thisV, _) =>
+        {
+            if (DomWrappers.UnwrapElement(thisV) is not { LocalName: "form" } form) return JsValue.Undefined;
+            if (!DispatchInvalidEvents(form)) return JsValue.Undefined;
+            var ev = new Starling.Dom.Events.Event("submit", new Starling.Dom.Events.EventInit(Bubbles: true, Cancelable: true));
+            form.DispatchEvent(ev);
+            if (!ev.DefaultPrevented)
+                HtmlFormControls.RecordAutocompleteSubmission(form);
+            return JsValue.Undefined;
+        }, length: 0);
+        EventTargetBinding.DefineMethod(realm, proto, "autocompleteSuggestions", (thisV, _) =>
+            DomWrappers.UnwrapElement(thisV) is { } e ? StringArray(realm, HtmlFormControls.AutocompleteSuggestions(e)) : MakeArray(realm, Array.Empty<JsValue>()), length: 0);
+    }
+
+    private static JsObject BuildValidityObject(JsRealm realm, FormValidityState validity)
+    {
+        var obj = new JsObject(realm.ObjectPrototype);
+        obj.DefineOwnProperty("valueMissing", PropertyDescriptor.Data(JsValue.Boolean(validity.ValueMissing), writable: false, enumerable: true, configurable: true));
+        obj.DefineOwnProperty("typeMismatch", PropertyDescriptor.Data(JsValue.Boolean(validity.TypeMismatch), writable: false, enumerable: true, configurable: true));
+        obj.DefineOwnProperty("patternMismatch", PropertyDescriptor.Data(JsValue.Boolean(validity.PatternMismatch), writable: false, enumerable: true, configurable: true));
+        obj.DefineOwnProperty("tooLong", PropertyDescriptor.Data(JsValue.Boolean(validity.TooLong), writable: false, enumerable: true, configurable: true));
+        obj.DefineOwnProperty("tooShort", PropertyDescriptor.Data(JsValue.Boolean(validity.TooShort), writable: false, enumerable: true, configurable: true));
+        obj.DefineOwnProperty("rangeUnderflow", PropertyDescriptor.Data(JsValue.Boolean(validity.RangeUnderflow), writable: false, enumerable: true, configurable: true));
+        obj.DefineOwnProperty("rangeOverflow", PropertyDescriptor.Data(JsValue.Boolean(validity.RangeOverflow), writable: false, enumerable: true, configurable: true));
+        obj.DefineOwnProperty("stepMismatch", PropertyDescriptor.Data(JsValue.Boolean(validity.StepMismatch), writable: false, enumerable: true, configurable: true));
+        obj.DefineOwnProperty("badInput", PropertyDescriptor.Data(JsValue.Boolean(validity.BadInput), writable: false, enumerable: true, configurable: true));
+        obj.DefineOwnProperty("customError", PropertyDescriptor.Data(JsValue.Boolean(validity.CustomError), writable: false, enumerable: true, configurable: true));
+        obj.DefineOwnProperty("valid", PropertyDescriptor.Data(JsValue.Boolean(validity.Valid), writable: false, enumerable: true, configurable: true));
+        return obj;
+    }
+
+    private static JsValue StringArray(JsRealm realm, IReadOnlyList<string> values)
+    {
+        var items = new JsValue[values.Count];
+        for (var i = 0; i < values.Count; i++)
+            items[i] = JsValue.String(values[i]);
+        return MakeArray(realm, items);
+    }
+
+    private static int SelectedIndex(Element element)
+    {
+        if (element.LocalName != "select") return -1;
+        var index = 0;
+        var fallback = -1;
+        foreach (var option in element.DescendantElements())
+        {
+            if (option.LocalName != "option") continue;
+            if (fallback < 0) fallback = index;
+            if (option.HasAttribute("selected")) return index;
+            index++;
+        }
+        return fallback;
+    }
+
+    private static void SetSelectedIndex(Element element, int selectedIndex)
+    {
+        if (element.LocalName != "select") return;
+        var index = 0;
+        foreach (var option in element.DescendantElements())
+        {
+            if (option.LocalName != "option") continue;
+            if (index == selectedIndex) option.SetAttribute("selected", string.Empty);
+            else if (!element.HasAttribute("multiple")) option.RemoveAttribute("selected");
+            index++;
+        }
+    }
+
+    private static bool DispatchInvalidEvents(Element form)
+    {
+        var valid = true;
+        foreach (var control in HtmlFormControls.FormControls(form))
+        {
+            if (HtmlFormControls.Validity(control).Valid) continue;
+            valid = false;
+            control.DispatchEvent(new Starling.Dom.Events.Event("invalid", new Starling.Dom.Events.EventInit(Cancelable: true)));
+        }
+        return valid;
+    }
+
+    private static void SetBoolAttr(Element element, string attr, bool value)
+    {
+        if (value) element.SetAttribute(attr, string.Empty);
+        else element.RemoveAttribute(attr);
     }
 
     // ---- DOM Name / QName validation (DOM §1 "validate", §4.5). Approximates

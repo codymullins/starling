@@ -192,12 +192,24 @@ public sealed class LayoutSession
         // clock, with no DOM mutation to record — so mark every active target
         // dirty and re-cascade it at the current frame time. (Both engines key on
         // Element; ones that produce no box, e.g. display:none, are skipped.)
+        //
+        // BUT only when the animated property can actually move geometry. A
+        // transform / opacity / color / shadow animation is paint- or
+        // composite-time: the painter samples it off the clock at paint time, so
+        // the box tree is unchanged and a relayout would be pure waste. Skipping
+        // it matters a lot on real pages: an animated element usually sits inside
+        // a flex / grid container, and marking it dirty forces that whole
+        // formatting context to re-lay (and re-measure all its text) every frame
+        // — the animations demo, whose cards are flex items, was doing ~46 text
+        // measures and ~9 ms of layout per frame for transform-only spins.
         if (nowMs is not null)
         {
             foreach (var el in _style.AnimationEngine.ActiveElements)
-                if (!MarkAnimated(el, nowMs)) return false;
+                if (_style.AnimationEngine.HasLayoutAffectingProperty(el) && !MarkAnimated(el, nowMs))
+                    return false;
             foreach (var el in _style.TransitionEngine.ActiveElements)
-                if (!MarkAnimated(el, nowMs)) return false;
+                if (_style.TransitionEngine.HasLayoutAffectingProperty(el) && !MarkAnimated(el, nowMs))
+                    return false;
         }
 
         return true;

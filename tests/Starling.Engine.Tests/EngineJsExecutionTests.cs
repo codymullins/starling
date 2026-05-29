@@ -751,6 +751,43 @@ public sealed class EngineJsExecutionTests
         }
     }
 
+    [TestMethod]
+    public async Task Disposing_live_page_fires_beforeunload_then_unload()
+    {
+        var html = @"<!doctype html><html><body>
+<p id=""out""></p>
+<script>
+  window.addEventListener('beforeunload', function () {
+    document.getElementById('out').textContent += 'before';
+  });
+  window.addEventListener('unload', function () {
+    document.getElementById('out').textContent += '-unload';
+  });
+</script>
+</body></html>";
+        var fixture = Path.Combine(Path.GetTempPath(), $"starling-life-{Guid.NewGuid():N}.html");
+        await File.WriteAllTextAsync(fixture, html);
+        try
+        {
+            var engine = new StarlingEngine();
+            var result = await engine.LayoutPageAsync(
+                "file://" + fixture.Replace('\\', '/'),
+                DefaultOptions,
+                CancellationToken.None,
+                onFirstPaint: _ => { });
+
+            result.IsOk.Should().BeTrue(result.IsErr ? result.Error.Message : "");
+            var page = result.Value;
+            var outEl = page.Document.GetElementById("out");
+            page.Dispose();
+            outEl!.TextContent.Should().Be("before-unload");
+        }
+        finally
+        {
+            if (File.Exists(fixture)) File.Delete(fixture);
+        }
+    }
+
     // -------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------

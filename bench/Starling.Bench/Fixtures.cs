@@ -42,6 +42,34 @@ internal static class Fixtures
         return sb.ToString();
     }
 
+    // A flex-rooted page (body is a flex container, so its single child is a
+    // flex item) with many text-heavy sibling sections and one deep "status"
+    // line. This mirrors the animations demo, whose CPU spike came from a
+    // per-frame script writing a deep text node: the dirty path reaches the flex
+    // root, whose auto cross-size measurement re-measured the whole subtree. The
+    // status line carries id="status" for the per-frame text mutation.
+    public static string FlexRootedHtml(int rows)
+    {
+        var sb = new System.Text.StringBuilder(rows * 96 + 128);
+        sb.Append("<!doctype html><html><body><main id=\"page\"><header><h1>Showcase headline</h1>");
+        sb.Append("<p>An intro paragraph that wraps across a couple of lines here.</p></header>");
+        for (var i = 0; i < rows; i++)
+        {
+            sb.Append("<section id=\"row-").Append(i).Append("\"><h3>Item ").Append(i)
+              .Append("</h3><p>Row ").Append(i)
+              .Append(" has a short paragraph of body text that wraps.</p></section>");
+        }
+        sb.Append("<div class=\"status-wrap\"><p id=\"status\">idle 0 ms</p></div>");
+        sb.Append("<footer>Rendered by the layout engine.</footer></main></body></html>");
+        return sb.ToString();
+    }
+
+    public const string FlexRootCss = """
+        body { display: flex; justify-content: center; margin: 0; }
+        #page { width: 100%; max-width: 880px; }
+        h1, h2, h3 { color: #111; }
+        """;
+
     public const string TinyHtml = "<!doctype html><html><body><p>Hello, world.</p></body></html>";
 
     public const string SmallHtml = """
