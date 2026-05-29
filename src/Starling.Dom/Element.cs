@@ -174,7 +174,10 @@ public class Element : Node
             // built-in cascade actually depends on. See
             // Document.IsLayoutRelevantAttribute for the trade-off.
             d.BumpMutationVersion();
-            if (Document.IsLayoutRelevantAttribute(attrName))
+            // Selector-aware (plan §7): relevant if the static heuristic says so,
+            // OR some active stylesheet selects on this attribute (so author CSS
+            // keyed on a data-*/aria-* attribute still invalidates on a script write).
+            if (d.IsAttributeLayoutRelevant(attrName))
             {
                 d.BumpLayoutInvalidationVersion();
                 d.RecordLayoutMutation(this, LayoutChangeKind.LayoutRelevantAttr);

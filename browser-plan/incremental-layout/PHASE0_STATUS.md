@@ -27,11 +27,17 @@ The change lives in `WebviewPanel`. It tracks the document's
 `LayoutInvalidationVersion` from the last layout and compares it after each
 pump. `ShowPage` re-baselines the version on every page swap.
 
-**Known accepted gap.** Author CSS that uses an attribute selector (such as
-`[role="button"] { ... }`) plus a script that writes that attribute will miss
-a recompute until the next layout-relevant change. The spec-correct fix is
-selector-aware invalidation, which is a tracked follow-up. The gap is
-documented in code at both the live loop and `Document.IsLayoutRelevantAttribute`.
+**The attribute-selector gap is now fixed (plan §7 — selector-aware
+invalidation).** Author CSS that uses an attribute selector (such as
+`[data-state="open"] { ... }`) plus a script that writes that attribute used to
+miss a recompute, because the static heuristic in
+`Document.IsLayoutRelevantAttribute` treats `data-*`/`aria-*`/`role` as
+cosmetic. The layout pass now records which attributes the page's stylesheets
+actually select on (`StyleEngine.ReferencedAttributeNames` →
+`Document.StyleReferencedAttributes`), and the attribute-mutation path checks
+that set too (`Document.IsAttributeLayoutRelevant`). So a write to a
+selector-referenced attribute invalidates layout while genuinely-cosmetic
+`data-*` writes still don't.
 
 ### 0d — the verification harness shell
 

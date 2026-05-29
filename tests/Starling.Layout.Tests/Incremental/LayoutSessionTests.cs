@@ -189,6 +189,30 @@ public sealed class LayoutSessionTests
             .Should().BeNull("positional restyle must be re-cascaded, not reused stale");
     }
 
+    // ---- selector-aware invalidation (plan §7) -------------------------------
+
+    [TestMethod]
+    public void Selector_referenced_data_attribute_change_relays_incrementally()
+    {
+        // Author CSS keyed on a data-* attribute: flipping it must invalidate and
+        // relayout, even though the static heuristic treats data-* as cosmetic.
+        const string css = "div[data-state=\"open\"] { padding-left: 40px; }";
+        var doc = Parse("<body><div id=a data-state=\"closed\">alpha</div><div id=b>beta</div></body>");
+        var (session, diag) = SessionWith(css);
+        session.Layout(doc, Viewport, DefaultTextMeasurer.Instance, nowMs: null);
+
+        // The layout pass taught the document which attributes the CSS selects on.
+        doc.StyleReferencedAttributes.Should().Contain("data-state");
+
+        var before = doc.LayoutInvalidationVersion;
+        doc.GetElementById("a")!.SetAttribute("data-state", "open");
+        doc.LayoutInvalidationVersion.Should().Be(before + 1, "a write to a selector-referenced attribute is layout-relevant");
+
+        var incremental = session.Layout(doc, Viewport, DefaultTextMeasurer.Instance, nowMs: null);
+        diag.Counter("layout.incremental.relayout").Should().Be(1);
+        LayoutVerifier.FindFirstDivergence(incremental, FullRebuildWith(doc, css)).Should().BeNull();
+    }
+
     [TestMethod]
     public void Has_selector_forces_full_rebuild_on_structural_change()
     {

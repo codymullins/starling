@@ -46,6 +46,11 @@ internal sealed class BoxTreeBuilder
     {
         ArgumentNullException.ThrowIfNull(document);
 
+        // Selector-aware invalidation (plan §7): tell the document which
+        // attributes its stylesheets select on, so a later script write to a
+        // data-*/aria-* attribute that author CSS targets invalidates layout.
+        document.StyleReferencedAttributes = _style.ReferencedAttributeNames;
+
         var root = document.DocumentElement;
         if (root is null)
             return new BlockBox(style: null, element: null);

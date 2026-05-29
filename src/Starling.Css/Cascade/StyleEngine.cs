@@ -47,6 +47,19 @@ public sealed class StyleEngine
     /// full rebuild.</summary>
     public bool StructuralChangeNeedsFullRebuild => _structuralRebuildSensitive;
 
+    // Attribute names referenced by any selector's attribute selector (e.g.
+    // `[data-state="open"]` references "data-state"). Selector-aware invalidation
+    // uses this so a script write to such an attribute is treated as
+    // layout/style-relevant even when the static heuristic would skip it (plan §7).
+    private readonly HashSet<string> _referencedAttributes = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The attribute names any active stylesheet selects on
+    /// (<c>[attr]</c>, <c>[attr=v]</c>, …, recursing into <c>:is/:where/:not/:has</c>).
+    /// A DOM write to one of these can change the cascade, so it must invalidate
+    /// layout even if it's a <c>data-*</c>/<c>aria-*</c> attribute the static
+    /// heuristic treats as cosmetic.</summary>
+    public IReadOnlySet<string> ReferencedAttributeNames => _referencedAttributes;
+
     /// <summary>Resolver built from every <c>@counter-style</c> rule in the
     /// attached stylesheets (CSS Counter Styles 3 §3). Holds the predefined
     /// styles plus any author-defined ones. Use
@@ -117,6 +130,7 @@ public sealed class StyleEngine
             _sharingDisabled = true;
         if (!_structuralRebuildSensitive && SheetUsesHasOrEmpty(index))
             _structuralRebuildSensitive = true;
+        CollectReferencedAttributes(index, _referencedAttributes);
         RegisterKeyframesFromSheet(sheet);
         RebuildCounterStyles();
         RebuildRegisteredProperties();
@@ -130,6 +144,9 @@ public sealed class StyleEngine
         // Re-evaluate whether sharing can be re-enabled after removal.
         _sharingDisabled = _sheetIndexes.Values.Any(SheetUsesUnshareableSelectors);
         _structuralRebuildSensitive = _sheetIndexes.Values.Any(SheetUsesHasOrEmpty);
+        _referencedAttributes.Clear();
+        foreach (var idx in _sheetIndexes.Values)
+            CollectReferencedAttributes(idx, _referencedAttributes);
         UnregisterKeyframesFromSheet(sheet);
         RebuildCounterStyles();
         RebuildRegisteredProperties();
@@ -205,6 +222,32 @@ public sealed class StyleEngine
             if (SelectorListUsesHasOrEmpty(parsed))
                 return true;
         return false;
+    }
+
+    /// <summary>Collect every attribute name referenced by an attribute selector
+    /// in <paramref name="index"/> (recursing into functional pseudo arguments)
+    /// into <paramref name="sink"/>. Selector-aware invalidation (plan §7).</summary>
+    private static void CollectReferencedAttributes(SheetIndex index, HashSet<string> sink)
+    {
+        foreach (var parsed in index.ParsedSelectorLists.Values)
+            CollectReferencedAttributes(parsed, sink);
+    }
+
+    private static void CollectReferencedAttributes(SelectorList list, HashSet<string> sink)
+    {
+        foreach (var complex in list.Selectors)
+            foreach (var part in complex.Parts)
+                foreach (var simple in part.Compound.SimpleSelectors)
+                {
+                    if (simple is AttributeSelector attr)
+                        sink.Add(attr.Name);
+                    else if (simple is PseudoClassSelector pc)
+                        switch (pc.Argument)
+                        {
+                            case SelectorList nested: CollectReferencedAttributes(nested, sink); break;
+                            case NthArgument { OfSelector: { } of }: CollectReferencedAttributes(of, sink); break;
+                        }
+                }
     }
 
     private static bool SelectorListUsesHasOrEmpty(SelectorList list)
