@@ -406,7 +406,7 @@ public static class CoreWebApiBinding
         }
         if (obj is BlobObject blob)
             return JsValue.Object(blob.CloneForRealm(realm));
-        if (obj is JsNativeFunction)
+        if (AbstractOperations.IsCallable(value))
             throw DomExceptionBinding.Throw(realm, "DataCloneError", "Function objects cannot be cloned");
 
         JsObject clone;
