@@ -1,7 +1,9 @@
+using Starling.Common.Diagnostics;
 using Starling.Css.Cascade;
 using Starling.Dom;
 using Starling.Layout;
 using Starling.Layout.Box;
+using Starling.Layout.Incremental;
 using Starling.Layout.Tree;
 using Starling.Net;
 using Starling.Net.Http;
@@ -39,6 +41,7 @@ public sealed class LaidOutPage : IDisposable
     // pages whose resources were transferred to a relayout successor.
     private readonly StarlingHttpClient? _http;
     private PageScripting? _scripting;
+    private LayoutSession? _layoutSession;
     private bool _disposed;
     private bool _resourcesTransferred;
 
@@ -85,6 +88,15 @@ public sealed class LaidOutPage : IDisposable
     /// engine's interactive path.
     /// </summary>
     public PageScripting? Scripting => _scripting;
+
+    /// <summary>
+    /// The persistent incremental-layout session for this page, created lazily on
+    /// the first incremental relayout and transferred to relayout successors (so
+    /// the retained box tree and its dirty-tracking survive across frames). Null
+    /// until incremental layout first runs, or when the feature is off.
+    /// </summary>
+    internal LayoutSession GetOrCreateLayoutSession(IDiagnostics diagnostics)
+        => _layoutSession ??= new LayoutSession(Style, _images, diagnostics);
 
     /// <summary>Attach the live JS context after construction — used by the
     /// interactive path when the first-paint page is returned unchanged (no
@@ -154,9 +166,13 @@ public sealed class LaidOutPage : IDisposable
     internal LaidOutPage Relayout(BlockBox root, StyleEngine style, Size viewport)
     {
         _resourcesTransferred = true;
-        return new LaidOutPage(
+        var successor = new LaidOutPage(
             root, Document, style, viewport, Url, Title,
             _images, _stylesheets, _webFonts, DefaultFontSize, Security, _http, _scripting);
+        // The incremental session owns the retained tree across reflows, so it
+        // rides along to the successor (which now exposes that tree as its Root).
+        successor._layoutSession = _layoutSession;
+        return successor;
     }
 
     public void Dispose()

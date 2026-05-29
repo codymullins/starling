@@ -129,6 +129,26 @@ public sealed class LayoutSessionTests
         LayoutVerifier.FindFirstDivergence(again, FullRebuild(doc)).Should().BeNull();
     }
 
+    // ---- the in-session dual-run safety net (plan §2g) -----------------------
+
+    [TestMethod]
+    public void Self_verification_passes_across_a_sequence_of_text_changes()
+    {
+        var doc = Parse("<body><div id=a>alpha</div><div id=b>beta</div><div id=c>gamma</div></body>");
+        var diag = new CountingDiagnostics();
+        var session = new LayoutSession(new StyleEngine(), diagnostics: diag) { VerifyAgainstFullRebuild = true };
+
+        session.Layout(doc, Viewport, DefaultTextMeasurer.Instance, nowMs: null);
+        FirstText(doc.GetElementById("b")!).Data = "beta grew a lot longer than it used to be and wraps";
+        session.Layout(doc, Viewport, DefaultTextMeasurer.Instance, nowMs: null);
+        FirstText(doc.GetElementById("a")!).Data = "alpha";
+        session.Layout(doc, Viewport, DefaultTextMeasurer.Instance, nowMs: null);
+
+        diag.Counter("layout.incremental.verify_ok").Should().Be(2);
+        diag.Counter("layout.incremental.divergent").Should().Be(0);
+        diag.Counter("layout.incremental.relayout").Should().Be(2);
+    }
+
     private static Box.Box? FindById(Box.Box box, string id)
     {
         if (box.Element?.Id == id) return box;

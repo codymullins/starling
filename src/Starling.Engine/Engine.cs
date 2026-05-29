@@ -843,6 +843,27 @@ public sealed class StarlingEngine
         Activity.Current?.SetTag("viewport.h", options.Viewport.Height);
 
         var viewport = new LayoutSize(options.Viewport.Width, options.Viewport.Height);
+
+        // Incremental path (STARLING_INCREMENTAL_LAYOUT=1): reuse the page's
+        // persistent StyleEngine and a retained box tree, recomputing only the
+        // subtrees this frame's mutations touched. The session detects a viewport
+        // change and falls back to a full rebuild, so resize stays correct — but
+        // the cascade reads the viewport off the MediaContext, so refresh it
+        // first (the full-rebuild path below gets this from a fresh StyleEngine).
+        if (Starling.Layout.Incremental.LayoutSession.Enabled)
+        {
+            page.Document.RecordLayoutMutations = true;
+            page.Style.MediaContext = page.Style.MediaContext with
+            {
+                ColorScheme = options.PreferredColorScheme,
+                ViewportWidthPx = viewport.Width,
+                ViewportHeightPx = viewport.Height,
+            };
+            var session = page.GetOrCreateLayoutSession(_diag);
+            var incRoot = _painter.LayoutDocumentIncremental(session, page.Document, viewport, page.WebFonts);
+            return page.Relayout(incRoot, page.Style, viewport);
+        }
+
         var (root, style) = _painter.LayoutDocumentWithStyle(
             page.Document, viewport, page.DefaultFontSize, page.Images, page.Stylesheets.Resolve,
             page.WebFonts, colorScheme: options.PreferredColorScheme);

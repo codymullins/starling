@@ -43,6 +43,14 @@ public sealed class LayoutSession
     private BlockBox? _root;
     private Size _viewport;
 
+    /// <summary>Env switch that turns the incremental relayout path on. Off by
+    /// default — the engine then uses the unchanged full-rebuild path.</summary>
+    public const string EnvVar = "STARLING_INCREMENTAL_LAYOUT";
+
+    /// <summary>Whether <see cref="EnvVar"/> requests incremental layout.</summary>
+    public static bool Enabled =>
+        string.Equals(Environment.GetEnvironmentVariable(EnvVar), "1", StringComparison.Ordinal);
+
     public LayoutSession(StyleEngine style, IImageResolver? images = null, IDiagnostics? diagnostics = null)
     {
         ArgumentNullException.ThrowIfNull(style);
@@ -53,6 +61,14 @@ public sealed class LayoutSession
 
     /// <summary>The retained box tree's root, or null before the first layout.</summary>
     public BlockBox? Root => _root;
+
+    /// <summary>
+    /// When set, every incremental relayout is checked against a full rebuild of
+    /// the same document and the first geometry divergence is logged — the plan's
+    /// incremental-vs-full harness flip (§2g). Doubles layout cost, so it is a
+    /// debug/CI safety net; defaults to the <c>STARLING_LAYOUT_VERIFY</c> switch.
+    /// </summary>
+    public bool VerifyAgainstFullRebuild { get; init; } = Verification.LayoutVerifier.Enabled;
 
     /// <summary>
     /// Lay <paramref name="document"/> out at <paramref name="viewport"/>,
@@ -73,6 +89,8 @@ public sealed class LayoutSession
             using (_diag.Span("layout", "incremental.relayout"))
                 RunLayout(measurer, viewport, abort, incremental: true);
             _diag.Counter("layout.incremental.relayout", 1);
+            if (VerifyAgainstFullRebuild)
+                Verify(document, viewport, measurer, nowMs, abort);
             return _root;
         }
 
@@ -80,6 +98,33 @@ public sealed class LayoutSession
             FullBuild(document, viewport, measurer, nowMs, abort);
         _diag.Counter("layout.incremental.full_rebuild", 1);
         return _root!;
+    }
+
+    /// <summary>
+    /// Dual-run check (plan §2g): rebuild <paramref name="document"/> from
+    /// scratch the always-correct way and compare it to the just-produced
+    /// incremental tree, logging the first geometry divergence. This is how a
+    /// stale-but-plausible reuse — the worst incremental-layout failure — is
+    /// caught before it reaches a user.
+    /// </summary>
+    private void Verify(Document document, Size viewport, ITextMeasurer measurer, double? nowMs, CancellationToken abort)
+    {
+        using var _ = _diag.Span("layout", "incremental.verify");
+        var reference = new BoxTreeBuilder(_style, _images, nowMs).Build(document);
+        var block = new BlockLayout(measurer, viewport, _diag, abort, incremental: false);
+        block.Layout(reference);
+        new PositionLayout(block, viewport).LayoutPositioned(reference);
+
+        var divergence = Verification.LayoutVerifier.FindFirstDivergence(_root!, reference);
+        if (divergence is { } d)
+        {
+            _diag.Counter("layout.incremental.divergent", 1);
+            _diag.Log(DiagLevel.Error, "layout.incremental", $"incremental layout diverged from full rebuild: {d}");
+        }
+        else
+        {
+            _diag.Counter("layout.incremental.verify_ok", 1);
+        }
     }
 
     private void FullBuild(Document document, Size viewport, ITextMeasurer measurer, double? nowMs, CancellationToken abort)

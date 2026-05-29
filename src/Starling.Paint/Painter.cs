@@ -295,6 +295,38 @@ public sealed class Painter
         }
     }
 
+    /// <summary>
+    /// Lay <paramref name="document"/> out through a persistent
+    /// <see cref="Starling.Layout.Incremental.LayoutSession"/>, reusing the
+    /// session's retained box tree where the per-frame mutation batch allows and
+    /// rebuilding only the changed subtrees. The session owns the tree across
+    /// frames; this just supplies a freshly created text measurer (and disposes
+    /// it). Returns the laid-out root. Used by the engine's incremental relayout
+    /// path; falls back internally to a full rebuild when reuse isn't safe.
+    /// </summary>
+    public Starling.Layout.Box.BlockBox LayoutDocumentIncremental(
+        Starling.Layout.Incremental.LayoutSession session,
+        Document document,
+        LayoutSize viewport,
+        FontFaceRegistry? webFonts,
+        double? nowMs = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(document);
+
+        var measurer = PaintBackendSelector.CreateMeasurer(_fonts, webFonts);
+        try
+        {
+            using (_diag.Span("paint", "layout.incremental"))
+                return session.Layout(document, viewport, measurer, nowMs, ct);
+        }
+        finally
+        {
+            (measurer as IDisposable)?.Dispose();
+        }
+    }
+
     /// <summary>Build only the cascade — no layout, no display list. Used by
     /// <c>BoxLayoutHost</c> (in <c>Starling.Engine</c>) to answer
     /// <c>getComputedStyle</c> reads for purely-cascaded properties
