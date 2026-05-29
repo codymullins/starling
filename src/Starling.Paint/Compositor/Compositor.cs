@@ -32,6 +32,13 @@ internal sealed class Compositor
     }
 
     /// <summary>
+    /// Test-only switch (LTF-05): when set, every layer takes the general
+    /// inverse-mapped bilinear composite path even when it would qualify for the
+    /// fast integer-aligned blit. Used to prove the two paths are byte-identical.
+    /// </summary>
+    internal bool DisableFastBlit { get; init; }
+
+    /// <summary>
     /// Renders <paramref name="root"/> (the layer tree's root) into a bitmap
     /// sized to <paramref name="viewport"/> at <paramref name="scale"/>. Each
     /// layer's picture cache is keyed by its own slice content hash
@@ -89,7 +96,7 @@ internal sealed class Compositor
         {
             using var local = RenderLayerBitmap(layer, scale);
             BlendLayer(local, layer.Bounds, output, outWidth, outHeight, viewport, scale,
-                effectiveTransform, effectiveOpacity, effectiveClip);
+                effectiveTransform, effectiveOpacity, effectiveClip, fastBlit: !DisableFastBlit);
         }
 
         // Children already in paint order (z-index sorted at build time).
@@ -163,7 +170,8 @@ internal sealed class Compositor
         float scale,
         Matrix2D transform,
         float opacity,
-        Rect? clip)
+        Rect? clip,
+        bool fastBlit)
     {
         // Map a local-bitmap pixel -> output device pixel:
         //   page   = Translate(bounds.X, bounds.Y) * Scale(1/scale)        (pixel -> page)
@@ -186,6 +194,19 @@ internal sealed class Compositor
         Rect? clipDev = clip is { } cp
             ? TransformedAabb(new Rect(cp.X, cp.Y, cp.Width, cp.Height), pageToDevice)
             : null;
+
+        // Fast path (LTF-05): a layer that lands as a pure integer-pixel
+        // translation at full opacity (no rotation/scale/skew) skips the matrix
+        // inverse + bilinear sample and blits source rows directly. The 1/scale
+        // and scale factors cancel for an upright layer, so localToDevice's linear
+        // part is exactly identity here and an integer-translation check suffices.
+        // Byte-identical to the general path: a bilinear sample at integer
+        // alignment returns the exact source pixel, and the same AlphaOver runs.
+        if (fastBlit && opacity >= 1f && IsIntegerTranslation(localToDevice, out var tx, out var ty))
+        {
+            BlitIntegerAligned(local, output, outWidth, outHeight, tx, ty, clipDev);
+            return;
+        }
 
         var minX = Math.Max(0, (int)Math.Floor(devAabb.X));
         var minY = Math.Max(0, (int)Math.Floor(devAabb.Y));
@@ -328,6 +349,76 @@ internal sealed class Compositor
         var maxX = Math.Max(Math.Max(x0, x1), Math.Max(x2, x3));
         var maxY = Math.Max(Math.Max(y0, y1), Math.Max(y2, y3));
         return new Rect(minX, minY, maxX - minX, maxY - minY);
+    }
+
+    /// <summary>
+    /// True when <paramref name="m"/> is a pure integer-pixel translation (identity
+    /// linear part, integer offsets), the precondition for the LTF-05 fast blit.
+    /// </summary>
+    private static bool IsIntegerTranslation(Matrix2D m, out int dx, out int dy)
+    {
+        const double eps = 1e-6;
+        dx = 0; dy = 0;
+        if (Math.Abs(m.A - 1d) > eps || Math.Abs(m.D - 1d) > eps
+            || Math.Abs(m.B) > eps || Math.Abs(m.C) > eps)
+            return false;
+        var rx = Math.Round(m.E);
+        var ry = Math.Round(m.F);
+        if (Math.Abs(m.E - rx) > eps || Math.Abs(m.F - ry) > eps)
+            return false;
+        dx = (int)rx;
+        dy = (int)ry;
+        return true;
+    }
+
+    /// <summary>
+    /// Blits <paramref name="local"/> into <paramref name="output"/> offset by the
+    /// integer device translation (<paramref name="dx"/>, <paramref name="dy"/>),
+    /// clamped to the output and to <paramref name="clipDev"/>. Opaque source
+    /// pixels copy straight through; partially-transparent pixels alpha-over —
+    /// the same blend the general path applies, so the result is byte-identical.
+    /// </summary>
+    private static void BlitIntegerAligned(RenderedBitmap local, byte[] output, int outWidth, int outHeight, int dx, int dy, Rect? clipDev)
+    {
+        var minX = Math.Max(0, dx);
+        var minY = Math.Max(0, dy);
+        var maxX = Math.Min(outWidth, dx + local.Width);
+        var maxY = Math.Min(outHeight, dy + local.Height);
+        if (clipDev is { } cd)
+        {
+            minX = Math.Max(minX, (int)Math.Floor(cd.X));
+            minY = Math.Max(minY, (int)Math.Floor(cd.Y));
+            maxX = Math.Min(maxX, (int)Math.Ceiling(cd.Right));
+            maxY = Math.Min(maxY, (int)Math.Ceiling(cd.Bottom));
+        }
+        if (maxX <= minX || maxY <= minY) return;
+
+        var src = local.Rgba;
+        var srcStride = local.Width * 4;
+        var dstStride = outWidth * 4;
+        for (var y = minY; y < maxY; y++)
+        {
+            var srcRow = (y - dy) * srcStride;
+            var dstRow = y * dstStride;
+            for (var x = minX; x < maxX; x++)
+            {
+                var si = srcRow + (x - dx) * 4;
+                var sa = src[si + 3];
+                if (sa == 0) continue;
+                var di = dstRow + (x * 4);
+                if (sa == 255)
+                {
+                    output[di] = src[si];
+                    output[di + 1] = src[si + 1];
+                    output[di + 2] = src[si + 2];
+                    output[di + 3] = 255;
+                }
+                else
+                {
+                    AlphaOver(output, di, src[si] / 255f, src[si + 1] / 255f, src[si + 2] / 255f, sa / 255f);
+                }
+            }
+        }
     }
 
     /// <summary>Inverts a 2D affine <see cref="Matrix2D"/>; false if singular.</summary>
