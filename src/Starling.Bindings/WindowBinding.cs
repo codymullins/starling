@@ -68,6 +68,7 @@ public static class WindowBinding
         EventTargetBinding.Install(realm);
         NodeBindings.Install(realm);
         DomExceptionBinding.Install(realm);
+        CoreWebApiBinding.Install(runtime);
 
         // 2) Window prototype: inherits from EventTarget so `addEventListener`
         //    resolves both as `window.addEventListener(...)` and unqualified.
