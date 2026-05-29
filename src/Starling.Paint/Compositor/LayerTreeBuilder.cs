@@ -35,21 +35,36 @@ internal sealed class LayerTreeBuilder
     // element, so a transform/opacity-only change re-blits from cache (Phase 5).
     // Null for one-shot renders, where each layer owns a fresh cache.
     private readonly Func<Box, Cache.PictureCache>? _cacheFor;
+    // Per-frame promotion predicate (LTF-01): an element that is actively
+    // animating (or, via LTF-06, was just mutated) becomes a layer root even
+    // with no static LayerHint. Evaluated every frame because animation
+    // start/stop changes faster than layout runs, so it cannot be baked into the
+    // layout-time Hints. Null for one-shot renders / tests with no live loop.
+    private readonly Func<Box, bool>? _isAnimatingLayerRoot;
 
     public LayerTreeBuilder(
         Func<Box, ComputedStyle?>? styleOverride = null,
         IImageResolver? images = null,
         IDiagnostics? diagnostics = null,
-        Func<Box, Cache.PictureCache>? cacheFor = null)
+        Func<Box, Cache.PictureCache>? cacheFor = null,
+        Func<Box, bool>? isAnimatingLayerRoot = null)
     {
         _styleOverride = styleOverride;
         _images = images;
         _diag = diagnostics;
         _cacheFor = cacheFor;
+        _isAnimatingLayerRoot = isAnimatingLayerRoot;
     }
 
-    /// <summary>A box opens its own layer iff M12-03 tagged it with any hint.</summary>
-    private static bool IsLayerRoot(Box box) => box.Hints != LayerHint.None;
+    /// <summary>
+    /// A box opens its own layer iff M12-03 tagged it with any static hint, or
+    /// the per-frame predicate promotes it (an actively-animating or just-mutated
+    /// element — LTF-01 / LTF-06). A composite-time transform/opacity on the
+    /// promoted box is applied at composite (its slice stays upright); any other
+    /// animated paint property simply re-rasters this box's own small slice.
+    /// </summary>
+    private bool IsLayerRoot(Box box)
+        => box.Hints != LayerHint.None || (_isAnimatingLayerRoot?.Invoke(box) ?? false);
 
     /// <summary>
     /// Builds the layer tree. The returned layer is the implicit document root

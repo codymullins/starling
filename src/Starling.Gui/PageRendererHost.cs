@@ -100,7 +100,7 @@ internal sealed class PageRendererHost : IDisposable
     /// callers and existing golden tests. <paramref name="viewport"/> is the
     /// page-coord visible region; when omitted the full page frame is used.
     /// </summary>
-    public RenderedBitmap RenderViaLayerTree(BlockBox root, float scale = 1.0f, Func<Box, ComputedStyle?>? styleOverride = null, IImageResolver? images = null, LayoutRect? viewport = null)
+    public RenderedBitmap RenderViaLayerTree(BlockBox root, float scale = 1.0f, Func<Box, ComputedStyle?>? styleOverride = null, IImageResolver? images = null, LayoutRect? viewport = null, Func<Box, bool>? isAnimatingLayerRoot = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(root);
@@ -113,7 +113,7 @@ internal sealed class PageRendererHost : IDisposable
             // the rebuilt tree and applied at composite time. Each layer is keyed
             // by its slice content hash (LTF-02), so a relayout that bumped the
             // page version no longer busts a layer whose content is unchanged.
-            var tree = new LayerTreeBuilder(styleOverride, images, _diag, _layerCaches.CacheFor).Build(root);
+            var tree = new LayerTreeBuilder(styleOverride, images, _diag, _layerCaches.CacheFor, isAnimatingLayerRoot).Build(root);
             var region = viewport ?? new LayoutRect(0, 0,
                 Math.Max(1, root.Frame.Width),
                 Math.Max(1, root.Frame.Height));

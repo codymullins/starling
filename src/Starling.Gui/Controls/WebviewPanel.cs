@@ -1700,7 +1700,7 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         {
             if (useLayerTree)
             {
-                rendered = _renderer.RenderViaLayerTree(_currentPage!.Root, (float)_currentScale, styleOverride, _currentPage.ImageResolver, viewport);
+                rendered = _renderer.RenderViaLayerTree(_currentPage!.Root, (float)_currentScale, styleOverride, _currentPage.ImageResolver, viewport, IsElementAnimatingLayerRoot);
             }
             else
             {
@@ -1773,6 +1773,22 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         if ((box.Hints & CompositeAnimatableHints) != 0) return true;
         foreach (var child in box.Children)
             if (HasCompositeAnimatableLayer(child)) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// Per-frame layer-promotion predicate (LTF-01): a box whose element has any
+    /// active animation or transition becomes its own compositor layer, even with
+    /// no static <see cref="LayerHint"/>. A composite-time transform/opacity is
+    /// applied at composite (the slice stays cacheable); any other animated paint
+    /// property re-rasters just this box's small slice. Boxes with no element
+    /// (anonymous/text) are never promoted here.
+    /// </summary>
+    private bool IsElementAnimatingLayerRoot(LayoutBox box)
+    {
+        if (_currentPage is not { } page || box.Element is not { } el) return false;
+        foreach (var _ in page.Style.AnimationEngine.ActiveProperties(el)) return true;
+        foreach (var _ in page.Style.TransitionEngine.ActiveProperties(el)) return true;
         return false;
     }
 
