@@ -91,26 +91,59 @@ public sealed class LayoutSessionTests
         LayoutVerifier.FindFirstDivergence(incremental, FullRebuild(doc)).Should().BeNull();
     }
 
-    // ---- structural mutation falls back to a full rebuild (Phase 2 scope) ----
+    // ---- structural mutations: reconciled incrementally (Phase 3) ------------
 
     [TestMethod]
-    public void Structural_change_falls_back_to_full_rebuild_and_stays_correct()
+    public void Child_insert_relays_incrementally_and_matches_full_rebuild()
     {
         var doc = Parse("<body><div id=a>alpha</div><div id=b>beta</div></body>");
         var diag = new CountingDiagnostics();
         var session = new LayoutSession(new StyleEngine(), diagnostics: diag);
         session.Layout(doc, Viewport, DefaultTextMeasurer.Instance, nowMs: null);
 
-        // Insert a new child — structural, so the reconciler must fall back.
         var added = doc.CreateElement("div");
         added.AppendChild(doc.CreateTextNode("delta"));
         doc.GetElementById("a")!.ParentNode!.AppendChild(added);
 
         var rebuilt = session.Layout(doc, Viewport, DefaultTextMeasurer.Instance, nowMs: null);
 
-        diag.Counter("layout.incremental.full_rebuild").Should().Be(2); // initial + fallback
-        diag.Counter("layout.incremental.relayout").Should().Be(0);
+        diag.Counter("layout.incremental.relayout").Should().Be(1);
+        diag.Counter("layout.incremental.full_rebuild").Should().Be(1); // initial only
         LayoutVerifier.FindFirstDivergence(rebuilt, FullRebuild(doc)).Should().BeNull();
+    }
+
+    [TestMethod]
+    public void Child_remove_relays_incrementally_and_matches_full_rebuild()
+    {
+        var doc = Parse("<body><div id=a>alpha</div><div id=b>beta</div><div id=c>gamma</div></body>");
+        var diag = new CountingDiagnostics();
+        var session = new LayoutSession(new StyleEngine(), diagnostics: diag);
+        session.Layout(doc, Viewport, DefaultTextMeasurer.Instance, nowMs: null);
+
+        var b = doc.GetElementById("b")!;
+        b.ParentNode!.RemoveChild(b);
+
+        var rebuilt = session.Layout(doc, Viewport, DefaultTextMeasurer.Instance, nowMs: null);
+
+        diag.Counter("layout.incremental.relayout").Should().Be(1);
+        LayoutVerifier.FindFirstDivergence(rebuilt, FullRebuild(doc)).Should().BeNull();
+    }
+
+    [TestMethod]
+    public void Insert_inline_between_blocks_rewraps_anonymous_correctly()
+    {
+        // Mixed content: a block, then text — the text is in an anonymous block.
+        var doc = Parse("<body><div id=host><p>block</p>tail text</div></body>");
+        var session = new LayoutSession(new StyleEngine(), diagnostics: new CountingDiagnostics());
+        session.Layout(doc, Viewport, DefaultTextMeasurer.Instance, nowMs: null);
+
+        // Insert a bare text node before the <p> — changes how inline runs bucket.
+        var host = doc.GetElementById("host")!;
+        host.InsertBefore(doc.CreateTextNode("lead text "), host.FirstChild);
+
+        var rebuilt = session.Layout(doc, Viewport, DefaultTextMeasurer.Instance, nowMs: null);
+        LayoutVerifier.FindFirstDivergence(rebuilt, FullRebuild(doc))
+            .Should().BeNull("localized anonymous re-wrapping must match a full build");
     }
 
     // ---- a no-op frame reuses everything and stays correct -------------------

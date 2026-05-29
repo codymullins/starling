@@ -181,6 +181,24 @@ internal sealed class BoxTreeBuilder
     }
 
     /// <summary>
+    /// Incremental reconciliation of a structural change: rebuild
+    /// <paramref name="parentBox"/>'s children from <paramref name="parentElement"/>'s
+    /// current DOM children (a child was inserted or removed), then re-run the
+    /// anonymous-block wrapping over that subtree so inline runs re-bucket
+    /// correctly — the localized variant of the full build's wrap pass (plan §3b).
+    /// The parent box itself (and its position cache) is kept; only its subtree
+    /// is rebuilt.
+    /// </summary>
+    public void RebuildChildren(Element parentElement, Box.Box parentBox)
+    {
+        var cache = new CascadeCache();
+        _style.PrecomputeTree(parentElement, cache);
+        parentBox.Children.Clear();
+        BuildChildren(parentElement, parentBox.Style!, parentBox, cache);
+        WrapInlinesInAnonymousBlocks(parentBox);
+    }
+
+    /// <summary>
     /// CSS 2.2 §9.2.1.1: when a block container has both block and inline
     /// children, runs of consecutive inline children are wrapped in anonymous
     /// block boxes so block layout sees a uniform list of blocks.

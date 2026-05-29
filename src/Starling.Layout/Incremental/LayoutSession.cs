@@ -173,11 +173,15 @@ public sealed class LayoutSession
                         return false;
                     break;
 
-                // Structural changes need input-tree reconciliation + localized
-                // anonymous re-wrapping (plan Phase 3). Until then, fall back.
+                // A child was inserted/removed under the target: rebuild only
+                // that parent's subtree (re-cascade + localized anonymous
+                // re-wrapping), reusing everything outside it. Falls back when
+                // the parent isn't a mapped element (e.g. a document-level swap).
                 case LayoutChangeKind.ChildInserted:
                 case LayoutChangeKind.ChildRemoved:
-                    return false;
+                    if (m.Target is not Element parent || !RebuildChildren(parent, nowMs))
+                        return false;
+                    break;
             }
         }
 
@@ -193,6 +197,15 @@ public sealed class LayoutSession
                 if (!MarkAnimated(el, nowMs)) return false;
         }
 
+        return true;
+    }
+
+    private bool RebuildChildren(Element parent, double? nowMs)
+    {
+        if (!_elementMap.TryGetValue(parent, out var parentBox)) return false;
+        var builder = new BoxTreeBuilder(_style, _images, nowMs, _elementMap, _textMap);
+        builder.RebuildChildren(parent, parentBox);
+        MarkDirtyPath(parentBox);
         return true;
     }
 

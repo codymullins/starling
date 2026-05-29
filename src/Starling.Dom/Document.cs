@@ -48,6 +48,10 @@ public sealed class Document : Node
     internal void RecordLayoutMutation(Node target, LayoutChangeKind kind)
     {
         if (!RecordLayoutMutations) return;
+        // Only batch mutations on the live tree. Edits to a detached subtree
+        // (built before insertion) are subsumed when its connected ancestor is
+        // reconciled, and recording them would name unmapped nodes.
+        if (!target.IsConnectedToDocument) return;
         (_layoutMutations ??= new List<LayoutMutation>()).Add(new LayoutMutation(target, kind));
     }
 

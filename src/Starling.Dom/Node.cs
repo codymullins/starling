@@ -28,6 +28,22 @@ public abstract class Node : EventTarget
 
     public virtual Document? OwnerDocument { get; internal set; }
 
+    /// <summary>True when this node is reachable from its document root — i.e.
+    /// part of the live, laid-out tree (DOM <c>isConnected</c>). A node created
+    /// via <c>createElement</c> but not yet inserted has an owner document but is
+    /// not connected; incremental layout only batches mutations on connected
+    /// nodes, since detached-subtree edits are subsumed when the subtree is
+    /// attached and reconciled.</summary>
+    internal bool IsConnectedToDocument
+    {
+        get
+        {
+            for (Node? n = this; n is not null; n = n.ParentNode)
+                if (n is Document) return true;
+            return false;
+        }
+    }
+
     public virtual string NodeName => Kind.ToString();
 
     public virtual string? NodeValue
