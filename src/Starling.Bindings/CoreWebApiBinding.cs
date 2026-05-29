@@ -801,7 +801,17 @@ internal sealed class UrlObject : JsObject
         });
     }
     public void SetHostname(string value) => Mutate(b => b.Host = value);
-    public void SetPort(string value) => Mutate(b => b.Port = value.Length == 0 ? -1 : int.Parse(value, CultureInfo.InvariantCulture));
+    public void SetPort(string value) => Mutate(b =>
+    {
+        if (value.Length == 0)
+        {
+            b.Port = -1;
+            return;
+        }
+        if (int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var port)
+            && port is >= 0 and <= 65535)
+            b.Port = port;
+    });
     public void SetPathname(string value) => Mutate(b => b.Path = value.Length == 0 || value[0] == '/' ? value : "/" + value);
     public void SetSearch(string value)
     {
