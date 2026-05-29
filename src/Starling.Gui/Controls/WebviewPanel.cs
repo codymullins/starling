@@ -337,9 +337,20 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         // across the swap; the next tick relayouts only if script advances it.
         _lastLayoutInvalidationVersion = page.Document.LayoutInvalidationVersion;
 
-        // New laid-out page = new display-list version; drop any cached pixels
-        // from the previous page so the first render is a clean full repaint.
-        _renderer.InvalidateCache();
+        // New laid-out page. On a navigation (a different Document) drop every
+        // cache — flat pixels and the persistent per-layer compositor caches — so
+        // nothing from the previous page survives. On an in-place relayout (same
+        // Document: resize / edit / animation) keep the per-layer caches: they are
+        // keyed by slice content hash (LTF-02), so an unchanged layer re-blits
+        // from cache and only genuinely changed layers re-raster (LTF-03). The
+        // flat scroll cache is dropped either way (its version-keyed pixels would
+        // otherwise blit stale). _scrollOffsetsDocument still holds the PREVIOUS
+        // document here (it is updated below), so it tells navigation from relayout.
+        var isNavigation = !ReferenceEquals(_scrollOffsetsDocument, page.Document);
+        if (isNavigation)
+            _renderer.ResetForNavigation();
+        else
+            _renderer.InvalidateCache();
 
         // Fresh box tree — recompute the compositor-layer routing answer lazily.
         _pageHasCompositorLayers = null;

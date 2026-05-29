@@ -40,12 +40,24 @@ internal sealed class PageRendererHost : IDisposable
     }
 
     /// <summary>
-    /// Drops the picture cache. The shell calls this when the laid-out page
-    /// changes (navigation / re-layout) so the next viewport render is a full
-    /// repaint rather than a stale-pixel blit. Scroll-only repaints leave it
-    /// intact so the cache can serve them.
+    /// Drops the flat scroll picture cache only. The shell calls this on an
+    /// in-place relayout / hover-override change so the next flat render is a
+    /// clean repaint. The per-layer compositor caches are NOT dropped: they are
+    /// keyed by each layer's slice content hash (LTF-02), so an unchanged layer
+    /// stays valid across a relayout and only a real content change re-rasters it
+    /// (LTF-03). Scroll-only repaints leave the flat cache intact so it can serve.
     /// </summary>
     public void InvalidateCache()
+    {
+        _cached.Invalidate();
+    }
+
+    /// <summary>
+    /// Navigation reset: drops the flat cache AND every persistent per-layer
+    /// compositor cache. Called when the laid-out page belongs to a different
+    /// Document, so no pixels from the previous page survive (LTF-03).
+    /// </summary>
+    public void ResetForNavigation()
     {
         _cached.Invalidate();
         _layerCaches.Clear();
