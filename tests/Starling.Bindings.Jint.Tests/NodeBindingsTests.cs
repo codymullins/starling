@@ -130,6 +130,47 @@ public sealed class NodeBindingsTests
         engine.Evaluate("document.title").AsString().Should().Be("Bye");
     }
 
+    [TestMethod]
+    public void FormData_constructs_from_successful_form_controls()
+    {
+        var (engine, _) = NewSession("""
+            <!doctype html><html><body>
+              <form id="f">
+                <input name="q" value="hello world">
+                <input type="checkbox" name="agree" value="yes" checked>
+                <input type="checkbox" name="skip" value="no">
+                <select name="ship"><option value="ground">Ground</option><option value="air" selected>Air</option></select>
+              </form>
+            </body></html>
+            """);
+
+        engine.Evaluate("Array.from(new FormData(document.getElementById('f')).entries()).map(p => p[0] + '=' + p[1]).join('&')")
+            .AsString().Should().Be("q=hello world&agree=yes&ship=air");
+    }
+
+    [TestMethod]
+    public void Form_controls_expose_validation_selection_and_autocomplete()
+    {
+        var (engine, _) = NewSession("""
+            <!doctype html><html><body>
+              <form id="f">
+                <input id="q" name="q" required list="terms">
+                <datalist id="terms"><option value="alpha"></option><option value="beta"></option></datalist>
+              </form>
+            </body></html>
+            """);
+
+        engine.Evaluate("""
+            var q = document.getElementById('q');
+            var before = q.validity.valueMissing + '/' + q.checkValidity();
+            q.value = 'alphabet';
+            q.setSelectionRange(0, 5, 'forward');
+            document.getElementById('f').submit();
+            before + '|' + q.validity.valid + '|' + q.selectionStart + ':' + q.selectionEnd + ':' + q.selectionDirection
+              + '|' + q.autocompleteSuggestions().join(',');
+            """).AsString().Should().Be("true/false|true|0:5:forward|alpha,beta,alphabet");
+    }
+
     private static (global::Jint.Engine Engine, Document Doc) NewSession(string html)
     {
         var doc = HtmlParser.Parse(html);

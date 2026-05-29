@@ -152,6 +152,29 @@ public sealed class Document : Node
     /// </summary>
     public Element? FocusedElement { get; set; }
 
+    private readonly Dictionary<string, List<string>> _autocompleteValues =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlyList<string> GetAutocompleteValues(string fieldName)
+    {
+        if (string.IsNullOrWhiteSpace(fieldName)) return Array.Empty<string>();
+        return _autocompleteValues.TryGetValue(fieldName, out var values)
+            ? values.ToArray()
+            : Array.Empty<string>();
+    }
+
+    internal void RecordAutocompleteValue(string fieldName, string value)
+    {
+        if (string.IsNullOrWhiteSpace(fieldName) || string.IsNullOrEmpty(value)) return;
+        if (!_autocompleteValues.TryGetValue(fieldName, out var values))
+        {
+            values = new List<string>();
+            _autocompleteValues[fieldName] = values;
+        }
+        if (!values.Contains(value, StringComparer.Ordinal))
+            values.Add(value);
+    }
+
     /// <summary>
     /// Host hook fired when a node is connected into this document's tree (via
     /// <see cref="Node.InsertBefore"/>). The engine subscribes to this so that

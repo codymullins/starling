@@ -59,6 +59,33 @@ public sealed class J2dJ3dBindingsTests
     }
 
     [TestMethod]
+    public void History_popstate_event_exposes_state()
+    {
+        var ctx = Setup();
+        ctx.Engine.Execute("""
+            globalThis.captured = null;
+            window.addEventListener('popstate', e => { captured = e.state; });
+            history.pushState({ tag: 'second' }, '', '/one');
+            history.back();
+            history.forward();
+        """);
+        ctx.Engine.Evaluate("captured.tag").AsString().Should().Be("second");
+    }
+
+    [TestMethod]
+    public void Location_hash_assignment_updates_history()
+    {
+        var ctx = Setup(baseUrl: "https://example.test/page");
+        ctx.Engine.Execute("""
+            globalThis.hashes = 0;
+            window.addEventListener('hashchange', () => { hashes++; });
+            location.hash = 'section';
+            globalThis.result = location.href + '|' + history.length + '|' + hashes;
+        """);
+        ctx.Engine.Evaluate("result").AsString().Should().Be("https://example.test/page#section|2|1");
+    }
+
+    [TestMethod]
     public void Performance_now_and_timeOrigin_return_numbers()
     {
         var ctx = Setup();
@@ -145,16 +172,16 @@ public sealed class J2dJ3dBindingsTests
 
     // ---- shared setup -------------------------------------------------------
 
-    private static JintBackendContext Setup(string bodyHtml = "<div></div>")
+    private static JintBackendContext Setup(string bodyHtml = "<div></div>", string baseUrl = "about:blank")
     {
         var doc = HtmlParser.Parse($"<!doctype html><html><body>{bodyHtml}</body></html>");
-        var baseUrl = Starling.Url.UrlParser.Parse("about:blank").Value;
+        var parsedBaseUrl = Starling.Url.UrlParser.Parse(baseUrl).Value;
         var engine = new global::Jint.Engine();
         var http = new Starling.Net.StarlingHttpClient();
         var ctx = new JintBackendContext(
             engine: engine,
             document: doc,
-            baseUrl: baseUrl,
+            baseUrl: parsedBaseUrl,
             http: http,
             diag: Starling.Common.Diagnostics.NoopDiagnostics.Instance,
             loop: new WebEventLoop(),

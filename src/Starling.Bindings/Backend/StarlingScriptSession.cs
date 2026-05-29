@@ -321,6 +321,12 @@ internal sealed class StarlingScriptSession : IScriptSession
     public void FireLoad()
         => _runtime.WithActiveVm(() => WindowBinding.FireLoad(_runtime));
 
+    public void FireBeforeUnload()
+        => _runtime.WithActiveVm(() => WindowBinding.FireBeforeUnload(_runtime));
+
+    public void FireUnload()
+        => _runtime.WithActiveVm(() => WindowBinding.FireUnload(_runtime));
+
     public void DrainMicrotasks() => _runtime.WithActiveVm(() => { });
 
     public bool PumpOnce()

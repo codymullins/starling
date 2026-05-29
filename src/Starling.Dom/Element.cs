@@ -7,6 +7,8 @@ namespace Starling.Dom;
 public class Element : Node
 {
     public const string HtmlNamespace = "http://www.w3.org/1999/xhtml";
+    private string? _inputValue;
+    private string _customValidationMessage = string.Empty;
 
     public Element(string tagName, string? @namespace = null)
     {
@@ -80,7 +82,28 @@ public class Element : Node
     /// <c>.value</c> accessor read this in preference to the attribute so typed
     /// text and scripted assignments are reflected. Non-form elements ignore it.
     /// </summary>
-    public string? InputValue { get; set; }
+    public string? InputValue
+    {
+        get => _inputValue;
+        set
+        {
+            if (string.Equals(_inputValue, value, StringComparison.Ordinal)) return;
+            _inputValue = value;
+            OnTreeMutated();
+        }
+    }
+
+    public int SelectionStart { get; set; }
+
+    public int SelectionEnd { get; set; }
+
+    public string SelectionDirection { get; set; } = "none";
+
+    public string CustomValidationMessage
+    {
+        get => _customValidationMessage;
+        set => _customValidationMessage = value ?? string.Empty;
+    }
 
     public string? GetAttribute(string name)
     {

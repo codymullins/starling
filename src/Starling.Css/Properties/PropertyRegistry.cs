@@ -59,6 +59,51 @@ public static class PropertyRegistry
         PropertyId.Quotes,
     ]);
 
+    // Properties that, when they change, never alter any box's geometry — they
+    // only repaint or recomposite. Read on every animation/transition frame by
+    // incremental layout (to decide whether an in-flight animation needs a
+    // relayout at all), so it is a FrozenSet for a fast membership test. This is
+    // a denylist: a property NOT in here is conservatively treated as
+    // layout-affecting, so an omission only costs an unneeded relayout, never a
+    // missed one. Everything here is paint- or composite-time per the CSS specs:
+    // the transform family is applied at composite time, color/shadow/filter/
+    // background/mask paint into the box's existing geometry, and outline is
+    // drawn outside the box so it never takes layout space.
+    private static readonly FrozenSet<PropertyId> PaintOnly = FrozenSet.ToFrozenSet<PropertyId>(
+    [
+        // Transform family — composite-time, no layout effect.
+        PropertyId.Transform, PropertyId.TransformOrigin, PropertyId.TransformBox,
+        PropertyId.Translate, PropertyId.Scale, PropertyId.Rotate,
+        PropertyId.Perspective, PropertyId.PerspectiveOrigin, PropertyId.TransformStyle,
+        PropertyId.BackfaceVisibility,
+        // Opacity / blending / isolation — composite-time.
+        PropertyId.Opacity, PropertyId.MixBlendMode, PropertyId.BackgroundBlendMode,
+        PropertyId.Isolation,
+        // Colors — paint-time.
+        PropertyId.Color, PropertyId.BackgroundColor,
+        PropertyId.BorderTopColor, PropertyId.BorderRightColor,
+        PropertyId.BorderBottomColor, PropertyId.BorderLeftColor,
+        PropertyId.BorderInlineStartColor, PropertyId.BorderInlineEndColor,
+        PropertyId.BorderBlockStartColor, PropertyId.BorderBlockEndColor,
+        PropertyId.OutlineColor, PropertyId.ColumnRuleColor,
+        PropertyId.TextDecorationColor, PropertyId.AccentColor, PropertyId.CaretColor,
+        // Shadows / filters — paint-time.
+        PropertyId.BoxShadow, PropertyId.TextShadow,
+        PropertyId.Filter, PropertyId.BackdropFilter,
+        // Clip / mask — paint-time.
+        PropertyId.ClipPath,
+        PropertyId.MaskImage, PropertyId.MaskPosition, PropertyId.MaskSize,
+        PropertyId.MaskRepeat, PropertyId.MaskClip, PropertyId.MaskOrigin,
+        PropertyId.MaskComposite, PropertyId.MaskMode,
+        // Background painting — paint-time (geometry of the box is unchanged).
+        PropertyId.BackgroundImage, PropertyId.BackgroundPosition,
+        PropertyId.BackgroundPositionX, PropertyId.BackgroundPositionY,
+        PropertyId.BackgroundSize, PropertyId.BackgroundRepeat,
+        PropertyId.BackgroundAttachment, PropertyId.BackgroundOrigin, PropertyId.BackgroundClip,
+        // Outline — drawn outside the box, never takes layout space.
+        PropertyId.OutlineWidth, PropertyId.OutlineStyle, PropertyId.OutlineOffset,
+    ]);
+
     public static IReadOnlyList<PropertyId> All { get; } = Enum.GetValues<PropertyId>();
 
     public static bool TryGetPropertyId(string name, out PropertyId id)
@@ -67,6 +112,15 @@ public static class PropertyRegistry
     public static string Name(PropertyId id) => ToCssName(id);
 
     public static bool Inherits(PropertyId id) => Inherited.Contains(id);
+
+    /// <summary>
+    /// True when a change to <paramref name="id"/> can alter box geometry and so
+    /// requires a relayout. False for paint- and composite-only properties
+    /// (transform, opacity, color, shadow, filter, background, mask, outline),
+    /// which only need a repaint. Conservative: any property not known to be
+    /// paint-only is reported as layout-affecting.
+    /// </summary>
+    public static bool AffectsLayout(PropertyId id) => !PaintOnly.Contains(id);
 
     public static IEnumerable<PropertyDeclaration> Parse(CssDeclaration declaration)
     {

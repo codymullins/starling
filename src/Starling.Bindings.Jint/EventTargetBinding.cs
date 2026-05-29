@@ -219,6 +219,9 @@ internal static class EventTargetBinding
         Accessor("defaultPrevented", e => JintInterop.Bool(e.DefaultPrevented), JintInterop.Bool(false));
         Accessor("timeStamp", e => JintInterop.Num(e.TimeStamp), JintInterop.Num(0));
         Accessor("isTrusted", e => JintInterop.Bool(e.IsTrusted), JintInterop.Bool(false));
+        Accessor("state",
+            e => e is PopStateEvent { State: JsValue state } ? state : JsValue.Undefined,
+            JsValue.Undefined);
 
         JintInterop.DefineMethod(engine, evProto, "preventDefault", (thisV, _) =>
         {

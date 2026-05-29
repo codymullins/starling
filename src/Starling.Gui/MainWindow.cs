@@ -474,11 +474,11 @@ public sealed class MainWindow : Window, IBrowserController
 
     private void OnWebviewStatus(string text, bool isError) => _statusBar.SetHint(text, isError);
 
-    // Build facts for the sidebar footer: the build's commit plus the JS and
-    // render engines this process actually selected (single source of truth —
-    // the same selectors the engine/paint pipeline read).
+    // Build facts for the sidebar footer: the build's commit plus the JS engine,
+    // render engine, and layout mode this process actually selected (single
+    // source of truth — the same selectors the engine/paint pipeline read).
     private static BuildInfo GetBuildInfo()
-        => new(GetBuildLabel(), GetJsEngineLabel(), GetRenderBackendLabel());
+        => new(GetBuildLabel(), GetJsEngineLabel(), GetRenderBackendLabel(), GetLayoutLabel());
 
     private static string GetBuildLabel()
     {
@@ -506,6 +506,13 @@ public sealed class MainWindow : Window, IBrowserController
         PaintBackendKind.ImageSharpWebGpu => "imagesharp-gpu",
         _ => "imagesharp",
     };
+
+    // "incremental" when the relayout path reuses the retained box tree (the
+    // shell default, see Program.Main / the AppHost --incremental flag), "full"
+    // when every relayout rebuilds the whole tree. Reads the same switch the
+    // engine's RelayoutPage checks, so it reflects the real runtime behavior.
+    private static string GetLayoutLabel() =>
+        Starling.Layout.Incremental.LayoutSession.Enabled ? "incremental" : "full";
 
     private async void OnSidebarTabActivated(TabInfo tab)
     {

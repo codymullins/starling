@@ -104,6 +104,12 @@ public interface IScriptSession : IDisposable
     /// <summary>Fire <c>load</c> on the window.</summary>
     void FireLoad();
 
+    /// <summary>Fire <c>beforeunload</c> on the window.</summary>
+    void FireBeforeUnload();
+
+    /// <summary>Fire <c>unload</c> on the window.</summary>
+    void FireUnload();
+
     /// <summary>Drain the engine's microtask/promise-job queue to quiescence
     /// against the active VM.</summary>
     void DrainMicrotasks();

@@ -233,27 +233,18 @@ internal static class NodeBindings
             (t, _) =>
             {
                 if (w.UnwrapElement(t) is not { } e || !IsFormControl(e)) return JsValue.Undefined;
-                // Read the live IDL value: InputValue (what the user typed / a
-                // script assigned) in preference to the `value` content attribute,
-                // matching BoxTreeBuilder's painted text and the GUI editor. A
-                // textarea's value is its text content.
-                return JintInterop.Str(IsTextArea(e)
-                    ? e.TextContent
-                    : e.InputValue ?? e.GetAttribute("value") ?? "");
+                return JintInterop.Str(HtmlFormControls.Value(e));
             },
             (t, args) =>
             {
                 if (w.UnwrapElement(t) is { } e && IsFormControl(e))
                 {
                     var v = args.Length > 0 ? Str(args[0]) : "";
-                    // Write the live IDL value (not the content attribute) so
-                    // `el.value = …` round-trips through layout and the GUI caret,
-                    // and `getAttribute("value")` still reports the initial value.
-                    if (IsTextArea(e)) e.TextContent = v;
-                    else e.InputValue = v;
+                    HtmlFormControls.SetValue(e, v);
                 }
                 return JsValue.Undefined;
             });
+        InstallFormControlAccessors(ctx, proto);
         // focus()/blur() drive Document.FocusedElement — the same focus model the
         // GUI caret and `:focus` styling read, and what `document.activeElement`
         // reports. A field that scripts re-focus after a form submit (the classic
@@ -930,7 +921,7 @@ internal static class NodeBindings
             "HTMLCollection", "NodeList", "DOMTokenList", "NamedNodeMap", "DOMStringMap",
             "CSSStyleDeclaration", "DOMRect", "DOMRectReadOnly", "DOMException",
             // File API + misc interfaces used in `instanceof` / feature tests.
-            "Blob", "File", "FileList", "FileReader", "FormData", "DataTransfer",
+            "Blob", "File", "FileList", "FileReader", "DataTransfer",
             "Comment", "DocumentType", "ShadowRoot", "MediaQueryList",
             // SVG interfaces named in `instanceof` checks. Notably SVGAnimatedString:
             // an SVG element's `className` is an SVGAnimatedString (not a string), so
@@ -942,6 +933,7 @@ internal static class NodeBindings
         {
             Global(engine, name, MakeCtor(engine, name, NewProto(engine, null)));
         }
+        InstallFormDataConstructor(ctx);
         InstallImageConstructor(ctx);
 
         foreach (var name in new[]
@@ -1033,6 +1025,85 @@ internal static class NodeBindings
 
     private static JintDatasetObject BuildDataset(JintBackendContext ctx, Element element)
         => new(ctx.Engine, element);
+
+    private static void InstallFormControlAccessors(JintBackendContext ctx, ObjectInstance proto)
+    {
+        var engine = ctx.Engine;
+        var w = ctx.Wrappers;
+
+        Accessor(ctx, proto, "name",
+            (t, _) => w.UnwrapElement(t) is { } e ? JintInterop.Str(e.GetAttribute("name") ?? "") : JintInterop.Str(""),
+            (t, args) => { if (w.UnwrapElement(t) is { } e) e.SetAttribute("name", args.Length > 0 ? Str(args[0]) : ""); return JsValue.Undefined; });
+        Accessor(ctx, proto, "required",
+            (t, _) => w.UnwrapElement(t) is { } e ? JintInterop.Bool(e.HasAttribute("required")) : JsBoolean.False,
+            (t, args) => { if (w.UnwrapElement(t) is { } e) SetBoolAttr(e, "required", args.Length > 0 && Bool(args[0])); return JsValue.Undefined; });
+        Accessor(ctx, proto, "disabled",
+            (t, _) => w.UnwrapElement(t) is { } e ? JintInterop.Bool(e.HasAttribute("disabled")) : JsBoolean.False,
+            (t, args) => { if (w.UnwrapElement(t) is { } e) SetBoolAttr(e, "disabled", args.Length > 0 && Bool(args[0])); return JsValue.Undefined; });
+        Accessor(ctx, proto, "readOnly",
+            (t, _) => w.UnwrapElement(t) is { } e ? JintInterop.Bool(e.HasAttribute("readonly")) : JsBoolean.False,
+            (t, args) => { if (w.UnwrapElement(t) is { } e) SetBoolAttr(e, "readonly", args.Length > 0 && Bool(args[0])); return JsValue.Undefined; });
+        Accessor(ctx, proto, "multiple",
+            (t, _) => w.UnwrapElement(t) is { } e ? JintInterop.Bool(e.HasAttribute("multiple")) : JsBoolean.False,
+            (t, args) => { if (w.UnwrapElement(t) is { } e) SetBoolAttr(e, "multiple", args.Length > 0 && Bool(args[0])); return JsValue.Undefined; });
+        Accessor(ctx, proto, "checked",
+            (t, _) => w.UnwrapElement(t) is { } e ? JintInterop.Bool(HtmlFormControls.Checked(e)) : JsBoolean.False,
+            (t, args) => { if (w.UnwrapElement(t) is { } e) HtmlFormControls.SetChecked(e, args.Length > 0 && Bool(args[0])); return JsValue.Undefined; });
+        Accessor(ctx, proto, "selected",
+            (t, _) => w.UnwrapElement(t) is { } e ? JintInterop.Bool(e.HasAttribute("selected")) : JsBoolean.False,
+            (t, args) => { if (w.UnwrapElement(t) is { } e) SetBoolAttr(e, "selected", args.Length > 0 && Bool(args[0])); return JsValue.Undefined; });
+        Accessor(ctx, proto, "selectionStart",
+            (t, _) => w.UnwrapElement(t) is { } e && HtmlFormControls.IsTextControl(e) ? JintInterop.Num(e.SelectionStart) : JsValue.Null,
+            (t, args) => { if (w.UnwrapElement(t) is { } e) HtmlFormControls.SetSelectionRange(e, (int)Num(Arg(args, 0)), e.SelectionEnd, e.SelectionDirection); return JsValue.Undefined; });
+        Accessor(ctx, proto, "selectionEnd",
+            (t, _) => w.UnwrapElement(t) is { } e && HtmlFormControls.IsTextControl(e) ? JintInterop.Num(e.SelectionEnd) : JsValue.Null,
+            (t, args) => { if (w.UnwrapElement(t) is { } e) HtmlFormControls.SetSelectionRange(e, e.SelectionStart, (int)Num(Arg(args, 0)), e.SelectionDirection); return JsValue.Undefined; });
+        Accessor(ctx, proto, "selectionDirection",
+            (t, _) => w.UnwrapElement(t) is { } e && HtmlFormControls.IsTextControl(e) ? JintInterop.Str(e.SelectionDirection) : JsValue.Null);
+        Accessor(ctx, proto, "validity",
+            (t, _) => w.UnwrapElement(t) is { } e ? BuildValidityObject(engine, HtmlFormControls.Validity(e)) : JsValue.Undefined);
+        Accessor(ctx, proto, "willValidate",
+            (t, _) => w.UnwrapElement(t) is { } e ? JintInterop.Bool(HtmlFormControls.WillValidate(e)) : JsBoolean.False);
+        Accessor(ctx, proto, "validationMessage",
+            (t, _) => w.UnwrapElement(t) is { } e ? JintInterop.Str(HtmlFormControls.ValidationMessage(e)) : JintInterop.Str(""));
+        Accessor(ctx, proto, "selectedIndex",
+            (t, _) => w.UnwrapElement(t) is { } e ? JintInterop.Num(SelectedIndex(e)) : JintInterop.Num(-1),
+            (t, args) => { if (w.UnwrapElement(t) is { } e) SetSelectedIndex(e, (int)Num(Arg(args, 0))); return JsValue.Undefined; });
+        Method(ctx, proto, "setSelectionRange", (t, args) =>
+        {
+            if (w.UnwrapElement(t) is { } e)
+                HtmlFormControls.SetSelectionRange(e, (int)Num(Arg(args, 0)), (int)Num(Arg(args, 1)),
+                    args.Length > 2 ? Str(args[2]) : "none");
+            return JsValue.Undefined;
+        }, 2);
+        Method(ctx, proto, "checkValidity", (t, _) =>
+            w.UnwrapElement(t) is { } e ? JintInterop.Bool(HtmlFormControls.CheckValidity(e)) : JsBoolean.True, 0);
+        Method(ctx, proto, "reportValidity", (t, _) =>
+            w.UnwrapElement(t) is { } e ? JintInterop.Bool(HtmlFormControls.CheckValidity(e)) : JsBoolean.True, 0);
+        Method(ctx, proto, "setCustomValidity", (t, args) =>
+        {
+            if (w.UnwrapElement(t) is { } e) e.CustomValidationMessage = args.Length > 0 ? Str(args[0]) : "";
+            return JsValue.Undefined;
+        }, 1);
+        Method(ctx, proto, "submit", (t, _) =>
+        {
+            if (w.UnwrapElement(t) is { LocalName: "form" } form)
+                HtmlFormControls.RecordAutocompleteSubmission(form);
+            return JsValue.Undefined;
+        }, 0);
+        Method(ctx, proto, "requestSubmit", (t, _) =>
+        {
+            if (w.UnwrapElement(t) is not { LocalName: "form" } form) return JsValue.Undefined;
+            if (!DispatchInvalidEvents(form)) return JsValue.Undefined;
+            var ev = new Starling.Dom.Events.Event("submit", new Starling.Dom.Events.EventInit(Bubbles: true, Cancelable: true));
+            form.DispatchEvent(ev);
+            if (!ev.DefaultPrevented)
+                HtmlFormControls.RecordAutocompleteSubmission(form);
+            return JsValue.Undefined;
+        }, 0);
+        Method(ctx, proto, "autocompleteSuggestions", (t, _) =>
+            w.UnwrapElement(t) is { } e ? StringArray(engine, HtmlFormControls.AutocompleteSuggestions(e)) : EmptyArray(engine), 0);
+    }
 
     private static JsObject BuildStyle(JintBackendContext ctx, Element element)
     {
@@ -1395,6 +1466,120 @@ internal static class NodeBindings
             return json;
         }, 0);
         return o;
+    }
+
+    private static JsObject BuildValidityObject(global::Jint.Engine engine, FormValidityState validity)
+    {
+        var o = new JsObject(engine);
+        JintInterop.DefineDataProp(o, "valueMissing", JintInterop.Bool(validity.ValueMissing), writable: false);
+        JintInterop.DefineDataProp(o, "typeMismatch", JintInterop.Bool(validity.TypeMismatch), writable: false);
+        JintInterop.DefineDataProp(o, "patternMismatch", JintInterop.Bool(validity.PatternMismatch), writable: false);
+        JintInterop.DefineDataProp(o, "tooLong", JintInterop.Bool(validity.TooLong), writable: false);
+        JintInterop.DefineDataProp(o, "tooShort", JintInterop.Bool(validity.TooShort), writable: false);
+        JintInterop.DefineDataProp(o, "rangeUnderflow", JintInterop.Bool(validity.RangeUnderflow), writable: false);
+        JintInterop.DefineDataProp(o, "rangeOverflow", JintInterop.Bool(validity.RangeOverflow), writable: false);
+        JintInterop.DefineDataProp(o, "stepMismatch", JintInterop.Bool(validity.StepMismatch), writable: false);
+        JintInterop.DefineDataProp(o, "badInput", JintInterop.Bool(validity.BadInput), writable: false);
+        JintInterop.DefineDataProp(o, "customError", JintInterop.Bool(validity.CustomError), writable: false);
+        JintInterop.DefineDataProp(o, "valid", JintInterop.Bool(validity.Valid), writable: false);
+        return o;
+    }
+
+    private static JsArray StringArray(global::Jint.Engine engine, IReadOnlyList<string> values)
+    {
+        var items = new JsValue[values.Count];
+        for (var i = 0; i < values.Count; i++)
+            items[i] = JintInterop.Str(values[i]);
+        return new JsArray(engine, items);
+    }
+
+    private static void SetBoolAttr(Element element, string attr, bool value)
+    {
+        if (value) element.SetAttribute(attr, string.Empty);
+        else element.RemoveAttribute(attr);
+    }
+
+    private static int SelectedIndex(Element element)
+    {
+        if (element.LocalName != "select") return -1;
+        var index = 0;
+        var fallback = -1;
+        foreach (var option in element.DescendantElements())
+        {
+            if (option.LocalName != "option") continue;
+            if (fallback < 0) fallback = index;
+            if (option.HasAttribute("selected")) return index;
+            index++;
+        }
+        return fallback;
+    }
+
+    private static void SetSelectedIndex(Element element, int selectedIndex)
+    {
+        if (element.LocalName != "select") return;
+        var index = 0;
+        foreach (var option in element.DescendantElements())
+        {
+            if (option.LocalName != "option") continue;
+            if (index == selectedIndex) option.SetAttribute("selected", string.Empty);
+            else if (!element.HasAttribute("multiple")) option.RemoveAttribute("selected");
+            index++;
+        }
+    }
+
+    private static bool DispatchInvalidEvents(Element form)
+    {
+        var valid = true;
+        foreach (var control in HtmlFormControls.FormControls(form))
+        {
+            if (HtmlFormControls.Validity(control).Valid) continue;
+            valid = false;
+            control.DispatchEvent(new Starling.Dom.Events.Event("invalid", new Starling.Dom.Events.EventInit(Cancelable: true)));
+        }
+        return valid;
+    }
+
+    private const string FormDataEntriesHook = "__starlingFormDataEntries";
+
+    private static void InstallFormDataConstructor(JintBackendContext ctx)
+    {
+        var engine = ctx.Engine;
+        JintInterop.DefineDataProp(engine.Global, FormDataEntriesHook,
+            new ClrFunction(engine, FormDataEntriesHook, (_, args) =>
+            {
+                if (args.Length == 0 || ctx.Wrappers.UnwrapElement(args[0]) is not { LocalName: "form" } form)
+                    return new JsArray(engine, System.Array.Empty<JsValue>());
+                var entries = HtmlFormControls.ConstructEntryList(form);
+                var pairs = new JsValue[entries.Count];
+                for (var i = 0; i < entries.Count; i++)
+                    pairs[i] = new JsArray(engine, new[] { JintInterop.Str(entries[i].Name), JintInterop.Str(entries[i].Value) });
+                return new JsArray(engine, pairs);
+            }, 1),
+            writable: false, enumerable: false, configurable: true);
+
+        engine.Execute("""
+            (function(){
+              function pair(n, v) { return [String(n), String(v)]; }
+              function FormData(form) {
+                this.__entries = [];
+                if (form !== undefined && form !== null) {
+                  var items = __starlingFormDataEntries(form);
+                  for (var i = 0; i < items.length; i++) this.__entries.push(pair(items[i][0], items[i][1]));
+                }
+              }
+              FormData.prototype.append = function(n, v) { this.__entries.push(pair(n, v)); };
+              FormData.prototype.get = function(n) {
+                n = String(n);
+                for (var i = 0; i < this.__entries.length; i++) if (this.__entries[i][0] === n) return this.__entries[i][1];
+                return null;
+              };
+              FormData.prototype.entries = function*() {
+                for (var i = 0; i < this.__entries.length; i++) yield [this.__entries[i][0], this.__entries[i][1]];
+              };
+              FormData.prototype[Symbol.iterator] = FormData.prototype.entries;
+              globalThis.FormData = FormData;
+            })();
+            """);
     }
 
     // HTML §4.8.5 — `new Image(width?, height?)` constructs a detached
