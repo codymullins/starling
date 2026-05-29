@@ -8,6 +8,10 @@
          STARLING_PAINT_BACKEND=imagesharp-webgpu flips both layout (measurer)
          and raster backend together. -->
     <InternalsVisibleTo Include="Starling.Gui" />
+    <!-- The frame-replay benchmark constructs the CPU ImageSharpBackend
+         directly so it can time raster as its own phase and reuse one backend
+         across frames (deterministic, host-independent). Same seam Gui uses. -->
+    <InternalsVisibleTo Include="Starling.Bench" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Starling.Common\Starling.Common.csproj" />
