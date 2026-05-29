@@ -63,9 +63,38 @@
     <AvaloniaResource Include="Assets\icon_1024.png" />
   </ItemGroup>
 
-  <!-- macOS .app bundle icon: copied next to the published output so a bundle's
-       Info.plist (CFBundleIconFile=AppIcon) can resolve it from Contents/Resources. -->
-  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
-    <None Include="Assets\AppIcon.icns" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
+  <!-- Assemble a macOS .app bundle after publish so the dock/Finder icon comes
+       from AppIcon.icns (macOS reads CFBundleIconFile, not Window.Icon). Runs
+       only when publishing for an osx runtime. The bundle lands next to the
+       publish output as Starling.app:
+
+         dotnet publish src/Starling.Gui -c Release -r osx-arm64
+         open src/Starling.Gui/bin/Release/net10.0/osx-arm64/Starling.app
+
+       Layout: Contents/{Info.plist, MacOS/<publish output>, Resources/AppIcon.icns}. -->
+  <Target Name="BundleMac"
+          AfterTargets="Publish"
+          Condition="$([MSBuild]::IsOSPlatform('OSX')) and $(RuntimeIdentifier.StartsWith('osx'))">
+    <PropertyGroup>
+      <AppBundleRoot>$([System.IO.Path]::GetFullPath('$(PublishDir)..\Starling.app'))</AppBundleRoot>
+      <AppBundleMacOS>$(AppBundleRoot)\Contents\MacOS</AppBundleMacOS>
+      <AppBundleResources>$(AppBundleRoot)\Contents\Resources</AppBundleResources>
+    </PropertyGroup>
+
+    <!-- Start clean so a stale executable or renamed file never lingers. -->
+    <RemoveDir Directories="$(AppBundleRoot)" />
+    <MakeDir Directories="$(AppBundleMacOS);$(AppBundleResources)" />
+
+    <!-- Glob the publish output here (it doesn't exist at evaluation time). -->
+    <ItemGroup>
+      <PublishedFile Include="$(PublishDir)**\*" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(PublishedFile)"
+          DestinationFiles="@(PublishedFile->'$(AppBundleMacOS)\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="Info.plist" DestinationFiles="$(AppBundleRoot)\Contents\Info.plist" />
+    <Copy SourceFiles="Assets\AppIcon.icns" DestinationFiles="$(AppBundleResources)\AppIcon.icns" />
+
+    <Message Importance="high" Text="Bundled $(AppBundleRoot)" />
+  </Target>
 </Project>
