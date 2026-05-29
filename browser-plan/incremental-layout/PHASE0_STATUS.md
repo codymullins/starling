@@ -56,7 +56,25 @@ Tests in `Starling.Layout.Tests/Verification/`:
   error on a deterministic page,
 - every site under `testdata/sites/` lays out deterministically.
 
-## What is blocked in this environment
+## Build and test state
+
+The whole solution builds (a Six Labors license is now present in the sandbox
+as an untracked, git-ignored `sixlabors.lic`). All work landed here is verified:
+
+- 219 layout tests pass, including the 8 new `LayoutVerifier` tests.
+- The full `Starling.Gui.Headless.Tests` suite passes, including the new 0c
+  live-loop test.
+- The rest of the solution is green apart from two pre-existing failures that
+  are environmental, not from this work:
+  - `Starling.Codecs.Tests` — `libturbojpeg.so.0` is not installed here.
+  - `Starling.Engine.Tests` one golden snapshot (`nginx.org`) — the golden was
+    captured with the WebGPU paint backend, and this sandbox has no GPU adapter,
+    so tests run on the CPU `imagesharp` backend and the pixels differ. The same
+    test fails with the identical SSIM (0.855) at the base commit before any of
+    this work, which confirms it is not a regression. Run the headless suites
+    with `STARLING_PAINT_BACKEND=imagesharp` here.
+
+## What is still deferred
 
 ### 0a — the steady-state trace
 
@@ -68,29 +86,12 @@ so the three forking numbers can be read and Phase 4 gated yes or no:
 - `show_page.hit_index` as a fraction of the frame,
 - plus garbage-collection events against frame time.
 
-This needs a built and running GUI. The GUI cannot be built here. The paint
-backend depends on the Six Labors drawing package, which fails its license
-check without a `sixlabors.lic` file. That file is git-ignored and absent in
-this environment, and the download hosts for the .NET SDK and the license are
-not on the network allow-list. So `Starling.Paint`, `Starling.Engine`, and
-`Starling.Gui` cannot compile here, and the app cannot run.
+This needs the live GUI animation loop and a running Aspire dashboard. The GUI
+now compiles, but the default WebGPU paint backend cannot start here — the
+sandbox has no GPU adapter — and the Aspire dashboard is not running. So the
+steady-state trace is deferred to a GPU-capable environment with the AppHost up.
 
-The lower stack — `Starling.Dom`, `Starling.Css`, `Starling.Layout` — builds
-and tests cleanly, which is why 0d landed with full test coverage.
-
-**0a is deferred to a licensed build environment.** Phase 4 stays gated until
-0a produces the hit-index number.
-
-## What this means for the code that could not be compiled here
-
-The 0b and 0c changes live in `Starling.Engine` and `Starling.Gui`, which do
-not build in this environment for the license reason above. They were written
-against the existing public surface and reviewed by hand:
-
-- 0b is a doc comment only. It uses no cross-assembly `cref` to an internal
-  type, so it cannot break the build.
-- 0c uses only members that already exist: `LaidOutPage.Document`,
-  `Document.LayoutInvalidationVersion`, `RefreshLiveLayout`, and `CaretLog`.
-
-A build in a licensed environment should confirm both. The Phase 0 work that
-could be verified here — the layout substrate and the 0d harness — is green.
+The design forks 0a was meant to settle are already resolved in the plan: the
+cross-frame cascade cache stays out, the shaped-text cache stays out, and
+Phase 4 stays gated until the hit-index number is measured. So 0a is
+confirmatory, not blocking, for Phases 1 through 3.
