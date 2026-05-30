@@ -1,9 +1,9 @@
 ---
 id: wp:M12-13-gpu-composite-blend
 milestone: M12
-status: "available"
-claimed_by: ""
-claimed_at: ""
+status: "claimed"
+claimed_by: "agent-claude-opus"
+claimed_at: "2026-05-30T01:09:44Z"
 completed_at: ""
 branch: "main"
 depends_on:
@@ -65,3 +65,7 @@ at Retina scale. The GPU does this blend almost for free.
 This work also unblocks widening the compositor-path gate — see
 `wp:M12-14-compositor-path-gate`. While the blend is expensive, the path is
 gated tightly to animation frames to avoid a regression on cheap pages.
+
+## Handoff log
+
+- 2026-05-30T01:09:44Z — claimed by agent-claude-opus, working on main
