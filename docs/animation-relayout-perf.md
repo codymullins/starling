@@ -77,34 +77,44 @@ The flat path re-rasters the whole viewport every frame. The compositor path
 re-rasters only the one layer whose content changed (the status line) and blits
 the base and the spinner from cache.
 
-Frame time is a different story on the pure-managed backend. The compositor
-blend runs on the CPU and touches every output pixel for each layer, so its cost
-scales with the viewport, not with what changed. On a cheap-to-raster page like
-`compositor-demo` (solid fills), the blend costs more than the flat raster it
-replaces, so the composite path is slower at scale 1.0 and much slower at
+### Frame time: the GPU blend (wp:M12-13)
+
+The blend used to run on the CPU. It touched every output pixel for each layer,
+so its cost scaled with the viewport, not with what changed. On a cheap page
+like `compositor-demo` (solid fills), that blend cost more than the flat raster
+it replaced. The composite path was slower at scale 1.0 and far slower at
 scale 2.0.
 
-| compositor-demo, 150 frames | flat raster (ms) | composite (ms) |
-| --- | --- | --- |
-| raster phase, scale 1.0 | ~6.5 | ~8.6 |
-| raster phase, scale 2.0 | ~5.6 | ~31 |
+The blend now runs on the GPU. Each layer uploads to a wgpu texture once, keyed
+by its slice content hash, and stays resident across frames. An unchanged layer
+is never re-uploaded. Every frame the layers blend in one render pass — a
+textured quad per layer, placed by its transform, scaled by its opacity, and
+clipped by a scissor rect. The blend is alpha-over in premultiplied space, which
+reproduces the CPU `AlphaOver` math. The only per-frame transfer is the final
+viewport readback, the same transfer the flat path already pays. See
+`src/Starling.Paint/Compositor/GpuLayerCompositor.cs`. The CPU blend stays as the
+fallback for hosts with no GPU adapter, and the two paths are pinned together by
+`GpuCompositeParityTests`.
 
-So the per-frame draw work moves from "raster the whole viewport" to "blit cached
-layers plus raster the changed ones." That is a real structural win, and it pays
-in frame time when a cached layer is expensive to raster (text, gradients,
-images) and does not reflow. It does not pay when the page is cheap to raster,
-because the managed blend then dominates. The general frame-time win needs the
-composite blend itself on the GPU, which is out of scope for this stage.
+Measured on the WebGPU backend (`imagesharp-webgpu`, 150 frames):
+
+| compositor-demo | flat raster (ms) | composite raster (ms) | flat frame (ms) | composite frame (ms) |
+| --- | --- | --- | --- | --- |
+| scale 1.0 | ~12.9 | ~12.4 | ~13.4 | ~12.9 |
+| scale 2.0 | ~17.2 | ~16.1 | ~17.8 | ~16.5 |
+
+The composite path is now at or below the flat path at both scales: it re-rasters
+only the one changed layer and blends the rest from resident textures, instead of
+re-rastering the whole display list. The win grows with how expensive the cached
+layers are to raster (text, gradients, images) and with the scale.
 
 ## Still open
 
-- GPU compositing of the blend (the present/readback path). This is what turns
-  the raster-call win into a frame-time win for every page.
 - Glyph atlas, per-container scroll on the compositor path, and intra-layer
   damage rects (re-raster only the changed rectangle of a layer).
 - LTF-04's gate is currently "the page is animating." A page with static
-  compositor layers does not take the path on scroll or navigation, to avoid a
-  blend-cost regression on cheap pages. Widening it waits on a cheaper blend.
+  compositor layers does not take the path on scroll or navigation. The blend is
+  now cheap enough to widen that gate — see `wp:M12-14-compositor-path-gate`.
 
 ## History: animation engines survive relayouts
 

@@ -1,6 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <!-- The GPU layer-composite blend (wp:M12-13-gpu-composite-blend) drives the
+         Silk.NET.WebGPU API, whose surface is pointer-based (Device*, Texture*,
+         …). Direct wgpu interop needs unsafe blocks; this is per-frame paint
+         code, the hot path the performance policy allows unsafe for. The unsafe
+         code is confined to Compositor/GpuLayerCompositor.cs. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Starling.Paint.Tests" />
@@ -8,6 +14,7 @@
          STARLING_PAINT_BACKEND=imagesharp-webgpu flips both layout (measurer)
          and raster backend together. -->
     <InternalsVisibleTo Include="Starling.Gui" />
+    <InternalsVisibleTo Include="Starling.Gui.Core" />
     <!-- The frame-replay benchmark constructs the CPU ImageSharpBackend
          directly so it can time raster as its own phase and reuse one backend
          across frames (deterministic, host-independent). Same seam Gui uses. -->
@@ -28,6 +35,11 @@
     <PackageReference Include="SixLabors.ImageSharp.Drawing" />
     <PackageReference Include="SixLabors.ImageSharp.Drawing.WebGPU" />
     <PackageReference Include="SixLabors.Fonts" />
+    <!-- Direct WebGPU bindings: the GPU layer-composite blend
+         (wp:M12-13-gpu-composite-blend) drives wgpu itself to keep cached layer
+         textures resident and blend them in a single pass. -->
+    <PackageReference Include="Silk.NET.WebGPU" />
+    <PackageReference Include="Silk.NET.WebGPU.Extensions.WGPU" />
   </ItemGroup>
   <ItemGroup>
     <!-- Bundled fonts. EmbeddedResource (not None+CopyToOutputDirectory) so the

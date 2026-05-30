@@ -44,9 +44,8 @@ public class CompositorBench
 
     private ImageSharpBackend _backend = null!;
     private Compositor _compositor = null!;
+    private BlockBox _root = null!;
     private CompositorLayer _warmTree = null!;
-    private CompositorLayer _coldTree = null!;
-    private int _coldVersion;
 
     [GlobalSetup]
     public void Setup()
@@ -55,22 +54,17 @@ public class CompositorBench
         var style = new StyleEngine();
         style.AddStyleSheet(CssParser.ParseStyleSheet(Fixtures.PromotedCardsCss));
         using var measurer = new ImageSharpTextMeasurer(FontResolver.Default);
-        BlockBox root = new LayoutEngine(style, measurer).LayoutDocument(doc, Viewport);
+        _root = new LayoutEngine(style, measurer).LayoutDocument(doc, Viewport);
 
         _backend = new ImageSharpBackend(FontResolver.Default, webFonts: null, diagnostics: null, useWebGpu: true);
         _compositor = new Compositor(_backend);
 
-        // Two independent layer trees + caches so the cold path's version bumps
-        // never invalidate the warm path's seeded caches (they share one Setup
-        // instance across both benchmarks).
+        // Warm path: one persistent tree whose per-layer caches are keyed by slice
+        // content hash (LTF-02). Seed them once so every WarmCache call serves
+        // every layer from cache — the steady-state animation frame.
         var warmStore = new LayerCacheStore();
-        _warmTree = new LayerTreeBuilder(cacheFor: warmStore.CacheFor).Build(root);
-        var coldStore = new LayerCacheStore();
-        _coldTree = new LayerTreeBuilder(cacheFor: coldStore.CacheFor).Build(root);
-
-        // Seed the warm tree's caches once at version 0; every WarmCache call
-        // renders at version 0 and serves from these.
-        using (_compositor.Render(_warmTree, ViewportRect, Scale, pageVersion: 0)) { }
+        _warmTree = new LayerTreeBuilder(cacheFor: warmStore.CacheFor).Build(_root);
+        using (_compositor.Render(_warmTree, ViewportRect, Scale)) { }
     }
 
     [GlobalCleanup]
@@ -79,14 +73,19 @@ public class CompositorBench
     [Benchmark(Baseline = true)]
     public int Composite_WarmCache()
     {
-        using var bmp = _compositor.Render(_warmTree, ViewportRect, Scale, pageVersion: 0);
+        using var bmp = _compositor.Render(_warmTree, ViewportRect, Scale);
         return bmp.Width;
     }
 
     [Benchmark]
     public int Composite_ColdCache()
     {
-        using var bmp = _compositor.Render(_coldTree, ViewportRect, Scale, pageVersion: ++_coldVersion);
+        // Cold path: a fresh tree + store every call, so no layer's content hash
+        // is cached and each re-rasters through the WebGPU backend before the
+        // composite blend — the worst case the per-layer cache exists to avoid.
+        var coldStore = new LayerCacheStore();
+        var coldTree = new LayerTreeBuilder(cacheFor: coldStore.CacheFor).Build(_root);
+        using var bmp = _compositor.Render(coldTree, ViewportRect, Scale);
         return bmp.Width;
     }
 }

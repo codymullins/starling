@@ -19,6 +19,16 @@
     <PackageVersion Include="SixLabors.ImageSharp.Drawing.WebGPU" Version="1.0.*" />
     <PackageVersion Include="SixLabors.Fonts"              Version="3.*" />
 
+    <!-- Direct WebGPU bindings for the GPU layer-composite blend
+         (wp:M12-13-gpu-composite-blend). They already arrive transitively via
+         SixLabors.ImageSharp.Drawing.WebGPU; pinning them here lets
+         Starling.Paint reference the Silk.NET API (device, queue, render
+         pipeline, texture cache) directly to blend cached layers on the GPU.
+         Same native wgpu binary WgpuNativeLoader already loads — no new native
+         dependency. -->
+    <PackageVersion Include="Silk.NET.WebGPU"                Version="2.23.0" />
+    <PackageVersion Include="Silk.NET.WebGPU.Extensions.WGPU" Version="2.23.0" />
+
     <PackageVersion Include="ModelContextProtocol"         Version="1.3.0" />
 
     <!-- Avalonia 12 GUI experiment (Starling.Gui). Plain net10.0

@@ -39,6 +39,16 @@ internal sealed class Compositor
     internal bool DisableFastBlit { get; init; }
 
     /// <summary>
+    /// Forces the managed CPU blend even when a GPU is available
+    /// (wp:M12-13-gpu-composite-blend). The composite path blends cached layers
+    /// on the GPU by default — this switch pins the CPU path for the golden
+    /// parity test and for hosts that opt out.
+    /// </summary>
+    internal bool DisableGpuBlend { get; init; }
+
+    private GpuLayerCompositor? Gpu => DisableGpuBlend ? null : GpuLayerCompositor.Shared;
+
+    /// <summary>
     /// Renders <paramref name="root"/> (the layer tree's root) into a bitmap
     /// sized to <paramref name="viewport"/> at <paramref name="scale"/>. Each
     /// layer's picture cache is keyed by its own slice content hash
@@ -64,17 +74,42 @@ internal sealed class Compositor
         var output = new byte[checked(width * height * 4)];
         FillWhite(output);
 
-        Composite(root, output, width, height, viewport, scale,
+        // Walk the tree once into a flat, paint-ordered list of blend ops, each
+        // carrying the layer bitmap plus the geometry (localToDevice, clipDev,
+        // opacity) computed in one place. The CPU and GPU paths consume the same
+        // ops, so they blend identical geometry.
+        var ops = new List<LayerBlend>();
+        var keepAlive = new List<RenderedBitmap>();
+        CollectOps(root, ops, keepAlive, viewport, scale,
             ancestorTransform: Matrix2D.Identity, ancestorOpacity: 1f, ancestorClip: null);
+
+        // GPU blend (wp:M12-13): cached layer textures stay resident across
+        // frames and blend in one pass. Falls back to the managed CPU blend when
+        // no GPU adapter is present or a frame fails on the GPU.
+        var blended = false;
+        var gpu = Gpu;
+        if (gpu is not null && ops.Count > 0)
+            blended = gpu.Composite(output, width, height, ops);
+
+        if (!blended)
+        {
+            // A failed GPU frame may have left partial pixels in the output; reset
+            // to the white base before the CPU blend re-composites from scratch.
+            if (gpu is not null) FillWhite(output);
+            foreach (var op in ops)
+                BlendOp(op, output, width, height, fastBlit: !DisableFastBlit);
+        }
+
+        foreach (var bmp in keepAlive)
+            bmp.Dispose();
 
         return new RenderedBitmap(width, height, output);
     }
 
-    private void Composite(
+    private void CollectOps(
         CompositorLayer layer,
-        byte[] output,
-        int outWidth,
-        int outHeight,
+        List<LayerBlend> ops,
+        List<RenderedBitmap> keepAlive,
         LayoutRect viewport,
         float scale,
         Matrix2D ancestorTransform,
@@ -94,14 +129,26 @@ internal sealed class Compositor
 
         if (layer.Bounds.Width > 0 && layer.Bounds.Height > 0 && effectiveOpacity > 0f)
         {
-            using var local = RenderLayerBitmap(layer, scale);
-            BlendLayer(local, layer.Bounds, output, outWidth, outHeight, viewport, scale,
-                effectiveTransform, effectiveOpacity, effectiveClip, fastBlit: !DisableFastBlit);
+            var local = RenderLayerBitmap(layer, scale);
+            keepAlive.Add(local);
+
+            // local-bitmap pixel -> output device pixel (see BlendOp for the
+            // composed mapping). pageToDevice is shared; clipDev is the device
+            // AABB of the page-space clip.
+            var s = scale;
+            var localToPage = Matrix2D.Translate(layer.Bounds.X, layer.Bounds.Y).Multiply(Matrix2D.Scale(1d / s, 1d / s));
+            var pageToDevice = Matrix2D.Translate(-viewport.X * s, -viewport.Y * s).Multiply(Matrix2D.Scale(s, s));
+            var localToDevice = pageToDevice.Multiply(effectiveTransform).Multiply(localToPage);
+            Rect? clipDev = effectiveClip is { } cp
+                ? TransformedAabb(new Rect(cp.X, cp.Y, cp.Width, cp.Height), pageToDevice)
+                : null;
+
+            ops.Add(new LayerBlend(local, layer.ContentHash, localToDevice, effectiveOpacity, clipDev));
         }
 
         // Children already in paint order (z-index sorted at build time).
         foreach (var child in layer.Children)
-            Composite(child, output, outWidth, outHeight, viewport, scale,
+            CollectOps(child, ops, keepAlive, viewport, scale,
                 effectiveTransform, effectiveOpacity, effectiveClip);
     }
 
@@ -153,47 +200,25 @@ internal sealed class Compositor
         => new(anchor.X, anchor.Y, width, height);
 
     /// <summary>
-    /// Alpha-over blends <paramref name="local"/> (page-coord rect
-    /// <paramref name="bounds"/>, device pixels at <paramref name="scale"/>) into
-    /// <paramref name="output"/>, applying <paramref name="transform"/> (page
-    /// space), <paramref name="opacity"/>, and <paramref name="clip"/> (page
-    /// space). Inverse-maps each output device pixel back to a source sample so
-    /// rotation / scaling are exact regardless of the transform.
+    /// Managed alpha-over blend of one <see cref="LayerBlend"/> into
+    /// <paramref name="output"/> — the CPU fallback for the GPU composite path.
+    /// Inverse-maps each output device pixel back to a source sample using the
+    /// op's precomputed <see cref="LayerBlend.LocalToDevice"/> so rotation /
+    /// scaling are exact regardless of the transform.
     /// </summary>
-    private static void BlendLayer(
-        RenderedBitmap local,
-        Rect bounds,
-        byte[] output,
-        int outWidth,
-        int outHeight,
-        LayoutRect viewport,
-        float scale,
-        Matrix2D transform,
-        float opacity,
-        Rect? clip,
-        bool fastBlit)
+    private static void BlendOp(LayerBlend op, byte[] output, int outWidth, int outHeight, bool fastBlit)
     {
-        // Map a local-bitmap pixel -> output device pixel:
-        //   page   = Translate(bounds.X, bounds.Y) * Scale(1/scale)        (pixel -> page)
-        //   t-page = transform * page                                       (CSS transform)
-        //   device = Translate(-vx*s, -vy*s) * Scale(s) * t-page            (page -> device)
-        var s = scale;
-        var localToPage = Matrix2D.Translate(bounds.X, bounds.Y).Multiply(Matrix2D.Scale(1d / s, 1d / s));
-        var pageToDevice = Matrix2D.Translate(-viewport.X * s, -viewport.Y * s).Multiply(Matrix2D.Scale(s, s));
-        var localToDevice = pageToDevice.Multiply(transform).Multiply(localToPage);
+        var local = op.Local;
+        var localToDevice = op.LocalToDevice;
+        var opacity = op.Opacity;
+        var clipDev = op.ClipDevice;
+
         if (!TryInvert(localToDevice, out var deviceToLocal))
             return; // Degenerate (scale 0 / collapsed) transform paints nothing.
 
         // Device-space AABB of the transformed local bitmap, clamped to output.
         var srcRect = new Rect(0, 0, local.Width, local.Height);
         var devAabb = TransformedAabb(srcRect, localToDevice);
-
-        // Clip rect -> device space (clip is axis-aligned in page space; under a
-        // rotation its device AABB is a conservative bound, exact for the
-        // common translate/scale clips this WP targets).
-        Rect? clipDev = clip is { } cp
-            ? TransformedAabb(new Rect(cp.X, cp.Y, cp.Width, cp.Height), pageToDevice)
-            : null;
 
         // Fast path (LTF-05): a layer that lands as a pure integer-pixel
         // translation at full opacity (no rotation/scale/skew) skips the matrix
