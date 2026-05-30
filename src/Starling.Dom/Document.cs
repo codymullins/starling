@@ -53,6 +53,55 @@ public sealed class Document : Node
         // reconciled, and recording them would name unmapped nodes.
         if (!target.IsConnectedToDocument) return;
         (_layoutMutations ??= new List<LayoutMutation>()).Add(new LayoutMutation(target, kind));
+        NoteRecentlyMutated(target);
+    }
+
+    // ---- LTF-06: recently-mutated element tracker (compositor isolation) ------
+    //
+    // Independent of the layout-mutation batch above (which the incremental
+    // layout engine drains each frame). The live compositor reads this to promote
+    // a just-mutated subtree to its own layer, so the base layer's slice content
+    // hash stays stable and serves from cache instead of re-rasterizing the whole
+    // viewport. A small per-frame countdown (hysteresis) keeps an element promoted
+    // for a few rendered frames after its last mutation, so promotion does not
+    // churn as mutations come and go.
+    private Dictionary<Element, int>? _recentlyMutated;
+    private const int RecentMutationFrames = 3;
+
+    private void NoteRecentlyMutated(Node target)
+    {
+        var el = target as Element ?? NearestElement(target);
+        if (el is null) return;
+        (_recentlyMutated ??= new Dictionary<Element, int>())[el] = RecentMutationFrames;
+    }
+
+    private static Element? NearestElement(Node node)
+    {
+        for (var n = node.ParentNode; n is not null; n = n.ParentNode)
+            if (n is Element e) return e;
+        return null;
+    }
+
+    /// <summary>True when <paramref name="element"/>'s subtree was mutated within
+    /// the last few rendered frames (the LTF-06 hysteresis window). The live
+    /// compositor promotes such elements so their repaint does not re-raster the
+    /// base layer.</summary>
+    public bool WasRecentlyMutated(Element element)
+        => _recentlyMutated is { } m && m.ContainsKey(element);
+
+    /// <summary>Advances the recently-mutated hysteresis countdown by one rendered
+    /// frame, dropping elements whose window has elapsed. The live shell calls
+    /// this once per painted frame.</summary>
+    public void DecayRecentMutations()
+    {
+        if (_recentlyMutated is not { Count: > 0 } m) return;
+        var keys = new List<Element>(m.Keys);
+        foreach (var el in keys)
+        {
+            var ttl = m[el] - 1;
+            if (ttl <= 0) m.Remove(el);
+            else m[el] = ttl;
+        }
     }
 
     /// <summary>Removes and returns the mutations recorded since the last drain.

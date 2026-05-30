@@ -40,12 +40,24 @@ internal sealed class PageRendererHost : IDisposable
     }
 
     /// <summary>
-    /// Drops the picture cache. The shell calls this when the laid-out page
-    /// changes (navigation / re-layout) so the next viewport render is a full
-    /// repaint rather than a stale-pixel blit. Scroll-only repaints leave it
-    /// intact so the cache can serve them.
+    /// Drops the flat scroll picture cache only. The shell calls this on an
+    /// in-place relayout / hover-override change so the next flat render is a
+    /// clean repaint. The per-layer compositor caches are NOT dropped: they are
+    /// keyed by each layer's slice content hash (LTF-02), so an unchanged layer
+    /// stays valid across a relayout and only a real content change re-rasters it
+    /// (LTF-03). Scroll-only repaints leave the flat cache intact so it can serve.
     /// </summary>
     public void InvalidateCache()
+    {
+        _cached.Invalidate();
+    }
+
+    /// <summary>
+    /// Navigation reset: drops the flat cache AND every persistent per-layer
+    /// compositor cache. Called when the laid-out page belongs to a different
+    /// Document, so no pixels from the previous page survive (LTF-03).
+    /// </summary>
+    public void ResetForNavigation()
     {
         _cached.Invalidate();
         _layerCaches.Clear();
@@ -100,7 +112,7 @@ internal sealed class PageRendererHost : IDisposable
     /// callers and existing golden tests. <paramref name="viewport"/> is the
     /// page-coord visible region; when omitted the full page frame is used.
     /// </summary>
-    public RenderedBitmap RenderViaLayerTree(BlockBox root, float scale = 1.0f, Func<Box, ComputedStyle?>? styleOverride = null, IImageResolver? images = null, LayoutRect? viewport = null, int pageVersion = 0)
+    public RenderedBitmap RenderViaLayerTree(BlockBox root, float scale = 1.0f, Func<Box, ComputedStyle?>? styleOverride = null, IImageResolver? images = null, LayoutRect? viewport = null, Func<Box, bool>? isAnimatingLayerRoot = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(root);
@@ -110,13 +122,15 @@ internal sealed class PageRendererHost : IDisposable
             // Persistent per-layer caches (keyed by element) let a transform/
             // opacity-only frame re-blit each layer from cache instead of
             // re-rasterizing (Phase 5); the transform/opacity are re-sampled into
-            // the rebuilt tree and applied at composite time.
-            var tree = new LayerTreeBuilder(styleOverride, images, _diag, _layerCaches.CacheFor).Build(root);
+            // the rebuilt tree and applied at composite time. Each layer is keyed
+            // by its slice content hash (LTF-02), so a relayout that bumped the
+            // page version no longer busts a layer whose content is unchanged.
+            var tree = new LayerTreeBuilder(styleOverride, images, _diag, _layerCaches.CacheFor, isAnimatingLayerRoot).Build(root);
             var region = viewport ?? new LayoutRect(0, 0,
                 Math.Max(1, root.Frame.Width),
                 Math.Max(1, root.Frame.Height));
             var compositor = new Compositor(_backend, _diag);
-            return compositor.Render(tree, region, scale, pageVersion);
+            return compositor.Render(tree, region, scale);
         }
         catch (Exception ex)
         {

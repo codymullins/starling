@@ -135,11 +135,6 @@ public class AnimationLoopTests
         panel.ShowPage(page);
         window.CaptureRenderedFrame();
 
-        // The routing predicate must recognise the promoted layer, or the live
-        // repaint would stay on the flat path and never reuse layer content.
-        typeof(WebviewPanel).GetMethod("PageHasCompositorLayers", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .Invoke(panel, null).Should().Be(true, "a will-change:transform box is a compositor layer");
-
         // Frame 0 seeds the per-layer caches; frame 600 (a different clock) must
         // serve their content from cache — proof the clock-free layer-tree path
         // ran (the flat path's clock-keyed version would miss every frame).
@@ -173,10 +168,8 @@ public class AnimationLoopTests
         engine.PrepareAnimationFrame(page, nowMs);
         SetField(panel, "_animClockMs", nowMs);
         SetField(panel, "_animating", true);
-        // Mark this as an animation-only frame (clock advanced, no relayout) —
-        // what the live tick sets before painting; the layer-compositor route is
-        // gated on it.
-        SetField(panel, "_animationOnlyFrame", true);
+        // The compositor layer-tree path is gated on _animating alone now (LTF-04):
+        // an animating frame composites whether or not it relayouted.
         typeof(WebviewPanel).GetMethod("RenderViewportRegion", BindingFlags.NonPublic | BindingFlags.Instance)!
             .Invoke(panel, null);
 

@@ -121,17 +121,6 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     private readonly Func<LaidOutPage, bool>? _hasActiveAnimations;
     private long _animClockMs;
     private bool _animating;
-    // True for exactly one paint: a live frame that advanced only the animation
-    // clock and did NOT relayout. The layer compositor is taken only on these
-    // frames — a frame that relayouts has just wiped the per-layer caches
-    // (ShowPage → InvalidateCache), so compositing would re-raster every layer
-    // cold and pay its overhead for nothing. Consume-once: RenderPageBitmap
-    // reads it then clears it, so scroll/hover/navigation paints stay flat.
-    private bool _animationOnlyFrame;
-    // Cached "does this laid-out page carry a transform/opacity compositor
-    // layer?" answer (Phase 5 routing). Computed once per layout — a relayout
-    // produces a new box tree, so ShowPage resets it to null to recompute.
-    private bool? _pageHasCompositorLayers;
 
     public WebviewPanel(
         ThemeManager tm,
@@ -337,12 +326,21 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         // across the swap; the next tick relayouts only if script advances it.
         _lastLayoutInvalidationVersion = page.Document.LayoutInvalidationVersion;
 
-        // New laid-out page = new display-list version; drop any cached pixels
-        // from the previous page so the first render is a clean full repaint.
-        _renderer.InvalidateCache();
+        // New laid-out page. On a navigation (a different Document) drop every
+        // cache — flat pixels and the persistent per-layer compositor caches — so
+        // nothing from the previous page survives. On an in-place relayout (same
+        // Document: resize / edit / animation) keep the per-layer caches: they are
+        // keyed by slice content hash (LTF-02), so an unchanged layer re-blits
+        // from cache and only genuinely changed layers re-raster (LTF-03). The
+        // flat scroll cache is dropped either way (its version-keyed pixels would
+        // otherwise blit stale). _scrollOffsetsDocument still holds the PREVIOUS
+        // document here (it is updated below), so it tells navigation from relayout.
+        var isNavigation = !ReferenceEquals(_scrollOffsetsDocument, page.Document);
+        if (isNavigation)
+            _renderer.ResetForNavigation();
+        else
+            _renderer.InvalidateCache();
 
-        // Fresh box tree — recompute the compositor-layer routing answer lazily.
-        _pageHasCompositorLayers = null;
 
         // Reset interaction state.
         ClearSelection();
@@ -1149,6 +1147,11 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         var page = _currentPage;
         if (page is null) { _liveTimer.Stop(); _boundScripting = null; _animating = false; return; }
 
+        // LTF-06: age the recently-mutated promotion window by one frame before
+        // this tick records new mutations, so a subtree promoted by a past
+        // mutation falls back into the base layer once its hysteresis elapses.
+        page.Document.DecayRecentMutations();
+
         // One span per frame, with sub-spans for each phase (pump / relayout /
         // prepare_anim / render) so a trace shows where a laggy animation frame
         // spends its time. The inner "gui.render" span lives in RenderPageBitmap.
@@ -1211,11 +1214,11 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         }
 
         // Exactly one paint per frame — the animation clock and _animating flag
-        // are already set, so the sampled styles match this frame. A frame that
-        // only advanced the clock (no relayout) is eligible for the layer
-        // compositor, whose per-layer caches are still warm; a frame that
-        // relayouted just wiped them, so it must stay on the flat path.
-        _animationOnlyFrame = animating && !needsRelayout;
+        // are already set, so the sampled styles match this frame. An animating
+        // frame takes the compositor path (LTF-04) whether or not it relayouted:
+        // the per-layer caches now survive relayout (LTF-03) and each layer's
+        // content hash (LTF-02) decides what re-rasters, so a relayout-every-frame
+        // animation no longer pays a full-viewport raster.
         if (needsRelayout || animating)
             RenderViewportRegion();
 
@@ -1694,13 +1697,19 @@ internal sealed class WebviewPanel : UserControl, IDisposable
         // no-per-element-scroll case because RenderViaLayerTree does not yet
         // thread per-container scroll offsets (tracked follow-up); a scrollable
         // page falls back to the flat path, which handles offsets correctly.
-        var useLayerTree = _animationOnlyFrame && scrollLookup is null && PageHasCompositorLayers();
-        _animationOnlyFrame = false; // consume-once: only the live tick that set it composites
+        // LTF-04: take the compositor layer-tree path on any live animation frame
+        // (the per-frame predicate promotes the animating elements; the base layer
+        // and unchanged layers re-blit from their persistent content-keyed caches).
+        // Gated to _animating so scroll / hover / navigation of a non-animating page
+        // is untouched, and to scrollLookup is null because RenderViaLayerTree does
+        // not yet thread per-container scroll offsets (a scrollable page falls back
+        // to the flat path, which handles offsets correctly).
+        var useLayerTree = scrollLookup is null && _animating;
         using (_diag.Span("gui", "render"))
         {
             if (useLayerTree)
             {
-                rendered = _renderer.RenderViaLayerTree(_currentPage!.Root, (float)_currentScale, styleOverride, _currentPage.ImageResolver, viewport, _currentPage.DisplayListVersion);
+                rendered = _renderer.RenderViaLayerTree(_currentPage!.Root, (float)_currentScale, styleOverride, _currentPage.ImageResolver, viewport, IsElementAnimatingLayerRoot);
             }
             else
             {
@@ -1748,31 +1757,26 @@ internal sealed class WebviewPanel : UserControl, IDisposable
     /// opacity, background, border, color of the element itself) render; color
     /// inherited into descendant text boxes is a follow-up.
     /// </summary>
-    // The promotion hints whose layers gain from composite-time caching: a
-    // transform or opacity that can change per frame while the layer's content
-    // (and the picture-cache key) stays put. `will-change` is the author's
-    // explicit "I will animate this on the compositor" signal, so it counts too.
-    private const Starling.Layout.Compositor.LayerHint CompositeAnimatableHints =
-        Starling.Layout.Compositor.LayerHint.Transform3D
-        | Starling.Layout.Compositor.LayerHint.OpacityLessThanOne
-        | Starling.Layout.Compositor.LayerHint.WillChange;
-
-    /// <summary>True when the current laid-out page has a box promoted for a
-    /// composite-time transform / opacity — the layers whose pixels can be
-    /// re-blitted from cache across an animation frame. Computed once per layout
-    /// (cached; reset by <see cref="ShowPage"/>).</summary>
-    private bool PageHasCompositorLayers()
+    /// <summary>
+    /// Per-frame layer-promotion predicate (LTF-01 / LTF-06): a box whose element
+    /// has any active animation or transition — or whose subtree a script mutated
+    /// in the last few frames — becomes its own compositor layer, even with no
+    /// static <see cref="LayerHint"/>. A composite-time transform/opacity is
+    /// applied at composite (the slice stays cacheable); any other changed paint
+    /// property re-rasters just this box's small slice while the base layer stays
+    /// cached. Boxes with no element (anonymous/text) are never promoted here.
+    /// </summary>
+    private bool IsElementAnimatingLayerRoot(LayoutBox box)
     {
-        if (_currentPage is null) return false;
-        _pageHasCompositorLayers ??= HasCompositeAnimatableLayer(_currentPage.Root);
-        return _pageHasCompositorLayers.Value;
-    }
-
-    private static bool HasCompositeAnimatableLayer(LayoutBox box)
-    {
-        if ((box.Hints & CompositeAnimatableHints) != 0) return true;
-        foreach (var child in box.Children)
-            if (HasCompositeAnimatableLayer(child)) return true;
+        if (_currentPage is not { } page || box.Element is not { } el) return false;
+        // LTF-06: a subtree a script mutated in the last few frames is promoted to
+        // its own isolated layer, so its repaint does not re-raster the base layer
+        // (the base slice excludes it, so the base content hash stays stable and
+        // serves from cache). Light hysteresis (Document.DecayRecentMutations)
+        // keeps it promoted briefly so promotion does not churn frame to frame.
+        if (page.Document.WasRecentlyMutated(el)) return true;
+        foreach (var _ in page.Style.AnimationEngine.ActiveProperties(el)) return true;
+        foreach (var _ in page.Style.TransitionEngine.ActiveProperties(el)) return true;
         return false;
     }
 

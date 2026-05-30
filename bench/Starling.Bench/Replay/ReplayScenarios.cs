@@ -26,13 +26,14 @@ public sealed class ReplayScenario
 
 public static class ReplayScenarios
 {
-    public static readonly IReadOnlyList<string> Names = ["flex-status", "list", "nginx"];
+    public static readonly IReadOnlyList<string> Names = ["flex-status", "list", "nginx", "compositor-demo"];
 
     public static ReplayScenario Create(string pageName) => pageName switch
     {
         "flex-status" => FlexStatus(),
         "list" => ListPage(),
         "nginx" => Nginx(),
+        "compositor-demo" => CompositorDemo(),
         _ => throw new ArgumentException(
             $"Unknown replay page '{pageName}'. Known: {string.Join(", ", Names)}.", nameof(pageName)),
     };
@@ -95,6 +96,43 @@ public static class ReplayScenarios
             Style = style,
             Viewport = new Size(1024, 768),
             MutateForFrame = static _ => { },
+        };
+    }
+
+    // LTF-00: the layer-compositor demo shape — a big static base, a spinning
+    // (transform-only) box, and an absolutely-positioned status line rewritten
+    // every frame. Driving this through the compositor path should re-raster only
+    // the status layer per frame (the base and the spinning box re-blit from
+    // cache), unlike the flat path which re-rasters the whole viewport.
+    private static ReplayScenario CompositorDemo()
+    {
+        const string spinBase =
+            "position:absolute;left:120px;top:120px;width:140px;height:90px;background-color:#cc3333;";
+        var doc = HtmlParser.Parse(
+            "<body style=\"margin:0\">" +
+            "<div style=\"width:1024px;height:700px;background-color:#dde3ff\">base</div>" +
+            $"<div id=spin style=\"{spinBase}transform:rotate(0deg)\"></div>" +
+            "<div id=status style=\"position:absolute;left:0px;top:720px;width:300px;height:20px\">running 16 ms</div>" +
+            "</body>");
+        doc.RecordLayoutMutations = true;
+        var style = NewStyle();
+        var spin = doc.GetElementById("spin");
+        var status = FindFirstText(doc.GetElementById("status"));
+        return new ReplayScenario
+        {
+            PageName = "compositor-demo",
+            Document = doc,
+            Style = style,
+            Viewport = new Size(1024, 768),
+            MutateForFrame = frame =>
+            {
+                // Per-frame status text (re-rasters its layer) + a transform-only
+                // spin (its slice is upright, so its content hash stays stable and
+                // it re-blits from cache).
+                if (status is not null)
+                    status.Data = frame % 2 == 0 ? "running 16 ms" : "running 32 ms";
+                spin?.SetAttribute("style", spinBase + $"transform:rotate({frame * 12 % 360}deg)");
+            },
         };
     }
 
