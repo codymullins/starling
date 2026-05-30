@@ -1,4 +1,3 @@
-using Starling.Css.Cascade;
 using Starling.Css.Properties;
 using Starling.Css.Values;
 using Starling.Layout.Box;

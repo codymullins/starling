@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Starling.Gui" />
+    <InternalsVisibleTo Include="Starling.Gui.Headless.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Starling.Common\Starling.Common.csproj" />
+    <ProjectReference Include="..\Starling.Css\Starling.Css.csproj" />
+    <ProjectReference Include="..\Starling.Dom\Starling.Dom.csproj" />
+    <ProjectReference Include="..\Starling.Layout\Starling.Layout.csproj" />
+    <ProjectReference Include="..\Starling.Mcp\Starling.Mcp.csproj" />
+    <ProjectReference Include="..\Starling.Paint\Starling.Paint.csproj" />
+    <ProjectReference Include="..\Starling.Url\Starling.Url.csproj" />
+  </ItemGroup>
+</Project>

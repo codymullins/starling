@@ -24,7 +24,8 @@ namespace Starling.Paint.DisplayList;
 /// </remarks>
 internal static class DisplayListContentHash
 {
-    private const ulong FnvOffset = 14695981039346656037UL;
+    // Use the standard constants for the  64-bit FNV-1a hash.
+    private const ulong FnvOffset = 14695981039346656037UL; // initial hash value / offset basis
     private const ulong FnvPrime = 1099511628211UL;
 
     public static long Compute(DisplayList list)

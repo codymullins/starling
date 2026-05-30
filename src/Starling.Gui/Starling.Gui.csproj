@@ -47,6 +47,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Starling.Engine\Starling.Engine.csproj" />
+    <ProjectReference Include="..\Starling.Gui.Core\Starling.Gui.Core.csproj" />
     <ProjectReference Include="..\Starling.Mcp\Starling.Mcp.csproj" />
     <ProjectReference Include="..\Starling.Telemetry\Starling.Telemetry.csproj" />
   </ItemGroup>

@@ -2,15 +2,13 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <!-- The GUI project is an Exe; ProjectReference still produces a
-         consumable assembly for the test runner. -->
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="MSTest" />
     <PackageReference Include="AwesomeAssertions" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Starling.Gui\Starling.Gui.csproj" />
+    <ProjectReference Include="..\..\src\Starling.Gui.Core\Starling.Gui.Core.csproj" />
     <ProjectReference Include="..\..\src\Starling.Layout\Starling.Layout.csproj" />
     <ProjectReference Include="..\..\src\Starling.Css\Starling.Css.csproj" />
     <ProjectReference Include="..\..\src\Starling.Dom\Starling.Dom.csproj" />

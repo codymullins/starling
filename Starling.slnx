@@ -6,6 +6,7 @@
   </Configurations>
   <Folder Name="/src/">
     <Project Path="src/Starling.Codecs/Starling.Codecs.csproj" />
+    <Project Path="src/Starling.Gui.Core/Starling.Gui.Core.csproj" />
     <Project Path="src/Starling.Gui/Starling.Gui.csproj" />
     <Project Path="src/Starling.Mcp/Starling.Mcp.csproj" />
     <Project Path="src/Starling.Telemetry/Starling.Telemetry.csproj" />

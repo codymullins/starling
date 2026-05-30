@@ -7,17 +7,15 @@ namespace Starling.Gui.Mcp;
 /// <summary>
 /// MCP tool group that drives the visible Starling browser window. Owns the
 /// tool descriptors (the static JSON below is the single source of truth) and
-/// dispatches tools/call onto <see cref="BrowserControlBridge"/>, which
-/// marshals the work to the Avalonia UI thread.
+/// dispatches tools/call onto <see cref="IBrowserControlDispatcher"/>.
 /// </summary>
 public sealed class BrowserTools : IMcpToolGroup
 {
-    private readonly BrowserControlBridge _browser;
+    private readonly IBrowserControlDispatcher _browser;
 
-    public BrowserTools(BrowserControlBridge browser)
+    public BrowserTools(IBrowserControlDispatcher browser)
     {
-        ArgumentNullException.ThrowIfNull(browser);
-        _browser = browser;
+        _browser = browser ?? throw new ArgumentNullException(nameof(browser));
     }
 
     public string GetToolDescriptorsJson() => ToolDescriptorsJson;

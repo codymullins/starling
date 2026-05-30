@@ -9,7 +9,7 @@ namespace Starling.Gui.Mcp;
 /// concurrent tool calls so the browser state machine only sees one mutation
 /// at a time.
 /// </summary>
-public sealed class BrowserControlBridge
+public sealed class BrowserControlBridge : IBrowserControlDispatcher
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private IBrowserController? _controller;

@@ -21,6 +21,7 @@
     <PackageReference Include="AwesomeAssertions" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Starling.Gui.Core\Starling.Gui.Core.csproj" />
     <ProjectReference Include="..\..\src\Starling.Gui\Starling.Gui.csproj" />
   </ItemGroup>
 </Project>
